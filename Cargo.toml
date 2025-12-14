@@ -1,0 +1,30 @@
+[package]
+name = "la-stack"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "BSD-3-Clause"
+description = "Small, stack-allocated linear algebra for fixed dimensions"
+repository = "https://github.com/acgetchell/la-stack"
+categories = ["mathematics", "science"]
+keywords = ["linear-algebra", "geometry", "const-generics"]
+
+[dependencies]
+# Intentionally empty
+
+[dev-dependencies]
+approx = "0.5"
+criterion = { version = "0.8", features = ["html_reports"] }
+nalgebra = "0.34"
+
+[[bench]]
+name = "vs_nalgebra"
+harness = false
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+dead_code = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
