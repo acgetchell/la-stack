@@ -1,0 +1,33 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "Clippy",
+    "clippy",
+    "const",
+    "elif",
+    "f128",
+    "f32",
+    "f64",
+    "generics",
+    "Getchell",
+    "Justfile",
+    "justfile",
+    "lu",
+    "MSRV",
+    "msvc",
+    "mult",
+    "nalgebra",
+    "pipefail",
+    "pivoting",
+    "println",
+    "rug",
+    "RUSTDOCFLAGS",
+    "shellcheck",
+    "usize"
+  ],
+  "ignorePaths": [
+    "target",
+    "Cargo.lock"
+  ]
+}
