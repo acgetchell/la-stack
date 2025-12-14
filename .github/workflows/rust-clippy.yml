@@ -1,0 +1,65 @@
+# Advanced Clippy analysis with SARIF output for security integration
+# Note: Basic clippy checks are also run in the main CI workflow
+
+name: "Clippy Security Analysis"
+
+on:
+  # Only run on schedule and manual trigger to avoid duplication with CI
+  schedule:
+    - cron: '17 22 * * 0'  # Weekly on Sunday
+  workflow_dispatch:
+  # Run on main branch pushes for security scanning
+  push:
+    branches: ["main"]
+
+# Security: Define minimal required permissions
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  clippy-sarif:
+    name: Clippy SARIF Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8  # v6.0.1
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c  # v1.15.2
+        with:
+          cache: true  # toolchain/components are specified in rust-toolchain.toml
+
+      - name: Cache clippy tools
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809  # v4.2.4
+        with:
+          path: |
+            ~/.cargo/bin/clippy-sarif
+            ~/.cargo/bin/sarif-fmt
+          key: clippy-sarif-${{ runner.os }}
+
+      - name: Install clippy-sarif tools
+        run: |
+          if ! command -v clippy-sarif &> /dev/null; then
+            cargo install clippy-sarif sarif-fmt --locked
+          fi
+
+      - name: Run clippy with SARIF output
+        run: |
+          cargo clippy \
+            --all-targets \
+            --all-features \
+            --message-format=json \
+            -- -W clippy::pedantic -W clippy::nursery | \
+            clippy-sarif | \
+            tee rust-clippy-results.sarif | \
+            sarif-fmt
+        continue-on-error: true
+
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@b36bf259c813715f76eafece573914b94412cd13  # v3
+        with:
+          sarif_file: rust-clippy-results.sarif
+          category: "clippy"
+          wait-for-processing: true

@@ -1,0 +1,15 @@
+# rustfmt configuration for the la-stack library
+#
+# This configuration uses only stable rustfmt features.
+
+# Use the same edition as Cargo.toml
+edition = "2024"
+
+# Set reasonable line width for readability across editors
+max_width = 100
+
+# Use 4 spaces for indentation (default, but explicit for documentation)
+tab_spaces = 4
+
+# Use Unix line endings for consistency
+newline_style = "Unix"
