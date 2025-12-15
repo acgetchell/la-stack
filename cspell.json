@@ -1,13 +1,16 @@
 {
   "version": "0.2",
   "language": "en",
+  "useGitignore": true,
   "words": [
+    "acgetchell",
     "Clippy",
     "clippy",
     "codacy",
     "const",
     "doctests",
     "elif",
+    "endgroup",
     "f128",
     "f32",
     "f64",
@@ -31,11 +34,16 @@
     "proptests",
     "rug",
     "RUSTDOCFLAGS",
+    "sarif",
+    "semgrep",
     "shellcheck",
+    "taiki",
     "tridiagonal",
+    "unittests",
     "usize"
   ],
   "ignorePaths": [
+    "**/.git/**",
     "target",
     "Cargo.lock"
   ]

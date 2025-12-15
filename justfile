@@ -141,9 +141,9 @@ spell-check:
     #!/usr/bin/env bash
     set -euo pipefail
     if command -v cspell >/dev/null; then
-        cspell lint --config cspell.json --no-progress --gitignore --cache --exclude cspell.json .
+        cspell lint --config cspell.json --no-progress --gitignore --cache --dot --exclude cspell.json .
     elif command -v npx >/dev/null; then
-        npx cspell lint --config cspell.json --no-progress --gitignore --cache --exclude cspell.json .
+        npx cspell lint --config cspell.json --no-progress --gitignore --cache --dot --exclude cspell.json .
     else
         echo "❌ cspell not found. Install via npm (recommended): npm i -g cspell"
         echo "   Or ensure npx is available (Node.js)."
