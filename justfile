@@ -42,7 +42,7 @@ check:
     cargo check
 
 # CI simulation (matches delaunay's `just ci` shape)
-ci: lint test test-integration bench-compile
+ci: lint test-all bench-compile
     @echo "🎯 CI simulation complete!"
 
 clean:
@@ -54,7 +54,7 @@ clippy:
 
 # Pre-commit workflow: comprehensive validation before committing
 # Runs: linting + all Rust tests (lib + doc + integration) + examples
-commit-check: lint test-all examples
+commit-check: lint test-all bench-compile examples
     @echo "🚀 Ready to commit! All checks passed!"
 
 # Coverage (cargo-tarpaulin)
@@ -101,8 +101,8 @@ doc-check:
 
 # Examples
 examples:
-    cargo run --quiet --example det_3x3
-    cargo run --quiet --example solve_3x3
+    cargo run --quiet --example det_5x5
+    cargo run --quiet --example solve_5x5
 
 fmt:
     cargo fmt --all

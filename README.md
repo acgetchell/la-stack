@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/la-stack.svg)](https://crates.io/crates/la-stack)
 [![Downloads](https://img.shields.io/crates/d/la-stack.svg)](https://crates.io/crates/la-stack)
-[![License](https://img.shields.io/crates/l/la-stack.svg)](LICENSE)
+[![License](https://img.shields.io/crates/l/la-stack.svg)](./LICENSE)
 [![Docs.rs](https://docs.rs/la-stack/badge.svg)](https://docs.rs/la-stack)
 [![CI](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml)
 [![rust-clippy analyze](https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml)
@@ -11,7 +11,8 @@
 
 Fast, stack-allocated linear algebra for fixed dimensions in Rust.
 
-This crate exists primarily to support the [`delaunay`](https://crates.io/crates/delaunay) crate’s needs while keeping the API intentionally small and explicit.
+This crate grew from the need to support [`delaunay`](https://crates.io/crates/delaunay) with fast, stack-allocated linear algebra primitives and algorithms
+while keeping the API intentionally small and explicit.
 
 ## 📐 Introduction
 
@@ -45,21 +46,30 @@ Add this to your `Cargo.toml`:
 la-stack = "0.1"
 ```
 
-Solve a 3×3 system via LU:
+Solve a 5×5 system via LU:
 
 ```rust
-use la_stack::{LaError, Matrix, Vector, DEFAULT_PIVOT_TOL};
+use la_stack::prelude::*;
 
-fn main() -> Result<(), LaError> {
-    // Requires pivoting (a[0][0] = 0), so it's a good LU demo.
-    let a = Matrix::<3>::from_rows([[0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0]]);
-    let b = Vector::<3>::new([5.0, 4.0, 3.0]);
+// This system requires pivoting (a[0][0] = 0), so it's a good LU demo.
+// A = J - I: zeros on diagonal, ones elsewhere.
+let a = Matrix::<5>::from_rows([
+    [0.0, 1.0, 1.0, 1.0, 1.0],
+    [1.0, 0.0, 1.0, 1.0, 1.0],
+    [1.0, 1.0, 0.0, 1.0, 1.0],
+    [1.0, 1.0, 1.0, 0.0, 1.0],
+    [1.0, 1.0, 1.0, 1.0, 0.0],
+]);
 
-    let lu = a.lu(DEFAULT_PIVOT_TOL)?;
-    let x = lu.solve_vec(b)?.into_array();
+let b = Vector::<5>::new([14.0, 13.0, 12.0, 11.0, 10.0]);
 
-    println!("x = {x:?}");
-    Ok(())
+let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+let x = lu.solve_vec(b).unwrap().into_array();
+
+// Floating-point rounding is expected; compare with a tolerance.
+let expected = [1.0, 2.0, 3.0, 4.0, 5.0];
+for (x_i, e_i) in x.iter().zip(expected.iter()) {
+    assert!((*x_i - *e_i).abs() <= 1e-12);
 }
 ```
 
@@ -80,8 +90,8 @@ The `examples/` directory contains small, runnable programs:
 ```bash
 just examples
 # or:
-cargo run --example solve_3x3
-cargo run --example det_3x3
+cargo run --example solve_5x5
+cargo run --example det_5x5
 ```
 
 ## 🤝 Contributing
@@ -98,4 +108,4 @@ For the full set of developer commands, see `just --list` and `WARP.md`.
 
 ## 📄 License
 
-BSD 3-Clause License. See [LICENSE](LICENSE).
+BSD 3-Clause License. See [LICENSE](./LICENSE).

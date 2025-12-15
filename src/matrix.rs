@@ -200,47 +200,103 @@ mod tests {
     use super::*;
     use crate::DEFAULT_PIVOT_TOL;
 
-    fn assert_approx(a: f64, b: f64, eps: f64) {
-        assert!((a - b).abs() <= eps, "{a} !~= {b} (eps={eps})");
-    }
+    use approx::assert_abs_diff_eq;
+    use pastey::paste;
 
-    #[test]
-    fn get_set_bounds_checked() {
-        let mut m = Matrix::<2>::zero();
-        assert!(m.set(0, 0, 1.0));
-        assert_eq!(m.get(0, 0), Some(1.0));
+    macro_rules! gen_public_api_matrix_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<public_api_matrix_from_rows_get_set_bounds_checked_ $d d>]() {
+                    let mut rows = [[0.0f64; $d]; $d];
+                    rows[0][0] = 1.0;
+                    rows[$d - 1][$d - 1] = -2.0;
 
-        assert!(!m.set(2, 0, 1.0));
-        assert_eq!(m.get(2, 0), None);
-    }
+                    let mut m = Matrix::<$d>::from_rows(rows);
 
-    #[test]
-    fn inf_norm_max_row_sum() {
-        let m = Matrix::<2>::from_rows([[1.0, -2.0], [3.0, 4.0]]);
-        assert_approx(m.inf_norm(), 7.0, 0.0);
-    }
+                    assert_eq!(m.get(0, 0), Some(1.0));
+                    assert_eq!(m.get($d - 1, $d - 1), Some(-2.0));
 
-    #[test]
-    fn det_identity_is_one() {
-        let det = Matrix::<3>::identity().det(DEFAULT_PIVOT_TOL).unwrap();
-        assert_approx(det, 1.0, 1e-12);
-    }
+                    // Out-of-bounds is None.
+                    assert_eq!(m.get($d, 0), None);
 
-    #[test]
-    fn identity_has_ones_on_diag_and_zeros_off_diag() {
-        let m = Matrix::<3>::identity();
+                    // Out-of-bounds set fails.
+                    assert!(!m.set($d, 0, 3.0));
 
-        for r in 0..3 {
-            for c in 0..3 {
-                let expected = if r == c { 1.0 } else { 0.0 };
-                assert_approx(m.get(r, c).unwrap(), expected, 0.0);
+                    // In-bounds set works.
+                    assert!(m.set(0, $d - 1, 3.0));
+                    assert_eq!(m.get(0, $d - 1), Some(3.0));
+                }
+
+                #[test]
+                fn [<public_api_matrix_zero_and_default_are_zero_ $d d>]() {
+                    let z = Matrix::<$d>::zero();
+                    assert_abs_diff_eq!(z.inf_norm(), 0.0, epsilon = 0.0);
+
+                    let d = Matrix::<$d>::default();
+                    assert_abs_diff_eq!(d.inf_norm(), 0.0, epsilon = 0.0);
+                }
+
+                #[test]
+                fn [<public_api_matrix_inf_norm_max_row_sum_ $d d>]() {
+                    let mut rows = [[0.0f64; $d]; $d];
+
+                    // Row 0 has absolute row sum = D.
+                    for c in 0..$d {
+                        rows[0][c] = -1.0;
+                    }
+
+                    // Row 1 has smaller absolute row sum.
+                    for c in 0..$d {
+                        rows[1][c] = 0.5;
+                    }
+
+                    let m = Matrix::<$d>::from_rows(rows);
+                    assert_abs_diff_eq!(m.inf_norm(), f64::from($d), epsilon = 0.0);
+                }
+
+                #[test]
+                fn [<public_api_matrix_identity_lu_det_solve_vec_ $d d>]() {
+                    let m = Matrix::<$d>::identity();
+
+                    // Identity has ones on diag and zeros off diag.
+                    for r in 0..$d {
+                        for c in 0..$d {
+                            let expected = if r == c { 1.0 } else { 0.0 };
+                            assert_abs_diff_eq!(m.get(r, c).unwrap(), expected, epsilon = 0.0);
+                        }
+                    }
+
+                    // Determinant is 1.
+                    let det = m.det(DEFAULT_PIVOT_TOL).unwrap();
+                    assert_abs_diff_eq!(det, 1.0, epsilon = 1e-12);
+
+                    // LU solve on identity returns the RHS.
+                    let lu = m.lu(DEFAULT_PIVOT_TOL).unwrap();
+
+                    let b_arr = {
+                        let mut arr = [0.0f64; $d];
+                        let values = [1.0f64, 2.0, 3.0, 4.0, 5.0];
+                        for (dst, src) in arr.iter_mut().zip(values.iter()) {
+                            *dst = *src;
+                        }
+                        arr
+                    };
+
+                    let b = crate::Vector::<$d>::new(b_arr);
+                    let x = lu.solve_vec(b).unwrap().into_array();
+
+                    for (x_i, b_i) in x.iter().zip(b_arr.iter()) {
+                        assert_abs_diff_eq!(*x_i, *b_i, epsilon = 1e-12);
+                    }
+                }
             }
-        }
+        };
     }
 
-    #[test]
-    fn default_is_zero() {
-        let m = Matrix::<3>::default();
-        assert_approx(m.inf_norm(), 0.0, 0.0);
-    }
+    // Mirror delaunay-style multi-dimension tests.
+    gen_public_api_matrix_tests!(2);
+    gen_public_api_matrix_tests!(3);
+    gen_public_api_matrix_tests!(4);
+    gen_public_api_matrix_tests!(5);
 }

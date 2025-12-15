@@ -122,41 +122,112 @@ impl<const D: usize> Default for Vector<D> {
 mod tests {
     use super::*;
 
-    fn assert_approx(a: f64, b: f64, eps: f64) {
-        assert!((a - b).abs() <= eps, "{a} !~= {b} (eps={eps})");
+    use core::hint::black_box;
+
+    use approx::assert_abs_diff_eq;
+    use pastey::paste;
+
+    macro_rules! gen_public_api_vector_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<public_api_vector_new_as_array_into_array_ $d d>]() {
+                    let arr = {
+                        let mut arr = [0.0f64; $d];
+                        let values = [1.0f64, 2.0, 3.0, 4.0, 5.0];
+                        for (dst, src) in arr.iter_mut().zip(values.iter()) {
+                            *dst = *src;
+                        }
+                        arr
+                    };
+
+                    let v = Vector::<$d>::new(arr);
+
+                    for i in 0..$d {
+                        assert_abs_diff_eq!(v.as_array()[i], arr[i], epsilon = 0.0);
+                    }
+
+                    let out = v.into_array();
+                    for i in 0..$d {
+                        assert_abs_diff_eq!(out[i], arr[i], epsilon = 0.0);
+                    }
+                }
+
+                #[test]
+                fn [<public_api_vector_zero_as_array_into_array_default_ $d d>]() {
+                    let z = Vector::<$d>::zero();
+                    for &x in z.as_array() {
+                        assert_abs_diff_eq!(x, 0.0, epsilon = 0.0);
+                    }
+                    for x in z.into_array() {
+                        assert_abs_diff_eq!(x, 0.0, epsilon = 0.0);
+                    }
+
+                    let d = Vector::<$d>::default();
+                    for x in d.into_array() {
+                        assert_abs_diff_eq!(x, 0.0, epsilon = 0.0);
+                    }
+                }
+
+                #[test]
+                fn [<public_api_vector_dot_and_norm2_sq_ $d d>]() {
+                    // Use black_box to avoid constant-folding/inlining eliminating the actual dot loop,
+                    // which can make coverage tools report the mul_add line as uncovered.
+
+                    let a_arr = {
+                        let mut arr = [0.0f64; $d];
+                        let values = [1.0f64, 2.0, 3.0, 4.0, 5.0];
+                        for (dst, src) in arr.iter_mut().zip(values.iter()) {
+                            *dst = black_box(*src);
+                        }
+                        arr
+                    };
+                    let b_arr = {
+                        let mut arr = [0.0f64; $d];
+                        let values = [-2.0f64, 0.5, 4.0, -1.0, 2.0];
+                        for (dst, src) in arr.iter_mut().zip(values.iter()) {
+                            *dst = black_box(*src);
+                        }
+                        arr
+                    };
+
+                    let expected_dot = {
+                        let mut acc = 0.0;
+                        let mut i = 0;
+                        while i < $d {
+                            acc = a_arr[i].mul_add(b_arr[i], acc);
+                            i += 1;
+                        }
+                        acc
+                    };
+                    let expected_norm2_sq = {
+                        let mut acc = 0.0;
+                        let mut i = 0;
+                        while i < $d {
+                            acc = a_arr[i].mul_add(a_arr[i], acc);
+                            i += 1;
+                        }
+                        acc
+                    };
+
+                    let a = Vector::<$d>::new(black_box(a_arr));
+                    let b = Vector::<$d>::new(black_box(b_arr));
+
+                    // Call via (black_boxed) fn pointers to discourage inlining, improving line-level coverage
+                    // attribution for the loop body.
+                    let dot_fn: fn(Vector<$d>, Vector<$d>) -> f64 = black_box(Vector::<$d>::dot);
+                    let norm2_sq_fn: fn(Vector<$d>) -> f64 = black_box(Vector::<$d>::norm2_sq);
+
+                    assert_abs_diff_eq!(dot_fn(black_box(a), black_box(b)), expected_dot, epsilon = 0.0);
+                    assert_abs_diff_eq!(norm2_sq_fn(black_box(a)), expected_norm2_sq, epsilon = 0.0);
+                }
+            }
+        };
     }
 
-    #[test]
-    fn dot_and_norm2_sq() {
-        // Use black_box to avoid constant-folding/inlining eliminating the actual dot loop,
-        // which can make coverage tools report the mul_add line as uncovered.
-        use core::hint::black_box;
-
-        let a = Vector::<3>::new([black_box(1.0), black_box(2.0), black_box(3.0)]);
-        let b = Vector::<3>::new([black_box(-2.0), black_box(0.5), black_box(4.0)]);
-
-        // Call via (black_boxed) fn pointers to discourage inlining, improving line-level coverage
-        // attribution for the loop body.
-        let dot_fn: fn(Vector<3>, Vector<3>) -> f64 = black_box(Vector::<3>::dot);
-        let norm2_sq_fn: fn(Vector<3>) -> f64 = black_box(Vector::<3>::norm2_sq);
-
-        assert_approx(dot_fn(black_box(a), black_box(b)), 11.0, 0.0);
-        assert_approx(norm2_sq_fn(black_box(a)), 14.0, 0.0);
-    }
-
-    #[test]
-    fn zero_as_array_into_array_and_default() {
-        let z = Vector::<3>::zero();
-        for &x in z.as_array() {
-            assert_approx(x, 0.0, 0.0);
-        }
-        for x in z.into_array() {
-            assert_approx(x, 0.0, 0.0);
-        }
-
-        let d = Vector::<3>::default();
-        for x in d.into_array() {
-            assert_approx(x, 0.0, 0.0);
-        }
-    }
+    // Mirror delaunay-style multi-dimension tests.
+    gen_public_api_vector_tests!(2);
+    gen_public_api_vector_tests!(3);
+    gen_public_api_vector_tests!(4);
+    gen_public_api_vector_tests!(5);
 }
