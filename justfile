@@ -6,78 +6,6 @@
 # Use bash with strict error handling for all recipes
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-# Default recipe shows available commands
-default:
-    @just --list
-
-# Build commands
-build:
-    cargo build
-
-build-release:
-    cargo build --release
-
-check:
-    cargo check
-
-# Code quality and formatting
-fmt:
-    cargo fmt
-
-fmt-check:
-    cargo fmt --check
-
-clippy:
-    cargo clippy --all-targets --all-features -- -D warnings
-
-doc-check:
-    RUSTDOCFLAGS='-D warnings' cargo doc --no-deps
-
-# Lint groups (delaunay-style)
-lint: lint-code lint-docs lint-config
-
-lint-code: fmt-check clippy doc-check
-
-lint-docs: spell-check
-
-lint-config: action-lint
-
-# Testing (delaunay-style split)
-# - test: lib + doc tests (fast)
-# - test-integration: tests/ (if present)
-# - test-all: everything in Rust
-
-test:
-    cargo test --lib --verbose
-    cargo test --doc --verbose
-
-test-integration:
-    cargo test --tests --verbose
-
-test-all: test test-integration
-    @echo "✅ All tests passed"
-
-# Benchmarks
-bench:
-    cargo bench
-
-bench-compile:
-    cargo bench --no-run
-
-# Examples
-examples:
-    cargo run --quiet --example det_3x3
-    cargo run --quiet --example solve_3x3
-
-# CI simulation (matches delaunay's `just ci` shape)
-ci: lint test test-integration bench-compile
-    @echo "🎯 CI simulation complete!"
-
-# Pre-commit workflow: comprehensive validation before committing
-# Runs: linting + all Rust tests (lib + doc + integration) + examples
-commit-check: lint test-all examples
-    @echo "🚀 Ready to commit! All checks passed!"
-
 # GitHub Actions workflow validation (optional)
 action-lint:
     #!/usr/bin/env bash
@@ -89,12 +17,107 @@ action-lint:
     files=()
     while IFS= read -r -d '' file; do
         files+=("$file")
-    done < <(git ls-files -z '.github/workflows/*.yml' '.github/workflows/*.yaml')
+    done < <(git ls-files -z '.github/workflows/*.yaml' '.github/workflows/*.yml')
     if [ "${#files[@]}" -gt 0 ]; then
         printf '%s\0' "${files[@]}" | xargs -0 actionlint
     else
         echo "No workflow files found to lint."
     fi
+
+# Benchmarks
+bench:
+    cargo bench
+
+bench-compile:
+    cargo bench --no-run
+
+# Build commands
+build:
+    cargo build
+
+build-release:
+    cargo build --release
+
+check:
+    cargo check
+
+# CI simulation (matches delaunay's `just ci` shape)
+ci: lint test test-integration bench-compile
+    @echo "🎯 CI simulation complete!"
+
+clean:
+    cargo clean
+
+# Code quality and formatting
+clippy:
+    cargo clippy --all-targets --all-features -- -D warnings
+
+# Pre-commit workflow: comprehensive validation before committing
+# Runs: linting + all Rust tests (lib + doc + integration) + examples
+commit-check: lint test-all examples
+    @echo "🚀 Ready to commit! All checks passed!"
+
+# Coverage (cargo-tarpaulin)
+#
+# Common tarpaulin arguments for all coverage runs
+# Note: -t 300 sets per-test timeout to 5 minutes (needed for slow CI environments)
+_coverage_base_args := '''--exclude-files 'benches/*' --exclude-files 'examples/*' \
+  --workspace --lib --tests --all-features \
+  -t 300 --verbose --implicit-test-threads'''
+
+# Coverage analysis for local development (HTML output)
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! command -v cargo-tarpaulin >/dev/null 2>&1; then
+        echo "cargo-tarpaulin not found. Install with: cargo install cargo-tarpaulin"
+        exit 1
+    fi
+
+    mkdir -p target/tarpaulin
+    cargo tarpaulin {{_coverage_base_args}} --out Html --output-dir target/tarpaulin
+    echo "Coverage report generated: target/tarpaulin/tarpaulin-report.html"
+
+# Coverage analysis for CI (XML output for codecov/codacy)
+coverage-ci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! command -v cargo-tarpaulin >/dev/null 2>&1; then
+        echo "cargo-tarpaulin not found. Install with: cargo install cargo-tarpaulin"
+        exit 1
+    fi
+
+    mkdir -p coverage
+    cargo tarpaulin {{_coverage_base_args}} --out Xml --output-dir coverage
+
+# Default recipe shows available commands
+default:
+    @just --list
+
+doc-check:
+    RUSTDOCFLAGS='-D warnings' cargo doc --no-deps
+
+# Examples
+examples:
+    cargo run --quiet --example det_3x3
+    cargo run --quiet --example solve_3x3
+
+fmt:
+    cargo fmt --all
+
+fmt-check:
+    cargo fmt --check
+
+# Lint groups (delaunay-style)
+lint: lint-code lint-docs lint-config
+
+lint-code: fmt-check clippy doc-check
+
+lint-config: action-lint
+
+lint-docs: spell-check
 
 # Spell check (cspell)
 #
@@ -114,5 +137,17 @@ spell-check:
         exit 1
     fi
 
-clean:
-    cargo clean
+# Testing (delaunay-style split)
+# - test: lib + doc tests (fast)
+# - test-all: everything in Rust
+# - test-integration: tests/ (if present)
+
+test:
+    cargo test --lib --verbose
+    cargo test --doc --verbose
+
+test-all: test test-integration
+    @echo "✅ All tests passed"
+
+test-integration:
+    cargo test --tests --verbose

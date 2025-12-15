@@ -84,6 +84,24 @@ impl<const D: usize> Lu<D> {
 
     /// Solve `A x = b` using this LU factorization.
     ///
+    /// # Examples
+    /// ```
+    /// #![allow(unused_imports)]
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
+    ///
+    /// let b = Vector::<2>::new([5.0, 11.0]);
+    /// let x = lu.solve_vec(b)?.into_array();
+    ///
+    /// assert!((x[0] - 1.0).abs() <= 1e-12);
+    /// assert!((x[1] - 2.0).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     /// Returns [`LaError::Singular`] if a diagonal of `U` is (numerically) zero.
     /// Returns [`LaError::NonFinite`] if NaN/∞ is detected.
@@ -131,6 +149,21 @@ impl<const D: usize> Lu<D> {
     }
 
     /// Determinant of the original matrix.
+    ///
+    /// # Examples
+    /// ```
+    /// #![allow(unused_imports)]
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
+    ///
+    /// let det = lu.det();
+    /// assert!((det - (-2.0)).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn det(&self) -> f64 {

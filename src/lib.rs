@@ -55,3 +55,11 @@ impl std::error::Error for LaError {}
 pub use lu::Lu;
 pub use matrix::Matrix;
 pub use vector::Vector;
+
+/// Common imports for ergonomic usage.
+///
+/// This prelude re-exports the primary types and constants: [`Matrix`], [`Vector`], [`Lu`],
+/// [`LaError`], and [`DEFAULT_PIVOT_TOL`].
+pub mod prelude {
+    pub use crate::{DEFAULT_PIVOT_TOL, LaError, Lu, Matrix, Vector};
+}

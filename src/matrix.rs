@@ -12,12 +12,30 @@ pub struct Matrix<const D: usize> {
 
 impl<const D: usize> Matrix<D> {
     /// Construct from row-major storage.
+    ///
+    /// # Examples
+    /// ```
+    /// #![allow(unused_imports)]
+    /// use la_stack::prelude::*;
+    ///
+    /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// assert_eq!(m.get(0, 1), Some(2.0));
+    /// ```
     #[inline]
     pub const fn from_rows(rows: [[f64; D]; D]) -> Self {
         Self { rows }
     }
 
     /// All-zeros matrix.
+    ///
+    /// # Examples
+    /// ```
+    /// #![allow(unused_imports)]
+    /// use la_stack::prelude::*;
+    ///
+    /// let z = Matrix::<2>::zero();
+    /// assert_eq!(z.get(1, 1), Some(0.0));
+    /// ```
     #[inline]
     pub const fn zero() -> Self {
         Self {
@@ -26,6 +44,17 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Identity matrix.
+    ///
+    /// # Examples
+    /// ```
+    /// #![allow(unused_imports)]
+    /// use la_stack::prelude::*;
+    ///
+    /// let i = Matrix::<3>::identity();
+    /// assert_eq!(i.get(0, 0), Some(1.0));
+    /// assert_eq!(i.get(0, 1), Some(0.0));
+    /// assert_eq!(i.get(2, 2), Some(1.0));
+    /// ```
     #[inline]
     pub fn identity() -> Self {
         let mut m = Self::zero();
@@ -36,6 +65,16 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Get an element with bounds checking.
+    ///
+    /// # Examples
+    /// ```
+    /// #![allow(unused_imports)]
+    /// use la_stack::prelude::*;
+    ///
+    /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// assert_eq!(m.get(1, 0), Some(3.0));
+    /// assert_eq!(m.get(2, 0), None);
+    /// ```
     #[inline]
     #[must_use]
     pub fn get(&self, r: usize, c: usize) -> Option<f64> {
@@ -49,6 +88,17 @@ impl<const D: usize> Matrix<D> {
     /// Set an element with bounds checking.
     ///
     /// Returns `true` if the index was in-bounds.
+    ///
+    /// # Examples
+    /// ```
+    /// #![allow(unused_imports)]
+    /// use la_stack::prelude::*;
+    ///
+    /// let mut m = Matrix::<2>::zero();
+    /// assert!(m.set(0, 1, 2.5));
+    /// assert_eq!(m.get(0, 1), Some(2.5));
+    /// assert!(!m.set(10, 0, 1.0));
+    /// ```
     #[inline]
     pub fn set(&mut self, r: usize, c: usize, value: f64) -> bool {
         if r < D && c < D {
@@ -60,6 +110,15 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Infinity norm (maximum absolute row sum).
+    ///
+    /// # Examples
+    /// ```
+    /// #![allow(unused_imports)]
+    /// use la_stack::prelude::*;
+    ///
+    /// let m = Matrix::<2>::from_rows([[1.0, -2.0], [3.0, 4.0]]);
+    /// assert!((m.inf_norm() - 7.0).abs() <= 1e-12);
+    /// ```
     #[inline]
     #[must_use]
     pub fn inf_norm(&self) -> f64 {
@@ -78,6 +137,24 @@ impl<const D: usize> Matrix<D> {
 
     /// Compute an LU decomposition with partial pivoting.
     ///
+    /// # Examples
+    /// ```
+    /// #![allow(unused_imports)]
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
+    ///
+    /// let b = Vector::<2>::new([5.0, 11.0]);
+    /// let x = lu.solve_vec(b)?.into_array();
+    ///
+    /// assert!((x[0] - 1.0).abs() <= 1e-12);
+    /// assert!((x[1] - 2.0).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     /// Returns [`LaError::Singular`] if no suitable pivot (|pivot| > `tol`) exists for a column.
     /// Returns [`LaError::NonFinite`] if NaN/∞ is detected during factorization.
@@ -87,6 +164,18 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Determinant computed via LU decomposition.
+    ///
+    /// # Examples
+    /// ```
+    /// #![allow(unused_imports)]
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let det = Matrix::<3>::identity().det(DEFAULT_PIVOT_TOL)?;
+    /// assert!((det - 1.0).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// Propagates LU factorization errors (e.g. singular matrices).
