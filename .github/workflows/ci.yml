@@ -23,15 +23,22 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  test:
+  build:
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      fail-fast: false  # Continue other jobs if one fails
       matrix:
         os:
           - ubuntu-latest
           - macos-latest
           - windows-latest
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
 
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8  # v6.0.1
@@ -39,13 +46,45 @@ jobs:
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c  # v1.15.2
         with:
-          cache: true  # toolchain/components are specified in rust-toolchain.toml
+          target: ${{ matrix.target }}
+          cache: true  # Built-in caching; toolchain/components are specified in rust-toolchain.toml
 
-      - name: Rustfmt
-        run: cargo fmt --check
+      - name: Install just
+        if: matrix.os != 'windows-latest'
+        uses: taiki-e/install-action@50708e9ba8d7b6587a2cb575ddaa9a62e927bc06  # v2.62.63
+        with:
+          tool: just
 
-      - name: Clippy
-        run: cargo clippy --lib --tests --all-features -- -D warnings
+      - name: Install Node.js (for markdownlint and cspell)
+        if: matrix.os != 'windows-latest'
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+        with:
+          node-version: '20'
 
-      - name: Tests
-        run: cargo test
+      - name: Install Node.js packages
+        if: matrix.os != 'windows-latest'
+        run: |
+          npm install -g markdownlint-cli cspell
+
+      - name: Install jq (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Install jq (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install jq
+
+      - name: Run CI checks (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: just ci
+
+      - name: Build and test (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cargo build --verbose --all-targets
+          cargo test --lib --verbose
+          cargo test --doc --verbose
+          cargo test --tests --verbose
