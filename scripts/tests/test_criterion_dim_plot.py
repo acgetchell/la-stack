@@ -32,6 +32,16 @@ def test_markdown_table_formats_values_and_pct() -> None:
     assert "| 64 | 1,000.000 | 900.000 | -11.1% |" in table
 
 
+def test_markdown_table_handles_zero_nalgebra_time() -> None:
+    rows = [
+        # nalgebra time of 0 indicates missing/corrupt data; ensure we don't crash.
+        (2, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    ]
+
+    table = criterion_dim_plot._markdown_table(rows, stat="median")
+    assert "| 2 | 10.000 | 0.000 | n/a |" in table
+
+
 def test_update_readme_table_replaces_only_between_markers(tmp_path: Path) -> None:
     marker_begin, marker_end = criterion_dim_plot._readme_table_markers("lu_solve", "median", "new")
 

@@ -69,7 +69,7 @@ jobs:
             echo "::error::.codacy.yml not found in workspace copy ($config)"
             exit 1
           fi
-          if ! grep -qE '^  bandit:' "$config"; then
+          if ! grep -qE '^[[:space:]]*bandit:' "$config"; then
             echo "::error::Bandit engine not configured in .codacy.yml; Python security scanning will be skipped."
             exit 1
           fi

@@ -142,8 +142,13 @@ def _markdown_table(rows: list[tuple[int, float, float, float, float, float, flo
     ]
 
     for d, la, _la_lo, _la_hi, na, _na_lo, _na_hi in rows:
-        pct = ((na - la) / na) * 100.0
-        lines.append(f"| {d} | {la:,.3f} | {na:,.3f} | {pct:+.1f}% |")
+        if na == 0.0:
+            pct_display = "n/a"
+        else:
+            pct = ((na - la) / na) * 100.0
+            pct_display = f"{pct:+.1f}%"
+
+        lines.append(f"| {d} | {la:,.3f} | {na:,.3f} | {pct_display} |")
 
     return "\n".join(lines)
 
