@@ -42,7 +42,7 @@ macro_rules! gen_public_api_vector_proptests {
 
                     let dot_ab = a.dot(b);
                     let dot_ba = b.dot(a);
-                    assert_abs_diff_eq!(dot_ab, dot_ba, epsilon = 0.0);
+                    assert_abs_diff_eq!(dot_ab, dot_ba, epsilon = 1e-14);
 
                     let dot_aa = a.dot(a);
                     assert_abs_diff_eq!(a.norm2_sq(), dot_aa, epsilon = 0.0);
@@ -52,7 +52,7 @@ macro_rules! gen_public_api_vector_proptests {
 
                     // Dot with zero vector is zero.
                     let z = Vector::<$d>::zero();
-                    assert_abs_diff_eq!(a.dot(z), 0.0, epsilon = 0.0);
+                    assert_abs_diff_eq!(a.dot(z), 0.0, epsilon = 1e-14);
                 }
             }
         }

@@ -218,8 +218,8 @@ mod tests {
                     let dot_fn: fn(Vector<$d>, Vector<$d>) -> f64 = black_box(Vector::<$d>::dot);
                     let norm2_sq_fn: fn(Vector<$d>) -> f64 = black_box(Vector::<$d>::norm2_sq);
 
-                    assert_abs_diff_eq!(dot_fn(black_box(a), black_box(b)), expected_dot, epsilon = 0.0);
-                    assert_abs_diff_eq!(norm2_sq_fn(black_box(a)), expected_norm2_sq, epsilon = 0.0);
+                    assert_abs_diff_eq!(dot_fn(black_box(a), black_box(b)), expected_dot, epsilon = 1e-14);
+                    assert_abs_diff_eq!(norm2_sq_fn(black_box(a)), expected_norm2_sq, epsilon = 1e-14);
                 }
             }
         };

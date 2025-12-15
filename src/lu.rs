@@ -209,9 +209,10 @@ mod tests {
                     // Pick a simple RHS with unique entries, so the expected swap is obvious.
                     let b_arr = {
                         let mut arr = [0.0f64; $d];
-                        let values = [1.0f64, 2.0, 3.0, 4.0, 5.0];
-                        for (dst, src) in arr.iter_mut().zip(values.iter()) {
-                            *dst = *src;
+                        let mut val = 1.0f64;
+                        for dst in arr.iter_mut() {
+                            *dst = val;
+                            val += 1.0;
                         }
                         arr
                     };
