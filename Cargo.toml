@@ -6,6 +6,7 @@ rust-version = "1.92"
 license = "BSD-3-Clause"
 description = "Small, stack-allocated linear algebra for fixed dimensions"
 readme = "README.md"
+documentation = "https://docs.rs/la-stack"
 repository = "https://github.com/acgetchell/la-stack"
 categories = ["mathematics", "science"]
 keywords = ["linear-algebra", "geometry", "const-generics"]

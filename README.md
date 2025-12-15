@@ -32,6 +32,11 @@ while keeping the API intentionally small and explicit.
 - ✅ `unsafe` forbidden
 - ✅ No runtime dependencies (dev-dependencies are for contributors only)
 
+## 🚫 Anti-goals
+
+- Comprehensive: use [`nalgebra`](https://crates.io/crates/nalgebra) if you need a full-featured library
+- Bare-metal performance: see [`blas-src`](https://crates.io/crates/blas-src), [`lapack-src`](https://crates.io/crates/lapack-src), [`openblas-src`](https://crates.io/crates/openblas-src)
+
 ## 🔢 Scalar types
 
 Today, the core types are implemented for `f64`. The intent is to support `f32` and `f64`
@@ -106,6 +111,27 @@ just commit-check # lint + all tests + examples
 ```
 
 For the full set of developer commands, see `just --list` and `WARP.md`.
+
+## 📊 Benchmarks (vs nalgebra)
+
+![LU solve (factor + solve): median time vs dimension](docs/assets/bench/vs_nalgebra_lu_solve_median.svg)
+
+Raw data: [docs/assets/bench/vs_nalgebra_lu_solve_median.csv](docs/assets/bench/vs_nalgebra_lu_solve_median.csv)
+
+Summary (median time; lower is better). “la-stack vs nalgebra” is the % time reduction relative to nalgebra (positive = la-stack faster):
+
+<!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
+| D | la-stack median (ns) | nalgebra median (ns) | la-stack vs nalgebra |
+|---:|--------------------:|--------------------:|---------------------:|
+| 2 | 2.125 | 19.172 | +88.9% |
+| 3 | 13.562 | 24.082 | +43.7% |
+| 4 | 28.365 | 55.434 | +48.8% |
+| 5 | 48.567 | 76.793 | +36.8% |
+| 8 | 141.935 | 182.628 | +22.3% |
+| 16 | 642.935 | 605.115 | -6.3% |
+| 32 | 2,761.816 | 2,505.691 | -10.2% |
+| 64 | 17,009.208 | 14,696.410 | -15.7% |
+<!-- BENCH_TABLE:lu_solve:median:new:END -->
 
 ## 📄 License
 

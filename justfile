@@ -6,6 +6,24 @@
 # Use bash with strict error handling for all recipes
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+# Internal helper: ensure uv is installed
+_ensure-uv:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v uv >/dev/null || { echo "❌ 'uv' not found. Install: https://github.com/astral-sh/uv (macOS: brew install uv)"; exit 1; }
+
+# Python tooling (uv)
+python-sync: _ensure-uv
+    uv sync --group dev
+
+python-lint: python-sync
+    uv run ruff check scripts/ --fix
+    uv run ruff format scripts/
+    uv run mypy scripts/criterion_dim_plot.py
+
+test-python: python-sync
+    uv run pytest -q
+
 # GitHub Actions workflow validation (optional)
 action-lint:
     #!/usr/bin/env bash
@@ -27,6 +45,48 @@ action-lint:
 # Benchmarks
 bench:
     cargo bench
+
+# Bench the la-stack vs nalgebra comparison suite.
+bench-vs-nalgebra filter="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    filter="{{filter}}"
+    if [ -n "$filter" ]; then
+        cargo bench --bench vs_nalgebra -- "$filter"
+    else
+        cargo bench --bench vs_nalgebra
+    fi
+
+# Quick iteration (reduced runtime, no Criterion HTML).
+bench-vs-nalgebra-quick filter="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    filter="{{filter}}"
+    if [ -n "$filter" ]; then
+        cargo bench --bench vs_nalgebra -- "$filter" --quick --noplot
+    else
+        cargo bench --bench vs_nalgebra -- --quick --noplot
+    fi
+
+# Plot: generate a single time-vs-dimension SVG from Criterion results.
+plot-vs-nalgebra metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(--metric "{{metric}}" --stat "{{stat}}" --sample "{{sample}}")
+    if [ "{{log_y}}" = "true" ]; then
+        args+=(--log-y)
+    fi
+    uv run criterion-dim-plot "${args[@]}"
+
+# Plot + update the README benchmark table between BENCH_TABLE markers.
+plot-vs-nalgebra-readme metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(--metric "{{metric}}" --stat "{{stat}}" --sample "{{sample}}" --update-readme)
+    if [ "{{log_y}}" = "true" ]; then
+        args+=(--log-y)
+    fi
+    uv run criterion-dim-plot "${args[@]}"
 
 bench-compile:
     cargo bench --no-run
@@ -113,7 +173,7 @@ fmt-check:
 # Lint groups (delaunay-style)
 lint: lint-code lint-docs lint-config
 
-lint-code: fmt-check clippy doc-check
+lint-code: fmt-check clippy doc-check python-lint
 
 lint-config: validate-json action-lint
 
@@ -152,14 +212,14 @@ spell-check:
 
 # Testing (delaunay-style split)
 # - test: lib + doc tests (fast)
-# - test-all: everything in Rust
+# - test-all: all tests (Rust + Python)
 # - test-integration: tests/ (if present)
 
 test:
     cargo test --lib --verbose
     cargo test --doc --verbose
 
-test-all: test test-integration
+test-all: test test-integration test-python
     @echo "✅ All tests passed"
 
 test-integration:
