@@ -6,6 +6,7 @@
 [![Docs.rs](https://docs.rs/la-stack/badge.svg)](https://docs.rs/la-stack)
 [![CI](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml)
 [![rust-clippy analyze](https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml)
+[![codecov](https://codecov.io/gh/acgetchell/la-stack/graph/badge.svg?token=4eKXa5QjuZ)](https://codecov.io/gh/acgetchell/la-stack)
 [![Audit dependencies](https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/audit.yml)
 
 Fast, stack-allocated linear algebra for fixed dimensions in Rust.
@@ -31,7 +32,9 @@ This crate exists primarily to support the [`delaunay`](https://crates.io/crates
 
 ## 🔢 Scalar types
 
-Today, the core types are implemented for `f64`. The intent is to support `f32` and `f64` (and `f128` if/when Rust gains a stable primitive for it). Longer term, we may add optional arbitrary-precision support (e.g. via `rug`) depending on performance.
+Today, the core types are implemented for `f64`. The intent is to support `f32` and `f64`
+(and `f128` if/when Rust gains a stable primitive for it). Longer term, we may add optional
+arbitrary-precision support (e.g. via `rug`) depending on performance.
 
 ## 🚀 Quickstart
 

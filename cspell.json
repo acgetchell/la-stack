@@ -15,6 +15,7 @@
     "Justfile",
     "justfile",
     "lu",
+    "markdownlint",
     "MSRV",
     "msvc",
     "mult",

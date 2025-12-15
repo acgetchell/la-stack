@@ -115,9 +115,22 @@ lint: lint-code lint-docs lint-config
 
 lint-code: fmt-check clippy doc-check
 
-lint-config: action-lint
+lint-config: validate-json action-lint
 
-lint-docs: spell-check
+lint-docs: markdown-lint spell-check
+
+markdown-lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files=()
+    while IFS= read -r -d '' file; do
+        files+=("$file")
+    done < <(git ls-files -z '*.md')
+    if [ "${#files[@]}" -gt 0 ]; then
+        printf '%s\0' "${files[@]}" | xargs -0 -n100 npx markdownlint --config .markdownlint.json --fix
+    else
+        echo "No markdown files found to lint."
+    fi
 
 # Spell check (cspell)
 #
@@ -151,3 +164,17 @@ test-all: test test-integration
 
 test-integration:
     cargo test --tests --verbose
+
+# File validation
+validate-json:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files=()
+    while IFS= read -r -d '' file; do
+        files+=("$file")
+    done < <(git ls-files -z '*.json')
+    if [ "${#files[@]}" -gt 0 ]; then
+        printf '%s\0' "${files[@]}" | xargs -0 -n1 jq empty
+    else
+        echo "No JSON files found to validate."
+    fi

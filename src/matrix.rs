@@ -58,9 +58,13 @@ impl<const D: usize> Matrix<D> {
     #[inline]
     pub fn identity() -> Self {
         let mut m = Self::zero();
-        for i in 0..D {
+
+        let mut i = 0;
+        while i < D {
             m.rows[i][i] = 1.0;
+            i += 1;
         }
+
         m
     }
 
@@ -122,16 +126,15 @@ impl<const D: usize> Matrix<D> {
     #[inline]
     #[must_use]
     pub fn inf_norm(&self) -> f64 {
-        let mut max_row_sum = 0.0;
-        for r in 0..D {
-            let mut row_sum = 0.0;
-            for c in 0..D {
-                row_sum += self.rows[r][c].abs();
-            }
+        let mut max_row_sum: f64 = 0.0;
+
+        for row in &self.rows {
+            let row_sum: f64 = row.iter().map(|&x| x.abs()).sum();
             if row_sum > max_row_sum {
                 max_row_sum = row_sum;
             }
         }
+
         max_row_sum
     }
 
@@ -221,5 +224,23 @@ mod tests {
     fn det_identity_is_one() {
         let det = Matrix::<3>::identity().det(DEFAULT_PIVOT_TOL).unwrap();
         assert_approx(det, 1.0, 1e-12);
+    }
+
+    #[test]
+    fn identity_has_ones_on_diag_and_zeros_off_diag() {
+        let m = Matrix::<3>::identity();
+
+        for r in 0..3 {
+            for c in 0..3 {
+                let expected = if r == c { 1.0 } else { 0.0 };
+                assert_approx(m.get(r, c).unwrap(), expected, 0.0);
+            }
+        }
+    }
+
+    #[test]
+    fn default_is_zero() {
+        let m = Matrix::<3>::default();
+        assert_approx(m.inf_norm(), 0.0, 0.0);
     }
 }

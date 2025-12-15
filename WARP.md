@@ -2,6 +2,14 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
+## Priorities
+
+When making changes in this repo, prioritize (in order):
+
+- Correctness
+- Speed
+- Coverage (but keep the code idiomatic Rust)
+
 ## Common commands
 
 - Build (debug): `cargo build` (or `just build`)
