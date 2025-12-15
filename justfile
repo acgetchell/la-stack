@@ -50,7 +50,7 @@ clean:
 
 # Code quality and formatting
 clippy:
-    cargo clippy --all-targets --all-features -- -D warnings
+    cargo clippy --workspace --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::cargo
 
 # Pre-commit workflow: comprehensive validation before committing
 # Runs: linting + all Rust tests (lib + doc + integration) + examples

@@ -1,0 +1,115 @@
+---
+# Codacy configuration for la-stack project
+#
+# This repository is primarily Rust.
+# Note: clippy and rustfmt are not supported by Codacy and are handled by GitHub Actions CI.
+
+engines:
+  # === DOCUMENTATION / SCRIPTS ===
+  markdownlint:
+    enabled: true
+    include_paths:
+      - "**/*.md"
+    config:
+      file: ".markdownlint.json"
+
+  shellcheck:
+    enabled: true
+    include_paths:
+      - "**/*.sh"
+    config:
+      shell: bash
+      severity: warning
+      include_code: true
+
+  # === RUST / SECURITY ===
+  lizard:
+    enabled: true
+    include_paths:
+      - "src/**/*.rs"
+      - "tests/**/*.rs"
+      - "examples/**/*.rs"
+      - "benches/**/*.rs"
+    config:
+      languages: ["rust"]
+      threshold:
+        cyclomatic_complexity: 15
+        token_count: 300
+        nesting_depth: 5
+        parameter_count: 5
+        length: 1000
+
+  semgrep:
+    enabled: true
+    include_paths:
+      - "src/**/*.rs"
+      - "tests/**/*.rs"
+      - "examples/**/*.rs"
+      - "benches/**/*.rs"
+
+  trivy:
+    enabled: true
+    config:
+      severity: ["HIGH", "CRITICAL"]
+      skip_dev_dependencies: true
+      enable_secret_scanning: true
+
+  # === DUPLICATION DETECTION ===
+  duplication:
+    enabled: true
+    config:
+      minimum_mass: 60
+      minimum_tokens: 80
+    exclude_paths:
+      - "target/**"
+      - "coverage/**"
+      - "benches/**"
+      - "examples/**"
+      - "tests/**"
+
+# === GLOBAL EXCLUSIONS ===
+exclude_paths:
+  - "target/**"
+  - "coverage/**"
+  - "Cargo.lock"
+  - ".git/**"
+  - ".cspellcache"
+  - ".DS_Store"
+
+# Focus analysis on source, docs, and CI configuration
+include_paths:
+  - "src/**"
+  - "benches/**"
+  - "examples/**"
+  - "tests/**"
+  - "Cargo.toml"
+  - "rust-toolchain.toml"
+  - "rustfmt.toml"
+  - "justfile"
+  - ".github/**"
+  - "*.md"
+  - "*.yml"
+  - "*.yaml"
+  - "*.json"
+  - ".markdownlint.json"
+  - "cspell.json"
+  - ".codecov.yml"
+
+# Custom file extensions per language (Codacy schema compliant)
+languages:
+  rust:
+    extensions:
+      - ".rs"
+  markdown:
+    extensions:
+      - ".md"
+  yaml:
+    extensions:
+      - ".yml"
+      - ".yaml"
+  json:
+    extensions:
+      - ".json"
+  shell:
+    extensions:
+      - ".sh"

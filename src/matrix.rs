@@ -56,7 +56,7 @@ impl<const D: usize> Matrix<D> {
     /// assert_eq!(i.get(2, 2), Some(1.0));
     /// ```
     #[inline]
-    pub fn identity() -> Self {
+    pub const fn identity() -> Self {
         let mut m = Self::zero();
 
         let mut i = 0;
@@ -81,7 +81,7 @@ impl<const D: usize> Matrix<D> {
     /// ```
     #[inline]
     #[must_use]
-    pub fn get(&self, r: usize, c: usize) -> Option<f64> {
+    pub const fn get(&self, r: usize, c: usize) -> Option<f64> {
         if r < D && c < D {
             Some(self.rows[r][c])
         } else {
@@ -104,7 +104,7 @@ impl<const D: usize> Matrix<D> {
     /// assert!(!m.set(10, 0, 1.0));
     /// ```
     #[inline]
-    pub fn set(&mut self, r: usize, c: usize, value: f64) -> bool {
+    pub const fn set(&mut self, r: usize, c: usize, value: f64) -> bool {
         if r < D && c < D {
             self.rows[r][c] = value;
             true
