@@ -21,7 +21,7 @@ When making changes in this repo, prioritize (in order):
 - Lint (Clippy): `cargo clippy --all-targets --all-features -- -D warnings` (or `just clippy`)
 - Spell check: `just spell-check` (uses `cspell.json` at repo root; keep the `words` list sorted lexicographically)
 - Run benchmarks: `cargo bench` (or `just bench`)
-- Run examples: `just examples` (or `cargo run --example det_3x3`)
+- Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5`)
 - CI simulation (lint + tests + bench compile): `just ci`
 - Pre-commit validation: `just commit-check`
 

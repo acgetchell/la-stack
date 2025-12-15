@@ -1,3 +1,6 @@
 /target
 /.cspellcache
-/coverage/*
+/coverage
+/build*
+/cobertura.xml
+.DS_Store

@@ -1,12 +1,35 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+#![doc = include_str!("../README.md")]
 
-//! Small, stack-allocated linear algebra for fixed dimensions.
-//!
-//! This crate intentionally focuses on a minimal, explicit API surface:
-//! - const-generic sizes (no dynamic dimensions)
-//! - stack-backed `Copy` types
-//! - explicit algorithms (LU, solve, det)
+#[cfg(doc)]
+mod readme_doctests {
+    //! Executable versions of README examples.
+    /// ```rust
+    /// use la_stack::prelude::*;
+    ///
+    /// // This system requires pivoting (a[0][0] = 0), so it's a good LU demo.
+    /// let a = Matrix::<5>::from_rows([
+    ///     [0.0, 1.0, 1.0, 1.0, 1.0],
+    ///     [1.0, 0.0, 1.0, 1.0, 1.0],
+    ///     [1.0, 1.0, 0.0, 1.0, 1.0],
+    ///     [1.0, 1.0, 1.0, 0.0, 1.0],
+    ///     [1.0, 1.0, 1.0, 1.0, 0.0],
+    /// ]);
+    ///
+    /// let b = Vector::<5>::new([14.0, 13.0, 12.0, 11.0, 10.0]);
+    ///
+    /// let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+    /// let x = lu.solve_vec(b).unwrap().into_array();
+    ///
+    /// // Floating-point rounding is expected; compare with a tolerance.
+    /// let expected = [1.0, 2.0, 3.0, 4.0, 5.0];
+    /// for (x_i, e_i) in x.iter().zip(expected.iter()) {
+    ///     assert!((*x_i - *e_i).abs() <= 1e-12);
+    /// }
+    /// ```
+    fn solve_5x5_example() {}
+}
 
 mod lu;
 mod matrix;
@@ -62,4 +85,48 @@ pub use vector::Vector;
 /// [`LaError`], and [`DEFAULT_PIVOT_TOL`].
 pub mod prelude {
     pub use crate::{DEFAULT_PIVOT_TOL, LaError, Lu, Matrix, Vector};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn default_pivot_tol_is_expected() {
+        assert_abs_diff_eq!(DEFAULT_PIVOT_TOL, 1e-12, epsilon = 0.0);
+    }
+
+    #[test]
+    fn laerror_display_formats_singular() {
+        let err = LaError::Singular { pivot_col: 3 };
+        assert_eq!(err.to_string(), "singular matrix at pivot column 3");
+    }
+
+    #[test]
+    fn laerror_display_formats_nonfinite() {
+        let err = LaError::NonFinite { pivot_col: 2 };
+        assert_eq!(
+            err.to_string(),
+            "non-finite value encountered at pivot column 2"
+        );
+    }
+
+    #[test]
+    fn laerror_is_std_error_with_no_source() {
+        let err = LaError::Singular { pivot_col: 0 };
+        let e: &dyn std::error::Error = &err;
+        assert!(e.source().is_none());
+    }
+
+    #[test]
+    fn prelude_reexports_compile_and_work() {
+        use crate::prelude::*;
+
+        // Use the items so we know they are in scope and usable.
+        let m = Matrix::<2>::identity();
+        let v = Vector::<2>::new([1.0, 2.0]);
+        let _ = m.lu(DEFAULT_PIVOT_TOL).unwrap().solve_vec(v).unwrap();
+    }
 }
