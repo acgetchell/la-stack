@@ -12,18 +12,6 @@ _ensure-uv:
     set -euo pipefail
     command -v uv >/dev/null || { echo "❌ 'uv' not found. Install: https://github.com/astral-sh/uv (macOS: brew install uv)"; exit 1; }
 
-# Python tooling (uv)
-python-sync: _ensure-uv
-    uv sync --group dev
-
-python-lint: python-sync
-    uv run ruff check scripts/ --fix
-    uv run ruff format scripts/
-    uv run mypy scripts/criterion_dim_plot.py
-
-test-python: python-sync
-    uv run pytest -q
-
 # GitHub Actions workflow validation (optional)
 action-lint:
     #!/usr/bin/env bash
@@ -46,6 +34,9 @@ action-lint:
 bench:
     cargo bench
 
+bench-compile:
+    cargo bench --no-run
+
 # Bench the la-stack vs nalgebra/faer comparison suite.
 bench-vs-linalg filter="":
     #!/usr/bin/env bash
@@ -67,29 +58,6 @@ bench-vs-linalg-quick filter="":
     else
         cargo bench --bench vs_linalg -- --quick --noplot
     fi
-
-# Plot: generate a single time-vs-dimension SVG from Criterion results.
-plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    args=(--metric "{{metric}}" --stat "{{stat}}" --sample "{{sample}}")
-    if [ "{{log_y}}" = "true" ]; then
-        args+=(--log-y)
-    fi
-    uv run criterion-dim-plot "${args[@]}"
-
-# Plot + update the README benchmark table between BENCH_TABLE markers.
-plot-vs-linalg-readme metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    args=(--metric "{{metric}}" --stat "{{stat}}" --sample "{{sample}}" --update-readme)
-    if [ "{{log_y}}" = "true" ]; then
-        args+=(--log-y)
-    fi
-    uv run criterion-dim-plot "${args[@]}"
-
-bench-compile:
-    cargo bench --no-run
 
 # Build commands
 build:
@@ -192,6 +160,35 @@ markdown-lint:
         echo "No markdown files found to lint."
     fi
 
+# Plot: generate a single time-vs-dimension SVG from Criterion results.
+plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(--metric "{{metric}}" --stat "{{stat}}" --sample "{{sample}}")
+    if [ "{{log_y}}" = "true" ]; then
+        args+=(--log-y)
+    fi
+    uv run criterion-dim-plot "${args[@]}"
+
+# Plot + update the README benchmark table between BENCH_TABLE markers.
+plot-vs-linalg-readme metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(--metric "{{metric}}" --stat "{{stat}}" --sample "{{sample}}" --update-readme)
+    if [ "{{log_y}}" = "true" ]; then
+        args+=(--log-y)
+    fi
+    uv run criterion-dim-plot "${args[@]}"
+
+# Python tooling (uv)
+python-lint: python-sync
+    uv run ruff check scripts/ --fix
+    uv run ruff format scripts/
+    uv run mypy scripts/criterion_dim_plot.py
+
+python-sync: _ensure-uv
+    uv sync --group dev
+
 # Spell check (cspell)
 #
 # Requires either:
@@ -224,6 +221,9 @@ test-all: test test-integration test-python
 
 test-integration:
     cargo test --tests --verbose
+
+test-python: python-sync
+    uv run pytest -q
 
 # File validation
 validate-json:

@@ -25,12 +25,12 @@ while keeping the API intentionally small and explicit.
 
 ## ✨ Design goals
 
-- ✅ Const-generic dimensions (no dynamic sizes)
-- ✅ Stack storage only (no heap allocation in core types)
 - ✅ `Copy` types where possible
+- ✅ Const-generic dimensions (no dynamic sizes)
 - ✅ Explicit algorithms (LU, solve, determinant)
-- ✅ `unsafe` forbidden
 - ✅ No runtime dependencies (dev-dependencies are for contributors only)
+- ✅ Stack storage only (no heap allocation in core types)
+- ✅ `unsafe` forbidden
 
 ## 🚫 Anti-goals
 
@@ -124,14 +124,14 @@ Summary (median time; lower is better). The “la-stack vs nalgebra/faer” colu
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
 | D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | la-stack vs nalgebra | la-stack vs faer |
 |---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|
-| 2 | 2.065 | 18.375 | 160.418 | +88.8% | +98.7% |
-| 3 | 13.457 | 23.377 | 198.440 | +42.4% | +93.2% |
-| 4 | 27.750 | 54.267 | 228.744 | +48.9% | +87.9% |
-| 5 | 46.317 | 73.840 | 291.623 | +37.3% | +84.1% |
-| 8 | 138.183 | 177.982 | 389.006 | +22.4% | +64.5% |
-| 16 | 629.427 | 591.505 | 893.672 | -6.4% | +29.6% |
-| 32 | 2,688.216 | 2,503.157 | 2,908.436 | -7.4% | +7.6% |
-| 64 | 16,771.962 | 14,860.016 | 12,485.424 | -12.9% | -34.3% |
+| 2 | 2.043 | 18.278 | 159.281 | +88.8% | +98.7% |
+| 3 | 13.449 | 23.337 | 196.591 | +42.4% | +93.2% |
+| 4 | 27.807 | 54.199 | 226.222 | +48.7% | +87.7% |
+| 5 | 46.075 | 73.548 | 290.914 | +37.4% | +84.2% |
+| 8 | 138.187 | 177.453 | 379.886 | +22.1% | +63.6% |
+| 16 | 626.078 | 594.055 | 897.044 | -5.4% | +30.2% |
+| 32 | 2,684.696 | 2,502.031 | 2,909.466 | -7.3% | +7.7% |
+| 64 | 16,721.576 | 14,875.770 | 12,493.628 | -12.4% | -33.8% |
 <!-- BENCH_TABLE:lu_solve:median:new:END -->
 
 ## 📄 License
