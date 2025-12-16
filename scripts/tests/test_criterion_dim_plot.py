@@ -19,9 +19,30 @@ def test_readme_table_markers_are_stable() -> None:
 
 def test_markdown_table_formats_values_and_pct() -> None:
     rows = [
-        # (D, la, la_lo, la_hi, na, na_lo, na_hi, fa, fa_lo, fa_hi)
-        (2, 50.0, 0.0, 0.0, 100.0, 0.0, 0.0, 200.0, 0.0, 0.0),  # +50.0% vs na, +75.0% vs fa
-        (64, 1_000.0, 0.0, 0.0, 900.0, 0.0, 0.0, 800.0, 0.0, 0.0),  # -11.1% vs na, -25.0% vs fa
+        criterion_dim_plot.Row(
+            dim=2,
+            la_time=50.0,
+            la_lo=0.0,
+            la_hi=0.0,
+            na_time=100.0,
+            na_lo=0.0,
+            na_hi=0.0,
+            fa_time=200.0,
+            fa_lo=0.0,
+            fa_hi=0.0,
+        ),  # +50.0% vs na, +75.0% vs fa
+        criterion_dim_plot.Row(
+            dim=64,
+            la_time=1_000.0,
+            la_lo=0.0,
+            la_hi=0.0,
+            na_time=900.0,
+            na_lo=0.0,
+            na_hi=0.0,
+            fa_time=800.0,
+            fa_lo=0.0,
+            fa_hi=0.0,
+        ),  # -11.1% vs na, -25.0% vs fa
     ]
 
     table = criterion_dim_plot._markdown_table(rows, stat="median")
@@ -35,7 +56,18 @@ def test_markdown_table_formats_values_and_pct() -> None:
 def test_markdown_table_handles_zero_nalgebra_time() -> None:
     rows = [
         # nalgebra time of 0 indicates missing/corrupt data; ensure we don't crash.
-        (2, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0),
+        criterion_dim_plot.Row(
+            dim=2,
+            la_time=10.0,
+            la_lo=0.0,
+            la_hi=0.0,
+            na_time=0.0,
+            na_lo=0.0,
+            na_hi=0.0,
+            fa_time=100.0,
+            fa_lo=0.0,
+            fa_hi=0.0,
+        ),
     ]
 
     table = criterion_dim_plot._markdown_table(rows, stat="median")
@@ -114,7 +146,7 @@ def test_update_readme_table_errors_on_missing_markers(tmp_path: Path) -> None:
     readme = tmp_path / "README.md"
     readme.write_text("# Title\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match=r"README markers not found"):
+    with pytest.raises(criterion_dim_plot.ReadmeMarkerError, match=r"README markers not found"):
         criterion_dim_plot._update_readme_table(
             readme,
             "<!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->",
@@ -129,7 +161,7 @@ def test_update_readme_table_errors_on_out_of_order_markers(tmp_path: Path) -> N
     readme = tmp_path / "README.md"
     readme.write_text("\n".join([marker_end, marker_begin, ""]), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=r"out of order"):
+    with pytest.raises(criterion_dim_plot.ReadmeMarkerError, match=r"out of order"):
         criterion_dim_plot._update_readme_table(readme, marker_begin, marker_end, "| x |")
 
 
@@ -149,7 +181,7 @@ def test_update_readme_table_errors_on_non_unique_markers(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match=r"not found or not unique"):
+    with pytest.raises(criterion_dim_plot.ReadmeMarkerError, match=r"not found or not unique"):
         criterion_dim_plot._update_readme_table(readme, marker_begin, marker_end, "| x |")
 
 

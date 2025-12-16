@@ -43,7 +43,22 @@ class PlotRequest:
     log_y: bool
 
 
-Row = tuple[int, float, float, float, float, float, float, float, float, float]
+@dataclass(frozen=True, slots=True)
+class Row:
+    dim: int
+    la_time: float
+    la_lo: float
+    la_hi: float
+    na_time: float
+    na_lo: float
+    na_hi: float
+    fa_time: float
+    fa_lo: float
+    fa_hi: float
+
+
+class ReadmeMarkerError(ValueError):
+    """Raised when README markers are missing, duplicated, or out of order."""
 
 
 METRICS: Final[dict[str, Metric]] = {
@@ -143,8 +158,8 @@ def _write_csv(out_csv: Path, rows: list[Row]) -> None:
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     with out_csv.open("w", encoding="utf-8") as f:
         f.write("D,la_stack,la_lo,la_hi,nalgebra,na_lo,na_hi,faer,fa_lo,fa_hi\n")
-        for d, la, la_lo, la_hi, na, na_lo, na_hi, fa, fa_lo, fa_hi in rows:
-            f.write(f"{d},{la},{la_lo},{la_hi},{na},{na_lo},{na_hi},{fa},{fa_lo},{fa_hi}\n")
+        for row in rows:
+            f.write(f"{row.dim},{row.la_time},{row.la_lo},{row.la_hi},{row.na_time},{row.na_lo},{row.na_hi},{row.fa_time},{row.fa_lo},{row.fa_hi}\n")
 
 
 def _pct_reduction(baseline: float, value: float) -> str:
@@ -161,10 +176,10 @@ def _markdown_table(rows: list[Row], stat: str) -> str:
         "|---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|",
     ]
 
-    for d, la, _la_lo, _la_hi, na, _na_lo, _na_hi, fa, _fa_lo, _fa_hi in rows:
-        pct_vs_na = _pct_reduction(na, la)
-        pct_vs_fa = _pct_reduction(fa, la)
-        lines.append(f"| {d} | {la:,.3f} | {na:,.3f} | {fa:,.3f} | {pct_vs_na} | {pct_vs_fa} |")
+    for row in rows:
+        pct_vs_na = _pct_reduction(row.na_time, row.la_time)
+        pct_vs_fa = _pct_reduction(row.fa_time, row.la_time)
+        lines.append(f"| {row.dim} | {row.la_time:,.3f} | {row.na_time:,.3f} | {row.fa_time:,.3f} | {pct_vs_na} | {pct_vs_fa} |")
 
     return "\n".join(lines)
 
@@ -181,13 +196,13 @@ def _update_readme_table(readme_path: Path, marker_begin: str, marker_end: str, 
     end_indices = [i for i, line in enumerate(lines) if line.strip() == marker_end]
 
     if len(begin_indices) != 1 or len(end_indices) != 1:
-        raise ValueError(f"README markers not found or not unique. Expected exactly one of each:\n  {marker_begin}\n  {marker_end}\n")
+        raise ReadmeMarkerError(f"README markers not found or not unique. Expected exactly one of each:\n  {marker_begin}\n  {marker_end}\n")
 
     begin_idx = begin_indices[0]
     end_idx = end_indices[0]
     if begin_idx >= end_idx:
         msg = "README markers are out of order."
-        raise ValueError(msg)
+        raise ReadmeMarkerError(msg)
 
     table_lines = [line + "\n" for line in table_md.strip("\n").splitlines()]
     new_lines = [
@@ -347,7 +362,20 @@ def _collect_rows(criterion_dir: Path, dims: list[int], metric: Metric, stat: st
         la, la_lo, la_hi = _read_estimate(la_est, stat)
         na, na_lo, na_hi = _read_estimate(na_est, stat)
         fa, fa_lo, fa_hi = _read_estimate(fa_est, stat)
-        rows.append((d, la, la_lo, la_hi, na, na_lo, na_hi, fa, fa_lo, fa_hi))
+        rows.append(
+            Row(
+                dim=d,
+                la_time=la,
+                la_lo=la_lo,
+                la_hi=la_hi,
+                na_time=na,
+                na_lo=na_lo,
+                na_hi=na_hi,
+                fa_time=fa,
+                fa_lo=fa_lo,
+                fa_hi=fa_hi,
+            )
+        )
 
     return (rows, skipped)
 
@@ -431,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
     if rc != 0:
         return rc
 
-    dims_present = [d for (d, *_rest) in rows]
+    dims_present = [row.dim for row in rows]
 
     title = f"{metric.title}: {args.stat} time vs dimension"
     req = PlotRequest(
