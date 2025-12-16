@@ -14,7 +14,7 @@ uv sync --group dev
 
 ## How to use it
 
-### Plotting Criterion benchmarks (la-stack vs nalgebra)
+### Plotting Criterion benchmarks (la-stack vs nalgebra/faer)
 
 The plotter reads Criterion output under:
 
@@ -22,8 +22,8 @@ The plotter reads Criterion output under:
 
 And writes:
 
-- `docs/assets/bench/vs_nalgebra_{metric}_{stat}.csv`
-- `docs/assets/bench/vs_nalgebra_{metric}_{stat}.svg`
+- `docs/assets/bench/vs_linalg_{metric}_{stat}.csv`
+- `docs/assets/bench/vs_linalg_{metric}_{stat}.svg`
 
 To generate the single “time vs dimension” chart:
 
@@ -33,29 +33,29 @@ By default, the benchmark suite runs for dimensions 2–5, 8, 16, 32, and 64.
 
 ```bash
 # full run (takes longer, better for README plots)
-just bench-vs-nalgebra lu_solve
+just bench-vs-linalg lu_solve
 
 # or quick run (fast sanity check; still produces estimates.json)
-just bench-vs-nalgebra-quick lu_solve
+just bench-vs-linalg-quick lu_solve
 ```
 
 2. Generate the chart (median or mean):
 
 ```bash
 # median (recommended)
-just plot-vs-nalgebra lu_solve median new true
+just plot-vs-linalg lu_solve median new true
 
 # median + update README's benchmark table (between BENCH_TABLE markers)
-just plot-vs-nalgebra-readme lu_solve median new true
+just plot-vs-linalg-readme lu_solve median new true
 
 # or mean
-just plot-vs-nalgebra lu_solve mean new true
+just plot-vs-linalg lu_solve mean new true
 ```
 
 This writes:
 
-- `docs/assets/bench/vs_nalgebra_lu_solve_median.csv`
-- `docs/assets/bench/vs_nalgebra_lu_solve_median.svg` (requires `gnuplot`)
+- `docs/assets/bench/vs_linalg_lu_solve_median.csv`
+- `docs/assets/bench/vs_linalg_lu_solve_median.svg` (requires `gnuplot`)
 
 (For `stat=mean`, the filenames end in `_mean` instead of `_median`.)
 

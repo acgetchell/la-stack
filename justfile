@@ -46,30 +46,30 @@ action-lint:
 bench:
     cargo bench
 
-# Bench the la-stack vs nalgebra comparison suite.
-bench-vs-nalgebra filter="":
+# Bench the la-stack vs nalgebra/faer comparison suite.
+bench-vs-linalg filter="":
     #!/usr/bin/env bash
     set -euo pipefail
     filter="{{filter}}"
     if [ -n "$filter" ]; then
-        cargo bench --bench vs_nalgebra -- "$filter"
+        cargo bench --bench vs_linalg -- "$filter"
     else
-        cargo bench --bench vs_nalgebra
+        cargo bench --bench vs_linalg
     fi
 
 # Quick iteration (reduced runtime, no Criterion HTML).
-bench-vs-nalgebra-quick filter="":
+bench-vs-linalg-quick filter="":
     #!/usr/bin/env bash
     set -euo pipefail
     filter="{{filter}}"
     if [ -n "$filter" ]; then
-        cargo bench --bench vs_nalgebra -- "$filter" --quick --noplot
+        cargo bench --bench vs_linalg -- "$filter" --quick --noplot
     else
-        cargo bench --bench vs_nalgebra -- --quick --noplot
+        cargo bench --bench vs_linalg -- --quick --noplot
     fi
 
 # Plot: generate a single time-vs-dimension SVG from Criterion results.
-plot-vs-nalgebra metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
+plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     args=(--metric "{{metric}}" --stat "{{stat}}" --sample "{{sample}}")
@@ -79,7 +79,7 @@ plot-vs-nalgebra metric="lu_solve" stat="median" sample="new" log_y="false": pyt
     uv run criterion-dim-plot "${args[@]}"
 
 # Plot + update the README benchmark table between BENCH_TABLE markers.
-plot-vs-nalgebra-readme metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
+plot-vs-linalg-readme metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     args=(--metric "{{metric}}" --stat "{{stat}}" --sample "{{sample}}" --update-readme)

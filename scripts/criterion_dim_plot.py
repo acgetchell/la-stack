@@ -5,11 +5,11 @@ Reads Criterion output under:
   target/criterion/d{D}/{benchmark}/{new|base}/estimates.json
 
 And writes:
-  docs/assets/bench/vs_nalgebra_{metric}_{stat}.csv
-  docs/assets/bench/vs_nalgebra_{metric}_{stat}.svg
+  docs/assets/bench/vs_linalg_{metric}_{stat}.csv
+  docs/assets/bench/vs_linalg_{metric}_{stat}.svg
 
-This is intended to create a single, README-friendly plot comparing la-stack to nalgebra
-across dimensions.
+This is intended to create a single, README-friendly plot comparing la-stack to other
+Rust linear algebra crates across dimensions.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from typing import Final
 class Metric:
     la_bench: str
     na_bench: str
+    fa_bench: str
     title: str
 
 
@@ -46,42 +47,50 @@ METRICS: Final[dict[str, Metric]] = {
     "det_via_lu": Metric(
         la_bench="la_stack_det_via_lu",
         na_bench="nalgebra_det_via_lu",
+        fa_bench="faer_det_via_lu",
         title="Determinant via LU (factor + det)",
     ),
     "lu": Metric(
         la_bench="la_stack_lu",
         na_bench="nalgebra_lu",
+        fa_bench="faer_lu",
         title="LU factorization",
     ),
     "lu_solve": Metric(
         la_bench="la_stack_lu_solve",
         na_bench="nalgebra_lu_solve",
+        fa_bench="faer_lu_solve",
         title="LU solve (factor + solve)",
     ),
     "solve_from_lu": Metric(
         la_bench="la_stack_solve_from_lu",
         na_bench="nalgebra_solve_from_lu",
+        fa_bench="faer_solve_from_lu",
         title="Solve from precomputed LU",
     ),
     "det_from_lu": Metric(
         la_bench="la_stack_det_from_lu",
         na_bench="nalgebra_det_from_lu",
+        fa_bench="faer_det_from_lu",
         title="Determinant from precomputed LU",
     ),
     "dot": Metric(
         la_bench="la_stack_dot",
         na_bench="nalgebra_dot",
+        fa_bench="faer_dot",
         title="Vector dot product",
     ),
     # Different names between crates.
     "norm2_sq": Metric(
         la_bench="la_stack_norm2_sq",
         na_bench="nalgebra_norm_squared",
+        fa_bench="faer_norm2_sq",
         title="Vector squared 2-norm",
     ),
     "inf_norm": Metric(
         la_bench="la_stack_inf_norm",
         na_bench="nalgebra_inf_norm",
+        fa_bench="faer_inf_norm",
         title="Matrix infinity norm (max abs row sum)",
     ),
 }
@@ -127,28 +136,32 @@ def _read_estimate(estimates_json: Path, stat: str) -> tuple[float, float, float
     return (point, lo, hi)
 
 
-def _write_csv(out_csv: Path, rows: list[tuple[int, float, float, float, float, float, float]]) -> None:
+def _write_csv(out_csv: Path, rows: list[Row]) -> None:
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     with out_csv.open("w", encoding="utf-8") as f:
-        f.write("D,la_stack,la_lo,la_hi,nalgebra,na_lo,na_hi\n")
-        for d, la, la_lo, la_hi, na, na_lo, na_hi in rows:
-            f.write(f"{d},{la},{la_lo},{la_hi},{na},{na_lo},{na_hi}\n")
+        f.write("D,la_stack,la_lo,la_hi,nalgebra,na_lo,na_hi,faer,fa_lo,fa_hi\n")
+        for d, la, la_lo, la_hi, na, na_lo, na_hi, fa, fa_lo, fa_hi in rows:
+            f.write(f"{d},{la},{la_lo},{la_hi},{na},{na_lo},{na_hi},{fa},{fa_lo},{fa_hi}\n")
 
 
-def _markdown_table(rows: list[tuple[int, float, float, float, float, float, float]], stat: str) -> str:
+def _pct_reduction(baseline: float, value: float) -> str:
+    """Percent time reduction relative to baseline (positive = value is faster)."""
+    if baseline == 0.0:
+        return "n/a"
+    pct = ((baseline - value) / baseline) * 100.0
+    return f"{pct:+.1f}%"
+
+
+def _markdown_table(rows: list[Row], stat: str) -> str:
     lines = [
-        f"| D | la-stack {stat} (ns) | nalgebra {stat} (ns) | la-stack vs nalgebra |",
-        "|---:|--------------------:|--------------------:|---------------------:|",
+        f"| D | la-stack {stat} (ns) | nalgebra {stat} (ns) | faer {stat} (ns) | la-stack vs nalgebra | la-stack vs faer |",
+        "|---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|",
     ]
 
-    for d, la, _la_lo, _la_hi, na, _na_lo, _na_hi in rows:
-        if na == 0.0:
-            pct_display = "n/a"
-        else:
-            pct = ((na - la) / na) * 100.0
-            pct_display = f"{pct:+.1f}%"
-
-        lines.append(f"| {d} | {la:,.3f} | {na:,.3f} | {pct_display} |")
+    for d, la, _la_lo, _la_hi, na, _na_lo, _na_hi, fa, _fa_lo, _fa_hi in rows:
+        pct_vs_na = _pct_reduction(na, la)
+        pct_vs_fa = _pct_reduction(fa, la)
+        lines.append(f"| {d} | {la:,.3f} | {na:,.3f} | {fa:,.3f} | {pct_vs_na} | {pct_vs_fa} |")
 
     return "\n".join(lines)
 
@@ -214,6 +227,7 @@ def _render_svg_with_gnuplot(req: PlotRequest) -> None:
         f"set xtics ({xtics})",
         "set style line 1 lc rgb '#1f77b4' lt 1 lw 2 pt 7 ps 1",
         "set style line 2 lc rgb '#ff7f0e' lt 1 lw 2 pt 5 ps 1",
+        "set style line 3 lc rgb '#2ca02c' lt 1 lw 2 pt 9 ps 1",
         "set style data linespoints",
         "set tics nomirror",
         "set border linewidth 1",
@@ -226,7 +240,8 @@ def _render_svg_with_gnuplot(req: PlotRequest) -> None:
         [
             "plot \\",
             f"  {_gp_quote(str(req.csv_path))} using 1:2:3:4 with yerrorlines ls 1 title 'la-stack', \\",
-            f"  {_gp_quote(str(req.csv_path))} using 1:5:6:7 with yerrorlines ls 2 title 'nalgebra'",
+            f"  {_gp_quote(str(req.csv_path))} using 1:5:6:7 with yerrorlines ls 2 title 'nalgebra', \\",
+            f"  {_gp_quote(str(req.csv_path))} using 1:8:9:10 with yerrorlines ls 3 title 'faer'",
         ]
     )
 
@@ -236,13 +251,13 @@ def _render_svg_with_gnuplot(req: PlotRequest) -> None:
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Plot Criterion time vs dimension for la-stack vs nalgebra.")
+    parser = argparse.ArgumentParser(description="Plot Criterion time vs dimension for la-stack vs nalgebra/faer.")
 
     parser.add_argument(
         "--metric",
         default="lu_solve",
         choices=sorted(METRICS.keys()),
-        help="Which vs_nalgebra metric to plot.",
+        help="Which vs_linalg metric to plot.",
     )
     parser.add_argument(
         "--stat",
@@ -264,12 +279,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--out",
         default=None,
-        help="Output SVG path (default: docs/assets/bench/vs_nalgebra_{metric}_{stat}.svg).",
+        help="Output SVG path (default: docs/assets/bench/vs_linalg_{metric}_{stat}.svg).",
     )
     parser.add_argument(
         "--csv",
         default=None,
-        help="Output CSV path (default: docs/assets/bench/vs_nalgebra_{metric}_{stat}.csv).",
+        help="Output CSV path (default: docs/assets/bench/vs_linalg_{metric}_{stat}.csv).",
     )
     parser.add_argument(
         "--log-y",
@@ -295,7 +310,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-Row = tuple[int, float, float, float, float, float, float]
+Row = tuple[int, float, float, float, float, float, float, float, float, float]
 
 
 def _resolve_under_root(root: Path, arg: str) -> Path:
@@ -304,8 +319,8 @@ def _resolve_under_root(root: Path, arg: str) -> Path:
 
 
 def _resolve_output_paths(root: Path, metric: str, stat: str, out_svg: str | None, out_csv: str | None) -> tuple[Path, Path]:
-    svg = Path(out_svg) if out_svg is not None else Path(f"docs/assets/bench/vs_nalgebra_{metric}_{stat}.svg")
-    csv = Path(out_csv) if out_csv is not None else Path(f"docs/assets/bench/vs_nalgebra_{metric}_{stat}.csv")
+    svg = Path(out_svg) if out_svg is not None else Path(f"docs/assets/bench/vs_linalg_{metric}_{stat}.svg")
+    csv = Path(out_csv) if out_csv is not None else Path(f"docs/assets/bench/vs_linalg_{metric}_{stat}.csv")
 
     if not svg.is_absolute():
         svg = root / svg
@@ -323,14 +338,16 @@ def _collect_rows(criterion_dir: Path, dims: list[int], metric: Metric, stat: st
         group_dir = criterion_dir / f"d{d}"
         la_est = group_dir / metric.la_bench / sample / "estimates.json"
         na_est = group_dir / metric.na_bench / sample / "estimates.json"
+        fa_est = group_dir / metric.fa_bench / sample / "estimates.json"
 
-        if not la_est.exists() or not na_est.exists():
-            skipped.append(f"d{d} (missing {metric.la_bench} or {metric.na_bench})")
+        if not la_est.exists() or not na_est.exists() or not fa_est.exists():
+            skipped.append(f"d{d} (missing {metric.la_bench}, {metric.na_bench}, or {metric.fa_bench})")
             continue
 
         la, la_lo, la_hi = _read_estimate(la_est, stat)
         na, na_lo, na_hi = _read_estimate(na_est, stat)
-        rows.append((d, la, la_lo, la_hi, na, na_lo, na_hi))
+        fa, fa_lo, fa_hi = _read_estimate(fa_est, stat)
+        rows.append((d, la, la_lo, la_hi, na, na_lo, na_hi, fa, fa_lo, fa_hi))
 
     return (rows, skipped)
 
@@ -363,7 +380,7 @@ def _maybe_render_plot(args: argparse.Namespace, req: PlotRequest, skipped: list
 
     try:
         _render_svg_with_gnuplot(req)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, subprocess.CalledProcessError) as e:
         print(str(e), file=sys.stderr)
         print(f"Wrote CSV instead: {req.csv_path}", file=sys.stderr)
         return 1
@@ -388,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
     dims = _discover_dims(criterion_dir) if criterion_dir.exists() else []
     if not dims:
         print(
-            f"No Criterion results found under {criterion_dir}.\n\nRun benchmarks first, e.g.:\n  cargo bench --bench vs_nalgebra\n",
+            f"No Criterion results found under {criterion_dir}.\n\nRun benchmarks first, e.g.:\n  cargo bench --bench vs_linalg\n",
             file=sys.stderr,
         )
         return 2

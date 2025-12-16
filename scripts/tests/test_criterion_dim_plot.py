@@ -19,27 +19,51 @@ def test_readme_table_markers_are_stable() -> None:
 
 def test_markdown_table_formats_values_and_pct() -> None:
     rows = [
-        # (D, la, la_lo, la_hi, na, na_lo, na_hi)
-        (2, 50.0, 0.0, 0.0, 100.0, 0.0, 0.0),  # +50.0%
-        (64, 1_000.0, 0.0, 0.0, 900.0, 0.0, 0.0),  # -11.1%
+        # (D, la, la_lo, la_hi, na, na_lo, na_hi, fa, fa_lo, fa_hi)
+        (2, 50.0, 0.0, 0.0, 100.0, 0.0, 0.0, 200.0, 0.0, 0.0),  # +50.0% vs na, +75.0% vs fa
+        (64, 1_000.0, 0.0, 0.0, 900.0, 0.0, 0.0, 800.0, 0.0, 0.0),  # -11.1% vs na, -25.0% vs fa
     ]
 
     table = criterion_dim_plot._markdown_table(rows, stat="median")
 
-    assert "| D | la-stack median (ns) | nalgebra median (ns) | la-stack vs nalgebra |" in table
-    assert "| 2 | 50.000 | 100.000 | +50.0% |" in table
+    assert "| D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | la-stack vs nalgebra | la-stack vs faer |" in table
+    assert "| 2 | 50.000 | 100.000 | 200.000 | +50.0% | +75.0% |" in table
     # thousand separator and sign
-    assert "| 64 | 1,000.000 | 900.000 | -11.1% |" in table
+    assert "| 64 | 1,000.000 | 900.000 | 800.000 | -11.1% | -25.0% |" in table
 
 
 def test_markdown_table_handles_zero_nalgebra_time() -> None:
     rows = [
         # nalgebra time of 0 indicates missing/corrupt data; ensure we don't crash.
-        (2, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        (2, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0),
     ]
 
     table = criterion_dim_plot._markdown_table(rows, stat="median")
-    assert "| 2 | 10.000 | 0.000 | n/a |" in table
+    assert "| 2 | 10.000 | 0.000 | 100.000 | n/a | +90.0% |" in table
+
+
+def test_maybe_render_plot_handles_gnuplot_failure(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    # Simulate gnuplot existing but failing to run (CalledProcessError).
+    def boom(_req: object) -> None:
+        raise criterion_dim_plot.subprocess.CalledProcessError(1, ["gnuplot"])  # type: ignore[arg-type]
+
+    monkeypatch.setattr(criterion_dim_plot, "_render_svg_with_gnuplot", boom)
+
+    args = type("Args", (), {"no_plot": False})()
+    req = criterion_dim_plot.PlotRequest(
+        csv_path=criterion_dim_plot.Path("out.csv"),
+        out_svg=criterion_dim_plot.Path("out.svg"),
+        title="t",
+        stat="median",
+        dims=(2,),
+        log_y=False,
+    )
+
+    rc = criterion_dim_plot._maybe_render_plot(args, req, skipped=[])
+    assert rc == 1
+
+    captured = capsys.readouterr()
+    assert "Wrote CSV instead" in captured.err
 
 
 def test_update_readme_table_replaces_only_between_markers(tmp_path: Path) -> None:
@@ -140,10 +164,11 @@ def test_main_update_readme_no_plot_happy_path(tmp_path: Path) -> None:
             encoding="utf-8",
         )
 
-    for d, la, na in [(2, 10.0, 20.0), (8, 100.0, 50.0)]:
+    for d, la, na, fa in [(2, 10.0, 20.0, 40.0), (8, 100.0, 50.0, 200.0)]:
         base = criterion_dir / f"d{d}"
         write_estimates(base / "la_stack_lu_solve" / "new" / "estimates.json", la)
         write_estimates(base / "nalgebra_lu_solve" / "new" / "estimates.json", na)
+        write_estimates(base / "faer_lu_solve" / "new" / "estimates.json", fa)
 
     readme = tmp_path / "README.md"
     marker_begin, marker_end = criterion_dim_plot._readme_table_markers("lu_solve", "median", "new")
@@ -173,12 +198,12 @@ def test_main_update_readme_no_plot_happy_path(tmp_path: Path) -> None:
 
     # CSV written
     csv_text = out_csv.read_text(encoding="utf-8")
-    assert csv_text.startswith("D,la_stack,la_lo,la_hi,nalgebra,na_lo,na_hi\n")
+    assert csv_text.startswith("D,la_stack,la_lo,la_hi,nalgebra,na_lo,na_hi,faer,fa_lo,fa_hi\n")
     assert "2,10.0" in csv_text
     assert "8,100.0" in csv_text
 
     # README updated with computed table
     readme_text = readme.read_text(encoding="utf-8")
     assert "placeholder" not in readme_text
-    assert "| 2 | 10.000 | 20.000 | +50.0% |" in readme_text
-    assert "| 8 | 100.000 | 50.000 | -100.0% |" in readme_text
+    assert "| 2 | 10.000 | 20.000 | 40.000 | +50.0% | +75.0% |" in readme_text
+    assert "| 8 | 100.000 | 50.000 | 200.000 | -100.0% | +50.0% |" in readme_text

@@ -1,15 +1,57 @@
-//! Benchmark comparison between la-stack and nalgebra.
+//! Benchmark comparison between la-stack and other Rust linear algebra crates.
 //!
 //! Goal: like-for-like comparisons of the operations la-stack supports across several
 //! fixed dimensions.
 //!
 //! Notes:
-//! - Determinant is benchmarked via LU on both sides (nalgebra uses closed-forms for 1×1/2×2/3×3).
-//! - Matrix infinity norm is the maximum absolute row sum on both sides.
+//! - Determinant is benchmarked via LU on all sides (nalgebra uses closed-forms for 1×1/2×2/3×3).
+//! - Matrix infinity norm is the maximum absolute row sum on all sides.
 
 use criterion::Criterion;
+use faer::linalg::solvers::Solve;
+use faer::perm::PermRef;
 use pastey::paste;
 use std::hint::black_box;
+
+fn faer_perm_sign(p: PermRef<'_, usize>) -> f64 {
+    // Sign(det(P)) for a permutation matrix P is +1 for even permutations, -1 for odd.
+    // Parity can be computed from the number of cycles:
+    //   sign = (-1)^(n - cycles)
+    let (forward, _inverse) = p.arrays();
+    let n = forward.len();
+
+    let mut seen = vec![false; n];
+    let mut cycles = 0usize;
+
+    for start in 0..n {
+        if seen[start] {
+            continue;
+        }
+        cycles += 1;
+
+        let mut i = start;
+        while !seen[i] {
+            seen[i] = true;
+            i = forward[i];
+        }
+    }
+
+    if (n - cycles).is_multiple_of(2) {
+        1.0
+    } else {
+        -1.0
+    }
+}
+
+fn faer_det_from_partial_piv_lu(lu: &faer::linalg::solvers::PartialPivLu<f64>) -> f64 {
+    // For PA = LU with unit-lower L, det(A) = det(P) * det(U).
+    let u = lu.U();
+    let mut det = 1.0;
+    for i in 0..u.nrows() {
+        det *= u[(i, i)];
+    }
+    det * faer_perm_sign(lu.P())
+}
 
 #[inline]
 #[allow(clippy::cast_precision_loss)] // D, r, c are small integers, precision loss is not an issue.
@@ -81,7 +123,7 @@ fn nalgebra_inf_norm<const D: usize>(m: &nalgebra::SMatrix<f64, D, D>) -> f64 {
     max_row_sum
 }
 
-macro_rules! gen_vs_nalgebra_benches_for_dim {
+macro_rules! gen_vs_linalg_benches_for_dim {
     ($c:expr, $d:literal) => {
         paste! {{
             // Isolate each dimension's inputs to keep types and captures clean.
@@ -96,11 +138,17 @@ macro_rules! gen_vs_nalgebra_benches_for_dim {
                 let nv1 = nalgebra::SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 0.0));
                 let nv2 = nalgebra::SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 1.0));
 
+                let fa = faer::Mat::<f64>::from_fn($d, $d, |r, c| matrix_entry::<$d>(r, c));
+                let frhs = faer::Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 0.0));
+                let fv1 = faer::Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 0.0));
+                let fv2 = faer::Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 1.0));
+
                 // Precompute LU once for solve-only / det-only benchmarks.
                 let a_lu = a
                     .lu(la_stack::DEFAULT_PIVOT_TOL)
                     .expect("matrix should be non-singular");
                 let na_lu = na.clone().lu();
+                let fa_lu = fa.partial_piv_lu();
 
                 let mut [<group_d $d>] = ($c).benchmark_group(concat!("d", stringify!($d)));
 
@@ -123,6 +171,14 @@ macro_rules! gen_vs_nalgebra_benches_for_dim {
                     });
                 });
 
+                [<group_d $d>].bench_function("faer_det_via_lu", |bencher| {
+                    bencher.iter(|| {
+                        let lu = black_box(&fa).partial_piv_lu();
+                        let det = faer_det_from_partial_piv_lu(&lu);
+                        black_box(det);
+                    });
+                });
+
                 // === LU factorization ===
                 [<group_d $d>].bench_function("la_stack_lu", |bencher| {
                     bencher.iter(|| {
@@ -136,6 +192,13 @@ macro_rules! gen_vs_nalgebra_benches_for_dim {
                 [<group_d $d>].bench_function("nalgebra_lu", |bencher| {
                     bencher.iter(|| {
                         let lu = black_box(na.clone()).lu();
+                        black_box(lu);
+                    });
+                });
+
+                [<group_d $d>].bench_function("faer_lu", |bencher| {
+                    bencher.iter(|| {
+                        let lu = black_box(&fa).partial_piv_lu();
                         black_box(lu);
                     });
                 });
@@ -163,6 +226,14 @@ macro_rules! gen_vs_nalgebra_benches_for_dim {
                     });
                 });
 
+                [<group_d $d>].bench_function("faer_lu_solve", |bencher| {
+                    bencher.iter(|| {
+                        let lu = black_box(&fa).partial_piv_lu();
+                        let x = lu.solve(black_box(&frhs));
+                        black_box(x);
+                    });
+                });
+
                 // === Solve using a precomputed LU ===
                 [<group_d $d>].bench_function("la_stack_solve_from_lu", |bencher| {
                     bencher.iter(|| {
@@ -182,6 +253,13 @@ macro_rules! gen_vs_nalgebra_benches_for_dim {
                     });
                 });
 
+                [<group_d $d>].bench_function("faer_solve_from_lu", |bencher| {
+                    bencher.iter(|| {
+                        let x = fa_lu.solve(black_box(&frhs));
+                        black_box(x);
+                    });
+                });
+
                 // === Determinant from a precomputed LU ===
                 [<group_d $d>].bench_function("la_stack_det_from_lu", |bencher| {
                     bencher.iter(|| {
@@ -193,6 +271,13 @@ macro_rules! gen_vs_nalgebra_benches_for_dim {
                 [<group_d $d>].bench_function("nalgebra_det_from_lu", |bencher| {
                     bencher.iter(|| {
                         let det = na_lu.determinant();
+                        black_box(det);
+                    });
+                });
+
+                [<group_d $d>].bench_function("faer_det_from_lu", |bencher| {
+                    bencher.iter(|| {
+                        let det = faer_det_from_partial_piv_lu(&fa_lu);
                         black_box(det);
                     });
                 });
@@ -212,6 +297,18 @@ macro_rules! gen_vs_nalgebra_benches_for_dim {
                     });
                 });
 
+                [<group_d $d>].bench_function("faer_dot", |bencher| {
+                    bencher.iter(|| {
+                        let mut sum = 0.0;
+                        let a = black_box(&fv1);
+                        let b = black_box(&fv2);
+                        for i in 0..$d {
+                            sum += a[(i, 0)] * b[(i, 0)];
+                        }
+                        black_box(sum);
+                    });
+                });
+
                 // === Vector norm squared ===
                 [<group_d $d>].bench_function("la_stack_norm2_sq", |bencher| {
                     bencher.iter(|| {
@@ -224,6 +321,18 @@ macro_rules! gen_vs_nalgebra_benches_for_dim {
                     bencher.iter(|| {
                         let result = black_box(&nv1).norm_squared();
                         black_box(result);
+                    });
+                });
+
+                [<group_d $d>].bench_function("faer_norm2_sq", |bencher| {
+                    bencher.iter(|| {
+                        let mut sum = 0.0;
+                        let v = black_box(&fv1);
+                        for i in 0..$d {
+                            let x = v[(i, 0)];
+                            sum += x * x;
+                        }
+                        black_box(sum);
                     });
                 });
 
@@ -242,6 +351,25 @@ macro_rules! gen_vs_nalgebra_benches_for_dim {
                     });
                 });
 
+                [<group_d $d>].bench_function("faer_inf_norm", |bencher| {
+                    bencher.iter(|| {
+                        let m = black_box(&fa);
+                        let mut max_row_sum = 0.0;
+
+                        for r in 0..$d {
+                            let mut row_sum = 0.0;
+                            for c in 0..$d {
+                                row_sum += m[(r, c)].abs();
+                            }
+                            if row_sum > max_row_sum {
+                                max_row_sum = row_sum;
+                            }
+                        }
+
+                        black_box(max_row_sum);
+                    });
+                });
+
                 [<group_d $d>].finish();
             }
         }}
@@ -251,15 +379,15 @@ macro_rules! gen_vs_nalgebra_benches_for_dim {
 fn main() {
     let mut c = Criterion::default().configure_from_args();
 
-    gen_vs_nalgebra_benches_for_dim!(&mut c, 2);
-    gen_vs_nalgebra_benches_for_dim!(&mut c, 3);
-    gen_vs_nalgebra_benches_for_dim!(&mut c, 4);
-    gen_vs_nalgebra_benches_for_dim!(&mut c, 5);
+    gen_vs_linalg_benches_for_dim!(&mut c, 2);
+    gen_vs_linalg_benches_for_dim!(&mut c, 3);
+    gen_vs_linalg_benches_for_dim!(&mut c, 4);
+    gen_vs_linalg_benches_for_dim!(&mut c, 5);
 
-    gen_vs_nalgebra_benches_for_dim!(&mut c, 8);
-    gen_vs_nalgebra_benches_for_dim!(&mut c, 16);
-    gen_vs_nalgebra_benches_for_dim!(&mut c, 32);
-    gen_vs_nalgebra_benches_for_dim!(&mut c, 64);
+    gen_vs_linalg_benches_for_dim!(&mut c, 8);
+    gen_vs_linalg_benches_for_dim!(&mut c, 16);
+    gen_vs_linalg_benches_for_dim!(&mut c, 32);
+    gen_vs_linalg_benches_for_dim!(&mut c, 64);
 
     c.final_summary();
 }
