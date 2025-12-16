@@ -58,7 +58,15 @@ class Row:
 
 
 class ReadmeMarkerError(ValueError):
-    """Raised when README markers are missing, duplicated, or out of order."""
+    """Base error for invalid README BENCH_TABLE markers."""
+
+
+class MarkerNotFoundError(ReadmeMarkerError):
+    """Raised when README markers are missing or not unique."""
+
+
+class MarkerOrderError(ReadmeMarkerError):
+    """Raised when README markers are out of order."""
 
 
 METRICS: Final[dict[str, Metric]] = {
@@ -196,13 +204,14 @@ def _update_readme_table(readme_path: Path, marker_begin: str, marker_end: str, 
     end_indices = [i for i, line in enumerate(lines) if line.strip() == marker_end]
 
     if len(begin_indices) != 1 or len(end_indices) != 1:
-        raise ReadmeMarkerError(f"README markers not found or not unique. Expected exactly one of each:\n  {marker_begin}\n  {marker_end}\n")
+        msg = f"README markers not found or not unique (begin={len(begin_indices)}, end={len(end_indices)})."
+        raise MarkerNotFoundError(msg)
 
     begin_idx = begin_indices[0]
     end_idx = end_indices[0]
     if begin_idx >= end_idx:
         msg = "README markers are out of order."
-        raise ReadmeMarkerError(msg)
+        raise MarkerOrderError(msg)
 
     table_lines = [line + "\n" for line in table_md.strip("\n").splitlines()]
     new_lines = [
