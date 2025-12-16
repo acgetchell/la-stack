@@ -43,6 +43,9 @@ class PlotRequest:
     log_y: bool
 
 
+Row = tuple[int, float, float, float, float, float, float, float, float, float]
+
+
 METRICS: Final[dict[str, Metric]] = {
     "det_via_lu": Metric(
         la_bench="la_stack_det_via_lu",
@@ -201,8 +204,8 @@ def _update_readme_table(readme_path: Path, marker_begin: str, marker_end: str, 
 
 
 def _gp_quote(s: str) -> str:
-    # gnuplot supports single-quoted strings; escape single quotes.
-    return "'" + s.replace("'", "\\'") + "'"
+    # gnuplot supports single-quoted strings; escape backslashes and single quotes.
+    return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
 def _render_svg_with_gnuplot(req: PlotRequest) -> None:
@@ -308,9 +311,6 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
 
     return parser.parse_args(argv)
-
-
-Row = tuple[int, float, float, float, float, float, float, float, float, float]
 
 
 def _resolve_under_root(root: Path, arg: str) -> Path:

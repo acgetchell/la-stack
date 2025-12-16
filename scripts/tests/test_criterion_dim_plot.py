@@ -42,6 +42,13 @@ def test_markdown_table_handles_zero_nalgebra_time() -> None:
     assert "| 2 | 10.000 | 0.000 | 100.000 | n/a | +90.0% |" in table
 
 
+def test_gp_quote_escapes_backslashes_and_quotes() -> None:
+    assert criterion_dim_plot._gp_quote("plain") == "'plain'"
+    assert criterion_dim_plot._gp_quote("a'b") == "'a\\'b'"
+    assert criterion_dim_plot._gp_quote("a\\b") == "'a\\\\b'"
+    assert criterion_dim_plot._gp_quote("a\\'b") == "'a\\\\\\'b'"
+
+
 def test_maybe_render_plot_handles_gnuplot_failure(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     # Simulate gnuplot existing but failing to run (CalledProcessError).
     def boom(_req: object) -> None:
