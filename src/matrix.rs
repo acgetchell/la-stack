@@ -15,7 +15,6 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
@@ -30,7 +29,6 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let z = Matrix::<2>::zero();
@@ -47,7 +45,6 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let i = Matrix::<3>::identity();
@@ -72,7 +69,6 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
@@ -95,7 +91,6 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let mut m = Matrix::<2>::zero();
@@ -117,7 +112,6 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let m = Matrix::<2>::from_rows([[1.0, -2.0], [3.0, 4.0]]);
@@ -142,7 +136,6 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
@@ -170,7 +163,6 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {

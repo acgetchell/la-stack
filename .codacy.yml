@@ -3,6 +3,7 @@
 #
 # This repository is primarily Rust.
 # Note: clippy and rustfmt are not supported by Codacy and are handled by GitHub Actions CI.
+# cspell:ignore pyproject
 
 engines:
   # === DOCUMENTATION / SCRIPTS ===
@@ -22,6 +23,29 @@ engines:
       severity: warning
       include_code: true
 
+  # === PYTHON / SECURITY ===
+  # Ruff for Python linting and formatting (reads from pyproject.toml)
+  ruff:
+    enabled: true
+    include_paths:
+      - "scripts/**/*.py"
+      - "**/*.py"
+    config:
+      file: "pyproject.toml"
+
+  # Bandit for Python security analysis
+  bandit:
+    enabled: true
+    include_paths:
+      - "scripts/**/*.py"
+      - "**/*.py"
+    config:
+      severity: high
+      confidence: high
+      skips: ["B101", "B102", "B103", "B108", "B110", "B404", "B603", "B607"]
+      exclude_info: true
+      exclude_dirs: ["tests"]
+
   # === RUST / SECURITY ===
   lizard:
     enabled: true
@@ -30,8 +54,9 @@ engines:
       - "tests/**/*.rs"
       - "examples/**/*.rs"
       - "benches/**/*.rs"
+      - "scripts/**/*.py"
     config:
-      languages: ["rust"]
+      languages: ["rust", "python"]
       threshold:
         cyclomatic_complexity: 15
         token_count: 300
@@ -46,6 +71,7 @@ engines:
       - "tests/**/*.rs"
       - "examples/**/*.rs"
       - "benches/**/*.rs"
+      - "scripts/**/*.py"
 
   trivy:
     enabled: true
@@ -75,6 +101,15 @@ exclude_paths:
   - ".git/**"
   - ".cspellcache"
   - ".DS_Store"
+  # Python artifacts
+  - "__pycache__/**"
+  - "*.pyc"
+  - ".pytest_cache/**"
+  - ".ruff_cache/**"
+  - ".mypy_cache/**"
+  - "venv/**"
+  - ".venv/**"
+  - "uv.lock"
 
 # Focus analysis on source, docs, and CI configuration
 include_paths:
@@ -82,7 +117,10 @@ include_paths:
   - "benches/**"
   - "examples/**"
   - "tests/**"
+  - "scripts/**"
+  - "*.py"
   - "Cargo.toml"
+  - "pyproject.toml"
   - "rust-toolchain.toml"
   - "rustfmt.toml"
   - "justfile"
@@ -100,6 +138,9 @@ languages:
   rust:
     extensions:
       - ".rs"
+  python:
+    extensions:
+      - ".py"
   markdown:
     extensions:
       - ".md"

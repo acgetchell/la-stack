@@ -61,6 +61,19 @@ jobs:
           mkdir -p "$CODACY_WORKDIR"
           rsync -a --delete --exclude '.git' ./ "$CODACY_WORKDIR/"
 
+      - name: Verify Codacy config includes Python security tooling
+        run: |
+          set -euo pipefail
+          config="$CODACY_WORKDIR/.codacy.yml"
+          if [ ! -f "$config" ]; then
+            echo "::error::.codacy.yml not found in workspace copy ($config)"
+            exit 1
+          fi
+          if ! grep -qE '^[[:space:]]*bandit:' "$config"; then
+            echo "::error::Bandit engine not configured in .codacy.yml; Python security scanning will be skipped."
+            exit 1
+          fi
+
       # Execute Codacy Analysis CLI and generate a SARIF output with
       # the security issues identified during the analysis
       - name: Run Codacy Analysis CLI

@@ -12,7 +12,6 @@ impl<const D: usize> Vector<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let v = Vector::<3>::new([1.0, 2.0, 3.0]);
@@ -27,7 +26,6 @@ impl<const D: usize> Vector<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let z = Vector::<2>::zero();
@@ -42,7 +40,6 @@ impl<const D: usize> Vector<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let v = Vector::<2>::new([1.0, -2.0]);
@@ -58,7 +55,6 @@ impl<const D: usize> Vector<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let v = Vector::<2>::new([1.0, 2.0]);
@@ -75,7 +71,6 @@ impl<const D: usize> Vector<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let a = Vector::<3>::new([1.0, 2.0, 3.0]);
@@ -98,7 +93,6 @@ impl<const D: usize> Vector<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// let v = Vector::<3>::new([1.0, 2.0, 3.0]);

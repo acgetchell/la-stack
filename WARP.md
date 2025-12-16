@@ -35,7 +35,7 @@ When making changes in this repo, prioritize (in order):
   - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve_vec`, `det`)
 - A minimal `justfile` exists for common workflows (see `just --list`).
 - The public API re-exports these items from `src/lib.rs`.
-- Dev-only benchmarks live in `benches/vs_nalgebra.rs` (Criterion + nalgebra comparison).
+- Dev-only benchmarks live in `benches/vs_linalg.rs` (Criterion + nalgebra/faer comparison).
 
 ## Publishing note
 

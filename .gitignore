@@ -4,3 +4,13 @@
 /build*
 /cobertura.xml
 .DS_Store
+
+# Python / uv
+**/__pycache__/
+*.egg-info/
+.venv/
+venv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+uv.lock

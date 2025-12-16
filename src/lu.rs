@@ -86,7 +86,6 @@ impl<const D: usize> Lu<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
@@ -152,7 +151,6 @@ impl<const D: usize> Lu<D> {
     ///
     /// # Examples
     /// ```
-    /// #![allow(unused_imports)]
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
