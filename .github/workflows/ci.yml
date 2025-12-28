@@ -51,7 +51,7 @@ jobs:
 
       - name: Install just
         if: matrix.os != 'windows-latest'
-        uses: taiki-e/install-action@bfc291e1e39400b67eda124e4a7b4380e93b3390  # v2.65.0
+        uses: taiki-e/install-action@45a93d9c71692daf99a53feb97366fb6f4c3757f  # v2.65.5
         with:
           tool: just
 
