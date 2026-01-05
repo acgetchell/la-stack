@@ -14,3 +14,7 @@ venv/
 .pytest_cache/
 .mypy_cache/
 uv.lock
+/node_modules/
+/.package-lock.json
+/package-lock.json
+/package.json

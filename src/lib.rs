@@ -31,23 +31,33 @@ mod readme_doctests {
     fn solve_5x5_example() {}
 }
 
+mod ldlt;
 mod lu;
 mod matrix;
 mod vector;
 
 use core::fmt;
 
-/// Default absolute pivot tolerance used for singularity detection.
+/// Default absolute threshold used for singularity/degeneracy detection.
 ///
 /// This is intentionally conservative for geometric predicates and small systems.
-pub const DEFAULT_PIVOT_TOL: f64 = 1e-12;
+///
+/// Conceptually, this is an absolute bound for deciding when a scalar should be treated
+/// as "numerically zero" (e.g. LU pivots, LDLT diagonal entries).
+pub const DEFAULT_SINGULAR_TOL: f64 = 1e-12;
+
+/// Default absolute pivot magnitude threshold used for LU pivot selection / singularity detection.
+///
+/// This name is kept for backwards compatibility; prefer [`DEFAULT_SINGULAR_TOL`] when the
+/// tolerance is not specifically about pivot selection.
+pub const DEFAULT_PIVOT_TOL: f64 = DEFAULT_SINGULAR_TOL;
 
 /// Linear algebra errors.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LaError {
     /// The matrix is (numerically) singular.
     Singular {
-        /// The column where a suitable pivot could not be found.
+        /// The factorization column/step where a suitable pivot/diagonal could not be found.
         pivot_col: usize,
     },
     /// A non-finite value (NaN/∞) was encountered.
@@ -75,6 +85,7 @@ impl fmt::Display for LaError {
 
 impl std::error::Error for LaError {}
 
+pub use ldlt::Ldlt;
 pub use lu::Lu;
 pub use matrix::Matrix;
 pub use vector::Vector;
@@ -82,9 +93,9 @@ pub use vector::Vector;
 /// Common imports for ergonomic usage.
 ///
 /// This prelude re-exports the primary types and constants: [`Matrix`], [`Vector`], [`Lu`],
-/// [`LaError`], and [`DEFAULT_PIVOT_TOL`].
+/// [`Ldlt`], [`LaError`], [`DEFAULT_PIVOT_TOL`], and [`DEFAULT_SINGULAR_TOL`].
 pub mod prelude {
-    pub use crate::{DEFAULT_PIVOT_TOL, LaError, Lu, Matrix, Vector};
+    pub use crate::{DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, LaError, Ldlt, Lu, Matrix, Vector};
 }
 
 #[cfg(test)]
@@ -94,8 +105,9 @@ mod tests {
     use approx::assert_abs_diff_eq;
 
     #[test]
-    fn default_pivot_tol_is_expected() {
-        assert_abs_diff_eq!(DEFAULT_PIVOT_TOL, 1e-12, epsilon = 0.0);
+    fn default_singular_tol_is_expected() {
+        assert_abs_diff_eq!(DEFAULT_SINGULAR_TOL, 1e-12, epsilon = 0.0);
+        assert_abs_diff_eq!(DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, epsilon = 0.0);
     }
 
     #[test]
@@ -128,5 +140,6 @@ mod tests {
         let m = Matrix::<2>::identity();
         let v = Vector::<2>::new([1.0, 2.0]);
         let _ = m.lu(DEFAULT_PIVOT_TOL).unwrap().solve_vec(v).unwrap();
+        let _ = m.ldlt(DEFAULT_SINGULAR_TOL).unwrap().solve_vec(v).unwrap();
     }
 }

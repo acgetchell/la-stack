@@ -1,6 +1,6 @@
 [package]
 name = "la-stack"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.92"
 license = "BSD-3-Clause"
@@ -8,16 +8,16 @@ description = "Small, stack-allocated linear algebra for fixed dimensions"
 readme = "README.md"
 documentation = "https://docs.rs/la-stack"
 repository = "https://github.com/acgetchell/la-stack"
-categories = ["mathematics", "science"]
-keywords = ["linear-algebra", "geometry", "const-generics"]
+categories = [ "mathematics", "science" ]
+keywords = [ "linear-algebra", "geometry", "const-generics" ]
 
 [dependencies]
 # Intentionally empty
 
 [dev-dependencies]
 approx = "0.5.1"
-criterion = { version = "0.8.1", features = ["html_reports"] }
-faer = { version = "0.23.2", default-features = false, features = ["std", "linalg"] }
+criterion = { version = "0.8.1", features = [ "html_reports" ] }
+faer = { version = "0.23.2", default-features = false, features = [ "std", "linalg" ] }
 nalgebra = "0.34.1"
 pastey = "0.2.0"
 proptest = "1.9.0"

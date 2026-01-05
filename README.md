@@ -22,6 +22,7 @@ while keeping the API intentionally small and explicit.
 - `Vector<const D: usize>` for fixed-length vectors (`[f64; D]` today)
 - `Matrix<const D: usize>` for fixed-size square matrices (`[[f64; D]; D]` today)
 - `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
+- `Ldlt<const D: usize>` for LDLT factorization without pivoting (solve + det; symmetric SPD/PSD)
 
 ## ✨ Design goals
 
@@ -80,13 +81,24 @@ for (x_i, e_i) in x.iter().zip(expected.iter()) {
 }
 ```
 
+Compute a determinant for a symmetric SPD matrix via LDLT (no pivoting):
+
+```rust
+use la_stack::prelude::*;
+
+let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
+let det = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap().det();
+assert!((det - 8.0).abs() <= 1e-12);
+```
+
 ## 🧩 API at a glance
 
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Fixed-length vector | `new`, `zero`, `dot`, `norm2_sq` |
-| `Matrix<D>` | `[[f64; D]; D]` | Fixed-size square matrix | `from_rows`, `zero`, `identity`, `lu`, `det` |
+| `Matrix<D>` | `[[f64; D]; D]` | Fixed-size square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det` |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
+| `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 
 Storage shown above reflects the current `f64` implementation.
 
@@ -107,11 +119,22 @@ A short contributor workflow:
 
 ```bash
 cargo install just
-just ci           # lint + fast tests + bench compile
-just commit-check # lint + all tests + examples
+just setup        # install/verify dev tools + sync Python deps
+just check        # lint/validate (non-mutating)
+just fix          # apply auto-fixes (mutating)
+just ci           # lint + tests + examples + bench compile
 ```
 
 For the full set of developer commands, see `just --list` and `WARP.md`.
+
+## 📝 Citation
+
+If you use this library in academic work, please cite it using [CITATION.cff](CITATION.cff) (or GitHub's
+"Cite this repository" feature). A Zenodo DOI will be added for tagged releases.
+
+## 📚 References
+
+For canonical references to LU / `LDL^T` algorithms used by this crate, see [REFERENCES.md](REFERENCES.md).
 
 ## 📊 Benchmarks (vs nalgebra/faer)
 
