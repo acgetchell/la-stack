@@ -22,6 +22,18 @@ _ensure-npx:
     set -euo pipefail
     command -v npx >/dev/null || { echo "❌ 'npx' not found. See 'just setup' or install Node.js (for npx tools): https://nodejs.org"; exit 1; }
 
+_ensure-prettier-or-npx:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if command -v prettier >/dev/null; then
+        exit 0
+    fi
+    command -v npx >/dev/null || {
+        echo "❌ Neither 'prettier' nor 'npx' found. Install via npm (recommended): npm i -g prettier"
+        echo "   Or install Node.js (for npx): https://nodejs.org"
+        exit 1
+    }
+
 _ensure-shellcheck:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -517,7 +529,7 @@ validate-json: _ensure-jq
     fi
 
 # YAML
-yaml-fix:
+yaml-fix: _ensure-prettier-or-npx
     #!/usr/bin/env bash
     set -euo pipefail
     files=()

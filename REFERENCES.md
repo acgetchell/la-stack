@@ -20,7 +20,7 @@ See references [1-3] below.
 ### LDL^T factorization (symmetric SPD/PSD)
 
 The LDL^T (often abbreviated "LDLT") implementation in `la-stack` is intended for symmetric positive
- definite (SPD) and positive semi-definite (PSD) matrices (e.g. Gram matrices), and does not perform
+definite (SPD) and positive semi-definite (PSD) matrices (e.g. Gram matrices), and does not perform
 pivoting.
 
 For background on the SPD/PSD setting, see [4-5]. For pivoted variants used for symmetric *indefinite*
