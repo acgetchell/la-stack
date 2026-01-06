@@ -81,14 +81,25 @@ for (x_i, e_i) in x.iter().zip(expected.iter()) {
 }
 ```
 
-Compute a determinant for a symmetric SPD matrix via LDLT (no pivoting):
+Compute a determinant for a symmetric SPD matrix via LDLT (no pivoting).
+
+For symmetric positive-definite matrices, `LDL^T` is essentially a square-root-free form of the Cholesky decomposition
+(you can recover a Cholesky factor by absorbing `sqrt(D)` into `L`):
 
 ```rust
 use la_stack::prelude::*;
 
-let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
+// This matrix is symmetric positive-definite (A = L*L^T) so LDLT works without pivoting.
+let a = Matrix::<5>::from_rows([
+    [1.0, 1.0, 0.0, 0.0, 0.0],
+    [1.0, 2.0, 1.0, 0.0, 0.0],
+    [0.0, 1.0, 2.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0, 2.0, 1.0],
+    [0.0, 0.0, 0.0, 1.0, 2.0],
+]);
+
 let det = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap().det();
-assert!((det - 8.0).abs() <= 1e-12);
+assert!((det - 1.0).abs() <= 1e-12);
 ```
 
 ## 🧩 API at a glance

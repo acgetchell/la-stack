@@ -340,14 +340,14 @@ setup-tools:
         install_with_brew node
         echo ""
     else
-        echo "❌ 'brew' not found."
+        echo "⚠️  'brew' not found; skipping automatic tool installation."
         if [[ "$os" == "Darwin" ]]; then
-            echo "Install Homebrew from https://brew.sh and re-run: just setup-tools"
-            exit 1
+            echo "Install Homebrew from https://brew.sh (recommended), or install the following tools manually:"
+        else
+            echo "Install the following tools via your system package manager:"
         fi
-        echo "Install the following tools via your system package manager, then re-run: just setup-tools"
         echo "  uv, jq, taplo, yamllint, shfmt, shellcheck, actionlint, node+npx"
-        exit 1
+        echo ""
     fi
 
     echo "Ensuring Rust toolchain + components..."
@@ -517,7 +517,7 @@ validate-json: _ensure-jq
     fi
 
 # YAML
-yaml-fix: _ensure-npx
+yaml-fix:
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -526,8 +526,26 @@ yaml-fix: _ensure-npx
     done < <(git ls-files -z '*.yml' '*.yaml')
     if [ "${#files[@]}" -gt 0 ]; then
         echo "📝 prettier --write (YAML, ${#files[@]} files)"
+
+        cmd=()
+        if command -v prettier >/dev/null; then
+            cmd=(prettier --write --print-width 120)
+        elif command -v npx >/dev/null; then
+            # Prefer non-interactive installs when supported (newer npm/npx).
+            # NOTE: With `set -u`, expanding an empty array like "${arr[@]}" can error on older bash.
+            cmd=(npx)
+            if npx --help 2>&1 | grep -q -- '--yes'; then
+                cmd+=(--yes)
+            fi
+            cmd+=(prettier --write --print-width 120)
+        else
+            echo "❌ 'prettier' not found. Install via npm (recommended): npm i -g prettier"
+            echo "   Or install Node.js (for npx): https://nodejs.org"
+            exit 1
+        fi
+
         # Use CLI flags instead of a repo-wide prettier config: keeps the scope to YAML only.
-        printf '%s\0' "${files[@]}" | xargs -0 -n100 npx prettier --write --print-width 120
+        printf '%s\0' "${files[@]}" | xargs -0 -n100 "${cmd[@]}"
     else
         echo "No YAML files found to format."
     fi

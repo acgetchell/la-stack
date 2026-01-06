@@ -29,6 +29,23 @@ mod readme_doctests {
     /// }
     /// ```
     fn solve_5x5_example() {}
+
+    /// ```rust
+    /// use la_stack::prelude::*;
+    ///
+    /// // This matrix is symmetric positive-definite (A = L*L^T) so LDLT works without pivoting.
+    /// let a = Matrix::<5>::from_rows([
+    ///     [1.0, 1.0, 0.0, 0.0, 0.0],
+    ///     [1.0, 2.0, 1.0, 0.0, 0.0],
+    ///     [0.0, 1.0, 2.0, 1.0, 0.0],
+    ///     [0.0, 0.0, 1.0, 2.0, 1.0],
+    ///     [0.0, 0.0, 0.0, 1.0, 2.0],
+    /// ]);
+    ///
+    /// let det = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap().det();
+    /// assert!((det - 1.0).abs() <= 1e-12);
+    /// ```
+    fn det_5x5_ldlt_example() {}
 }
 
 mod ldlt;

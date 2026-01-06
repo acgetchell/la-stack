@@ -136,7 +136,7 @@ jobs:
 
           orig_dir="$PWD"
           cd "$tmpdir"
-          grep -F "  $TARBALL" "$CHECKSUMS_FILE" > checksum.txt
+          awk -v f="$TARBALL" '$NF==f {print; found=1} END {exit found?0:1}' "$CHECKSUMS_FILE" > checksum.txt
           verify_sha256 checksum.txt
           cd "$orig_dir"
 
@@ -177,7 +177,7 @@ jobs:
 
           (
             cd "$tmpdir"
-            grep -F "  ${SHFMT_ASSET}" sha256sums.txt > checksum.txt
+            awk -v f="${SHFMT_ASSET}" '$NF==f {print; found=1} END {exit found?0:1}' sha256sums.txt > checksum.txt
             sha256sum -c checksum.txt
           )
 
@@ -210,7 +210,7 @@ jobs:
 
           (
             cd "$tmpdir"
-            grep -F "  ${SHFMT_ASSET}" sha256sums.txt > checksum.txt
+            awk -v f="${SHFMT_ASSET}" '$NF==f {print; found=1} END {exit found?0:1}' sha256sums.txt > checksum.txt
             shasum -a 256 -c checksum.txt
           )
 
