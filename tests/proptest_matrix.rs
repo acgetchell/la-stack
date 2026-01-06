@@ -14,6 +14,16 @@ fn small_nonzero_f64() -> impl Strategy<Value = f64> {
     prop_oneof![(-1000i16..=-1i16), (1i16..=1000i16)].prop_map(|x| f64::from(x) / 10.0)
 }
 
+fn small_ldlt_l_entry() -> impl Strategy<Value = f64> {
+    // Keep entries small so SPD construction stays well-conditioned.
+    (-50i16..=50i16).prop_map(|x| f64::from(x) / 100.0)
+}
+
+fn positive_ldlt_diag() -> impl Strategy<Value = f64> {
+    // Positive diagonal, comfortably above DEFAULT_PIVOT_TOL.
+    (1i16..=20i16).prop_map(|x| f64::from(x) / 10.0)
+}
+
 macro_rules! gen_public_api_matrix_proptests {
     ($d:literal) => {
         paste! {
@@ -96,6 +106,65 @@ macro_rules! gen_public_api_matrix_proptests {
                     for i in 0..$d {
                         let expected_x = b_arr[i] / diag[i];
                         assert_abs_diff_eq!(x[i], expected_x, epsilon = 1e-12);
+                    }
+                }
+
+                #[test]
+                fn [<matrix_ldlt_det_matches_lu_det_for_spd_ $d d>](
+                    l_raw in proptest::array::[<uniform $d>](
+                        proptest::array::[<uniform $d>](small_ldlt_l_entry()),
+                    ),
+                    d_diag in proptest::array::[<uniform $d>](positive_ldlt_diag()),
+                    x_true in proptest::array::[<uniform $d>](small_f64()),
+                ) {
+                    // Construct an SPD matrix A = L * diag(D) * L^T, where L is unit-lower-triangular
+                    // and D has strictly positive entries.
+                    let mut l = [[0.0f64; $d]; $d];
+                    for i in 0..$d {
+                        for j in 0..$d {
+                            l[i][j] = if i == j {
+                                1.0
+                            } else if i > j {
+                                l_raw[i][j]
+                            } else {
+                                0.0
+                            };
+                        }
+                    }
+
+                    let mut a_rows = [[0.0f64; $d]; $d];
+                    for i in 0..$d {
+                        for j in 0..=i {
+                            let mut sum = 0.0;
+                            for k in 0..=j {
+                                sum = (l[i][k] * d_diag[k]).mul_add(l[j][k], sum);
+                            }
+                            a_rows[i][j] = sum;
+                            a_rows[j][i] = sum;
+                        }
+                    }
+
+                    let mut b_arr = [0.0f64; $d];
+                    for i in 0..$d {
+                        let mut sum = 0.0;
+                        for j in 0..$d {
+                            sum = a_rows[i][j].mul_add(x_true[j], sum);
+                        }
+                        b_arr[i] = sum;
+                    }
+
+                    let a = Matrix::<$d>::from_rows(a_rows);
+                    let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
+
+                    let det_ldlt = ldlt.det();
+                    let det_lu = a.det(DEFAULT_PIVOT_TOL).unwrap();
+                    assert_abs_diff_eq!(det_ldlt, det_lu, epsilon = 1e-8);
+
+                    let b = Vector::<$d>::new(b_arr);
+                    let x = ldlt.solve_vec(b).unwrap().into_array();
+
+                    for i in 0..$d {
+                        assert_abs_diff_eq!(x[i], x_true[i], epsilon = 1e-8);
                     }
                 }
             }

@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "la-stack: Fast, stack-allocated linear algebra for fixed dimensions in Rust"
+version: 0.1.2
+url: "https://github.com/acgetchell/la-stack"
+repository-code: "https://github.com/acgetchell/la-stack"
+authors:
+  - family-names: "Getchell"
+    given-names: "Adam"
+    email: "adam@adamgetchell.org"
+    orcid: "https://orcid.org/0000-0002-0797-0021"
+keywords:
+  - "linear algebra"
+  - "geometry"
+  - "const generics"
+  - "LU"
+  - "LDLT"
+  - "Rust"
+abstract: >-
+  la-stack is a Rust library providing fast, stack-allocated linear algebra primitives
+  and factorization routines (LU with partial pivoting and LDLT for symmetric SPD/PSD matrices)
+  for fixed small dimensions using const generics.
+license: BSD-3-Clause

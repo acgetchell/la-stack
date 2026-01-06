@@ -102,7 +102,8 @@ impl<const D: usize> Lu<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::Singular`] if a diagonal of `U` is (numerically) zero.
+    /// Returns [`LaError::Singular`] if a diagonal entry of `U` satisfies `|u_ii| <= tol`, where
+    /// `tol` is the tolerance that was used during factorization.
     /// Returns [`LaError::NonFinite`] if NaN/∞ is detected.
     #[inline]
     pub fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
