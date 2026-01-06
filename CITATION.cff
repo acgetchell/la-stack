@@ -5,6 +5,10 @@ title: "la-stack: Fast, stack-allocated linear algebra for fixed dimensions in R
 version: 0.1.2
 url: "https://github.com/acgetchell/la-stack"
 repository-code: "https://github.com/acgetchell/la-stack"
+identifiers:
+  - description: "Zenodo concept DOI (all versions)"
+    type: doi
+    value: "10.5281/zenodo.18158926"
 authors:
   - family-names: "Getchell"
     given-names: "Adam"
