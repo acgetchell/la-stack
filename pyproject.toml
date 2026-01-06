@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=65.0.0", "wheel"]
+requires = [ "setuptools>=65.0.0", "wheel" ]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,11 +8,11 @@ version = "0.1.0"
 description = "Python utility scripts for the la-stack Rust library"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "BSD-3-Clause"}
+license = { text = "BSD-3-Clause" }
 authors = [
-    {name = "Adam Getchell", email = "adam@adamgetchell.org"},
+    { name = "Adam Getchell", email = "adam@adamgetchell.org" },
 ]
-keywords = ["linear-algebra", "benchmarking", "utilities", "la-stack"]
+keywords = [ "linear-algebra", "benchmarking", "utilities", "la-stack" ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -28,7 +28,7 @@ classifiers = [
 ]
 
 # No runtime dependencies currently; scripts rely on the standard library.
-dependencies = []
+dependencies = [  ]
 
 [project.urls]
 "Homepage" = "https://github.com/acgetchell/la-stack"
@@ -41,43 +41,43 @@ criterion-dim-plot = "criterion_dim_plot:main"
 
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
-package-dir = {"" = "scripts"}
-py-modules = ["criterion_dim_plot"]
+package-dir = { "" = "scripts" }
+py-modules = [ "criterion_dim_plot" ]
 
 [tool.ruff]
 line-length = 150
 target-version = "py311"
-src = ["scripts"]
+src = [ "scripts" ]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "YTT", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "EM", "EXE", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "TID", "TCH", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "RUF"]
-fixable = ["ALL"]
-unfixable = []
+select = [ "E", "F", "W", "I", "N", "UP", "YTT", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "EM", "EXE", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "TID", "TCH", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "RUF" ]
+fixable = [ "ALL" ]
+unfixable = [  ]
 ignore = [
     # Formatter conflicts
-    "COM812",  # Trailing comma missing (conflicts with formatter)
-    "ISC001",  # Implicitly concatenated string literals (conflicts with formatter)
+    "COM812", # Trailing comma missing (conflicts with formatter)
+    "ISC001", # Implicitly concatenated string literals (conflicts with formatter)
 
     # CLI script patterns
     "PLR2004", # Magic value used in comparison - OK for CLI constants and thresholds
-    "FBT001",  # Boolean-typed positional argument - OK for CLI flags
-    "FBT002",  # Boolean default positional argument - OK for CLI flags
-    "BLE001",  # Do not catch blind exception - OK for CLI robustness
-    "T201",    # print found - OK for CLI output
-    "TRY300",  # Consider moving statement to else block - OK for CLI control flow
-    "TRY301",  # Abstract raise to inner function - OK for straightforward CLI error handling
-    "ARG001",  # Unused function argument - common in callbacks
-    "ERA001",  # Found commented-out code - OK for explanatory comments
-    "EXE001",  # Shebang present but file not executable - handled by packaging
-    "PTH123",  # open() should be replaced by Path.open() - OK for some call sites
-    "EM102",   # Exception must not use f-string - OK for CLI error messages
-    "TRY003",  # Avoid specifying long messages outside exception class - OK for CLI reporting
+    "FBT001", # Boolean-typed positional argument - OK for CLI flags
+    "FBT002", # Boolean default positional argument - OK for CLI flags
+    "BLE001", # Do not catch blind exception - OK for CLI robustness
+    "T201", # print found - OK for CLI output
+    "TRY300", # Consider moving statement to else block - OK for CLI control flow
+    "TRY301", # Abstract raise to inner function - OK for straightforward CLI error handling
+    "ARG001", # Unused function argument - common in callbacks
+    "ERA001", # Found commented-out code - OK for explanatory comments
+    "EXE001", # Shebang present but file not executable - handled by packaging
+    "PTH123", # open() should be replaced by Path.open() - OK for some call sites
+    "EM102", # Exception must not use f-string - OK for CLI error messages
+    "TRY003", # Avoid specifying long messages outside exception class - OK for CLI reporting
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/tests/**/*.py" = [
-    "S101",    # asserts are fine in tests
-    "SLF001",  # tests may call internal helpers
+    "S101", # asserts are fine in tests
+    "SLF001", # tests may call internal helpers
 ]
 
 [tool.ruff.format]
@@ -85,6 +85,14 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = [ "-ra", "--strict-markers", "--strict-config", "--color=yes" ]
+testpaths = [ "scripts/tests" ]
+python_files = [ "test_*.py", "*_test.py" ]
+python_classes = [ "Test*" ]
+python_functions = [ "test_*" ]
 
 [tool.mypy]
 python_version = "3.11"

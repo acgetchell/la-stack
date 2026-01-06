@@ -1,6 +1,7 @@
 //! Fixed-size, stack-allocated square matrices.
 
 use crate::LaError;
+use crate::ldlt::Ldlt;
 use crate::lu::Lu;
 
 /// Fixed-size square matrix `D×D`, stored inline.
@@ -152,11 +153,47 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::Singular`] if no suitable pivot (|pivot| > `tol`) exists for a column.
+    /// Returns [`LaError::Singular`] if, for some column `k`, the largest-magnitude candidate pivot
+    /// in that column satisfies `|pivot| <= tol` (so no numerically usable pivot exists).
     /// Returns [`LaError::NonFinite`] if NaN/∞ is detected during factorization.
     #[inline]
     pub fn lu(self, tol: f64) -> Result<Lu<D>, LaError> {
         Lu::factor(self, tol)
+    }
+
+    /// Compute an LDLT factorization (`A = L D Lᵀ`) without pivoting.
+    ///
+    /// This is intended for symmetric positive definite (SPD) and positive semi-definite (PSD)
+    /// matrices such as Gram matrices.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
+    /// let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL)?;
+    ///
+    /// // det(A) = 8
+    /// assert!((ldlt.det() - 8.0).abs() <= 1e-12);
+    ///
+    /// // Solve A x = b
+    /// let b = Vector::<2>::new([1.0, 2.0]);
+    /// let x = ldlt.solve_vec(b)?.into_array();
+    /// assert!((x[0] - (-0.125)).abs() <= 1e-12);
+    /// assert!((x[1] - 0.75).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::Singular`] if, for some step `k`, the required diagonal entry `d = D[k,k]`
+    /// is `<= tol` (non-positive or too small). This treats PSD degeneracy (and indefinite inputs)
+    /// as singular/degenerate.
+    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected during factorization.
+    #[inline]
+    pub fn ldlt(self, tol: f64) -> Result<Ldlt<D>, LaError> {
+        Ldlt::factor(self, tol)
     }
 
     /// Determinant computed via LU decomposition.
