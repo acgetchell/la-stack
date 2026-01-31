@@ -1,6 +1,6 @@
-# WARP.md
+# AGENTS.md
 
-This file provides guidance to WARP (warp.dev) when working with code in this repository.
+This file provides guidance for automated agents (including Warp at warp.dev) when working with code in this repository.
 
 ## Priorities
 

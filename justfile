@@ -300,6 +300,7 @@ python-sync: _ensure-uv
     uv sync --group dev
 
 python-typecheck: python-sync
+    uv run ty check scripts/
     uv run mypy scripts/criterion_dim_plot.py
 
 # Setup

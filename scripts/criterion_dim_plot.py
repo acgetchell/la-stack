@@ -40,6 +40,9 @@ class PlotRequest:
     title: str
     stat: str
     dims: tuple[int, ...]
+    la_label: str
+    na_label: str
+    fa_label: str
     log_y: bool
 
 
@@ -143,6 +146,92 @@ def _discover_dims(criterion_dir: Path) -> list[int]:
             continue
         dims.append(d)
     return sorted(dims)
+
+
+def _strip_toml_comment(line: str) -> str:
+    return line.split("#", 1)[0].strip()
+
+
+def _read_cargo_package_version(cargo_toml: Path) -> str | None:
+    if not cargo_toml.exists():
+        return None
+
+    in_package = False
+    for raw_line in cargo_toml.read_text(encoding="utf-8").splitlines():
+        line = _strip_toml_comment(raw_line)
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            in_package = line == "[package]"
+            continue
+        if in_package:
+            match = re.match(r'version\s*=\s*"([^"]+)"', line)
+            if match:
+                return match.group(1)
+    return None
+
+
+def _read_cargo_dependency_versions(cargo_toml: Path, names: set[str]) -> dict[str, str]:
+    if not cargo_toml.exists():
+        return {}
+
+    versions: dict[str, str] = {}
+    section: str | None = None
+
+    for raw_line in cargo_toml.read_text(encoding="utf-8").splitlines():
+        line = _strip_toml_comment(raw_line)
+        if not line:
+            continue
+        section_match = re.match(r"^\[([^\]]+)\]$", line)
+        if section_match:
+            section = section_match.group(1)
+            continue
+        if section not in {"dependencies", "dev-dependencies", "build-dependencies"}:
+            continue
+
+        dep_match = re.match(r"^([A-Za-z0-9_-]+)\s*=\s*(.+)$", line)
+        if not dep_match:
+            continue
+
+        name = dep_match.group(1)
+        if name not in names:
+            continue
+
+        value = dep_match.group(2).strip()
+        if value.startswith("{"):
+            version_match = re.search(r'version\s*=\s*"([^"]+)"', value)
+            if version_match:
+                versions[name] = version_match.group(1)
+        else:
+            version_match = re.match(r'^"([^"]+)"$', value)
+            if version_match:
+                versions[name] = version_match.group(1)
+
+    return versions
+
+
+def _detect_versions(root: Path) -> dict[str, str]:
+    cargo_toml = root / "Cargo.toml"
+    package_version = _read_cargo_package_version(cargo_toml) or "unknown"
+    dep_versions = _read_cargo_dependency_versions(cargo_toml, {"nalgebra", "faer"})
+
+    return {
+        "la-stack": package_version,
+        "nalgebra": dep_versions.get("nalgebra", "unknown"),
+        "faer": dep_versions.get("faer", "unknown"),
+    }
+
+
+def _print_versions(versions: dict[str, str]) -> None:
+    order = ["la-stack", "nalgebra", "faer"]
+    text = ", ".join(f"{name}={versions.get(name, 'unknown')}" for name in order)
+    print(f"Detected crate versions for legend: {text}", file=sys.stderr)
+
+
+def _format_legend_label(name: str, version: str) -> str:
+    if version == "unknown":
+        return name
+    return f"{name} v{version}"
 
 
 def _read_estimate(estimates_json: Path, stat: str) -> tuple[float, float, float]:
@@ -266,9 +355,9 @@ def _render_svg_with_gnuplot(req: PlotRequest) -> None:
     gp_lines.extend(
         [
             "plot \\",
-            f"  {_gp_quote(str(req.csv_path))} using 1:2:3:4 with yerrorlines ls 1 title 'la-stack', \\",
-            f"  {_gp_quote(str(req.csv_path))} using 1:5:6:7 with yerrorlines ls 2 title 'nalgebra', \\",
-            f"  {_gp_quote(str(req.csv_path))} using 1:8:9:10 with yerrorlines ls 3 title 'faer'",
+            f"  {_gp_quote(str(req.csv_path))} using 1:2:3:4 with yerrorlines ls 1 title {_gp_quote(req.la_label)}, \\",
+            f"  {_gp_quote(str(req.csv_path))} using 1:5:6:7 with yerrorlines ls 2 title {_gp_quote(req.na_label)}, \\",
+            f"  {_gp_quote(str(req.csv_path))} using 1:8:9:10 with yerrorlines ls 3 title {_gp_quote(req.fa_label)}",
         ]
     )
 
@@ -437,6 +526,13 @@ def main(argv: list[str] | None = None) -> int:
 
     root = _repo_root()
 
+    versions = _detect_versions(root)
+    _print_versions(versions)
+
+    la_label = _format_legend_label("la-stack", versions.get("la-stack", "unknown"))
+    na_label = _format_legend_label("nalgebra", versions.get("nalgebra", "unknown"))
+    fa_label = _format_legend_label("faer", versions.get("faer", "unknown"))
+
     criterion_dir = _resolve_under_root(root, args.criterion_dir)
 
     dims = _discover_dims(criterion_dir) if criterion_dir.exists() else []
@@ -477,6 +573,9 @@ def main(argv: list[str] | None = None) -> int:
         title=title,
         stat=args.stat,
         dims=tuple(dims_present),
+        la_label=la_label,
+        na_label=na_label,
+        fa_label=fa_label,
         log_y=args.log_y,
     )
 
