@@ -76,6 +76,7 @@
     "sarif",
     "Schreiber",
     "semgrep",
+    "serde",
     "setuptools",
     "shellcheck",
     "SHFMT",

@@ -137,7 +137,7 @@ just fix          # apply auto-fixes (mutating)
 just ci           # lint + tests + examples + bench compile
 ```
 
-For the full set of developer commands, see `just --list` and `WARP.md`.
+For the full set of developer commands, see `just --list` and `AGENTS.md`.
 
 ## 📝 Citation
 
