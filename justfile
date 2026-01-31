@@ -276,7 +276,7 @@ plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false": pytho
     uv run criterion-dim-plot "${args[@]}"
 
 # Plot + update the README benchmark table between BENCH_TABLE markers.
-plot-vs-linalg-readme metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
+plot-vs-linalg-readme metric="lu_solve" stat="median" sample="new" log_y="true": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     args=(--metric "{{metric}}" --stat "{{stat}}" --sample "{{sample}}" --update-readme)
