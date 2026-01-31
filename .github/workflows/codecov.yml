@@ -48,7 +48,7 @@ jobs:
           fi
 
       - name: Install just
-        uses: taiki-e/install-action@cc33365ec7e3350bc47bf935f247582cc6f68344  # v2.65.12
+        uses: taiki-e/install-action@29feb09ac22f4fde4175fe7b5c3548952234f69a  # v2.67.17
         with:
           tool: just
 
