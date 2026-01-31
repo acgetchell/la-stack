@@ -75,12 +75,12 @@ action-lint: _ensure-actionlint
 
 # Benchmarks
 bench:
-    cargo bench
+    cargo bench --features bench
 
 # Compile benchmarks without running them, treating warnings as errors.
 # This catches bench/release-profile-only warnings that won't show up in normal debug-profile runs.
 bench-compile:
-    RUSTFLAGS='-D warnings' cargo bench --no-run
+    RUSTFLAGS='-D warnings' cargo bench --no-run --features bench
 
 # Bench the la-stack vs nalgebra/faer comparison suite.
 bench-vs-linalg filter="":
@@ -88,9 +88,9 @@ bench-vs-linalg filter="":
     set -euo pipefail
     filter="{{filter}}"
     if [ -n "$filter" ]; then
-        cargo bench --bench vs_linalg -- "$filter"
+        cargo bench --features bench --bench vs_linalg -- "$filter"
     else
-        cargo bench --bench vs_linalg
+        cargo bench --features bench --bench vs_linalg
     fi
 
 # Quick iteration (reduced runtime, no Criterion HTML).
@@ -99,9 +99,9 @@ bench-vs-linalg-quick filter="":
     set -euo pipefail
     filter="{{filter}}"
     if [ -n "$filter" ]; then
-        cargo bench --bench vs_linalg -- "$filter" --quick --noplot
+        cargo bench --features bench --bench vs_linalg -- "$filter" --quick --noplot
     else
-        cargo bench --bench vs_linalg -- --quick --noplot
+        cargo bench --features bench --bench vs_linalg -- --quick --noplot
     fi
 
 # Build commands
@@ -139,7 +139,7 @@ clippy:
 # Common tarpaulin arguments for all coverage runs
 # Note: -t 300 sets per-test timeout to 5 minutes (needed for slow CI environments)
 _coverage_base_args := '''--exclude-files 'benches/*' --exclude-files 'examples/*' \
-  --workspace --lib --tests --all-features \
+  --workspace --lib --tests \
   -t 300 --verbose --implicit-test-threads'''
 
 # Coverage analysis for local development (HTML output)
