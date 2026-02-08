@@ -58,7 +58,7 @@ jobs:
 
       - name: Install just
         if: matrix.os != 'windows-latest'
-        uses: taiki-e/install-action@29feb09ac22f4fde4175fe7b5c3548952234f69a # v2.67.17
+        uses: taiki-e/install-action@f176c07a0a40cbfdd08ee9aa8bf1655701d11e69 # v2.67.25
         with:
           tool: just
 
@@ -81,7 +81,7 @@ jobs:
 
       - name: Install taplo (for TOML formatting and linting)
         if: matrix.os != 'windows-latest'
-        uses: taiki-e/install-action@29feb09ac22f4fde4175fe7b5c3548952234f69a # v2.67.17
+        uses: taiki-e/install-action@f176c07a0a40cbfdd08ee9aa8bf1655701d11e69 # v2.67.25
         with:
           tool: taplo-cli
 
