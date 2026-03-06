@@ -49,6 +49,12 @@ _ensure-taplo:
     set -euo pipefail
     command -v taplo >/dev/null || { echo "❌ 'taplo' not found. See 'just setup' or install: brew install taplo (or: cargo install taplo-cli)"; exit 1; }
 
+# Internal helper: ensure typos-cli is installed
+_ensure-typos:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v typos >/dev/null || { echo "❌ 'typos' not found. See 'just setup-tools' or install: cargo install typos-cli"; exit 1; }
+
 _ensure-uv:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -379,6 +385,13 @@ setup-tools:
         echo "  ✓ samply"
     fi
 
+    if ! have typos; then
+        echo "  ⏳ Installing typos-cli (cargo)..."
+        cargo install --locked typos-cli
+    else
+        echo "  ✓ typos"
+    fi
+
     if ! have cargo-tarpaulin; then
         if [[ "$os" == "Linux" ]]; then
             echo "  ⏳ Installing cargo-tarpaulin (cargo)..."
@@ -393,7 +406,7 @@ setup-tools:
     echo ""
     echo "Verifying required commands are available..."
     missing=0
-    for cmd in uv jq taplo yamllint shfmt shellcheck actionlint node npx; do
+    for cmd in uv jq taplo yamllint shfmt shellcheck actionlint node npx typos; do
         if have "$cmd"; then
             echo "  ✓ $cmd"
         else
@@ -442,22 +455,42 @@ shell-fmt: _ensure-shfmt
 
 shell-lint: shell-check
 
-# Spell check (cspell)
-#
-# Requires either:
-# - `cspell` on PATH (recommended: `npm i -g cspell`), or
-# - `npx` (will run cspell without a global install)
-spell-check:
+# Spell check (typos)
+spell-check: _ensure-typos
     #!/usr/bin/env bash
     set -euo pipefail
-    if command -v cspell >/dev/null; then
-        cspell lint --config cspell.json --no-progress --gitignore --cache --dot --exclude cspell.json .
-    elif command -v npx >/dev/null; then
-        npx cspell lint --config cspell.json --no-progress --gitignore --cache --dot --exclude cspell.json .
+    files=()
+    # Use -z for NUL-delimited output to handle filenames with spaces.
+    #
+    # Note: For renames/copies, `git status --porcelain -z` emits *two* NUL-separated paths.
+    # The ordering can differ depending on the porcelain output, so we read both and
+    # spell-check whichever one exists on disk.
+    while IFS= read -r -d '' status_line; do
+        status="${status_line:0:2}"
+        filename="${status_line:3}"
+
+        # For renames/copies, consume the second path token to keep parsing in sync.
+        # Prefer the path that exists on disk to avoid passing stale paths to typos.
+        if [[ "$status" == *"R"* || "$status" == *"C"* ]]; then
+            if IFS= read -r -d '' other_path; then
+                if [ ! -e "$filename" ] && [ -e "$other_path" ]; then
+                    filename="$other_path"
+                fi
+            fi
+        fi
+
+        # Skip deletions (file may no longer exist).
+        if [[ "$status" == *"D"* ]]; then
+            continue
+        fi
+
+        files+=("$filename")
+    done < <(git status --porcelain -z --ignored=no)
+    if [ "${#files[@]}" -gt 0 ]; then
+        # Exclude typos.toml itself: it intentionally contains allowlisted fragments.
+        printf '%s\0' "${files[@]}" | xargs -0 -n100 typos --config typos.toml --force-exclude --exclude typos.toml --
     else
-        echo "❌ cspell not found. Install via npm (recommended): npm i -g cspell"
-        echo "   Or ensure npx is available (Node.js)."
-        exit 1
+        echo "No modified files to spell-check."
     fi
 
 # Testing

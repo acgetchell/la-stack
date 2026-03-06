@@ -29,7 +29,7 @@ When making changes in this repo, prioritize (in order):
 - Python tests: `just test-python`
 - Run a single test (by name filter): `cargo test solve_2x2_basic` (or the full path: `cargo test lu::tests::solve_2x2_basic`)
 - Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5`)
-- Spell check: `just spell-check` (uses `cspell.json` at repo root; keep the `words` list sorted lexicographically)
+- Spell check: `just spell-check` (uses `typos.toml` at repo root; add false positives to `[default.extend-words]`)
 
 ## Code structure (big picture)
 

@@ -1,0 +1,31 @@
+# Configuration for typos-cli (https://github.com/crate-ci/typos)
+
+[files]
+# Avoid scanning generated/third-party directories and auto-generated files.
+extend-exclude = [
+    ".git/**",
+    "target/**",
+    "coverage/**",
+    "node_modules/**",
+    "venv/**",
+    ".venv/**",
+    ".mypy_cache/**",
+    ".ruff_cache/**",
+    ".pytest_cache/**",
+]
+
+[default.extend-words]
+# Domain terms that typos suggests "fixing" but are correct in this repo.
+# Author / person names
+Brezinski = "Brezinski"
+Businger = "Businger"
+Getchell = "Getchell"
+Higham = "Higham"
+Parlett = "Parlett"
+Schreiber = "Schreiber"
+Tikhomirov = "Tikhomirov"
+Trefethen = "Trefethen"
+# Math / crate terms
+faer = "faer"
+frhs = "frhs"
+nrhs = "nrhs"

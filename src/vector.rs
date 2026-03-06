@@ -79,7 +79,7 @@ impl<const D: usize> Vector<D> {
     /// ```
     #[inline]
     #[must_use]
-    pub fn dot(self, other: Self) -> f64 {
+    pub const fn dot(self, other: Self) -> f64 {
         let mut acc = 0.0;
         let mut i = 0;
         while i < D {
@@ -100,7 +100,7 @@ impl<const D: usize> Vector<D> {
     /// ```
     #[inline]
     #[must_use]
-    pub fn norm2_sq(self) -> f64 {
+    pub const fn norm2_sq(self) -> f64 {
         self.dot(self)
     }
 }
