@@ -97,7 +97,11 @@ macro_rules! gen_public_api_matrix_proptests {
                         }
                         acc
                     };
-                    assert_abs_diff_eq!(det, expected_det, epsilon = 1e-12);
+                    // The closed-form and LU paths evaluate the diagonal
+                    // product in different orders, so we allow a few ULPs of
+                    // relative error (floor 1e-12 for near-zero determinants).
+                    let eps = expected_det.abs().mul_add(1e-12, 1e-12);
+                    assert_abs_diff_eq!(det, expected_det, epsilon = eps);
 
                     let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
                     let b = Vector::<$d>::new(b_arr);
