@@ -31,7 +31,8 @@ while keeping the API intentionally small and explicit.
 - ✅ Const-generic dimensions (no dynamic sizes)
 - ✅ `const fn` where possible (compile-time evaluation of determinants, dot products, etc.)
 - ✅ Explicit algorithms (LU, solve, determinant)
-- ✅ No runtime dependencies (dev-dependencies are for contributors only)
+- ✅ Robust geometric predicates via optional exact arithmetic (`det_sign_exact`)
+- ✅ No runtime dependencies by default (optional features may add deps)
 - ✅ Stack storage only (no heap allocation in core types)
 - ✅ `unsafe` forbidden
 
@@ -44,8 +45,8 @@ while keeping the API intentionally small and explicit.
 ## 🔢 Scalar types
 
 Today, the core types are implemented for `f64`. The intent is to support `f32` and `f64`
-(and `f128` if/when Rust gains a stable primitive for it). Longer term, we may add optional
-arbitrary-precision support (e.g. via `rug`) depending on performance.
+(and `f128` if/when Rust gains a stable primitive for it). Arbitrary-precision arithmetic
+is available via the optional `"exact"` feature (see below).
 
 ## 🚀 Quickstart
 
@@ -53,7 +54,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-la-stack = "0.1"
+la-stack = "0.2"
 ```
 
 Solve a 5×5 system via LU:
@@ -130,27 +131,62 @@ assert_eq!(DET, Some(30.0));
 The public `det()` method automatically dispatches through the closed-form path
 for D ≤ 4 and falls back to LU for D ≥ 5 — no API change needed.
 
+## 🔬 Exact determinant sign (`"exact"` feature)
+
+The default build has **zero runtime dependencies**.  Enable the optional
+`exact` Cargo feature to add `det_sign_exact()`, which returns the provably
+correct sign (−1, 0, or +1) of the determinant using adaptive-precision
+arithmetic (this pulls in `num-bigint` and `num-rational` for `BigRational`):
+
+```toml
+[dependencies]
+la-stack = { version = "0.2", features = ["exact"] }
+```
+
+```rust,ignore
+use la_stack::prelude::*;
+
+let m = Matrix::<3>::from_rows([
+    [1.0, 2.0, 3.0],
+    [4.0, 5.0, 6.0],
+    [7.0, 8.0, 9.0],
+]);
+assert_eq!(m.det_sign_exact(), 0); // exactly singular
+```
+
+For D ≤ 4, a fast f64 filter (error-bounded `det_direct()`) resolves the sign
+without allocating.  Only near-degenerate or large (D ≥ 5) matrices fall through
+to the exact Bareiss algorithm in `BigRational`.
+
 ## 🧩 API at a glance
 
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Fixed-length vector | `new`, `zero`, `dot`, `norm2_sq` |
-| `Matrix<D>` | `[[f64; D]; D]` | Fixed-size square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det`, `det_direct` |
+| `Matrix<D>` | `[[f64; D]; D]` | Fixed-size square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det`, `det_direct`, `det_sign_exact`¹ |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 
 Storage shown above reflects the current `f64` implementation.
 
+¹ Requires `features = ["exact"]`.
+
 ## 📋 Examples
 
 The `examples/` directory contains small, runnable programs:
 
+- **`solve_5x5`** — solve a 5×5 system via LU with partial pivoting
+- **`det_5x5`** — determinant of a 5×5 matrix via LU
+- **`const_det_4x4`** — compile-time 4×4 determinant via `det_direct()`
+- **`exact_sign_3x3`** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
+
 ```bash
 just examples
-# or:
+# or individually:
 cargo run --example solve_5x5
 cargo run --example det_5x5
 cargo run --example const_det_4x4
+cargo run --features exact --example exact_sign_3x3
 ```
 
 ## 🤝 Contributing
@@ -174,7 +210,7 @@ If you use this library in academic work, please cite it using [CITATION.cff](CI
 
 ## 📚 References
 
-For canonical references to LU / `LDL^T` algorithms used by this crate, see [REFERENCES.md](REFERENCES.md).
+For canonical references to the algorithms used by this crate, see [REFERENCES.md](REFERENCES.md).
 
 ## 📊 Benchmarks (vs nalgebra/faer)
 

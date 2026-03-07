@@ -41,6 +41,8 @@ jobs:
       # only required for a private repository by
       # github/codeql-action/upload-sarif to get the Action run status
       actions: read
+    env:
+      CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
     name: Codacy Security Scan
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -77,13 +79,13 @@ jobs:
       # Execute Codacy Analysis CLI and generate a SARIF output with
       # the security issues identified during the analysis
       - name: Run Codacy Analysis CLI
+        if: ${{ env.CODACY_PROJECT_TOKEN != '' }}
+        id: codacy_analysis
         uses: codacy/codacy-analysis-cli-action@562ee3e92b8e92df8b67e0a5ff8aa8e261919c08
         with:
           # Check https://github.com/codacy/codacy-analysis-cli#project-token
           # to get your project token from your Codacy repository.
-          # You can also omit the token and run the tools that support
-          # default configurations
-          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          project-token: ${{ env.CODACY_PROJECT_TOKEN }}
           verbose: true
           directory: ${{ env.CODACY_WORKDIR }}
           output: ${{ env.CODACY_SARIF }}
@@ -94,9 +96,24 @@ jobs:
           # Force 0 exit code to allow SARIF file generation
           # This will handover control about PR rejection to the GitHub side
           max-allowed-issues: 2147483647
+        # Codacy can fail transiently on PRs (e.g. remote config/tools service outages).
+        # Keep PR checks non-blocking and continue to SARIF fallback/upload.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
 
-      # Process SARIF file to split by tool
-      - name: Split SARIF by tool
+      - name: Warn when Codacy token is unavailable on PR
+        if: ${{ github.event_name == 'pull_request' && env.CODACY_PROJECT_TOKEN == '' }}
+        run: |
+          echo "::warning::CODACY_PROJECT_TOKEN is unavailable for this pull_request."
+          echo "::warning::Skipping Codacy Analysis CLI and using SARIF fallback."
+
+      - name: Warn when Codacy analysis fails on PR
+        if: ${{ always() && github.event_name == 'pull_request' && steps.codacy_analysis.outcome == 'failure' }}
+        run: |
+          echo "::warning::Codacy Analysis CLI failed on this pull_request run; continuing with SARIF fallback."
+
+      # Validate SARIF output or create an empty fallback for upload
+      - name: Validate or create SARIF
+        if: always()
         run: |
           # Fail fast and surface errors clearly
           set -euo pipefail
@@ -124,6 +141,7 @@ jobs:
 
       # Select SARIF file for upload
       - name: Select SARIF file for upload
+        if: always()
         run: |
           set -euo pipefail
           # Honor preselected SARIF_FILE from earlier steps (e.g., empty SARIF case)

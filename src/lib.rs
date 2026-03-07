@@ -48,6 +48,8 @@ mod readme_doctests {
     fn det_5x5_ldlt_example() {}
 }
 
+#[cfg(feature = "exact")]
+mod exact;
 mod ldlt;
 mod lu;
 mod matrix;

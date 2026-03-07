@@ -1,6 +1,6 @@
 [package]
 name = "la-stack"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.94"
 license = "BSD-3-Clause"
@@ -13,10 +13,12 @@ categories = [ "mathematics", "science" ]
 keywords = [ "linear-algebra", "geometry", "const-generics" ]
 
 [dependencies]
-# Intentionally empty (bench-only deps are optional features below)
+# All runtime deps are optional; see [features] below.
 criterion = { version = "0.8.2", features = [ "html_reports" ], optional = true }
 faer = { version = "0.24.0", default-features = false, features = [ "std", "linalg" ], optional = true }
 nalgebra = { version = "0.34.1", optional = true }
+num-bigint = { version = "0.4", optional = true }
+num-rational = { version = "0.4", features = [ "num-bigint-std" ], optional = true }
 
 [dev-dependencies]
 approx = "0.5.1"
@@ -26,6 +28,11 @@ proptest = "1.10.0"
 [features]
 default = [  ]
 bench = [ "criterion", "faer", "nalgebra" ]
+exact = [ "num-bigint", "num-rational" ]
+
+[[example]]
+name = "exact_sign_3x3"
+required-features = [ "exact" ]
 
 [[bench]]
 name = "vs_linalg"
@@ -35,6 +42,9 @@ required-features = [ "bench" ]
 [profile.release]
 lto = "fat"
 codegen-units = 1
+
+[package.metadata.docs.rs]
+features = [ "exact" ]
 
 [lints.rust]
 unsafe_code = "forbid"

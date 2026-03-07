@@ -26,6 +26,11 @@ pivoting.
 For background on the SPD/PSD setting, see [4-5]. For pivoted variants used for symmetric *indefinite*
 matrices, see [6].
 
+### Exact determinant sign (adaptive-precision Bareiss)
+
+`det_sign_exact()` uses a Shewchuk-style f64 error-bound filter [8] backed by exact Bareiss
+elimination [7] in `BigRational`. See `src/exact.rs` for the full architecture description.
+
 ## References
 
 ### LU / Gaussian elimination
@@ -53,3 +58,15 @@ matrices, see [6].
 6. Bunch, J. R., L. Kaufman, and B. N. Parlett. "Decomposition of a Symmetric Matrix."
    *Numerische Mathematik* 27 (1976/1977): 95–110.
    [Full text](https://eudml.org/doc/132435)
+
+### Exact determinant sign (`det_sign_exact`)
+
+7. Bareiss, Erwin H. "Sylvester's Identity and Multistep Integer-Preserving Gaussian
+   Elimination." *Mathematics of Computation* 22.103 (1968): 565–578.
+   [DOI](https://doi.org/10.1090/S0025-5718-1968-0226829-0) ·
+   [PDF](https://www.ams.org/journals/mcom/1968-22-103/S0025-5718-1968-0226829-0/S0025-5718-1968-0226829-0.pdf)
+8. Shewchuk, Jonathan Richard. "Adaptive Precision Floating-Point Arithmetic and Fast
+   Robust Geometric Predicates." *Discrete & Computational Geometry* 18.3 (1997): 305–363.
+   [DOI](https://doi.org/10.1007/PL00009321) ·
+   [PDF](https://people.eecs.berkeley.edu/~jrs/papers/robustr.pdf)
+   Also: Technical Report CMU-CS-96-140, Carnegie Mellon University, May 1996.
