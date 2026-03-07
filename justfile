@@ -187,6 +187,7 @@ doc-check:
 examples:
     cargo run --quiet --example det_5x5
     cargo run --quiet --example solve_5x5
+    cargo run --quiet --example const_det_4x4
 
 # Fix (mutating): apply formatters/auto-fixes
 fix: toml-fmt fmt python-fix shell-fmt markdown-fix yaml-fix

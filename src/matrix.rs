@@ -196,9 +196,10 @@ impl<const D: usize> Matrix<D> {
         Ldlt::factor(self, tol)
     }
 
-    /// Closed-form determinant for dimensions 1–4, bypassing LU factorization.
+    /// Closed-form determinant for dimensions 0–4, bypassing LU factorization.
     ///
-    /// Returns `Some(det)` for `D` ∈ {1, 2, 3, 4}, `None` for larger matrices.
+    /// Returns `Some(det)` for `D` ∈ {0, 1, 2, 3, 4}, `None` for D ≥ 5.
+    /// `D = 0` returns `Some(1.0)` (empty product).
     /// This is a `const fn` (Rust 1.94+) and uses fused multiply-add (`mul_add`)
     /// for improved accuracy and performance.
     ///
@@ -211,6 +212,9 @@ impl<const D: usize> Matrix<D> {
     ///
     /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
     /// assert!((m.det_direct().unwrap() - (-2.0)).abs() <= 1e-12);
+    ///
+    /// // D = 0 is the empty product.
+    /// assert_eq!(Matrix::<0>::zero().det_direct(), Some(1.0));
     ///
     /// // D ≥ 5 returns None.
     /// assert!(Matrix::<5>::identity().det_direct().is_none());
@@ -239,33 +243,23 @@ impl<const D: usize> Matrix<D> {
                 )
             }
             4 => {
-                // Cofactor expansion on first row → four 3×3 sub-determinants,
-                // each computed inline (closures are not const-compatible).
+                // Cofactor expansion on first row → four 3×3 sub-determinants.
+                // Hoist the 6 unique 2×2 minors from rows 2–3 (each used twice).
                 let r = &self.rows;
 
-                // Minor M00: rows 1-3, cols 1-3
-                let m00_0 = r[2][2].mul_add(r[3][3], -(r[2][3] * r[3][2]));
-                let m00_1 = r[2][1].mul_add(r[3][3], -(r[2][3] * r[3][1]));
-                let m00_2 = r[2][1].mul_add(r[3][2], -(r[2][2] * r[3][1]));
-                let c00 = r[1][1].mul_add(m00_0, (-r[1][2]).mul_add(m00_1, r[1][3] * m00_2));
+                // 2×2 minors: s_ij = r[2][i]*r[3][j] - r[2][j]*r[3][i]
+                let s23 = r[2][2].mul_add(r[3][3], -(r[2][3] * r[3][2])); // cols 2,3
+                let s13 = r[2][1].mul_add(r[3][3], -(r[2][3] * r[3][1])); // cols 1,3
+                let s12 = r[2][1].mul_add(r[3][2], -(r[2][2] * r[3][1])); // cols 1,2
+                let s03 = r[2][0].mul_add(r[3][3], -(r[2][3] * r[3][0])); // cols 0,3
+                let s02 = r[2][0].mul_add(r[3][2], -(r[2][2] * r[3][0])); // cols 0,2
+                let s01 = r[2][0].mul_add(r[3][1], -(r[2][1] * r[3][0])); // cols 0,1
 
-                // Minor M01: rows 1-3, cols 0,2,3
-                let m01_0 = r[2][2].mul_add(r[3][3], -(r[2][3] * r[3][2]));
-                let m01_1 = r[2][0].mul_add(r[3][3], -(r[2][3] * r[3][0]));
-                let m01_2 = r[2][0].mul_add(r[3][2], -(r[2][2] * r[3][0]));
-                let c01 = r[1][0].mul_add(m01_0, (-r[1][2]).mul_add(m01_1, r[1][3] * m01_2));
-
-                // Minor M02: rows 1-3, cols 0,1,3
-                let m02_0 = r[2][1].mul_add(r[3][3], -(r[2][3] * r[3][1]));
-                let m02_1 = r[2][0].mul_add(r[3][3], -(r[2][3] * r[3][0]));
-                let m02_2 = r[2][0].mul_add(r[3][1], -(r[2][1] * r[3][0]));
-                let c02 = r[1][0].mul_add(m02_0, (-r[1][1]).mul_add(m02_1, r[1][3] * m02_2));
-
-                // Minor M03: rows 1-3, cols 0,1,2
-                let m03_0 = r[2][1].mul_add(r[3][2], -(r[2][2] * r[3][1]));
-                let m03_1 = r[2][0].mul_add(r[3][2], -(r[2][2] * r[3][0]));
-                let m03_2 = r[2][0].mul_add(r[3][1], -(r[2][1] * r[3][0]));
-                let c03 = r[1][0].mul_add(m03_0, (-r[1][1]).mul_add(m03_1, r[1][2] * m03_2));
+                // 3×3 cofactors via row 1 expansion using hoisted minors.
+                let c00 = r[1][1].mul_add(s23, (-r[1][2]).mul_add(s13, r[1][3] * s12));
+                let c01 = r[1][0].mul_add(s23, (-r[1][2]).mul_add(s03, r[1][3] * s02));
+                let c02 = r[1][0].mul_add(s13, (-r[1][1]).mul_add(s03, r[1][3] * s01));
+                let c03 = r[1][0].mul_add(s12, (-r[1][1]).mul_add(s02, r[1][2] * s01));
 
                 Some(r[0][0].mul_add(
                     c00,
