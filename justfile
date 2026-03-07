@@ -243,6 +243,12 @@ help-workflows:
     @echo "  just plot-vs-linalg         # Plot Criterion results (CSV + SVG)"
     @echo "  just plot-vs-linalg-readme  # Plot + update README benchmark table"
     @echo ""
+    @echo "Changelog & releases:"
+    @echo "  just changelog              # Regenerate CHANGELOG.md from full history"
+    @echo "  just changelog-unreleased <ver>  # Prepend unreleased changes for a version"
+    @echo "  just tag <ver>              # Create annotated tag from CHANGELOG.md"
+    @echo "  just tag-force <ver>        # Recreate an existing tag"
+    @echo ""
     @echo "Setup:"
     @echo "  just setup             # Setup project environment (depends on setup-tools)"
     @echo "  just setup-tools       # Install/verify external tooling (best-effort)"
@@ -333,7 +339,7 @@ python-sync: _ensure-uv
 
 python-typecheck: python-sync
     uv run ty check scripts/
-    uv run mypy scripts/criterion_dim_plot.py
+    uv run mypy scripts/criterion_dim_plot.py scripts/tag_release.py scripts/postprocess_changelog.py scripts/subprocess_utils.py
 
 # Setup
 setup: setup-tools

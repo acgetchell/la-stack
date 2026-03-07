@@ -36,6 +36,9 @@ class TestValidateSemver:
             "v1.2.3-alpha",
             "v1.2.3+build.42",
             "v1.2.3-beta.1+build.123",
+            "v1.0.0-1a",  # digit-prefixed alphanumeric prerelease
+            "v1.0.0-0a",  # leading zero OK when not purely numeric
+            "v1.0.0-1a.2b",  # dot-separated digit-prefixed IDs
         ],
     )
     def test_valid_versions(self, version: str) -> None:
@@ -50,6 +53,7 @@ class TestValidateSemver:
             "v01.2.3",  # leading zero
             "v1.02.3",  # leading zero
             "v1.2.03",  # leading zero
+            "v1.0.0-01",  # leading zero in purely numeric prerelease
             "vfoo",  # garbage
             "",  # empty
         ],
@@ -174,6 +178,16 @@ class TestGitHubAnchor:
         changelog = tmp_path / "CHANGELOG.md"
         changelog.write_text("# Changelog\n", encoding="utf-8")
         assert _github_anchor(changelog, "9.9.9") == "v999"
+
+    def test_does_not_match_prerelease_heading(self, tmp_path: Path) -> None:
+        """Looking for 1.0.0 must not match ## [1.0.0-rc.1]."""
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text(
+            "# Changelog\n\n## [1.0.0-rc.1] - 2025-01-01\n\n- Item\n",
+            encoding="utf-8",
+        )
+        # Should fall back since no exact 1.0.0 heading exists
+        assert _github_anchor(changelog, "1.0.0") == "v100"
 
 
 # ---------------------------------------------------------------------------

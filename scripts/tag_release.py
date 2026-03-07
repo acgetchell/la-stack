@@ -44,13 +44,17 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # SemVer 2.0.0 strict with required 'v' prefix
+# Alphanumeric prerelease identifier: any [0-9A-Za-z-]+ containing at least one
+# non-digit.  This permits identifiers like "1a" that start with a digit but are
+# not purely numeric (SemVer 2.0.0 §9).
+_ALNUM_ID = r"(?:(?=[0-9A-Za-z-]*[A-Za-z-])[0-9A-Za-z-]+)"
 _SEMVER_RE = re.compile(
     r"^v"
     r"(0|[1-9]\d*)\."
     r"(0|[1-9]\d*)\."
     r"(0|[1-9]\d*)"
-    r"(?:-(?:(?:0|[1-9]\d*)|(?:[A-Za-z-][0-9A-Za-z-]*))"
-    r"(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*"
+    rf"(?:-(?:(?:0|[1-9]\d*)|{_ALNUM_ID})"
+    rf"(?:\.(?:(?:0|[1-9]\d*)|{_ALNUM_ID}))*"
     r")?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
@@ -94,8 +98,7 @@ def extract_changelog_section(changelog: Path, version: str) -> str:
         LookupError: If the version section is not found or empty.
     """
     content = changelog.read_text(encoding="utf-8")
-    escaped = re.escape(version)
-    header_re = re.compile(rf"^##\s*\[?v?{escaped}\]?(?:$|\s|\()", re.MULTILINE)
+    header_re = _version_header_re(version)
 
     lines = content.split("\n")
     section: list[str] = []
@@ -166,11 +169,17 @@ def _get_repo_url() -> str:
     return raw  # best-effort fallback
 
 
+def _version_header_re(version: str) -> re.Pattern[str]:
+    """Build the header regex for *version*, matching ``extract_changelog_section``."""
+    return re.compile(rf"^##\s*\[?v?{re.escape(version)}\]?(?:$|\s|\()")
+
+
 def _github_anchor(changelog: Path, version: str) -> str:
     """Build a GitHub-compatible heading anchor (matches ``github-slugger``)."""
+    header_re = _version_header_re(version)
     try:
         for line in changelog.read_text(encoding="utf-8").splitlines():
-            if line.startswith("## ") and (f"v{version}" in line or f"[{version}]" in line):
+            if header_re.match(line):
                 heading = line.removeprefix("## ").strip()
                 # Strip inline-link markup [text](url) → text
                 heading = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", heading)
