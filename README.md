@@ -53,7 +53,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-la-stack = "0.1"
+la-stack = "0.2"
 ```
 
 Solve a 5×5 system via LU:
@@ -130,16 +130,44 @@ assert_eq!(DET, Some(30.0));
 The public `det()` method automatically dispatches through the closed-form path
 for D ≤ 4 and falls back to LU for D ≥ 5 — no API change needed.
 
+## 🔬 Exact determinant sign (`"exact"` feature)
+
+Enable the `exact` Cargo feature for `det_sign_exact()`, which returns the
+provably correct sign (−1, 0, or +1) of the determinant using adaptive-precision
+arithmetic:
+
+```toml
+[dependencies]
+la-stack = { version = "0.2", features = ["exact"] }
+```
+
+```rust,ignore
+use la_stack::prelude::*;
+
+let m = Matrix::<3>::from_rows([
+    [1.0, 2.0, 3.0],
+    [4.0, 5.0, 6.0],
+    [7.0, 8.0, 9.0],
+]);
+assert_eq!(m.det_sign_exact(), 0); // exactly singular
+```
+
+For D ≤ 4, a fast f64 filter (error-bounded `det_direct()`) resolves the sign
+without allocating.  Only near-degenerate or large (D ≥ 5) matrices fall through
+to the exact Bareiss algorithm in `BigRational`.
+
 ## 🧩 API at a glance
 
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Fixed-length vector | `new`, `zero`, `dot`, `norm2_sq` |
-| `Matrix<D>` | `[[f64; D]; D]` | Fixed-size square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det`, `det_direct` |
+| `Matrix<D>` | `[[f64; D]; D]` | Fixed-size square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det`, `det_direct`, `det_sign_exact`¹ |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 
 Storage shown above reflects the current `f64` implementation.
+
+¹ Requires `features = ["exact"]`.
 
 ## 📋 Examples
 

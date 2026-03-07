@@ -127,8 +127,12 @@ check-fast:
 
 # CI simulation: comprehensive validation (matches CI expectations)
 # Runs: checks + all tests (Rust + Python) + examples + bench compile
-ci: check bench-compile test-all examples
+ci: check bench-compile test-all examples clippy-exact
     @echo "🎯 CI checks complete!"
+
+# Clippy for the "exact" feature (catches feature-gated lint issues)
+clippy-exact:
+    cargo clippy --features exact --all-targets -- -D warnings -W clippy::pedantic
 
 # Clean build artifacts
 clean:
@@ -500,8 +504,12 @@ test:
     cargo test --lib --verbose
     cargo test --doc --verbose
 
-test-all: test test-integration test-python
+test-all: test test-integration test-exact test-python
     @echo "✅ All tests passed"
+
+# Tests for the "exact" feature (det_sign_exact + BigRational Bareiss)
+test-exact:
+    cargo test --features exact --verbose
 
 test-integration:
     cargo test --tests --verbose

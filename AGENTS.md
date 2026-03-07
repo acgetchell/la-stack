@@ -24,10 +24,12 @@ When making changes in this repo, prioritize (in order):
 - Format: `cargo fmt` (or `just fmt`)
 - Integration tests: `just test-integration`
 - Lint (Clippy): `cargo clippy --all-targets --all-features -- -D warnings` (or `just clippy`)
+- Lint (Clippy, exact feature): `cargo clippy --features exact --all-targets -- -D warnings` (or `just clippy-exact`)
 - Lint/validate: `just check`
 - Pre-commit validation: `just ci`
 - Python tests: `just test-python`
 - Run a single test (by name filter): `cargo test solve_2x2_basic` (or the full path: `cargo test lu::tests::solve_2x2_basic`)
+- Run exact-feature tests: `cargo test --features exact --verbose` (or `just test-exact`)
 - Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5` / `cargo run --example const_det_4x4`)
 - Spell check: `just spell-check` (uses `typos.toml` at repo root; add false positives to `[default.extend-words]`)
 
@@ -40,6 +42,8 @@ When making changes in this repo, prioritize (in order):
   - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `set`, `inf_norm`, `det`, `det_direct`)
   - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve_vec`, `det`)
   - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for symmetric SPD/PSD matrices (`solve_vec`, `det`)
+  - `src/exact.rs`: `det_sign_exact()` — adaptive-precision determinant sign
+    (Shewchuk-style f64 filter + Bareiss in `BigRational`); `features = ["exact"]`
 - A minimal `justfile` exists for common workflows (see `just --list`).
 - The public API re-exports these items from `src/lib.rs`.
 - Dev-only benchmarks live in `benches/vs_linalg.rs` (Criterion + nalgebra/faer comparison).

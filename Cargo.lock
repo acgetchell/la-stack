@@ -675,12 +675,14 @@ dependencies = [
 
 [[package]]
 name = "la-stack"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "approx",
  "criterion",
  "faer",
  "nalgebra",
+ "num-bigint",
+ "num-rational",
  "pastey",
  "proptest",
 ]
