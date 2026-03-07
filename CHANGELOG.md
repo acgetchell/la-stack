@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-03-07
 
 ### Added
 
@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make Codacy analysis non-blocking on pull requests (internal) [`ecd0a30`](https://github.com/acgetchell/la-stack/commit/ecd0a30d1e580ae47f215b811a60110b8f94223a)
 - Harden Codacy CI and expand exact feature tests (internal) [`d911fcc`](https://github.com/acgetchell/la-stack/commit/d911fcc51c02807e91372e1db94aaaa196d6ccb9)
 - Expand det_sign_exact tests for large matrices (internal) [`2205f12`](https://github.com/acgetchell/la-stack/commit/2205f12a94743c49333c6f6a7228edde21a0d74f)
+- Improve release safety and consolidate error handling [`0ef2b94`](https://github.com/acgetchell/la-stack/commit/0ef2b94798f5fa530a09d92d0d117d42a3bc2b8d)
+- Update developer docs and optimize release tagging logic [`8aa129a`](https://github.com/acgetchell/la-stack/commit/8aa129ace22919510022a58def30b85c2639551d)
+- Improve internal release scripts and expand test coverage [`5eb5064`](https://github.com/acgetchell/la-stack/commit/5eb5064b46b8cbe408ddc958b86bf01dfee1d62c)
 
 ### Dependencies
 
@@ -35,9 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add det_direct example, hoist 4×4 minors, update docs [`159d04e`](https://github.com/acgetchell/la-stack/commit/159d04edfb4c480d6551b970bea3bcae5cdbfff8)
 
+### Fixed
+
+- Harden tag_release and add release docs [`9ed8915`](https://github.com/acgetchell/la-stack/commit/9ed8915e992728ebc5bf53988a97a4de64f8dae3)
+
 ### Maintenance
 
 - Replace cspell with typos-cli, bump MSRV to 1.94.0 [`6db12be`](https://github.com/acgetchell/la-stack/commit/6db12bebdc332f93f9663c0c0be8e785ab449fa6)
+- Add changelog tooling (git-cliff + tag script) [`5475651`](https://github.com/acgetchell/la-stack/commit/547565142a374d6a7fed432dd6dbaa8b24cf98a1)
 
 ### Performance
 
@@ -130,7 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add tarpaulin coverage upload [`7486dfd`](https://github.com/acgetchell/la-stack/commit/7486dfd54e16a6dbde41575c3f35a1acb65f57d2)
 
-[unreleased]: https://github.com/acgetchell/la-stack/compare/v0.1.3..HEAD
+[0.2.0]: https://github.com/acgetchell/la-stack/compare/v0.1.3..v0.2.0
 [0.1.3]: https://github.com/acgetchell/la-stack/compare/v0.1.2..v0.1.3
 [0.1.2]: https://github.com/acgetchell/la-stack/compare/v0.1.1..v0.1.2
 [0.1.1]: https://github.com/acgetchell/la-stack/compare/v0.1.0..v0.1.1

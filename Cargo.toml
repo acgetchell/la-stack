@@ -17,8 +17,8 @@ keywords = [ "linear-algebra", "geometry", "const-generics" ]
 criterion = { version = "0.8.2", features = [ "html_reports" ], optional = true }
 faer = { version = "0.24.0", default-features = false, features = [ "std", "linalg" ], optional = true }
 nalgebra = { version = "0.34.1", optional = true }
-num-bigint = { version = "0.4", optional = true }
-num-rational = { version = "0.4", features = [ "num-bigint-std" ], optional = true }
+num-bigint = { version = "0.4.6", optional = true }
+num-rational = { version = "0.4.2", features = [ "num-bigint-std" ], optional = true }
 
 [dev-dependencies]
 approx = "0.5.1"
