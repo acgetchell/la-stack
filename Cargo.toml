@@ -32,6 +32,10 @@ name = "vs_linalg"
 harness = false
 required-features = [ "bench" ]
 
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"

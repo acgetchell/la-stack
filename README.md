@@ -29,6 +29,7 @@ while keeping the API intentionally small and explicit.
 
 - ✅ `Copy` types where possible
 - ✅ Const-generic dimensions (no dynamic sizes)
+- ✅ `const fn` where possible (compile-time evaluation of determinants, dot products, etc.)
 - ✅ Explicit algorithms (LU, solve, determinant)
 - ✅ No runtime dependencies (dev-dependencies are for contributors only)
 - ✅ Stack storage only (no heap allocation in core types)
@@ -103,12 +104,38 @@ let det = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap().det();
 assert!((det - 1.0).abs() <= 1e-12);
 ```
 
+## ⚡ Compile-time determinants (D ≤ 4)
+
+`det_direct()` is a `const fn` providing closed-form determinants for D=0–4,
+using fused multiply-add where applicable. `Matrix::<0>::zero().det_direct()`
+returns `Some(1.0)` (the empty-product convention). For D=1–4, cofactor
+expansion bypasses LU factorization entirely. This enables compile-time
+evaluation when inputs are known at compile time:
+
+```rust
+use la_stack::prelude::*;
+
+// Evaluated entirely at compile time — no runtime cost.
+const DET: Option<f64> = {
+    let m = Matrix::<3>::from_rows([
+        [2.0, 0.0, 0.0],
+        [0.0, 3.0, 0.0],
+        [0.0, 0.0, 5.0],
+    ]);
+    m.det_direct()
+};
+assert_eq!(DET, Some(30.0));
+```
+
+The public `det()` method automatically dispatches through the closed-form path
+for D ≤ 4 and falls back to LU for D ≥ 5 — no API change needed.
+
 ## 🧩 API at a glance
 
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Fixed-length vector | `new`, `zero`, `dot`, `norm2_sq` |
-| `Matrix<D>` | `[[f64; D]; D]` | Fixed-size square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det` |
+| `Matrix<D>` | `[[f64; D]; D]` | Fixed-size square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det`, `det_direct` |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 
@@ -123,6 +150,7 @@ just examples
 # or:
 cargo run --example solve_5x5
 cargo run --example det_5x5
+cargo run --example const_det_4x4
 ```
 
 ## 🤝 Contributing

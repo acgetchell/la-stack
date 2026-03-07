@@ -28,7 +28,7 @@ When making changes in this repo, prioritize (in order):
 - Pre-commit validation: `just ci`
 - Python tests: `just test-python`
 - Run a single test (by name filter): `cargo test solve_2x2_basic` (or the full path: `cargo test lu::tests::solve_2x2_basic`)
-- Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5`)
+- Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5` / `cargo run --example const_det_4x4`)
 - Spell check: `just spell-check` (uses `typos.toml` at repo root; add false positives to `[default.extend-words]`)
 
 ## Code structure (big picture)
@@ -37,7 +37,7 @@ When making changes in this repo, prioritize (in order):
 - The linear algebra implementation is split across:
   - `src/lib.rs`: crate root + shared items (`LaError`, `DEFAULT_SINGULAR_TOL`, `DEFAULT_PIVOT_TOL`) + re-exports
   - `src/vector.rs`: `Vector<const D: usize>` (`[f64; D]`)
-  - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `set`, `inf_norm`, `det`)
+  - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `set`, `inf_norm`, `det`, `det_direct`)
   - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve_vec`, `det`)
   - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for symmetric SPD/PSD matrices (`solve_vec`, `det`)
 - A minimal `justfile` exists for common workflows (see `just --list`).
