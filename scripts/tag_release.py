@@ -115,11 +115,14 @@ def extract_changelog_section(changelog: Path, version: str) -> str:
         msg = f"No changelog section found for version {version}. Expected a heading like: ## [{version}] - YYYY-MM-DD"
         raise LookupError(msg)
 
-    # Trim leading/trailing blank lines
-    while section and not section[0].strip():
-        section.pop(0)
-    while section and not section[-1].strip():
-        section.pop()
+    # Trim leading/trailing blank lines (O(n) index scan + slice)
+    start = 0
+    while start < len(section) and not section[start].strip():
+        start += 1
+    end = len(section)
+    while end > start and not section[end - 1].strip():
+        end -= 1
+    section = section[start:end]
 
     body = "\n".join(section)
     if not body.strip():
@@ -137,9 +140,10 @@ def _tag_exists(tag_version: str) -> bool:
     """Return ``True`` if *tag_version* already exists as a git tag."""
     try:
         run_git_command(["rev-parse", "-q", "--verify", f"refs/tags/{tag_version}"])
-        return True
     except subprocess.CalledProcessError:
         return False
+    else:
+        return True
 
 
 def _delete_tag(tag_version: str) -> None:
