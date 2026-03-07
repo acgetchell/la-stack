@@ -386,9 +386,33 @@ mod tests {
     }
 
     #[test]
-    fn det_sign_exact_pivot_needed_in_first_column() {
-        // First column has zero on diagonal but non-zero below → needs pivoting.
-        let m = Matrix::<3>::from_rows([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
+    #[should_panic(expected = "non-finite matrix entry")]
+    fn det_sign_exact_panics_on_nan_5x5() {
+        // D ≥ 5 bypasses the fast filter, exercising the bareiss_det path.
+        let mut m = Matrix::<5>::identity();
+        m.set(2, 3, f64::NAN);
+        let _ = m.det_sign_exact();
+    }
+
+    #[test]
+    #[should_panic(expected = "non-finite matrix entry")]
+    fn det_sign_exact_panics_on_infinity_5x5() {
+        let mut m = Matrix::<5>::identity();
+        m.set(0, 0, f64::INFINITY);
+        let _ = m.det_sign_exact();
+    }
+
+    #[test]
+    fn det_sign_exact_pivot_needed_5x5() {
+        // D ≥ 5 skips the fast filter → exercises Bareiss pivoting.
+        // Permutation matrix with a single swap (rows 0↔1) → det = −1.
+        let m = Matrix::<5>::from_rows([
+            [0.0, 1.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0],
+        ]);
         assert_eq!(m.det_sign_exact(), -1);
     }
 
