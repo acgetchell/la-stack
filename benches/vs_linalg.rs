@@ -179,8 +179,8 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                     });
                 });
 
-                // === Determinant via det_direct (closed-form, no LU) ===
-                [<group_d $d>].bench_function("la_stack_det_direct", |bencher| {
+                // === Determinant via det() (closed-form for D≤4, LU for D≥5) ===
+                [<group_d $d>].bench_function("la_stack_det", |bencher| {
                     bencher.iter(|| {
                         let det = black_box(a)
                             .det(la_stack::DEFAULT_PIVOT_TOL)

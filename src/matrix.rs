@@ -323,6 +323,7 @@ mod tests {
 
     use approx::assert_abs_diff_eq;
     use pastey::paste;
+    use std::hint::black_box;
 
     macro_rules! gen_public_api_matrix_tests {
         ($d:literal) => {
@@ -437,31 +438,37 @@ mod tests {
     #[test]
     fn det_direct_d2_known_value() {
         // [[1,2],[3,4]] → det = 1*4 - 2*3 = -2
-        let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+        // black_box prevents compile-time constant folding of the const fn.
+        let m = black_box(Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]));
         assert_abs_diff_eq!(m.det_direct().unwrap(), -2.0, epsilon = 1e-15);
     }
 
     #[test]
     fn det_direct_d3_known_value() {
         // Classic 3×3: det = 0
-        let m = Matrix::<3>::from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]);
+        let m = black_box(Matrix::<3>::from_rows([
+            [1.0, 2.0, 3.0],
+            [4.0, 5.0, 6.0],
+            [7.0, 8.0, 9.0],
+        ]));
         assert_abs_diff_eq!(m.det_direct().unwrap(), 0.0, epsilon = 1e-12);
     }
 
     #[test]
     fn det_direct_d3_nonsingular() {
         // [[2,1,0],[0,3,1],[1,0,2]] → det = 2*(6-0) - 1*(0-1) + 0 = 13
-        let m = Matrix::<3>::from_rows([[2.0, 1.0, 0.0], [0.0, 3.0, 1.0], [1.0, 0.0, 2.0]]);
+        let m = black_box(Matrix::<3>::from_rows([
+            [2.0, 1.0, 0.0],
+            [0.0, 3.0, 1.0],
+            [1.0, 0.0, 2.0],
+        ]));
         assert_abs_diff_eq!(m.det_direct().unwrap(), 13.0, epsilon = 1e-12);
     }
 
     #[test]
     fn det_direct_d4_identity() {
-        assert_abs_diff_eq!(
-            Matrix::<4>::identity().det_direct().unwrap(),
-            1.0,
-            epsilon = 1e-15
-        );
+        let m = black_box(Matrix::<4>::identity());
+        assert_abs_diff_eq!(m.det_direct().unwrap(), 1.0, epsilon = 1e-15);
     }
 
     #[test]
@@ -472,7 +479,7 @@ mod tests {
         rows[1][1] = 3.0;
         rows[2][2] = 5.0;
         rows[3][3] = 7.0;
-        let m = Matrix::<4>::from_rows(rows);
+        let m = black_box(Matrix::<4>::from_rows(rows));
         assert_abs_diff_eq!(m.det_direct().unwrap(), 210.0, epsilon = 1e-12);
     }
 
