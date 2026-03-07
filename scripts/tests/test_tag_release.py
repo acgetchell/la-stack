@@ -10,6 +10,7 @@ import pytest
 import tag_release
 from tag_release import (
     _GITHUB_TAG_ANNOTATION_LIMIT,
+    _github_anchor,
     extract_changelog_section,
     find_changelog,
     parse_version,
@@ -145,6 +146,37 @@ class TestExtractChangelogSection:
 
 
 # ---------------------------------------------------------------------------
+# GitHub anchor generation
+# ---------------------------------------------------------------------------
+
+
+class TestGitHubAnchor:
+    """Verify _github_anchor matches github-slugger output."""
+
+    def test_bracketed_heading(self, tmp_path: Path) -> None:
+        """Heading ``## [1.0.0] - 2025-01-01`` should strip brackets and dots."""
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text(
+            "# Changelog\n\n## [1.0.0] - 2025-01-01\n\n- Item\n",
+            encoding="utf-8",
+        )
+        assert _github_anchor(changelog, "1.0.0") == "100---2025-01-01"
+
+    def test_plain_v_heading(self, tmp_path: Path) -> None:
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text(
+            "# Changelog\n\n## v0.2.0\n\n- Item\n",
+            encoding="utf-8",
+        )
+        assert _github_anchor(changelog, "0.2.0") == "v020"
+
+    def test_fallback_when_not_found(self, tmp_path: Path) -> None:
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text("# Changelog\n", encoding="utf-8")
+        assert _github_anchor(changelog, "9.9.9") == "v999"
+
+
+# ---------------------------------------------------------------------------
 # Tag size limit handling
 # ---------------------------------------------------------------------------
 
@@ -258,3 +290,25 @@ class TestCreateTag:
 
         mock_delete.assert_called_once_with("v1.0.0")
         mock_git_input.assert_called_once()
+
+    @patch("tag_release._tag_exists", return_value=True)
+    @patch("tag_release.find_changelog")
+    @patch("tag_release.extract_changelog_section", side_effect=LookupError("not found"))
+    @patch("tag_release._delete_tag")
+    def test_force_does_not_delete_tag_if_changelog_fails(
+        self,
+        mock_delete: MagicMock,
+        _mock_extract: MagicMock,
+        mock_find: MagicMock,
+        _mock_exists: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Tag must not be deleted if changelog extraction fails."""
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text("# Changelog\n", encoding="utf-8")
+        mock_find.return_value = changelog
+
+        with pytest.raises(LookupError):
+            tag_release.create_tag("v1.0.0", force=True)
+
+        mock_delete.assert_not_called()

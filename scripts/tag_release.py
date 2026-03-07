@@ -163,15 +163,23 @@ def _get_repo_url() -> str:
 
 
 def _github_anchor(changelog: Path, version: str) -> str:
-    """Build a GitHub-compatible anchor for the version heading."""
+    """Build a GitHub-compatible heading anchor (matches ``github-slugger``)."""
     try:
         for line in changelog.read_text(encoding="utf-8").splitlines():
             if line.startswith("## ") and (f"v{version}" in line or f"[{version}]" in line):
-                heading = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", line)
-                return heading[2:].strip().lower().replace(" ", "-").replace(".", "")
+                heading = line.removeprefix("## ").strip()
+                # Strip inline-link markup [text](url) → text
+                heading = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", heading)
+                # Strip reference-style brackets [text] → text
+                heading = re.sub(r"\[([^\]]+)\]", r"\1", heading)
+                heading = heading.lower()
+                # Remove everything except letters, digits, spaces, hyphens
+                heading = re.sub(r"[^a-z0-9\s-]", "", heading)
+                # Replace whitespace runs with a single hyphen
+                return re.sub(r"\s+", "-", heading)
     except OSError:
         pass
-    return f"v{version.replace('.', '')}"
+    return re.sub(r"[^a-z0-9-]", "", f"v{version}".lower())
 
 
 # ---------------------------------------------------------------------------
@@ -188,16 +196,14 @@ def create_tag(tag_version: str, *, force: bool = False) -> None:
     validate_semver(tag_version)
     version = parse_version(tag_version)
 
-    # Handle existing tag
-    if _tag_exists(tag_version):
-        if not force:
-            print(f"{_YELLOW}Tag '{tag_version}' already exists.{_RESET}", file=sys.stderr)
-            print(f"Use --force to recreate, or delete manually: git tag -d {tag_version}", file=sys.stderr)
-            sys.exit(1)
-        print(f"{_BLUE}Deleting existing tag '{tag_version}'...{_RESET}")
-        _delete_tag(tag_version)
+    # Check for existing tag (but don't delete yet — validate first)
+    tag_existed = _tag_exists(tag_version)
+    if tag_existed and not force:
+        print(f"{_YELLOW}Tag '{tag_version}' already exists.{_RESET}", file=sys.stderr)
+        print(f"Use --force to recreate, or delete manually: git tag -d {tag_version}", file=sys.stderr)
+        sys.exit(1)
 
-    # Extract changelog section
+    # Extract changelog section (before any mutation)
     changelog = find_changelog()
     section = extract_changelog_section(changelog, version)
     section_bytes = len(section.encode("utf-8"))
@@ -226,6 +232,11 @@ def create_tag(tag_version: str, *, force: bool = False) -> None:
             print("... (truncated for preview)")
         print("----------------------------------------")
 
+    # Delete existing tag only after all validation succeeds
+    if tag_existed and force:
+        print(f"{_BLUE}Deleting existing tag '{tag_version}'...{_RESET}")
+        _delete_tag(tag_version)
+
     # Create annotated tag
     label = "reference" if is_truncated else "full changelog"
     print(f"{_BLUE}Creating annotated tag '{tag_version}' with {label} content...{_RESET}")
@@ -235,7 +246,10 @@ def create_tag(tag_version: str, *, force: bool = False) -> None:
     print(f"{_GREEN}✓ Successfully created tag '{tag_version}'{_RESET}")
     print()
     print("Next steps:")
-    print(f"  1. Push the tag: {_BLUE}git push origin {tag_version}{_RESET}")
+    if force:
+        print(f"  1. Force-push the tag: {_BLUE}git push --force origin {tag_version}{_RESET}")
+    else:
+        print(f"  1. Push the tag: {_BLUE}git push origin {tag_version}{_RESET}")
     print(f"  2. Create GitHub release: {_BLUE}gh release create {tag_version} --notes-from-tag{_RESET}")
     if is_truncated:
         print(f"\n{_YELLOW}Note: Tag annotation references CHANGELOG.md due to size (>125KB).{_RESET}")
