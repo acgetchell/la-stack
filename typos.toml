@@ -12,6 +12,8 @@ extend-exclude = [
     ".mypy_cache/**",
     ".ruff_cache/**",
     ".pytest_cache/**",
+    # Contains regex fragments (e.g. [Ss]upport, [Dd]elete) that trigger false positives.
+    "cliff.toml",
 ]
 
 [default.extend-words]

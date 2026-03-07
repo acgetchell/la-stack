@@ -12,6 +12,11 @@ _ensure-actionlint:
     set -euo pipefail
     command -v actionlint >/dev/null || { echo "❌ 'actionlint' not found. See 'just setup' or https://github.com/rhysd/actionlint"; exit 1; }
 
+_ensure-git-cliff:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v git-cliff >/dev/null || { echo "❌ 'git-cliff' not found. See 'just setup-tools' or install: cargo install git-cliff"; exit 1; }
+
 _ensure-jq:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -64,6 +69,20 @@ _ensure-yamllint:
     #!/usr/bin/env bash
     set -euo pipefail
     command -v yamllint >/dev/null || { echo "❌ 'yamllint' not found. See 'just setup' or install: brew install yamllint"; exit 1; }
+
+# Changelog generation (git-cliff + post-processing)
+changelog: _ensure-git-cliff python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git-cliff -o CHANGELOG.md
+    uv run postprocess-changelog
+
+# Prepend unreleased changes to CHANGELOG.md for the given version
+changelog-unreleased version: _ensure-git-cliff python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git-cliff --unreleased --tag {{version}} --prepend CHANGELOG.md
+    uv run postprocess-changelog
 
 # GitHub Actions workflow validation
 action-lint: _ensure-actionlint
@@ -224,6 +243,12 @@ help-workflows:
     @echo "  just plot-vs-linalg         # Plot Criterion results (CSV + SVG)"
     @echo "  just plot-vs-linalg-readme  # Plot + update README benchmark table"
     @echo ""
+    @echo "Changelog & releases:"
+    @echo "  just changelog              # Regenerate CHANGELOG.md from full history"
+    @echo "  just changelog-unreleased <ver>  # Prepend unreleased changes for a version"
+    @echo "  just tag <ver>              # Create annotated tag from CHANGELOG.md"
+    @echo "  just tag-force <ver>        # Recreate an existing tag"
+    @echo ""
     @echo "Setup:"
     @echo "  just setup             # Setup project environment (depends on setup-tools)"
     @echo "  just setup-tools       # Install/verify external tooling (best-effort)"
@@ -314,7 +339,7 @@ python-sync: _ensure-uv
 
 python-typecheck: python-sync
     uv run ty check scripts/
-    uv run mypy scripts/criterion_dim_plot.py
+    uv run mypy scripts/criterion_dim_plot.py scripts/tag_release.py scripts/postprocess_changelog.py scripts/subprocess_utils.py
 
 # Setup
 setup: setup-tools
@@ -392,6 +417,13 @@ setup-tools:
         echo "  ✓ samply"
     fi
 
+    if ! have git-cliff; then
+        echo "  ⏳ Installing git-cliff (cargo)..."
+        cargo install --locked git-cliff
+    else
+        echo "  ✓ git-cliff"
+    fi
+
     if ! have typos; then
         echo "  ⏳ Installing typos-cli (cargo)..."
         cargo install --locked typos-cli
@@ -413,7 +445,7 @@ setup-tools:
     echo ""
     echo "Verifying required commands are available..."
     missing=0
-    for cmd in uv jq taplo yamllint shfmt shellcheck actionlint node npx typos; do
+    for cmd in uv jq taplo yamllint shfmt shellcheck actionlint node npx typos git-cliff; do
         if have "$cmd"; then
             echo "  ✓ $cmd"
         else
@@ -515,6 +547,14 @@ test-exact:
 
 test-integration:
     cargo test --tests --verbose
+
+# Create an annotated git tag from the CHANGELOG.md section for the given version
+tag version: python-sync
+    uv run tag-release {{version}}
+
+# Recreate an existing tag (delete + recreate)
+tag-force version: python-sync
+    uv run tag-release {{version}} --force
 
 test-python: python-sync
     uv run pytest -q

@@ -36,6 +36,8 @@ while keeping the API intentionally small and explicit.
 - ✅ Stack storage only (no heap allocation in core types)
 - ✅ `unsafe` forbidden
 
+See [CHANGELOG.md](CHANGELOG.md) for details.
+
 ## 🚫 Anti-goals
 
 - Bare-metal performance: see [`blas-src`](https://crates.io/crates/blas-src), [`lapack-src`](https://crates.io/crates/lapack-src), [`openblas-src`](https://crates.io/crates/openblas-src)

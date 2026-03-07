@@ -118,3 +118,41 @@ gnuplot --version
 ```
 
 This repo has been tested with `gnuplot 6.0 patchlevel 3` (Homebrew `gnuplot 6.0.3`).
+
+## Changelog and release tooling
+
+### Generating the changelog
+
+```bash
+# Full regeneration from all history
+just changelog
+
+# Prepend only unreleased changes for a new version
+just changelog-unreleased v0.3.0
+```
+
+`just changelog` runs `git-cliff -o CHANGELOG.md` followed by
+`postprocess-changelog` (strips trailing blank lines). Configuration
+lives in `cliff.toml` at the repo root.
+
+### Creating a release tag
+
+```bash
+just tag v0.3.0          # create annotated tag from CHANGELOG.md section
+just tag-force v0.3.0    # recreate tag if it already exists
+```
+
+The `tag-release` CLI (in `tag_release.py`) extracts the matching version
+section from `CHANGELOG.md`, validates semver, and handles GitHub's 125KB
+tag-annotation size limit.
+
+### Scripts overview
+
+| Script | Purpose |
+|---|---|
+| `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
+| `tag_release.py` | Create annotated git tags from CHANGELOG.md sections |
+| `postprocess_changelog.py` | Strip trailing blank lines from git-cliff output |
+| `subprocess_utils.py` | Safe subprocess wrappers for git commands |
+
+See `docs/RELEASING.md` for the full release workflow.

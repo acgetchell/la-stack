@@ -38,11 +38,13 @@ dependencies = [  ]
 
 [project.scripts]
 criterion-dim-plot = "criterion_dim_plot:main"
+postprocess-changelog = "postprocess_changelog:main"
+tag-release = "tag_release:main"
 
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-py-modules = [ "criterion_dim_plot" ]
+py-modules = [ "criterion_dim_plot", "postprocess_changelog", "subprocess_utils", "tag_release" ]
 
 [tool.ruff]
 line-length = 150
@@ -78,6 +80,8 @@ ignore = [
 "scripts/tests/**/*.py" = [
     "S101", # asserts are fine in tests
     "SLF001", # tests may call internal helpers
+    "PT019", # @patch decorator params are not pytest fixtures
+    "PLC0415", # test helpers may import inside functions
 ]
 
 [tool.ruff.format]
