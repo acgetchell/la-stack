@@ -194,10 +194,10 @@ gh release create "$TAG" --notes-from-tag
 
 ```bash
 # Sanity check before publishing
-cargo publish --dry-run
+cargo publish --locked --dry-run
 
 # Publish the crate (ensure docs are already updated on main via the PR)
-cargo publish
+cargo publish --locked
 ```
 
 ---

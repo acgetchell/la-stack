@@ -278,14 +278,14 @@ def main() -> None:
 
     try:
         create_tag(args.version, force=args.force)
-    except (ValueError, FileNotFoundError, LookupError) as exc:
+    except (
+        ValueError,
+        FileNotFoundError,
+        LookupError,
+        ExecutableNotFoundError,
+        subprocess.CalledProcessError,
+    ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
-    except ExecutableNotFoundError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
-    except subprocess.CalledProcessError as exc:
-        print(f"Error: git command failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
 
