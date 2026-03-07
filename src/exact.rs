@@ -405,4 +405,75 @@ mod tests {
         // Two transpositions → even permutation → det = +1
         assert_eq!(m.det_sign_exact(), 1);
     }
+
+    // -----------------------------------------------------------------------
+    // Direct tests for internal helpers (coverage of private functions)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn det_errbound_d0_is_zero() {
+        assert_eq!(det_errbound(&Matrix::<0>::zero()), Some(0.0));
+    }
+
+    #[test]
+    fn det_errbound_d1_is_zero() {
+        assert_eq!(det_errbound(&Matrix::<1>::from_rows([[42.0]])), Some(0.0));
+    }
+
+    #[test]
+    fn det_errbound_d2_positive() {
+        let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+        let bound = det_errbound(&m).unwrap();
+        assert!(bound > 0.0);
+        // bound = ERR_COEFF_2 * (|1*4| + |2*3|) = ERR_COEFF_2 * 10
+        assert!(ERR_COEFF_2.mul_add(-10.0, bound).abs() < 1e-30);
+    }
+
+    #[test]
+    fn det_errbound_d3_positive() {
+        let m = Matrix::<3>::identity();
+        let bound = det_errbound(&m).unwrap();
+        assert!(bound > 0.0);
+    }
+
+    #[test]
+    fn det_errbound_d4_positive() {
+        let m = Matrix::<4>::identity();
+        let bound = det_errbound(&m).unwrap();
+        assert!(bound > 0.0);
+    }
+
+    #[test]
+    fn det_errbound_d5_is_none() {
+        assert_eq!(det_errbound(&Matrix::<5>::identity()), None);
+    }
+
+    #[test]
+    fn bareiss_det_d0_is_one() {
+        let det = bareiss_det(&Matrix::<0>::zero());
+        assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
+    }
+
+    #[test]
+    fn bareiss_det_d1_returns_entry() {
+        let det = bareiss_det(&Matrix::<1>::from_rows([[7.0]]));
+        assert_eq!(det, f64_to_bigrational(7.0));
+    }
+
+    #[test]
+    fn bareiss_det_d3_with_pivoting() {
+        // First column has zero on diagonal → exercises pivot swap + break.
+        let m = Matrix::<3>::from_rows([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
+        let det = bareiss_det(&m);
+        // det of this permutation matrix = -1
+        assert_eq!(det, BigRational::from_integer(BigInt::from(-1)));
+    }
+
+    #[test]
+    fn bareiss_det_singular_all_zeros_in_column() {
+        // Column 1 is all zeros below diagonal after elimination → singular.
+        let m = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
+        let det = bareiss_det(&m);
+        assert_eq!(det, BigRational::from_integer(BigInt::from(0)));
+    }
 }
