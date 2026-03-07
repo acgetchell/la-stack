@@ -113,7 +113,7 @@ assert!((det - 1.0).abs() <= 1e-12);
 using fused multiply-add where applicable. `Matrix::<0>::zero().det_direct()`
 returns `Some(1.0)` (the empty-product convention). For D=1–4, cofactor
 expansion bypasses LU factorization entirely. This enables compile-time
-evaluation when inputs are known at compile time:
+evaluation when inputs are known:
 
 ```rust
 use la_stack::prelude::*;
@@ -225,14 +225,14 @@ Summary (median time; lower is better). The “la-stack vs nalgebra/faer” colu
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
 | D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | la-stack vs nalgebra | la-stack vs faer |
 |---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|
-| 2 | 2.044 | 18.266 | 164.197 | +88.8% | +98.8% |
-| 3 | 13.465 | 23.723 | 214.231 | +43.2% | +93.7% |
-| 4 | 27.774 | 53.689 | 238.476 | +48.3% | +88.4% |
-| 5 | 46.982 | 71.070 | 301.806 | +33.9% | +84.4% |
-| 8 | 138.664 | 177.992 | 388.146 | +22.1% | +64.3% |
-| 16 | 629.219 | 589.141 | 915.520 | -6.8% | +31.3% |
-| 32 | 2,669.149 | 2,484.327 | 2,937.819 | -7.4% | +9.1% |
-| 64 | 16,673.839 | 14,833.982 | 12,528.617 | -12.4% | -33.1% |
+| 2 | 2.038 | 4.409 | 137.408 | +53.8% | +98.5% |
+| 3 | 14.787 | 23.140 | 180.339 | +36.1% | +91.8% |
+| 4 | 27.731 | 54.408 | 207.008 | +49.0% | +86.6% |
+| 5 | 47.460 | 72.275 | 270.919 | +34.3% | +82.5% |
+| 8 | 134.751 | 162.781 | 362.415 | +17.2% | +62.8% |
+| 16 | 600.785 | 584.991 | 851.458 | -2.7% | +29.4% |
+| 32 | 2,646.475 | 2,752.157 | 2,818.074 | +3.8% | +6.1% |
+| 64 | 17,319.650 | 13,811.398 | 12,383.818 | -25.4% | -39.9% |
 <!-- BENCH_TABLE:lu_solve:median:new:END -->
 
 ## 📄 License
