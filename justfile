@@ -12,6 +12,11 @@ _ensure-actionlint:
     set -euo pipefail
     command -v actionlint >/dev/null || { echo "❌ 'actionlint' not found. See 'just setup' or https://github.com/rhysd/actionlint"; exit 1; }
 
+_ensure-git-cliff:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v git-cliff >/dev/null || { echo "❌ 'git-cliff' not found. See 'just setup-tools' or install: cargo install git-cliff"; exit 1; }
+
 _ensure-jq:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -64,6 +69,20 @@ _ensure-yamllint:
     #!/usr/bin/env bash
     set -euo pipefail
     command -v yamllint >/dev/null || { echo "❌ 'yamllint' not found. See 'just setup' or install: brew install yamllint"; exit 1; }
+
+# Changelog generation (git-cliff + post-processing)
+changelog: _ensure-git-cliff python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git-cliff -o CHANGELOG.md
+    uv run postprocess-changelog
+
+# Prepend unreleased changes to CHANGELOG.md for the given version
+changelog-unreleased version: _ensure-git-cliff python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git-cliff --unreleased --tag {{version}} --prepend CHANGELOG.md
+    uv run postprocess-changelog
 
 # GitHub Actions workflow validation
 action-lint: _ensure-actionlint
@@ -392,6 +411,13 @@ setup-tools:
         echo "  ✓ samply"
     fi
 
+    if ! have git-cliff; then
+        echo "  ⏳ Installing git-cliff (cargo)..."
+        cargo install --locked git-cliff
+    else
+        echo "  ✓ git-cliff"
+    fi
+
     if ! have typos; then
         echo "  ⏳ Installing typos-cli (cargo)..."
         cargo install --locked typos-cli
@@ -413,7 +439,7 @@ setup-tools:
     echo ""
     echo "Verifying required commands are available..."
     missing=0
-    for cmd in uv jq taplo yamllint shfmt shellcheck actionlint node npx typos; do
+    for cmd in uv jq taplo yamllint shfmt shellcheck actionlint node npx typos git-cliff; do
         if have "$cmd"; then
             echo "  ✓ $cmd"
         else
@@ -515,6 +541,14 @@ test-exact:
 
 test-integration:
     cargo test --tests --verbose
+
+# Create an annotated git tag from the CHANGELOG.md section for the given version
+tag version: python-sync
+    uv run tag-release {{version}}
+
+# Recreate an existing tag (delete + recreate)
+tag-force version: python-sync
+    uv run tag-release {{version}} --force
 
 test-python: python-sync
     uv run pytest -q

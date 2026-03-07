@@ -13,6 +13,9 @@ When making changes in this repo, prioritize (in order):
 ## Common commands
 
 - All tests (Rust + Python): `just test-all`
+- Changelog (generate full): `just changelog` (runs `git-cliff -o CHANGELOG.md`)
+- Changelog (prepend unreleased): `just changelog-unreleased v0.3.0`
+- Create release tag: `just tag v0.3.0` (creates annotated tag from CHANGELOG.md section)
 - Benchmarks: `cargo bench` (or `just bench`)
 - Build (debug): `cargo build` (or `just build`)
 - Build (release): `cargo build --release` (or `just build-release`)
