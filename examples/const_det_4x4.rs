@@ -5,7 +5,7 @@
 
 use la_stack::prelude::*;
 
-/// A 4×4 Hilbert-like matrix with exact rational entries scaled to integers.
+/// An example 4×4 matrix with small integer entries.
 const MAT: Matrix<4> = Matrix::<4>::from_rows([
     [1.0, 2.0, 3.0, 4.0],
     [5.0, 6.0, 7.0, 8.0],

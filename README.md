@@ -106,9 +106,11 @@ assert!((det - 1.0).abs() <= 1e-12);
 
 ## ⚡ Compile-time determinants (D ≤ 4)
 
-`det_direct()` is a `const fn` that computes closed-form determinants for D=1–4
-using fused multiply-add, bypassing LU factorization entirely. This enables
-compile-time evaluation when inputs are known at compile time:
+`det_direct()` is a `const fn` providing closed-form determinants for D=0–4,
+using fused multiply-add where applicable. `Matrix::<0>::zero().det_direct()`
+returns `Some(1.0)` (the empty-product convention). For D=1–4, cofactor
+expansion bypasses LU factorization entirely. This enables compile-time
+evaluation when inputs are known at compile time:
 
 ```rust
 use la_stack::prelude::*;
