@@ -13,7 +13,7 @@ categories = [ "mathematics", "science" ]
 keywords = [ "linear-algebra", "geometry", "const-generics" ]
 
 [dependencies]
-# Intentionally empty (bench-only deps are optional features below)
+# All runtime deps are optional; see [features] below.
 criterion = { version = "0.8.2", features = [ "html_reports" ], optional = true }
 faer = { version = "0.24.0", default-features = false, features = [ "std", "linalg" ], optional = true }
 nalgebra = { version = "0.34.1", optional = true }
@@ -30,6 +30,10 @@ default = [  ]
 bench = [ "criterion", "faer", "nalgebra" ]
 exact = [ "num-bigint", "num-rational" ]
 
+[[example]]
+name = "exact_sign_3x3"
+required-features = [ "exact" ]
+
 [[bench]]
 name = "vs_linalg"
 harness = false
@@ -38,6 +42,9 @@ required-features = [ "bench" ]
 [profile.release]
 lto = "fat"
 codegen-units = 1
+
+[package.metadata.docs.rs]
+features = [ "exact" ]
 
 [lints.rust]
 unsafe_code = "forbid"

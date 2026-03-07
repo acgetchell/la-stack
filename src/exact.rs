@@ -206,6 +206,10 @@ impl<const D: usize> Matrix<D> {
     pub fn det_sign_exact(&self) -> i8 {
         // Stage 1: f64 fast filter for D ≤ 4.
         if let (Some(det_f64), Some(err)) = (self.det_direct(), det_errbound(self)) {
+            assert!(
+                det_f64.is_finite(),
+                "non-finite matrix entry in det_sign_exact"
+            );
             if det_f64 > err {
                 return 1;
             }

@@ -127,7 +127,7 @@ check-fast:
 
 # CI simulation: comprehensive validation (matches CI expectations)
 # Runs: checks + all tests (Rust + Python) + examples + bench compile
-ci: check bench-compile test-all examples clippy-exact
+ci: check bench-compile test-all examples
     @echo "🎯 CI checks complete!"
 
 # Clippy for the "exact" feature (catches feature-gated lint issues)
@@ -149,6 +149,7 @@ clippy:
 # Common tarpaulin arguments for all coverage runs
 # Note: -t 300 sets per-test timeout to 5 minutes (needed for slow CI environments)
 _coverage_base_args := '''--exclude-files 'benches/*' --exclude-files 'examples/*' \
+  --features exact \
   --workspace --lib --tests \
   -t 300 --verbose --implicit-test-threads'''
 
@@ -183,15 +184,16 @@ coverage-ci:
 default:
     @just --list
 
-# Documentation build check
+# Documentation build check (includes exact feature for full API coverage)
 doc-check:
-    RUSTDOCFLAGS='-D warnings' cargo doc --no-deps
+    RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --features exact
 
 # Examples
 examples:
     cargo run --quiet --example det_5x5
     cargo run --quiet --example solve_5x5
     cargo run --quiet --example const_det_4x4
+    cargo run --quiet --features exact --example exact_sign_3x3
 
 # Fix (mutating): apply formatters/auto-fixes
 fix: toml-fmt fmt python-fix shell-fmt markdown-fix yaml-fix

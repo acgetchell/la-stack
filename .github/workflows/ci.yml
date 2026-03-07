@@ -232,3 +232,4 @@ jobs:
           cargo test --lib --verbose
           cargo test --doc --verbose
           cargo test --tests --verbose
+          cargo test --features exact --verbose
