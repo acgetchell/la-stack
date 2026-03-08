@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Maintenance
+
+- Release v0.2.1 [`b4d0286`](https://github.com/acgetchell/la-stack/commit/b4d028677d33b1cb3fad1f6d79b9c8ba00e7a265)
+
+## [0.2.1] - 2026-03-08
+
+### Changed
+
+- Add LDLT NonFinite coverage tests; update README example [`d3b7012`](https://github.com/acgetchell/la-stack/commit/d3b7012c80148e319cf34e3e6c3461177bdcd0f5)
+
 ### Fixed
 
-- Return Result from det_sign_exact, rename NonFinite field [`717d5cf`](https://github.com/acgetchell/la-stack/commit/717d5cf13af77764e8941004cdf2c153c260690f)
+- [**breaking**] Return Result from det_sign_exact, rename NonFinite field [`717d5cf`](https://github.com/acgetchell/la-stack/commit/717d5cf13af77764e8941004cdf2c153c260690f)
 
 ## [0.2.0] - 2026-03-07
 
@@ -145,7 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add tarpaulin coverage upload [`7486dfd`](https://github.com/acgetchell/la-stack/commit/7486dfd54e16a6dbde41575c3f35a1acb65f57d2)
 
-[unreleased]: https://github.com/acgetchell/la-stack/compare/v0.2.0..HEAD
+[unreleased]: https://github.com/acgetchell/la-stack/compare/v0.2.1..HEAD
+[0.2.1]: https://github.com/acgetchell/la-stack/compare/v0.2.0..v0.2.1
 [0.2.0]: https://github.com/acgetchell/la-stack/compare/v0.1.3..v0.2.0
 [0.1.3]: https://github.com/acgetchell/la-stack/compare/v0.1.2..v0.1.3
 [0.1.2]: https://github.com/acgetchell/la-stack/compare/v0.1.1..v0.1.2

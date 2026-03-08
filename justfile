@@ -70,20 +70,6 @@ _ensure-yamllint:
     set -euo pipefail
     command -v yamllint >/dev/null || { echo "❌ 'yamllint' not found. See 'just setup' or install: brew install yamllint"; exit 1; }
 
-# Changelog generation (git-cliff + post-processing)
-changelog: _ensure-git-cliff python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    git-cliff -o CHANGELOG.md
-    uv run postprocess-changelog
-
-# Prepend unreleased changes to CHANGELOG.md for the given version
-changelog-unreleased version: _ensure-git-cliff python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    git-cliff --unreleased --tag {{version}} --prepend CHANGELOG.md
-    uv run postprocess-changelog
-
 # GitHub Actions workflow validation
 action-lint: _ensure-actionlint
     #!/usr/bin/env bash
@@ -136,6 +122,20 @@ build:
 build-release:
     cargo build --release
 
+# Changelog generation (git-cliff + post-processing)
+changelog: _ensure-git-cliff python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git-cliff -o CHANGELOG.md
+    uv run postprocess-changelog
+
+# Prepend unreleased changes to CHANGELOG.md for the given version
+changelog-unreleased version: _ensure-git-cliff python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git-cliff --unreleased --tag {{version}} --prepend CHANGELOG.md
+    uv run postprocess-changelog
+
 # Check (non-mutating): run all linters/validators
 check: lint
     @echo "✅ Checks complete!"
@@ -149,10 +149,6 @@ check-fast:
 ci: check bench-compile test-all examples
     @echo "🎯 CI checks complete!"
 
-# Clippy for the "exact" feature (catches feature-gated lint issues)
-clippy-exact:
-    cargo clippy --features exact --all-targets -- -D warnings -W clippy::pedantic
-
 # Clean build artifacts
 clean:
     cargo clean
@@ -162,6 +158,10 @@ clean:
 # Code quality and formatting
 clippy:
     cargo clippy --workspace --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::cargo
+
+# Clippy for the "exact" feature (catches feature-gated lint issues)
+clippy-exact:
+    cargo clippy --features exact --all-targets -- -D warnings -W clippy::pedantic
 
 # Coverage (cargo-tarpaulin)
 #
@@ -532,6 +532,14 @@ spell-check: _ensure-typos
         echo "No modified files to spell-check."
     fi
 
+# Create an annotated git tag from the CHANGELOG.md section for the given version
+tag version: python-sync
+    uv run tag-release {{version}}
+
+# Recreate an existing tag (delete + recreate)
+tag-force version: python-sync
+    uv run tag-release {{version}} --force
+
 # Testing
 # test: runs only lib and doc tests (fast)
 test:
@@ -547,14 +555,6 @@ test-exact:
 
 test-integration:
     cargo test --tests --verbose
-
-# Create an annotated git tag from the CHANGELOG.md section for the given version
-tag version: python-sync
-    uv run tag-release {{version}}
-
-# Recreate an existing tag (delete + recreate)
-tag-force version: python-sync
-    uv run tag-release {{version}} --force
 
 test-python: python-sync
     uv run pytest -q
