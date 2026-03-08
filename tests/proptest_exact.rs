@@ -28,7 +28,7 @@ macro_rules! gen_det_sign_exact_proptests {
                     }
                     let m = Matrix::<$d>::from_rows(rows);
 
-                    let exact_sign = m.det_sign_exact();
+                    let exact_sign = m.det_sign_exact().unwrap();
 
                     // Expected sign from the product of diagonal entries.
                     let neg_count = diag.iter().filter(|&&x| x < 0.0).count();
@@ -49,7 +49,7 @@ macro_rules! gen_det_sign_exact_proptests {
                     }
                     let m = Matrix::<$d>::from_rows(rows);
 
-                    let exact_sign = m.det_sign_exact();
+                    let exact_sign = m.det_sign_exact().unwrap();
                     let fp_det = m.det(DEFAULT_PIVOT_TOL).unwrap();
                     let fp_sign: i8 = if fp_det > 0.0 {
                         1

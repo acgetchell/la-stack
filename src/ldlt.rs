@@ -39,7 +39,7 @@ impl<const D: usize> Ldlt<D> {
         for j in 0..D {
             let d = f.rows[j][j];
             if !d.is_finite() {
-                return Err(LaError::NonFinite { pivot_col: j });
+                return Err(LaError::NonFinite { col: j });
             }
             if d <= tol {
                 return Err(LaError::Singular { pivot_col: j });
@@ -49,7 +49,7 @@ impl<const D: usize> Ldlt<D> {
             for i in (j + 1)..D {
                 let l = f.rows[i][j] / d;
                 if !l.is_finite() {
-                    return Err(LaError::NonFinite { pivot_col: j });
+                    return Err(LaError::NonFinite { col: j });
                 }
                 f.rows[i][j] = l;
             }
@@ -63,7 +63,7 @@ impl<const D: usize> Ldlt<D> {
                     let l_k = f.rows[k][j];
                     let new_val = (-l_i_d).mul_add(l_k, f.rows[i][k]);
                     if !new_val.is_finite() {
-                        return Err(LaError::NonFinite { pivot_col: j });
+                        return Err(LaError::NonFinite { col: j });
                     }
                     f.rows[i][k] = new_val;
                 }
@@ -132,7 +132,7 @@ impl<const D: usize> Ldlt<D> {
                 sum = (-row[j]).mul_add(*x_j, sum);
             }
             if !sum.is_finite() {
-                return Err(LaError::NonFinite { pivot_col: i });
+                return Err(LaError::NonFinite { col: i });
             }
             x[i] = sum;
         }
@@ -141,7 +141,7 @@ impl<const D: usize> Ldlt<D> {
         for (i, x_i) in x.iter_mut().enumerate().take(D) {
             let diag = self.factors.rows[i][i];
             if !diag.is_finite() {
-                return Err(LaError::NonFinite { pivot_col: i });
+                return Err(LaError::NonFinite { col: i });
             }
             if diag <= self.tol {
                 return Err(LaError::Singular { pivot_col: i });
@@ -149,7 +149,7 @@ impl<const D: usize> Ldlt<D> {
 
             let v = *x_i / diag;
             if !v.is_finite() {
-                return Err(LaError::NonFinite { pivot_col: i });
+                return Err(LaError::NonFinite { col: i });
             }
             *x_i = v;
         }
@@ -162,7 +162,7 @@ impl<const D: usize> Ldlt<D> {
                 sum = (-self.factors.rows[j][i]).mul_add(*x_j, sum);
             }
             if !sum.is_finite() {
-                return Err(LaError::NonFinite { pivot_col: i });
+                return Err(LaError::NonFinite { col: i });
             }
             x[i] = sum;
         }
@@ -331,6 +331,39 @@ mod tests {
     fn nonfinite_detected() {
         let a = Matrix::<2>::from_rows([[f64::NAN, 0.0], [0.0, 1.0]]);
         let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
-        assert_eq!(err, LaError::NonFinite { pivot_col: 0 });
+        assert_eq!(err, LaError::NonFinite { col: 0 });
+    }
+
+    #[test]
+    fn nonfinite_l_multiplier_overflow() {
+        // d = 1e-11 > tol, but l = 1e300 / 1e-11 = 1e311 overflows f64.
+        let a = Matrix::<2>::from_rows([[1e-11, 1e300], [1e300, 1.0]]);
+        let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { col: 0 });
+    }
+
+    #[test]
+    fn nonfinite_trailing_submatrix_overflow() {
+        // L multiplier is finite (1e200), but the rank-1 update
+        // (-1e200 * 1.0) * 1e200 + 1.0 overflows.
+        let a = Matrix::<2>::from_rows([[1.0, 1e200], [1e200, 1.0]]);
+        let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { col: 0 });
+    }
+
+    #[test]
+    fn nonfinite_solve_vec_forward_substitution_overflow() {
+        // SPD matrix with large L multiplier: L[1,0] = 1e153.
+        // Forward substitution overflows: y[1] = 0 - 1e153 * 1e156 = -inf.
+        let a = Matrix::<3>::from_rows([
+            [1.0, 1e153, 0.0],
+            [1e153, 1e306 + 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]);
+        let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
+
+        let b = Vector::<3>::new([1e156, 0.0, 0.0]);
+        let err = ldlt.solve_vec(b).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { col: 1 });
     }
 }

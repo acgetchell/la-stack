@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Return Result from det_sign_exact, rename NonFinite field [`717d5cf`](https://github.com/acgetchell/la-stack/commit/717d5cf13af77764e8941004cdf2c153c260690f)
+
 ## [0.2.0] - 2026-03-07
 
 ### Added
@@ -46,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace cspell with typos-cli, bump MSRV to 1.94.0 [`6db12be`](https://github.com/acgetchell/la-stack/commit/6db12bebdc332f93f9663c0c0be8e785ab449fa6)
 - Add changelog tooling (git-cliff + tag script) [`5475651`](https://github.com/acgetchell/la-stack/commit/547565142a374d6a7fed432dd6dbaa8b24cf98a1)
+- Release v0.2.0 [`922006d`](https://github.com/acgetchell/la-stack/commit/922006d4a6d905bdb66b7eb729e0cb4eca1da70a)
 
 ### Performance
 
@@ -138,6 +145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add tarpaulin coverage upload [`7486dfd`](https://github.com/acgetchell/la-stack/commit/7486dfd54e16a6dbde41575c3f35a1acb65f57d2)
 
+[unreleased]: https://github.com/acgetchell/la-stack/compare/v0.2.0..HEAD
 [0.2.0]: https://github.com/acgetchell/la-stack/compare/v0.1.3..v0.2.0
 [0.1.3]: https://github.com/acgetchell/la-stack/compare/v0.1.2..v0.1.3
 [0.1.2]: https://github.com/acgetchell/la-stack/compare/v0.1.1..v0.1.2
