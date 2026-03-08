@@ -21,7 +21,8 @@ body = """
 {% for group, commits in commits | group_by(attribute="group") %}
     ### {{ group | upper_first }}
     {% for commit in commits %}
-        - {{ commit.message | split(pat="\n") | first | upper_first | trim }} \
+        - {% if commit.breaking %}[**breaking**] {% endif %}\
+            {{ commit.message | split(pat="\n") | first | upper_first | trim }} \
             [`{{ commit.id | truncate(length=7, end="") }}`]\
             (https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}\
             /commit/{{ commit.id }})
@@ -62,6 +63,7 @@ conventional_commits = true
 # (mixed styles: "feat:", "Changed:", plain merge commits, dependabot bumps).
 filter_unconventional = false
 filter_commits = false
+protect_breaking_commits = true
 tag_pattern = "v[0-9]*"
 topo_order = false
 sort_commits = "oldest"

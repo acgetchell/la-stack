@@ -142,7 +142,7 @@ arithmetic (this pulls in `num-bigint` and `num-rational` for `BigRational`):
 
 ```toml
 [dependencies]
-la-stack = { version = "0.2", features = ["exact"] }
+la-stack = { version = "0.2.1", features = ["exact"] }
 ```
 
 ```rust,ignore
