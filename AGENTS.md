@@ -69,3 +69,8 @@ When making changes in this repo, prioritize (in order):
 ## Publishing note
 
 - If you publish this crate to crates.io, prefer updating documentation *before* publishing a new version (doc-only changes still require a version bump on crates.io).
+
+## Editing tools policy
+
+- Never use `sed`, `awk`, `python`, or `perl` to edit code or write file changes.
+- These tools may be used for read-only inspection, parsing, or analysis, but never for writing.

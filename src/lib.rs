@@ -81,8 +81,8 @@ pub enum LaError {
     },
     /// A non-finite value (NaN/∞) was encountered.
     NonFinite {
-        /// The column being processed when non-finite values were detected.
-        pivot_col: usize,
+        /// The column where a non-finite value was detected.
+        col: usize,
     },
 }
 
@@ -92,11 +92,8 @@ impl fmt::Display for LaError {
             Self::Singular { pivot_col } => {
                 write!(f, "singular matrix at pivot column {pivot_col}")
             }
-            Self::NonFinite { pivot_col } => {
-                write!(
-                    f,
-                    "non-finite value encountered at pivot column {pivot_col}"
-                )
+            Self::NonFinite { col } => {
+                write!(f, "non-finite value encountered at column {col}")
             }
         }
     }
@@ -137,11 +134,8 @@ mod tests {
 
     #[test]
     fn laerror_display_formats_nonfinite() {
-        let err = LaError::NonFinite { pivot_col: 2 };
-        assert_eq!(
-            err.to_string(),
-            "non-finite value encountered at pivot column 2"
-        );
+        let err = LaError::NonFinite { col: 2 };
+        assert_eq!(err.to_string(), "non-finite value encountered at column 2");
     }
 
     #[test]

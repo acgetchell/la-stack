@@ -17,6 +17,7 @@
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
 
+use crate::LaError;
 use crate::matrix::Matrix;
 
 // ---------------------------------------------------------------------------
@@ -195,36 +196,47 @@ impl<const D: usize> Matrix<D> {
     ///     [7.0, 8.0, 9.0],
     /// ]);
     /// // This matrix is singular (row 3 = row 1 + row 2 in exact arithmetic).
-    /// assert_eq!(m.det_sign_exact(), 0);
+    /// assert_eq!(m.det_sign_exact().unwrap(), 0);
     ///
-    /// assert_eq!(Matrix::<3>::identity().det_sign_exact(), 1);
+    /// assert_eq!(Matrix::<3>::identity().det_sign_exact().unwrap(), 1);
     /// ```
     ///
-    /// # Panics
-    /// Panics if any matrix entry is NaN or infinite.
-    #[must_use]
-    pub fn det_sign_exact(&self) -> i8 {
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] if any matrix entry is NaN or infinite.
+    #[inline]
+    pub fn det_sign_exact(&self) -> Result<i8, LaError> {
+        // Validate all entries are finite before any arithmetic.
+        for r in 0..D {
+            for c in 0..D {
+                if !self.rows[r][c].is_finite() {
+                    return Err(LaError::NonFinite { col: c });
+                }
+            }
+        }
+
         // Stage 1: f64 fast filter for D ≤ 4.
         if let (Some(det_f64), Some(err)) = (self.det_direct(), det_errbound(self)) {
-            assert!(
-                det_f64.is_finite(),
-                "non-finite matrix entry in det_sign_exact"
-            );
-            if det_f64 > err {
-                return 1;
-            }
-            if det_f64 < -err {
-                return -1;
+            // When entries are large (e.g. near f64::MAX) the determinant can
+            // overflow to infinity even though every individual entry is finite.
+            // In that case the fast filter is inconclusive; fall through to the
+            // exact Bareiss path.
+            if det_f64.is_finite() {
+                if det_f64 > err {
+                    return Ok(1);
+                }
+                if det_f64 < -err {
+                    return Ok(-1);
+                }
             }
         }
 
         // Stage 2: exact Bareiss fallback.
         let det = bareiss_det(self);
-        match det.numer().sign() {
+        Ok(match det.numer().sign() {
             Sign::Plus => 1,
             Sign::Minus => -1,
             Sign::NoSign => 0,
-        }
+        })
     }
 }
 
@@ -235,45 +247,45 @@ mod tests {
 
     #[test]
     fn det_sign_exact_d0_is_positive() {
-        assert_eq!(Matrix::<0>::zero().det_sign_exact(), 1);
+        assert_eq!(Matrix::<0>::zero().det_sign_exact().unwrap(), 1);
     }
 
     #[test]
     fn det_sign_exact_d1_positive() {
         let m = Matrix::<1>::from_rows([[42.0]]);
-        assert_eq!(m.det_sign_exact(), 1);
+        assert_eq!(m.det_sign_exact().unwrap(), 1);
     }
 
     #[test]
     fn det_sign_exact_d1_negative() {
         let m = Matrix::<1>::from_rows([[-3.5]]);
-        assert_eq!(m.det_sign_exact(), -1);
+        assert_eq!(m.det_sign_exact().unwrap(), -1);
     }
 
     #[test]
     fn det_sign_exact_d1_zero() {
         let m = Matrix::<1>::from_rows([[0.0]]);
-        assert_eq!(m.det_sign_exact(), 0);
+        assert_eq!(m.det_sign_exact().unwrap(), 0);
     }
 
     #[test]
     fn det_sign_exact_identity_2d() {
-        assert_eq!(Matrix::<2>::identity().det_sign_exact(), 1);
+        assert_eq!(Matrix::<2>::identity().det_sign_exact().unwrap(), 1);
     }
 
     #[test]
     fn det_sign_exact_identity_3d() {
-        assert_eq!(Matrix::<3>::identity().det_sign_exact(), 1);
+        assert_eq!(Matrix::<3>::identity().det_sign_exact().unwrap(), 1);
     }
 
     #[test]
     fn det_sign_exact_identity_4d() {
-        assert_eq!(Matrix::<4>::identity().det_sign_exact(), 1);
+        assert_eq!(Matrix::<4>::identity().det_sign_exact().unwrap(), 1);
     }
 
     #[test]
     fn det_sign_exact_identity_5d() {
-        assert_eq!(Matrix::<5>::identity().det_sign_exact(), 1);
+        assert_eq!(Matrix::<5>::identity().det_sign_exact().unwrap(), 1);
     }
 
     #[test]
@@ -283,35 +295,35 @@ mod tests {
             [4.0, 5.0, 6.0],
             [1.0, 2.0, 3.0], // duplicate of row 0
         ]);
-        assert_eq!(m.det_sign_exact(), 0);
+        assert_eq!(m.det_sign_exact().unwrap(), 0);
     }
 
     #[test]
     fn det_sign_exact_singular_linear_combination() {
         // Row 2 = row 0 + row 1 in exact arithmetic.
         let m = Matrix::<3>::from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [5.0, 7.0, 9.0]]);
-        assert_eq!(m.det_sign_exact(), 0);
+        assert_eq!(m.det_sign_exact().unwrap(), 0);
     }
 
     #[test]
     fn det_sign_exact_negative_det_row_swap() {
         // Swapping two rows of the identity negates the determinant.
         let m = Matrix::<3>::from_rows([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
-        assert_eq!(m.det_sign_exact(), -1);
+        assert_eq!(m.det_sign_exact().unwrap(), -1);
     }
 
     #[test]
     fn det_sign_exact_negative_det_known() {
         // det([[1,2],[3,4]]) = 1*4 - 2*3 = -2
         let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-        assert_eq!(m.det_sign_exact(), -1);
+        assert_eq!(m.det_sign_exact().unwrap(), -1);
     }
 
     #[test]
     fn det_sign_exact_agrees_with_det_for_spd() {
         // SPD matrix → positive determinant.
         let m = Matrix::<3>::from_rows([[4.0, 2.0, 0.0], [2.0, 5.0, 1.0], [0.0, 1.0, 3.0]]);
-        assert_eq!(m.det_sign_exact(), 1);
+        assert_eq!(m.det_sign_exact().unwrap(), 1);
         assert!(m.det(DEFAULT_PIVOT_TOL).unwrap() > 0.0);
     }
 
@@ -330,7 +342,7 @@ mod tests {
             [7.0, 8.0, 9.0],
         ]);
         // Exact: det = perturbation × (5×9 − 6×8) = perturbation × (−3) < 0.
-        assert_eq!(m.det_sign_exact(), -1);
+        assert_eq!(m.det_sign_exact().unwrap(), -1);
     }
 
     /// For D ≤ 4, well-conditioned matrices should hit the fast filter
@@ -345,7 +357,7 @@ mod tests {
             [0.0, 0.0, 1.0, 5.0],
         ]);
         // SPD tridiagonal → positive det.
-        assert_eq!(m.det_sign_exact(), 1);
+        assert_eq!(m.det_sign_exact().unwrap(), 1);
     }
 
     #[test]
@@ -357,7 +369,7 @@ mod tests {
             [0.0, 1.0, 4.0, 1.0],
             [0.0, 0.0, 1.0, 5.0],
         ]);
-        assert_eq!(m.det_sign_exact(), -1);
+        assert_eq!(m.det_sign_exact().unwrap(), -1);
     }
 
     #[test]
@@ -368,38 +380,34 @@ mod tests {
 
         let m = Matrix::<2>::from_rows([[tiny, 0.0], [0.0, tiny]]);
         // det = tiny^2 > 0
-        assert_eq!(m.det_sign_exact(), 1);
+        assert_eq!(m.det_sign_exact().unwrap(), 1);
     }
 
     #[test]
-    #[should_panic(expected = "non-finite matrix entry")]
-    fn det_sign_exact_panics_on_nan() {
+    fn det_sign_exact_returns_err_on_nan() {
         let m = Matrix::<2>::from_rows([[f64::NAN, 0.0], [0.0, 1.0]]);
-        let _ = m.det_sign_exact();
+        assert_eq!(m.det_sign_exact(), Err(LaError::NonFinite { col: 0 }));
     }
 
     #[test]
-    #[should_panic(expected = "non-finite matrix entry")]
-    fn det_sign_exact_panics_on_infinity() {
+    fn det_sign_exact_returns_err_on_infinity() {
         let m = Matrix::<2>::from_rows([[f64::INFINITY, 0.0], [0.0, 1.0]]);
-        let _ = m.det_sign_exact();
+        assert_eq!(m.det_sign_exact(), Err(LaError::NonFinite { col: 0 }));
     }
 
     #[test]
-    #[should_panic(expected = "non-finite matrix entry")]
-    fn det_sign_exact_panics_on_nan_5x5() {
+    fn det_sign_exact_returns_err_on_nan_5x5() {
         // D ≥ 5 bypasses the fast filter, exercising the bareiss_det path.
         let mut m = Matrix::<5>::identity();
         m.set(2, 3, f64::NAN);
-        let _ = m.det_sign_exact();
+        assert_eq!(m.det_sign_exact(), Err(LaError::NonFinite { col: 3 }));
     }
 
     #[test]
-    #[should_panic(expected = "non-finite matrix entry")]
-    fn det_sign_exact_panics_on_infinity_5x5() {
+    fn det_sign_exact_returns_err_on_infinity_5x5() {
         let mut m = Matrix::<5>::identity();
         m.set(0, 0, f64::INFINITY);
-        let _ = m.det_sign_exact();
+        assert_eq!(m.det_sign_exact(), Err(LaError::NonFinite { col: 0 }));
     }
 
     #[test]
@@ -413,7 +421,7 @@ mod tests {
             [0.0, 0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 0.0, 1.0],
         ]);
-        assert_eq!(m.det_sign_exact(), -1);
+        assert_eq!(m.det_sign_exact().unwrap(), -1);
     }
 
     #[test]
@@ -427,7 +435,7 @@ mod tests {
             [0.0, 0.0, 0.0, 0.0, 1.0],
         ]);
         // Two transpositions → even permutation → det = +1
-        assert_eq!(m.det_sign_exact(), 1);
+        assert_eq!(m.det_sign_exact().unwrap(), 1);
     }
 
     // -----------------------------------------------------------------------
@@ -499,5 +507,17 @@ mod tests {
         let m = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
         let det = bareiss_det(&m);
         assert_eq!(det, BigRational::from_integer(BigInt::from(0)));
+    }
+
+    #[test]
+    fn det_sign_exact_overflow_determinant_finite_entries() {
+        // Entries near f64::MAX are finite, but the f64 determinant overflows
+        // to infinity.  The fast filter should be skipped and Bareiss should
+        // compute the correct positive sign.
+        let big = f64::MAX / 2.0;
+        assert!(big.is_finite());
+        let m = Matrix::<3>::from_rows([[0.0, 0.0, 1.0], [big, 0.0, 1.0], [0.0, big, 1.0]]);
+        // det = big^2 > 0
+        assert_eq!(m.det_sign_exact().unwrap(), 1);
     }
 }

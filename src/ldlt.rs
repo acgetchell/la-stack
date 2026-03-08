@@ -39,7 +39,7 @@ impl<const D: usize> Ldlt<D> {
         for j in 0..D {
             let d = f.rows[j][j];
             if !d.is_finite() {
-                return Err(LaError::NonFinite { pivot_col: j });
+                return Err(LaError::NonFinite { col: j });
             }
             if d <= tol {
                 return Err(LaError::Singular { pivot_col: j });
@@ -49,7 +49,7 @@ impl<const D: usize> Ldlt<D> {
             for i in (j + 1)..D {
                 let l = f.rows[i][j] / d;
                 if !l.is_finite() {
-                    return Err(LaError::NonFinite { pivot_col: j });
+                    return Err(LaError::NonFinite { col: j });
                 }
                 f.rows[i][j] = l;
             }
@@ -63,7 +63,7 @@ impl<const D: usize> Ldlt<D> {
                     let l_k = f.rows[k][j];
                     let new_val = (-l_i_d).mul_add(l_k, f.rows[i][k]);
                     if !new_val.is_finite() {
-                        return Err(LaError::NonFinite { pivot_col: j });
+                        return Err(LaError::NonFinite { col: j });
                     }
                     f.rows[i][k] = new_val;
                 }
@@ -132,7 +132,7 @@ impl<const D: usize> Ldlt<D> {
                 sum = (-row[j]).mul_add(*x_j, sum);
             }
             if !sum.is_finite() {
-                return Err(LaError::NonFinite { pivot_col: i });
+                return Err(LaError::NonFinite { col: i });
             }
             x[i] = sum;
         }
@@ -141,7 +141,7 @@ impl<const D: usize> Ldlt<D> {
         for (i, x_i) in x.iter_mut().enumerate().take(D) {
             let diag = self.factors.rows[i][i];
             if !diag.is_finite() {
-                return Err(LaError::NonFinite { pivot_col: i });
+                return Err(LaError::NonFinite { col: i });
             }
             if diag <= self.tol {
                 return Err(LaError::Singular { pivot_col: i });
@@ -149,7 +149,7 @@ impl<const D: usize> Ldlt<D> {
 
             let v = *x_i / diag;
             if !v.is_finite() {
-                return Err(LaError::NonFinite { pivot_col: i });
+                return Err(LaError::NonFinite { col: i });
             }
             *x_i = v;
         }
@@ -162,7 +162,7 @@ impl<const D: usize> Ldlt<D> {
                 sum = (-self.factors.rows[j][i]).mul_add(*x_j, sum);
             }
             if !sum.is_finite() {
-                return Err(LaError::NonFinite { pivot_col: i });
+                return Err(LaError::NonFinite { col: i });
             }
             x[i] = sum;
         }
@@ -331,6 +331,6 @@ mod tests {
     fn nonfinite_detected() {
         let a = Matrix::<2>::from_rows([[f64::NAN, 0.0], [0.0, 1.0]]);
         let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
-        assert_eq!(err, LaError::NonFinite { pivot_col: 0 });
+        assert_eq!(err, LaError::NonFinite { col: 0 });
     }
 }
