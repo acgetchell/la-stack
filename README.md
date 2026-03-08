@@ -153,7 +153,7 @@ let m = Matrix::<3>::from_rows([
     [4.0, 5.0, 6.0],
     [7.0, 8.0, 9.0],
 ]);
-assert_eq!(m.det_sign_exact(), 0); // exactly singular
+assert_eq!(m.det_sign_exact().unwrap(), 0); // exactly singular
 ```
 
 For D ≤ 4, a fast f64 filter (error-bounded `det_direct()`) resolves the sign

@@ -333,4 +333,37 @@ mod tests {
         let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(err, LaError::NonFinite { col: 0 });
     }
+
+    #[test]
+    fn nonfinite_l_multiplier_overflow() {
+        // d = 1e-11 > tol, but l = 1e300 / 1e-11 = 1e311 overflows f64.
+        let a = Matrix::<2>::from_rows([[1e-11, 1e300], [1e300, 1.0]]);
+        let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { col: 0 });
+    }
+
+    #[test]
+    fn nonfinite_trailing_submatrix_overflow() {
+        // L multiplier is finite (1e200), but the rank-1 update
+        // (-1e200 * 1.0) * 1e200 + 1.0 overflows.
+        let a = Matrix::<2>::from_rows([[1.0, 1e200], [1e200, 1.0]]);
+        let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { col: 0 });
+    }
+
+    #[test]
+    fn nonfinite_solve_vec_forward_substitution_overflow() {
+        // SPD matrix with large L multiplier: L[1,0] = 1e153.
+        // Forward substitution overflows: y[1] = 0 - 1e153 * 1e156 = -inf.
+        let a = Matrix::<3>::from_rows([
+            [1.0, 1e153, 0.0],
+            [1e153, 1e306 + 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]);
+        let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
+
+        let b = Vector::<3>::new([1e156, 0.0, 0.0]);
+        let err = ldlt.solve_vec(b).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { col: 1 });
+    }
 }
