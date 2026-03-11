@@ -20,81 +20,6 @@ use num_rational::BigRational;
 use crate::LaError;
 use crate::matrix::Matrix;
 
-// ---------------------------------------------------------------------------
-// Error-bound constants for the f64 fast filter.
-//
-// Each constant bounds the absolute error of `det_direct()` relative to the
-// *permanent* (sum of absolute products in the Leibniz expansion).  The
-// constants are conservative over-estimates following Shewchuk's methodology;
-// over-estimating just means we fall through to Bareiss more often.
-// ---------------------------------------------------------------------------
-
-const EPS: f64 = f64::EPSILON; // 2^-52
-
-/// D=2: one f64 multiply + one FMA → 2 rounding events.
-const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
-
-/// D=3: three 2×2 FMA minors + nested FMA combination.
-const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
-
-/// D=4: six hoisted 2×2 minors → four 3×3 cofactors → FMA row combination.
-const ERR_COEFF_4: f64 = 12.0 * EPS + 128.0 * EPS * EPS;
-
-/// Conservative absolute error bound for `det_direct()`, or `None` for D ≥ 5.
-///
-/// Returns `Some(bound)` such that `|det_direct() - det_exact| ≤ bound`.
-fn det_errbound<const D: usize>(m: &Matrix<D>) -> Option<f64> {
-    match D {
-        0 | 1 => Some(0.0), // No arithmetic — result is exact.
-        2 => {
-            let r = &m.rows;
-            let permanent = (r[0][0] * r[1][1]).abs() + (r[0][1] * r[1][0]).abs();
-            Some(ERR_COEFF_2 * permanent)
-        }
-        3 => {
-            let r = &m.rows;
-            let pm00 = (r[1][1] * r[2][2]).abs() + (r[1][2] * r[2][1]).abs();
-            let pm01 = (r[1][0] * r[2][2]).abs() + (r[1][2] * r[2][0]).abs();
-            let pm02 = (r[1][0] * r[2][1]).abs() + (r[1][1] * r[2][0]).abs();
-            let permanent = r[0][2]
-                .abs()
-                .mul_add(pm02, r[0][1].abs().mul_add(pm01, r[0][0].abs() * pm00));
-            Some(ERR_COEFF_3 * permanent)
-        }
-        4 => {
-            let r = &m.rows;
-            // 2×2 minor permanents from rows 2–3.
-            let sp23 = (r[2][2] * r[3][3]).abs() + (r[2][3] * r[3][2]).abs();
-            let sp13 = (r[2][1] * r[3][3]).abs() + (r[2][3] * r[3][1]).abs();
-            let sp12 = (r[2][1] * r[3][2]).abs() + (r[2][2] * r[3][1]).abs();
-            let sp03 = (r[2][0] * r[3][3]).abs() + (r[2][3] * r[3][0]).abs();
-            let sp02 = (r[2][0] * r[3][2]).abs() + (r[2][2] * r[3][0]).abs();
-            let sp01 = (r[2][0] * r[3][1]).abs() + (r[2][1] * r[3][0]).abs();
-            // 3×3 cofactor permanents from row 1.
-            let pc0 = r[1][3]
-                .abs()
-                .mul_add(sp12, r[1][2].abs().mul_add(sp13, r[1][1].abs() * sp23));
-            let pc1 = r[1][3]
-                .abs()
-                .mul_add(sp02, r[1][2].abs().mul_add(sp03, r[1][0].abs() * sp23));
-            let pc2 = r[1][3]
-                .abs()
-                .mul_add(sp01, r[1][1].abs().mul_add(sp03, r[1][0].abs() * sp13));
-            let pc3 = r[1][2]
-                .abs()
-                .mul_add(sp01, r[1][1].abs().mul_add(sp02, r[1][0].abs() * sp12));
-            let permanent = r[0][3].abs().mul_add(
-                pc3,
-                r[0][2]
-                    .abs()
-                    .mul_add(pc2, r[0][1].abs().mul_add(pc1, r[0][0].abs() * pc0)),
-            );
-            Some(ERR_COEFF_4 * permanent)
-        }
-        _ => None,
-    }
-}
-
 /// Convert an `f64` to an exact `BigRational`.
 ///
 /// Every finite `f64` is exactly representable as a rational number (`m × 2^e`),
@@ -215,7 +140,7 @@ impl<const D: usize> Matrix<D> {
         }
 
         // Stage 1: f64 fast filter for D ≤ 4.
-        if let (Some(det_f64), Some(err)) = (self.det_direct(), det_errbound(self)) {
+        if let (Some(det_f64), Some(err)) = (self.det_direct(), self.det_errbound()) {
             // When entries are large (e.g. near f64::MAX) the determinant can
             // overflow to infinity even though every individual entry is finite.
             // In that case the fast filter is inconclusive; fall through to the
@@ -444,40 +369,61 @@ mod tests {
 
     #[test]
     fn det_errbound_d0_is_zero() {
-        assert_eq!(det_errbound(&Matrix::<0>::zero()), Some(0.0));
+        assert_eq!(Matrix::<0>::zero().det_errbound(), Some(0.0));
     }
 
     #[test]
     fn det_errbound_d1_is_zero() {
-        assert_eq!(det_errbound(&Matrix::<1>::from_rows([[42.0]])), Some(0.0));
+        assert_eq!(Matrix::<1>::from_rows([[42.0]]).det_errbound(), Some(0.0));
     }
 
     #[test]
     fn det_errbound_d2_positive() {
         let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-        let bound = det_errbound(&m).unwrap();
+        let bound = m.det_errbound().unwrap();
         assert!(bound > 0.0);
         // bound = ERR_COEFF_2 * (|1*4| + |2*3|) = ERR_COEFF_2 * 10
-        assert!(ERR_COEFF_2.mul_add(-10.0, bound).abs() < 1e-30);
+        assert!(crate::ERR_COEFF_2.mul_add(-10.0, bound).abs() < 1e-30);
     }
 
     #[test]
     fn det_errbound_d3_positive() {
         let m = Matrix::<3>::identity();
-        let bound = det_errbound(&m).unwrap();
+        let bound = m.det_errbound().unwrap();
+        assert!(bound > 0.0);
+    }
+
+    #[test]
+    fn det_errbound_d3_non_identity() {
+        // Non-identity matrix to exercise all code paths in D=3 case
+        let m = Matrix::<3>::from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 10.0]]);
+        let bound = m.det_errbound().unwrap();
         assert!(bound > 0.0);
     }
 
     #[test]
     fn det_errbound_d4_positive() {
         let m = Matrix::<4>::identity();
-        let bound = det_errbound(&m).unwrap();
+        let bound = m.det_errbound().unwrap();
+        assert!(bound > 0.0);
+    }
+
+    #[test]
+    fn det_errbound_d4_non_identity() {
+        // Non-identity matrix to exercise all code paths in D=4 case
+        let m = Matrix::<4>::from_rows([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0, 0.0],
+            [0.0, 0.0, 3.0, 0.0],
+            [0.0, 0.0, 0.0, 4.0],
+        ]);
+        let bound = m.det_errbound().unwrap();
         assert!(bound > 0.0);
     }
 
     #[test]
     fn det_errbound_d5_is_none() {
-        assert_eq!(det_errbound(&Matrix::<5>::identity()), None);
+        assert_eq!(Matrix::<5>::identity().det_errbound(), None);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance for automated agents (including Warp at warp.dev) when working with code in this repository.
+Essential guidance for AI assistants working in this repository.
 
 ## Priorities
 
@@ -10,7 +10,71 @@ When making changes in this repo, prioritize (in order):
 - Speed
 - Coverage (but keep the code idiomatic Rust)
 
-## Common commands
+## Core Rules
+
+### Git Operations
+
+- **NEVER** run `git commit`, `git push`, `git tag`, or any git commands that modify version control state
+- **ALLOWED**: Run read-only git commands (e.g. `git --no-pager status`, `git --no-pager diff`,
+  `git --no-pager log`, `git --no-pager show`, `git --no-pager blame`) to inspect changes/history
+- **ALWAYS** use `git --no-pager` when reading git output
+- Suggest git commands that modify version control state for the user to run manually
+
+### Commit Messages
+
+When user requests commit message generation:
+
+1. Run `git --no-pager diff --cached --stat`
+2. Generate conventional commit format: `<type>: <brief summary>`
+3. Types: `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `chore`, `style`, `ci`, `build`
+4. Include body with organized bullet points and test results
+5. Present in code block (no language) - user will commit manually
+
+### Code Quality
+
+- **ALLOWED**: Run formatters/linters: `cargo fmt`, `cargo clippy`, `cargo doc`, `taplo fmt`, `taplo lint`,
+  `uv run ruff check --fix`, `uv run ruff format`, `shfmt -w`, `shellcheck -x`, `npx markdownlint --fix`,
+  `typos`, `actionlint`
+- **NEVER**: Use `sed`, `awk`, `perl` for code edits
+- **ALWAYS**: Use `edit_files` tool for edits (and `create_file` for new files)
+- **EXCEPTION**: Shell text tools OK for read-only analysis only
+
+### Validation
+
+- **JSON**: Validate with `jq empty <file>.json` after editing (or `just validate-json`)
+- **TOML**: Lint/format with taplo: `just toml-lint`, `just toml-fmt-check`, `just toml-fmt`
+- **GitHub Actions**: Validate workflows with `just action-lint` (uses `actionlint`)
+- **Spell check**: Run `just spell-check` after editing; add legitimate technical terms to
+  `typos.toml` under `[default.extend-words]`
+- **Shell scripts**: Run `shfmt -w scripts/*.sh` and `shellcheck -x scripts/*.sh` after editing
+- **YAML**: Use `just yaml-lint` and `just yaml-fix`
+- **Markdown**: Use `just markdown-check` and `just markdown-fix`
+
+### Rust
+
+- Prefer borrowed APIs by default:
+  take references (`&T`, `&mut T`, `&[T]`) as arguments and return borrowed views (`&T`, `&[T]`) when possible.
+  Only take ownership or return `Vec`/allocated data when required.
+
+### Python
+
+- Use `uv run` for all Python scripts (never `python3` or `python` directly)
+- Use pytest for tests (not unittest)
+- **Type checking**: `just python-check` includes type checking (blocking - all code must pass type checks)
+- Add type hints to new code
+
+## Common Commands
+
+```bash
+just fix              # Apply formatters/auto-fixes (mutating)
+just check            # Lint/validators (non-mutating)
+just ci               # Full CI simulation (checks + tests + examples + bench compile)
+just test             # Lib + doc tests (fast)
+just test-all         # All tests (Rust + Python)
+just examples         # Run all examples
+```
+
+### Detailed Command Reference
 
 - All tests (Rust + Python): `just test-all`
 - Benchmarks: `cargo bench` (or `just bench`)
@@ -36,6 +100,30 @@ When making changes in this repo, prioritize (in order):
 - Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5` /
   `cargo run --example const_det_4x4` / `cargo run --features exact --example exact_sign_3x3`)
 - Spell check: `just spell-check` (uses `typos.toml` at repo root; add false positives to `[default.extend-words]`)
+
+### Changelog
+
+- Never edit `CHANGELOG.md` directly - it's auto-generated from git commits
+- Use `just changelog` to regenerate
+- Use `just changelog-unreleased <version>` to prepend unreleased changes
+
+### GitHub Issues
+
+When creating or updating issues:
+
+- **Labels**: Use appropriate labels: `enhancement`, `bug`, `performance`, `documentation`, `rust`, `python`, etc.
+- **Milestones**: Assign to the appropriate milestone (e.g., `v0.3.0`, `v0.4.0`)
+- **Dependencies**: Document relationships in issue body and comments:
+  - "Depends on: #XXX" - this issue cannot start until #XXX is complete
+  - "Blocks: #YYY" - #YYY cannot start until this issue is complete
+  - "Related: #ZZZ" - related work but not blocking
+- **Relationships**: GitHub automatically parses blocking keywords in comments to create visual relationships:
+  - Use `gh issue comment <number> --body "Blocked by #XXX"` to mark an issue as blocked
+  - Use `gh issue comment <number> --body "Blocks #YYY"` to mark an issue as blocking another
+  - GitHub will automatically create the relationship graph in the web UI
+  - Example: `gh issue comment 217 --body "Blocked by #207"` creates a blocking dependency
+- **Issue body format**: Include clear sections: Summary, Current State, Proposed Changes, Benefits, Implementation Notes
+- **Cross-referencing**: Always reference related issues/PRs using #XXX notation for automatic linking
 
 ## Feature flags
 

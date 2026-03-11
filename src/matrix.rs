@@ -301,6 +301,110 @@ impl<const D: usize> Matrix<D> {
         }
         self.lu(tol).map(|lu| lu.det())
     }
+
+    /// Conservative absolute error bound for `det_direct()`.
+    ///
+    /// Returns `Some(bound)` such that `|det_direct() - det_exact| ≤ bound`,
+    /// or `None` for D ≥ 5 where no fast bound is available.
+    ///
+    /// For D ≤ 4, the bound is derived from the matrix permanent using
+    /// Shewchuk-style error analysis. For D = 0 or 1, returns `Some(0.0)`
+    /// since the determinant computation is exact (no arithmetic).
+    ///
+    /// This method does NOT require the `exact` feature — the bounds use
+    /// pure f64 arithmetic and are useful for custom adaptive-precision logic.
+    ///
+    /// # When to use
+    ///
+    /// Use this to build adaptive-precision logic: if `|det_direct()| > bound`,
+    /// the f64 sign is provably correct. Otherwise fall back to exact arithmetic.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// let m = Matrix::<3>::from_rows([
+    ///     [1.0, 2.0, 3.0],
+    ///     [4.0, 5.0, 6.0],
+    ///     [7.0, 8.0, 9.0],
+    /// ]);
+    /// let bound = m.det_errbound().unwrap();
+    /// let det_approx = m.det_direct().unwrap();
+    /// // If |det_approx| > bound, the sign is guaranteed correct.
+    /// ```
+    ///
+    /// # Adaptive precision pattern (requires `exact` feature)
+    /// ```ignore
+    /// use la_stack::prelude::*;
+    ///
+    /// let m = Matrix::<3>::identity();
+    /// if let Some(bound) = m.det_errbound() {
+    ///     let det = m.det_direct().unwrap();
+    ///     if det.abs() > bound {
+    ///         // f64 sign is guaranteed correct
+    ///         let sign = det.signum() as i8;
+    ///     } else {
+    ///         // Fall back to exact arithmetic (requires `exact` feature)
+    ///         let sign = m.det_sign_exact().unwrap();
+    ///     }
+    /// } else {
+    ///     // D ≥ 5: no fast filter, use exact directly
+    ///     let sign = m.det_sign_exact().unwrap();
+    /// }
+    /// ```
+    #[must_use]
+    #[inline]
+    pub fn det_errbound(&self) -> Option<f64> {
+        match D {
+            0 | 1 => Some(0.0), // No arithmetic — result is exact.
+            2 => {
+                let r = &self.rows;
+                let permanent = (r[0][0] * r[1][1]).abs() + (r[0][1] * r[1][0]).abs();
+                Some(crate::ERR_COEFF_2 * permanent)
+            }
+            3 => {
+                let r = &self.rows;
+                let pm00 = (r[1][1] * r[2][2]).abs() + (r[1][2] * r[2][1]).abs();
+                let pm01 = (r[1][0] * r[2][2]).abs() + (r[1][2] * r[2][0]).abs();
+                let pm02 = (r[1][0] * r[2][1]).abs() + (r[1][1] * r[2][0]).abs();
+                let permanent = r[0][2]
+                    .abs()
+                    .mul_add(pm02, r[0][1].abs().mul_add(pm01, r[0][0].abs() * pm00));
+                Some(crate::ERR_COEFF_3 * permanent)
+            }
+            4 => {
+                let r = &self.rows;
+                // 2×2 minor permanents from rows 2–3.
+                let sp23 = (r[2][2] * r[3][3]).abs() + (r[2][3] * r[3][2]).abs();
+                let sp13 = (r[2][1] * r[3][3]).abs() + (r[2][3] * r[3][1]).abs();
+                let sp12 = (r[2][1] * r[3][2]).abs() + (r[2][2] * r[3][1]).abs();
+                let sp03 = (r[2][0] * r[3][3]).abs() + (r[2][3] * r[3][0]).abs();
+                let sp02 = (r[2][0] * r[3][2]).abs() + (r[2][2] * r[3][0]).abs();
+                let sp01 = (r[2][0] * r[3][1]).abs() + (r[2][1] * r[3][0]).abs();
+                // 3×3 cofactor permanents from row 1.
+                let pc0 = r[1][3]
+                    .abs()
+                    .mul_add(sp12, r[1][2].abs().mul_add(sp13, r[1][1].abs() * sp23));
+                let pc1 = r[1][3]
+                    .abs()
+                    .mul_add(sp02, r[1][2].abs().mul_add(sp03, r[1][0].abs() * sp23));
+                let pc2 = r[1][3]
+                    .abs()
+                    .mul_add(sp01, r[1][1].abs().mul_add(sp03, r[1][0].abs() * sp13));
+                let pc3 = r[1][2]
+                    .abs()
+                    .mul_add(sp01, r[1][1].abs().mul_add(sp02, r[1][0].abs() * sp12));
+                let permanent = r[0][3].abs().mul_add(
+                    pc3,
+                    r[0][2]
+                        .abs()
+                        .mul_add(pc2, r[0][1].abs().mul_add(pc1, r[0][0].abs() * pc0)),
+                );
+                Some(crate::ERR_COEFF_4 * permanent)
+            }
+            _ => None,
+        }
+    }
 }
 
 impl<const D: usize> Default for Matrix<D> {
@@ -592,5 +696,22 @@ mod tests {
             m.det_direct()
         };
         assert_eq!(DET, Some(30.0));
+    }
+
+    // === det_errbound tests (no `exact` feature required) ===
+
+    #[test]
+    fn det_errbound_available_without_exact_feature() {
+        // Verify det_errbound is accessible without exact feature
+        let m = Matrix::<3>::identity();
+        let bound = m.det_errbound();
+        assert!(bound.is_some());
+        assert!(bound.unwrap() > 0.0);
+    }
+
+    #[test]
+    fn det_errbound_d5_returns_none() {
+        // D=5 has no fast filter
+        assert_eq!(Matrix::<5>::identity().det_errbound(), None);
     }
 }
