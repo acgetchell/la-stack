@@ -162,8 +162,9 @@ to the exact Bareiss algorithm in `BigRational`.
 
 ### Adaptive precision with `det_errbound()`
 
-The `exact` feature also exposes `det_errbound()`, which returns the conservative
-absolute error bound used by the fast filter. This enables building custom
+`det_errbound()` returns the conservative absolute error bound used by the fast
+filter. This method does NOT require the `exact` feature — it uses pure f64
+arithmetic and is available by default. This enables building custom
 adaptive-precision logic for geometric predicates:
 
 ```rust,ignore
@@ -176,11 +177,11 @@ if let Some(bound) = m.det_errbound() {
         // f64 sign is guaranteed correct
         let sign = det.signum() as i8;
     } else {
-        // Fall back to exact arithmetic
+        // Fall back to exact arithmetic (requires `exact` feature)
         let sign = m.det_sign_exact().unwrap();
     }
 } else {
-    // D ≥ 5: no fast filter, use exact directly
+    // D ≥ 5: no fast filter, use exact directly (requires `exact` feature)
     let sign = m.det_sign_exact().unwrap();
 }
 ```
@@ -193,7 +194,7 @@ exposed for advanced use cases.
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Fixed-length vector | `new`, `zero`, `dot`, `norm2_sq` |
-| `Matrix<D>` | `[[f64; D]; D]` | Square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det`, `det_direct`, `det_sign_exact`¹, `det_errbound`¹ |
+| `Matrix<D>` | `[[f64; D]; D]` | Square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`, `det_sign_exact`¹ |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 

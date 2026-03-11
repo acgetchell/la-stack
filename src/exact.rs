@@ -20,35 +20,6 @@ use num_rational::BigRational;
 use crate::LaError;
 use crate::matrix::Matrix;
 
-// ---------------------------------------------------------------------------
-// Error-bound constants for the f64 fast filter.
-//
-// Each constant bounds the absolute error of `det_direct()` relative to the
-// *permanent* (sum of absolute products in the Leibniz expansion).  The
-// constants are conservative over-estimates following Shewchuk's methodology;
-// over-estimating just means we fall through to Bareiss more often.
-// ---------------------------------------------------------------------------
-
-const EPS: f64 = f64::EPSILON; // 2^-52
-
-/// Error coefficient for D=2 determinant error bound.
-///
-/// Accounts for one f64 multiply + one FMA → 2 rounding events.
-/// Used in computing the absolute error bound for 2×2 determinants.
-pub const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
-
-/// Error coefficient for D=3 determinant error bound.
-///
-/// Accounts for three 2×2 FMA minors + nested FMA combination.
-/// Used in computing the absolute error bound for 3×3 determinants.
-pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
-
-/// Error coefficient for D=4 determinant error bound.
-///
-/// Accounts for six hoisted 2×2 minors → four 3×3 cofactors → FMA row combination.
-/// Used in computing the absolute error bound for 4×4 determinants.
-pub const ERR_COEFF_4: f64 = 12.0 * EPS + 128.0 * EPS * EPS;
-
 /// Convert an `f64` to an exact `BigRational`.
 ///
 /// Every finite `f64` is exactly representable as a rational number (`m × 2^e`),
@@ -123,108 +94,6 @@ fn bareiss_det<const D: usize>(m: &Matrix<D>) -> BigRational {
 }
 
 impl<const D: usize> Matrix<D> {
-    /// Conservative absolute error bound for `det_direct()`.
-    ///
-    /// Returns `Some(bound)` such that `|det_direct() - det_exact| ≤ bound`,
-    /// or `None` for D ≥ 5 where no fast bound is available.
-    ///
-    /// For D ≤ 4, the bound is derived from the matrix permanent using
-    /// Shewchuk-style error analysis. For D = 0 or 1, returns `Some(0.0)`
-    /// since the determinant computation is exact (no arithmetic).
-    ///
-    /// # When to use
-    ///
-    /// Use this to build adaptive-precision logic: if `|det_direct()| > bound`,
-    /// the f64 sign is provably correct. Otherwise fall back to exact arithmetic
-    /// (e.g., [`det_sign_exact`](Self::det_sign_exact)).
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// let m = Matrix::<3>::from_rows([
-    ///     [1.0, 2.0, 3.0],
-    ///     [4.0, 5.0, 6.0],
-    ///     [7.0, 8.0, 9.0],
-    /// ]);
-    /// let bound = m.det_errbound().unwrap();
-    /// let det_approx = m.det_direct().unwrap();
-    /// // If |det_approx| > bound, the sign is guaranteed correct.
-    /// ```
-    ///
-    /// # Adaptive precision pattern
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// let m = Matrix::<3>::identity();
-    /// if let Some(bound) = m.det_errbound() {
-    ///     let det = m.det_direct().unwrap();
-    ///     if det.abs() > bound {
-    ///         // f64 sign is guaranteed correct
-    ///         let sign = det.signum() as i8;
-    ///     } else {
-    ///         // Fall back to exact arithmetic
-    ///         let sign = m.det_sign_exact().unwrap();
-    ///     }
-    /// } else {
-    ///     // D ≥ 5: no fast filter, use exact directly
-    ///     let sign = m.det_sign_exact().unwrap();
-    /// }
-    /// ```
-    #[must_use]
-    #[inline]
-    pub fn det_errbound(&self) -> Option<f64> {
-        match D {
-            0 | 1 => Some(0.0), // No arithmetic — result is exact.
-            2 => {
-                let r = &self.rows;
-                let permanent = (r[0][0] * r[1][1]).abs() + (r[0][1] * r[1][0]).abs();
-                Some(ERR_COEFF_2 * permanent)
-            }
-            3 => {
-                let r = &self.rows;
-                let pm00 = (r[1][1] * r[2][2]).abs() + (r[1][2] * r[2][1]).abs();
-                let pm01 = (r[1][0] * r[2][2]).abs() + (r[1][2] * r[2][0]).abs();
-                let pm02 = (r[1][0] * r[2][1]).abs() + (r[1][1] * r[2][0]).abs();
-                let permanent = r[0][2]
-                    .abs()
-                    .mul_add(pm02, r[0][1].abs().mul_add(pm01, r[0][0].abs() * pm00));
-                Some(ERR_COEFF_3 * permanent)
-            }
-            4 => {
-                let r = &self.rows;
-                // 2×2 minor permanents from rows 2–3.
-                let sp23 = (r[2][2] * r[3][3]).abs() + (r[2][3] * r[3][2]).abs();
-                let sp13 = (r[2][1] * r[3][3]).abs() + (r[2][3] * r[3][1]).abs();
-                let sp12 = (r[2][1] * r[3][2]).abs() + (r[2][2] * r[3][1]).abs();
-                let sp03 = (r[2][0] * r[3][3]).abs() + (r[2][3] * r[3][0]).abs();
-                let sp02 = (r[2][0] * r[3][2]).abs() + (r[2][2] * r[3][0]).abs();
-                let sp01 = (r[2][0] * r[3][1]).abs() + (r[2][1] * r[3][0]).abs();
-                // 3×3 cofactor permanents from row 1.
-                let pc0 = r[1][3]
-                    .abs()
-                    .mul_add(sp12, r[1][2].abs().mul_add(sp13, r[1][1].abs() * sp23));
-                let pc1 = r[1][3]
-                    .abs()
-                    .mul_add(sp02, r[1][2].abs().mul_add(sp03, r[1][0].abs() * sp23));
-                let pc2 = r[1][3]
-                    .abs()
-                    .mul_add(sp01, r[1][1].abs().mul_add(sp03, r[1][0].abs() * sp13));
-                let pc3 = r[1][2]
-                    .abs()
-                    .mul_add(sp01, r[1][1].abs().mul_add(sp02, r[1][0].abs() * sp12));
-                let permanent = r[0][3].abs().mul_add(
-                    pc3,
-                    r[0][2]
-                        .abs()
-                        .mul_add(pc2, r[0][1].abs().mul_add(pc1, r[0][0].abs() * pc0)),
-                );
-                Some(ERR_COEFF_4 * permanent)
-            }
-            _ => None,
-        }
-    }
-
     /// Exact determinant sign using adaptive-precision arithmetic.
     ///
     /// Returns `1` if `det > 0`, `-1` if `det < 0`, and `0` if `det == 0` (singular).
@@ -514,7 +383,7 @@ mod tests {
         let bound = m.det_errbound().unwrap();
         assert!(bound > 0.0);
         // bound = ERR_COEFF_2 * (|1*4| + |2*3|) = ERR_COEFF_2 * 10
-        assert!(ERR_COEFF_2.mul_add(-10.0, bound).abs() < 1e-30);
+        assert!(crate::ERR_COEFF_2.mul_add(-10.0, bound).abs() < 1e-30);
     }
 
     #[test]
@@ -525,8 +394,29 @@ mod tests {
     }
 
     #[test]
+    fn det_errbound_d3_non_identity() {
+        // Non-identity matrix to exercise all code paths in D=3 case
+        let m = Matrix::<3>::from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 10.0]]);
+        let bound = m.det_errbound().unwrap();
+        assert!(bound > 0.0);
+    }
+
+    #[test]
     fn det_errbound_d4_positive() {
         let m = Matrix::<4>::identity();
+        let bound = m.det_errbound().unwrap();
+        assert!(bound > 0.0);
+    }
+
+    #[test]
+    fn det_errbound_d4_non_identity() {
+        // Non-identity matrix to exercise all code paths in D=4 case
+        let m = Matrix::<4>::from_rows([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0, 0.0],
+            [0.0, 0.0, 3.0, 0.0],
+            [0.0, 0.0, 0.0, 4.0],
+        ]);
         let bound = m.det_errbound().unwrap();
         assert!(bound > 0.0);
     }

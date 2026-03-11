@@ -50,8 +50,6 @@ mod readme_doctests {
 
 #[cfg(feature = "exact")]
 mod exact;
-#[cfg(feature = "exact")]
-pub use exact::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};
 
 mod ldlt;
 mod lu;
@@ -59,6 +57,37 @@ mod matrix;
 mod vector;
 
 use core::fmt;
+
+// ---------------------------------------------------------------------------
+// Error-bound constants for determinant error analysis.
+//
+// These constants bound the absolute error of `det_direct()` relative to the
+// *permanent* (sum of absolute products in the Leibniz expansion). The
+// constants are conservative over-estimates following Shewchuk's methodology.
+//
+// These are NOT feature-gated because they use pure f64 arithmetic and are
+// useful for adaptive-precision logic even without the `exact` feature.
+// ---------------------------------------------------------------------------
+
+const EPS: f64 = f64::EPSILON; // 2^-52
+
+/// Error coefficient for D=2 determinant error bound.
+///
+/// Accounts for one f64 multiply + one FMA → 2 rounding events.
+/// Used in computing the absolute error bound for 2×2 determinants.
+pub const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
+
+/// Error coefficient for D=3 determinant error bound.
+///
+/// Accounts for three 2×2 FMA minors + nested FMA combination.
+/// Used in computing the absolute error bound for 3×3 determinants.
+pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
+
+/// Error coefficient for D=4 determinant error bound.
+///
+/// Accounts for six hoisted 2×2 minors → four 3×3 cofactors → FMA row combination.
+/// Used in computing the absolute error bound for 4×4 determinants.
+pub const ERR_COEFF_4: f64 = 12.0 * EPS + 128.0 * EPS * EPS;
 
 /// Default absolute threshold used for singularity/degeneracy detection.
 ///
@@ -112,15 +141,13 @@ pub use vector::Vector;
 /// Common imports for ergonomic usage.
 ///
 /// This prelude re-exports the primary types and constants: [`Matrix`], [`Vector`], [`Lu`],
-/// [`Ldlt`], [`LaError`], [`DEFAULT_PIVOT_TOL`], and [`DEFAULT_SINGULAR_TOL`].
-///
-/// When the `exact` feature is enabled, this also re-exports the determinant error
-/// bound coefficients: [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`].
+/// [`Ldlt`], [`LaError`], [`DEFAULT_PIVOT_TOL`], [`DEFAULT_SINGULAR_TOL`], and the determinant
+/// error bound coefficients [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`].
 pub mod prelude {
-    pub use crate::{DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, LaError, Ldlt, Lu, Matrix, Vector};
-
-    #[cfg(feature = "exact")]
-    pub use crate::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};
+    pub use crate::{
+        DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError,
+        Ldlt, Lu, Matrix, Vector,
+    };
 }
 
 #[cfg(test)]
