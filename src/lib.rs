@@ -50,6 +50,9 @@ mod readme_doctests {
 
 #[cfg(feature = "exact")]
 mod exact;
+#[cfg(feature = "exact")]
+pub use exact::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};
+
 mod ldlt;
 mod lu;
 mod matrix;
@@ -110,8 +113,14 @@ pub use vector::Vector;
 ///
 /// This prelude re-exports the primary types and constants: [`Matrix`], [`Vector`], [`Lu`],
 /// [`Ldlt`], [`LaError`], [`DEFAULT_PIVOT_TOL`], and [`DEFAULT_SINGULAR_TOL`].
+///
+/// When the `exact` feature is enabled, this also re-exports the determinant error
+/// bound coefficients: [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`].
 pub mod prelude {
     pub use crate::{DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, LaError, Ldlt, Lu, Matrix, Vector};
+
+    #[cfg(feature = "exact")]
+    pub use crate::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};
 }
 
 #[cfg(test)]

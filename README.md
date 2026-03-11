@@ -31,7 +31,7 @@ while keeping the API intentionally small and explicit.
 - ✅ Const-generic dimensions (no dynamic sizes)
 - ✅ `const fn` where possible (compile-time evaluation of determinants, dot products, etc.)
 - ✅ Explicit algorithms (LU, solve, determinant)
-- ✅ Robust geometric predicates via optional exact arithmetic (`det_sign_exact`)
+- ✅ Robust geometric predicates via optional exact arithmetic (`det_sign_exact`, `det_errbound`)
 - ✅ No runtime dependencies by default (optional features may add deps)
 - ✅ Stack storage only (no heap allocation in core types)
 - ✅ `unsafe` forbidden
@@ -160,12 +160,40 @@ For D ≤ 4, a fast f64 filter (error-bounded `det_direct()`) resolves the sign
 without allocating.  Only near-degenerate or large (D ≥ 5) matrices fall through
 to the exact Bareiss algorithm in `BigRational`.
 
+### Adaptive precision with `det_errbound()`
+
+The `exact` feature also exposes `det_errbound()`, which returns the conservative
+absolute error bound used by the fast filter. This enables building custom
+adaptive-precision logic for geometric predicates:
+
+```rust,ignore
+use la_stack::prelude::*;
+
+let m = Matrix::<3>::identity();
+if let Some(bound) = m.det_errbound() {
+    let det = m.det_direct().unwrap();
+    if det.abs() > bound {
+        // f64 sign is guaranteed correct
+        let sign = det.signum() as i8;
+    } else {
+        // Fall back to exact arithmetic
+        let sign = m.det_sign_exact().unwrap();
+    }
+} else {
+    // D ≥ 5: no fast filter, use exact directly
+    let sign = m.det_sign_exact().unwrap();
+}
+```
+
+The error coefficients (`ERR_COEFF_2`, `ERR_COEFF_3`, `ERR_COEFF_4`) are also
+exposed for advanced use cases.
+
 ## 🧩 API at a glance
 
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Fixed-length vector | `new`, `zero`, `dot`, `norm2_sq` |
-| `Matrix<D>` | `[[f64; D]; D]` | Fixed-size square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det`, `det_direct`, `det_sign_exact`¹ |
+| `Matrix<D>` | `[[f64; D]; D]` | Square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det`, `det_direct`, `det_sign_exact`¹, `det_errbound`¹ |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 
