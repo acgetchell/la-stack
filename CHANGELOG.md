@@ -5,21 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.2] - 2026-03-11
+
+### Added
+
+- Expose determinant error bounds (det_errbound) [`0643bcd`](https://github.com/acgetchell/la-stack/commit/0643bcdd5bd3634c99951acfe68152fd444c2d3f)
+- Expose det_errbound without requiring exact feature [`d96f676`](https://github.com/acgetchell/la-stack/commit/d96f676bee8436bde622addcf3ac48c24111da75)
 
 ### Maintenance
 
-- Release v0.2.1 [`b4d0286`](https://github.com/acgetchell/la-stack/commit/b4d028677d33b1cb3fad1f6d79b9c8ba00e7a265)
+- Bump actions/setup-node from 6.2.0 to 6.3.0 [`0f2fc34`](https://github.com/acgetchell/la-stack/commit/0f2fc348b06d72476610821c77945c265207ad05)
+- Bump taiki-e/install-action from 2.68.20 to 2.68.22 [`c3e49bd`](https://github.com/acgetchell/la-stack/commit/c3e49bdd75e3ca26117942da243dac1ee59eb7a1)
 
 ## [0.2.1] - 2026-03-08
 
 ### Changed
 
 - Add LDLT NonFinite coverage tests; update README example [`d3b7012`](https://github.com/acgetchell/la-stack/commit/d3b7012c80148e319cf34e3e6c3461177bdcd0f5)
+- Update changelog generation and release metadata (internal) [`8f97a0f`](https://github.com/acgetchell/la-stack/commit/8f97a0f060dae57550ec73513983c43c79525696)
 
 ### Fixed
 
 - [**breaking**] Return Result from det_sign_exact, rename NonFinite field [`717d5cf`](https://github.com/acgetchell/la-stack/commit/717d5cf13af77764e8941004cdf2c153c260690f)
+
+### Maintenance
+
+- Release v0.2.1 [`b4d0286`](https://github.com/acgetchell/la-stack/commit/b4d028677d33b1cb3fad1f6d79b9c8ba00e7a265)
 
 ## [0.2.0] - 2026-03-07
 
@@ -155,7 +166,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add tarpaulin coverage upload [`7486dfd`](https://github.com/acgetchell/la-stack/commit/7486dfd54e16a6dbde41575c3f35a1acb65f57d2)
 
-[unreleased]: https://github.com/acgetchell/la-stack/compare/v0.2.1..HEAD
+[0.2.2]: https://github.com/acgetchell/la-stack/compare/v0.2.1..v0.2.2
 [0.2.1]: https://github.com/acgetchell/la-stack/compare/v0.2.0..v0.2.1
 [0.2.0]: https://github.com/acgetchell/la-stack/compare/v0.1.3..v0.2.0
 [0.1.3]: https://github.com/acgetchell/la-stack/compare/v0.1.2..v0.1.3
