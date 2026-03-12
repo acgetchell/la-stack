@@ -5,11 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-03-12
 
 ### Added
 
 - Expose exact determinant value (det_exact, det_exact_f64) [`b1a676c`](https://github.com/acgetchell/la-stack/commit/b1a676c8bd8fde98eb9915a9d2e528f1225f46bf)
+- [**breaking**] Expose exact determinant value (det_exact, det_exact_f64) [`92ce476`](https://github.com/acgetchell/la-stack/commit/92ce476201d5759766d73221612cd27492bccbe5)
+- Exact linear system solve (solve_exact, solve_exact_f64) [`d04fcd3`](https://github.com/acgetchell/la-stack/commit/d04fcd3b24843b7377a34849dbb2e6469bf9fc56)
+
+### Changed
+
+- Add LaError::Overflow, dimension-coverage tests, and doc fixes [`fed0082`](https://github.com/acgetchell/la-stack/commit/fed00823e552c60ec5a98bc74aeb61254f4e2999)
+- Add #[non_exhaustive] to LaError [`d068c0e`](https://github.com/acgetchell/la-stack/commit/d068c0e62073a9746a36dab06761605635281481)
+- Use det_direct() in exact_det_3x3 example [`5b69fa8`](https://github.com/acgetchell/la-stack/commit/5b69fa8011cd5471af10be5db8fcde64ec9a9dfa)
+- Restructure gauss_solve to avoid break/continue [`125b259`](https://github.com/acgetchell/la-stack/commit/125b259608a2c1965aba486d2594ff9fa328609c)
+
+### Documentation
+
+- Clarify pivoting strategy and use idiomatic rev() in exact.rs [`d884581`](https://github.com/acgetchell/la-stack/commit/d8845816b4cc4cb282913f67d7b94b58fbf91bd2)
+- Add LDLT example, solve_exact README snippet, and sync examples [`2bddccf`](https://github.com/acgetchell/la-stack/commit/2bddccf3f20156fadb4fee6a4093e76b1b631de1)
 
 ## [0.2.2] - 2026-03-11
 
@@ -173,7 +187,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add tarpaulin coverage upload [`7486dfd`](https://github.com/acgetchell/la-stack/commit/7486dfd54e16a6dbde41575c3f35a1acb65f57d2)
 
-[unreleased]: https://github.com/acgetchell/la-stack/compare/v0.2.2..HEAD
+[0.3.0]: https://github.com/acgetchell/la-stack/compare/v0.2.2..v0.3.0
 [0.2.2]: https://github.com/acgetchell/la-stack/compare/v0.2.1..v0.2.2
 [0.2.1]: https://github.com/acgetchell/la-stack/compare/v0.2.0..v0.2.1
 [0.2.0]: https://github.com/acgetchell/la-stack/compare/v0.1.3..v0.2.0
