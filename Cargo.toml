@@ -4,13 +4,13 @@ version = "0.2.2"
 edition = "2024"
 rust-version = "1.94"
 license = "BSD-3-Clause"
-description = "Small, stack-allocated linear algebra for fixed dimensions"
+description = "Fast, stack-allocated linear algebra for fixed dimensions"
 readme = "README.md"
 documentation = "https://docs.rs/la-stack"
 repository = "https://github.com/acgetchell/la-stack"
 homepage = "https://github.com/acgetchell/la-stack"
 categories = [ "mathematics", "science" ]
-keywords = [ "linear-algebra", "geometry", "const-generics" ]
+keywords = [ "linear-algebra", "geometry", "const-generics", "exact-arithmetic", "robust-predicates" ]
 
 [dependencies]
 # All runtime deps are optional; see [features] below.
@@ -37,6 +37,10 @@ required-features = [ "exact" ]
 
 [[example]]
 name = "exact_sign_3x3"
+required-features = [ "exact" ]
+
+[[example]]
+name = "exact_solve_3x3"
 required-features = [ "exact" ]
 
 [[bench]]

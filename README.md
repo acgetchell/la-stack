@@ -32,6 +32,7 @@ while keeping the API intentionally small and explicit.
 - ✅ `const fn` where possible (compile-time evaluation of determinants, dot products, etc.)
 - ✅ Explicit algorithms (LU, solve, determinant)
 - ✅ Robust geometric predicates via optional exact arithmetic (`det_sign_exact`, `det_errbound`)
+- ✅ Exact linear system solve via optional arbitrary-precision arithmetic (`solve_exact`, `solve_exact_f64`)
 - ✅ No runtime dependencies by default (optional features may add deps)
 - ✅ Stack storage only (no heap allocation in core types)
 - ✅ `unsafe` forbidden
@@ -46,9 +47,9 @@ See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ## 🔢 Scalar types
 
-Today, the core types are implemented for `f64`. The intent is to support `f32` and `f64`
-(and `f128` if/when Rust gains a stable primitive for it). Arbitrary-precision arithmetic
-is available via the optional `"exact"` feature (see below).
+The core types use `f64`. When f64 precision is insufficient (e.g. near-degenerate
+geometric configurations), the optional `"exact"` feature provides arbitrary-precision
+arithmetic via `BigRational` (see below).
 
 ## 🚀 Quickstart
 
@@ -136,8 +137,8 @@ for D ≤ 4 and falls back to LU for D ≥ 5 — no API change needed.
 ## 🔬 Exact arithmetic (`"exact"` feature)
 
 The default build has **zero runtime dependencies**.  Enable the optional
-`exact` Cargo feature to add exact determinant methods using adaptive-precision
-arithmetic (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
+`exact` Cargo feature to add exact arithmetic methods using arbitrary-precision
+rationals (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
 `BigRational`):
 
 ```toml
@@ -145,9 +146,16 @@ arithmetic (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
 la-stack = { version = "0.2.2", features = ["exact"] }
 ```
 
+**Determinants:**
+
 - **`det_exact()`** — returns the exact determinant as a `BigRational`
 - **`det_exact_f64()`** — returns the exact determinant converted to the nearest `f64`
 - **`det_sign_exact()`** — returns the provably correct sign (−1, 0, or +1)
+
+**Linear system solve:**
+
+- **`solve_exact(b)`** — solves `Ax = b` exactly, returning `[BigRational; D]`
+- **`solve_exact_f64(b)`** — solves `Ax = b` exactly, converting the result to `Vector<D>` (f64)
 
 ```rust,ignore
 use la_stack::prelude::*;
@@ -204,11 +212,14 @@ exposed for advanced use cases.
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Fixed-length vector | `new`, `zero`, `dot`, `norm2_sq` |
-| `Matrix<D>` | `[[f64; D]; D]` | Square matrix | `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`, `det_exact`¹, `det_exact_f64`¹, `det_sign_exact`¹ |
+| `Matrix<D>` | `[[f64; D]; D]` | Square matrix | See below |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 
 Storage shown above reflects the current `f64` implementation.
+
+`Matrix<D>` key methods: `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`,
+`det_exact`¹, `det_exact_f64`¹, `det_sign_exact`¹, `solve_exact`¹, `solve_exact_f64`¹.
 
 ¹ Requires `features = ["exact"]`.
 
@@ -221,6 +232,7 @@ The `examples/` directory contains small, runnable programs:
 - **`const_det_4x4`** — compile-time 4×4 determinant via `det_direct()`
 - **`exact_det_3x3`** — exact determinant value of a near-singular 3×3 matrix (requires `exact` feature)
 - **`exact_sign_3x3`** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
+- **`exact_solve_3x3`** — exact solve of a near-singular 3×3 system vs f64 LU (requires `exact` feature)
 
 ```bash
 just examples
@@ -230,6 +242,7 @@ cargo run --example det_5x5
 cargo run --example const_det_4x4
 cargo run --features exact --example exact_det_3x3
 cargo run --features exact --example exact_sign_3x3
+cargo run --features exact --example exact_solve_3x3
 ```
 
 ## 🤝 Contributing

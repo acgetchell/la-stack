@@ -93,7 +93,7 @@ testable.
 #### Reference examples
 
 - `src/matrix.rs` — `gen_public_api_matrix_tests!`
-- `src/exact.rs` — `gen_det_exact_tests!`, `gen_det_exact_f64_tests!`
+- `src/exact.rs` — `gen_det_exact_tests!`, `gen_det_exact_f64_tests!`, `gen_solve_exact_tests!`, `gen_solve_exact_f64_tests!`
 
 #### When single-dimension tests are acceptable
 
@@ -144,7 +144,8 @@ just examples         # Run all examples
 - Run exact-feature tests: `cargo test --features exact --verbose` (or `just test-exact`)
 - Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5` /
   `cargo run --example const_det_4x4` / `cargo run --features exact --example exact_det_3x3` /
-  `cargo run --features exact --example exact_sign_3x3`)
+  `cargo run --features exact --example exact_sign_3x3` /
+  `cargo run --features exact --example exact_solve_3x3`)
 - Spell check: `just spell-check` (uses `typos.toml` at repo root; add false positives to `[default.extend-words]`)
 
 ### Changelog
@@ -154,6 +155,15 @@ just examples         # Run all examples
 - Use `just changelog-unreleased <version>` to prepend unreleased changes
 
 ### GitHub Issues
+
+Use the `gh` CLI to read, create, and edit issues:
+
+- **Read**: `gh issue view <number>` (or `--json title,body,labels,milestone` for structured data)
+- **List**: `gh issue list` (add `--label enhancement`, `--milestone v0.3.0`, etc. to filter)
+- **Create**: `gh issue create --title "..." --body "..." --label enhancement --label rust`
+- **Edit**: `gh issue edit <number> --add-label "..."`, `--milestone "..."`, `--title "..."`
+- **Comment**: `gh issue comment <number> --body "..."`
+- **Close**: `gh issue close <number>` (with optional `--reason completed` or `--reason "not planned"`)
 
 When creating or updating issues:
 
@@ -173,10 +183,10 @@ When creating or updating issues:
 
 ## Feature flags
 
-- `exact` — enables exact determinant methods via `BigRational` arithmetic:
-  `det_exact()`, `det_exact_f64()`, and `det_sign_exact()`.
+- `exact` — enables exact arithmetic methods via `BigRational`:
+  `det_exact()`, `det_exact_f64()`, `det_sign_exact()`, `solve_exact()`, and `solve_exact_f64()`.
   Also re-exports `BigRational` from the crate root and prelude.
-  Gates `src/exact.rs`, additional tests, and the `exact_det_3x3`/`exact_sign_3x3` examples.
+  Gates `src/exact.rs`, additional tests, and the `exact_det_3x3`/`exact_sign_3x3`/`exact_solve_3x3` examples.
   Clippy, doc builds, and test commands have dedicated `--features exact` variants.
 
 ## Code structure (big picture)
@@ -188,9 +198,11 @@ When creating or updating issues:
   - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `set`, `inf_norm`, `det`, `det_direct`)
   - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve_vec`, `det`)
   - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for symmetric SPD/PSD matrices (`solve_vec`, `det`)
-  - `src/exact.rs`: `det_exact()`, `det_exact_f64()`, `det_sign_exact()` — exact determinant
-    value and sign via Bareiss in `BigRational`; `det_sign_exact()` adds a Shewchuk-style f64
-    filter for fast sign resolution; `features = ["exact"]`
+  - `src/exact.rs`: exact arithmetic behind `features = ["exact"]`:
+    - Determinants: `det_exact()`, `det_exact_f64()`, `det_sign_exact()` via Bareiss in
+      `BigRational`; `det_sign_exact()` adds a Shewchuk-style f64 filter for fast sign resolution
+    - Linear system solve: `solve_exact()`, `solve_exact_f64()` via Gaussian elimination
+      with partial pivoting in `BigRational`
 - Rust tests are inline `#[cfg(test)]` modules in each `src/*.rs` file.
 - Python tests live in `scripts/tests/` and run via `just test-python` (`uv run pytest`).
 - The public API re-exports these items from `src/lib.rs`.
