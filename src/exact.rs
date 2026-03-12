@@ -22,10 +22,11 @@
 //!
 //! ## Linear system solve
 //!
-//! `solve_exact` and `solve_exact_f64` solve `A x = b` using standard Gaussian
-//! elimination with partial pivoting in `BigRational` arithmetic.  Every finite
-//! `f64` is exactly representable as a rational, so the result is provably
-//! correct.
+//! `solve_exact` and `solve_exact_f64` solve `A x = b` using Gaussian
+//! elimination with first-non-zero pivoting in `BigRational` arithmetic.
+//! Since all arithmetic is exact, any non-zero pivot gives the correct result
+//! (there is no numerical stability concern).  Every finite `f64` is exactly
+//! representable as a rational, so the result is provably correct.
 
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
@@ -101,7 +102,7 @@ fn bareiss_det<const D: usize>(m: &Matrix<D>) -> BigRational {
     let mut sign: i8 = 1;
 
     for k in 0..D {
-        // Partial pivoting: find non-zero entry in column k at or below row k.
+        // Find first non-zero entry in column k at or below row k.
         if a[k][k] == zero {
             let mut found = false;
             for i in (k + 1)..D {
@@ -136,8 +137,12 @@ fn bareiss_det<const D: usize>(m: &Matrix<D>) -> BigRational {
     if sign < 0 { -det } else { det.clone() }
 }
 
-/// Solve `A x = b` using Gaussian elimination with partial pivoting in
-/// `BigRational` arithmetic.
+/// Solve `A x = b` using Gaussian elimination with first-non-zero pivoting
+/// in `BigRational` arithmetic.
+///
+/// Since all arithmetic is exact, any non-zero pivot gives the correct result
+/// (no numerical stability concern).  This matches the pivoting strategy used
+/// by `bareiss_det`.
 ///
 /// Returns the exact solution as a `Vec<BigRational>` of length `D`.
 /// Returns `Err(LaError::Singular)` if the matrix is exactly singular.
@@ -159,7 +164,7 @@ fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<Vec<BigRa
         aug.push(row);
     }
 
-    // Forward elimination with partial pivoting.
+    // Forward elimination with first-non-zero pivoting.
     for k in 0..D {
         // Find first non-zero pivot in column k at or below row k.
         if aug[k][k] == zero {
@@ -189,8 +194,7 @@ fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<Vec<BigRa
 
     // Back-substitution.
     let mut x: Vec<BigRational> = vec![zero; D];
-    for ii in 0..D {
-        let i = D - 1 - ii;
+    for i in (0..D).rev() {
         let mut sum = aug[i][D].clone();
         for j in (i + 1)..D {
             sum -= &aug[i][j] * &x[j];
