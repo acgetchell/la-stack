@@ -19,6 +19,7 @@ faer = { version = "0.24.0", default-features = false, features = [ "std", "lina
 nalgebra = { version = "0.34.1", optional = true }
 num-bigint = { version = "0.4.6", optional = true }
 num-rational = { version = "0.4.2", features = [ "num-bigint-std" ], optional = true }
+num-traits = { version = "0.2.19", optional = true }
 
 [dev-dependencies]
 approx = "0.5.1"
@@ -28,7 +29,11 @@ proptest = "1.10.0"
 [features]
 default = [  ]
 bench = [ "criterion", "faer", "nalgebra" ]
-exact = [ "num-bigint", "num-rational" ]
+exact = [ "num-bigint", "num-rational", "num-traits" ]
+
+[[example]]
+name = "exact_det_3x3"
+required-features = [ "exact" ]
 
 [[example]]
 name = "exact_sign_3x3"

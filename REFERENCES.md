@@ -59,7 +59,7 @@ elimination [7] in `BigRational`. See `src/exact.rs` for the full architecture d
    *Numerische Mathematik* 27 (1976/1977): 95–110.
    [Full text](https://eudml.org/doc/132435)
 
-### Exact determinant sign (`det_sign_exact`)
+### Exact determinant (`det_exact`, `det_exact_f64`, `det_sign_exact`)
 
 7. Bareiss, Erwin H. "Sylvester's Identity and Multistep Integer-Preserving Gaussian
    Elimination." *Mathematics of Computation* 22.103 (1968): 565–578.

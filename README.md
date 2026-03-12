@@ -133,17 +133,21 @@ assert_eq!(DET, Some(30.0));
 The public `det()` method automatically dispatches through the closed-form path
 for D ≤ 4 and falls back to LU for D ≥ 5 — no API change needed.
 
-## 🔬 Exact determinant sign (`"exact"` feature)
+## 🔬 Exact arithmetic (`"exact"` feature)
 
 The default build has **zero runtime dependencies**.  Enable the optional
-`exact` Cargo feature to add `det_sign_exact()`, which returns the provably
-correct sign (−1, 0, or +1) of the determinant using adaptive-precision
-arithmetic (this pulls in `num-bigint` and `num-rational` for `BigRational`):
+`exact` Cargo feature to add exact determinant methods using adaptive-precision
+arithmetic (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
+`BigRational`):
 
 ```toml
 [dependencies]
 la-stack = { version = "0.2.2", features = ["exact"] }
 ```
+
+- **`det_exact()`** — returns the exact determinant as a `BigRational`
+- **`det_exact_f64()`** — returns the exact determinant converted to the nearest `f64`
+- **`det_sign_exact()`** — returns the provably correct sign (−1, 0, or +1)
 
 ```rust,ignore
 use la_stack::prelude::*;
@@ -154,11 +158,17 @@ let m = Matrix::<3>::from_rows([
     [7.0, 8.0, 9.0],
 ]);
 assert_eq!(m.det_sign_exact().unwrap(), 0); // exactly singular
+
+let det = m.det_exact().unwrap();
+assert_eq!(det, BigRational::from_integer(0.into())); // exact zero
 ```
 
-For D ≤ 4, a fast f64 filter (error-bounded `det_direct()`) resolves the sign
-without allocating.  Only near-degenerate or large (D ≥ 5) matrices fall through
-to the exact Bareiss algorithm in `BigRational`.
+`BigRational` is re-exported from the crate root and prelude when the `exact`
+feature is enabled, so consumers don't need to depend on `num-rational` directly.
+
+For `det_sign_exact()`, D ≤ 4 matrices use a fast f64 filter (error-bounded
+`det_direct()`) that resolves the sign without allocating.  Only near-degenerate
+or large (D ≥ 5) matrices fall through to the exact Bareiss algorithm.
 
 ### Adaptive precision with `det_errbound()`
 
@@ -194,7 +204,7 @@ exposed for advanced use cases.
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Fixed-length vector | `new`, `zero`, `dot`, `norm2_sq` |
-| `Matrix<D>` | `[[f64; D]; D]` | Square matrix | `from_rows`, `zero`, `identity`, `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`, `det_sign_exact`¹ |
+| `Matrix<D>` | `[[f64; D]; D]` | Square matrix | `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`, `det_exact`¹, `det_exact_f64`¹, `det_sign_exact`¹ |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 
@@ -209,6 +219,7 @@ The `examples/` directory contains small, runnable programs:
 - **`solve_5x5`** — solve a 5×5 system via LU with partial pivoting
 - **`det_5x5`** — determinant of a 5×5 matrix via LU
 - **`const_det_4x4`** — compile-time 4×4 determinant via `det_direct()`
+- **`exact_det_3x3`** — exact determinant value of a near-singular 3×3 matrix (requires `exact` feature)
 - **`exact_sign_3x3`** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
 
 ```bash
@@ -217,6 +228,7 @@ just examples
 cargo run --example solve_5x5
 cargo run --example det_5x5
 cargo run --example const_det_4x4
+cargo run --features exact --example exact_det_3x3
 cargo run --features exact --example exact_sign_3x3
 ```
 

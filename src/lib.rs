@@ -50,6 +50,8 @@ mod readme_doctests {
 
 #[cfg(feature = "exact")]
 mod exact;
+#[cfg(feature = "exact")]
+pub use num_rational::BigRational;
 
 mod ldlt;
 mod lu;
@@ -104,18 +106,31 @@ pub const DEFAULT_SINGULAR_TOL: f64 = 1e-12;
 pub const DEFAULT_PIVOT_TOL: f64 = DEFAULT_SINGULAR_TOL;
 
 /// Linear algebra errors.
+///
+/// This enum is `#[non_exhaustive]` — downstream `match` arms must include a
+/// wildcard (`_`) pattern to compile, allowing new variants to be added in
+/// future minor releases without breaking existing code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LaError {
     /// The matrix is (numerically) singular.
     Singular {
         /// The factorization column/step where a suitable pivot/diagonal could not be found.
         pivot_col: usize,
     },
-    /// A non-finite value (NaN/∞) was encountered.
+    /// A non-finite value (NaN/∞) was encountered in the input.
     NonFinite {
         /// The column where a non-finite value was detected.
         col: usize,
     },
+    /// The exact result overflows the target representation (e.g. `f64`).
+    ///
+    /// This is returned by `Matrix::det_exact_f64` (requires `exact` feature)
+    /// when the exact `BigRational` determinant is too large to represent as
+    /// a finite `f64`.
+    ///
+    /// *Added in 0.3.0.*
+    Overflow,
 }
 
 impl fmt::Display for LaError {
@@ -126,6 +141,9 @@ impl fmt::Display for LaError {
             }
             Self::NonFinite { col } => {
                 write!(f, "non-finite value encountered at column {col}")
+            }
+            Self::Overflow => {
+                write!(f, "exact result overflows the target representation")
             }
         }
     }
@@ -143,11 +161,17 @@ pub use vector::Vector;
 /// This prelude re-exports the primary types and constants: [`Matrix`], [`Vector`], [`Lu`],
 /// [`Ldlt`], [`LaError`], [`DEFAULT_PIVOT_TOL`], [`DEFAULT_SINGULAR_TOL`], and the determinant
 /// error bound coefficients [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`].
+///
+/// When the `exact` feature is enabled, `BigRational` is also
+/// re-exported for use with `Matrix::det_exact`.
 pub mod prelude {
     pub use crate::{
         DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError,
         Ldlt, Lu, Matrix, Vector,
     };
+
+    #[cfg(feature = "exact")]
+    pub use crate::BigRational;
 }
 
 #[cfg(test)]
@@ -172,6 +196,15 @@ mod tests {
     fn laerror_display_formats_nonfinite() {
         let err = LaError::NonFinite { col: 2 };
         assert_eq!(err.to_string(), "non-finite value encountered at column 2");
+    }
+
+    #[test]
+    fn laerror_display_formats_overflow() {
+        let err = LaError::Overflow;
+        assert_eq!(
+            err.to_string(),
+            "exact result overflows the target representation"
+        );
     }
 
     #[test]
