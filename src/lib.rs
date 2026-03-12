@@ -50,6 +50,8 @@ mod readme_doctests {
 
 #[cfg(feature = "exact")]
 mod exact;
+#[cfg(feature = "exact")]
+pub use num_rational::BigRational;
 
 mod ldlt;
 mod lu;
@@ -143,11 +145,17 @@ pub use vector::Vector;
 /// This prelude re-exports the primary types and constants: [`Matrix`], [`Vector`], [`Lu`],
 /// [`Ldlt`], [`LaError`], [`DEFAULT_PIVOT_TOL`], [`DEFAULT_SINGULAR_TOL`], and the determinant
 /// error bound coefficients [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`].
+///
+/// When the `exact` feature is enabled, [`BigRational`] is also
+/// re-exported for use with [`Matrix::det_exact`].
 pub mod prelude {
     pub use crate::{
         DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError,
         Ldlt, Lu, Matrix, Vector,
     };
+
+    #[cfg(feature = "exact")]
+    pub use crate::BigRational;
 }
 
 #[cfg(test)]

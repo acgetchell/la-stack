@@ -683,6 +683,7 @@ dependencies = [
  "nalgebra",
  "num-bigint",
  "num-rational",
+ "num-traits",
  "pastey",
  "proptest",
 ]

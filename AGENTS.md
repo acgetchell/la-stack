@@ -98,7 +98,8 @@ just examples         # Run all examples
 - Run a single test (by name filter): `cargo test solve_2x2_basic` (or the full path: `cargo test lu::tests::solve_2x2_basic`)
 - Run exact-feature tests: `cargo test --features exact --verbose` (or `just test-exact`)
 - Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5` /
-  `cargo run --example const_det_4x4` / `cargo run --features exact --example exact_sign_3x3`)
+  `cargo run --example const_det_4x4` / `cargo run --features exact --example exact_det_3x3` /
+  `cargo run --features exact --example exact_sign_3x3`)
 - Spell check: `just spell-check` (uses `typos.toml` at repo root; add false positives to `[default.extend-words]`)
 
 ### Changelog
@@ -127,8 +128,10 @@ When creating or updating issues:
 
 ## Feature flags
 
-- `exact` — enables `det_sign_exact()` (adaptive-precision determinant sign via `BigRational`).
-  Gates `src/exact.rs`, additional tests, and the `exact_sign_3x3` example.
+- `exact` — enables exact determinant methods via `BigRational` arithmetic:
+  `det_exact()`, `det_exact_f64()`, and `det_sign_exact()`.
+  Also re-exports `BigRational` from the crate root and prelude.
+  Gates `src/exact.rs`, additional tests, and the `exact_det_3x3`/`exact_sign_3x3` examples.
   Clippy, doc builds, and test commands have dedicated `--features exact` variants.
 
 ## Code structure (big picture)
@@ -140,8 +143,8 @@ When creating or updating issues:
   - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `set`, `inf_norm`, `det`, `det_direct`)
   - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve_vec`, `det`)
   - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for symmetric SPD/PSD matrices (`solve_vec`, `det`)
-  - `src/exact.rs`: `det_sign_exact()` — adaptive-precision determinant sign
-    (Shewchuk-style f64 filter + Bareiss in `BigRational`); `features = ["exact"]`
+  - `src/exact.rs`: `det_exact()`, `det_exact_f64()`, `det_sign_exact()` — exact determinant
+    value and sign (Shewchuk-style f64 filter + Bareiss in `BigRational`); `features = ["exact"]`
 - Rust tests are inline `#[cfg(test)]` modules in each `src/*.rs` file.
 - Python tests live in `scripts/tests/` and run via `just test-python` (`uv run pytest`).
 - The public API re-exports these items from `src/lib.rs`.

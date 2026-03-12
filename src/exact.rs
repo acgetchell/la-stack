@@ -16,9 +16,25 @@
 
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
+use num_traits::ToPrimitive;
 
 use crate::LaError;
 use crate::matrix::Matrix;
+
+/// Validate that all entries in a `D×D` matrix are finite (not NaN or infinite).
+///
+/// Returns `Ok(())` if all entries are finite, or `Err(LaError::NonFinite)` with
+/// the column of the first non-finite entry found.
+fn validate_finite<const D: usize>(m: &Matrix<D>) -> Result<(), LaError> {
+    for r in 0..D {
+        for c in 0..D {
+            if !m.rows[r][c].is_finite() {
+                return Err(LaError::NonFinite { col: c });
+            }
+        }
+    }
+    Ok(())
+}
 
 /// Convert an `f64` to an exact `BigRational`.
 ///
@@ -94,6 +110,67 @@ fn bareiss_det<const D: usize>(m: &Matrix<D>) -> BigRational {
 }
 
 impl<const D: usize> Matrix<D> {
+    /// Exact determinant using arbitrary-precision rational arithmetic.
+    ///
+    /// Returns the determinant as an exact [`BigRational`] value. Every finite
+    /// `f64` is exactly representable as a rational, so the conversion is
+    /// lossless and the result is provably correct.
+    ///
+    /// # When to use
+    ///
+    /// Use this when you need the exact determinant *value* — for example,
+    /// exact volume computation or distinguishing truly-degenerate simplices
+    /// from near-degenerate ones.  If you only need the *sign*, prefer
+    /// [`det_sign_exact`](Self::det_sign_exact) which has a fast f64 filter.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// let det = m.det_exact().unwrap();
+    /// // det = 1*4 - 2*3 = -2  (exact)
+    /// assert_eq!(det, BigRational::from_integer((-2).into()));
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] if any matrix entry is NaN or infinite.
+    #[inline]
+    pub fn det_exact(&self) -> Result<BigRational, LaError> {
+        validate_finite(self)?;
+        Ok(bareiss_det(self))
+    }
+
+    /// Exact determinant converted to `f64`.
+    ///
+    /// Computes the exact [`BigRational`] determinant via [`det_exact`](Self::det_exact)
+    /// and converts it to the nearest `f64`.  This is useful when you want the
+    /// most accurate f64 determinant possible without committing to `BigRational`
+    /// in your downstream code.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// let det = m.det_exact_f64().unwrap();
+    /// assert!((det - (-2.0)).abs() <= f64::EPSILON);
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] if any matrix entry is NaN or infinite,
+    /// or if the exact determinant is too large to represent as a finite `f64`.
+    #[inline]
+    pub fn det_exact_f64(&self) -> Result<f64, LaError> {
+        let exact = self.det_exact()?;
+        let val = exact.to_f64().unwrap_or(f64::INFINITY);
+        if val.is_finite() {
+            Ok(val)
+        } else {
+            Err(LaError::NonFinite { col: 0 })
+        }
+    }
+
     /// Exact determinant sign using adaptive-precision arithmetic.
     ///
     /// Returns `1` if `det > 0`, `-1` if `det < 0`, and `0` if `det == 0` (singular).
@@ -130,14 +207,7 @@ impl<const D: usize> Matrix<D> {
     /// Returns [`LaError::NonFinite`] if any matrix entry is NaN or infinite.
     #[inline]
     pub fn det_sign_exact(&self) -> Result<i8, LaError> {
-        // Validate all entries are finite before any arithmetic.
-        for r in 0..D {
-            for c in 0..D {
-                if !self.rows[r][c].is_finite() {
-                    return Err(LaError::NonFinite { col: c });
-                }
-            }
-        }
+        validate_finite(self)?;
 
         // Stage 1: f64 fast filter for D ≤ 4.
         if let (Some(det_f64), Some(err)) = (self.det_direct(), self.det_errbound()) {
@@ -465,5 +535,162 @@ mod tests {
         let m = Matrix::<3>::from_rows([[0.0, 0.0, 1.0], [big, 0.0, 1.0], [0.0, big, 1.0]]);
         // det = big^2 > 0
         assert_eq!(m.det_sign_exact().unwrap(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // det_exact tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn det_exact_d0_is_one() {
+        let det = Matrix::<0>::zero().det_exact().unwrap();
+        assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
+    }
+
+    #[test]
+    fn det_exact_identity_3d() {
+        let det = Matrix::<3>::identity().det_exact().unwrap();
+        assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
+    }
+
+    #[test]
+    fn det_exact_known_2x2() {
+        // det([[1,2],[3,4]]) = 1*4 - 2*3 = -2
+        let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+        let det = m.det_exact().unwrap();
+        assert_eq!(det, BigRational::from_integer(BigInt::from(-2)));
+    }
+
+    #[test]
+    fn det_exact_singular_returns_zero() {
+        // Rows in arithmetic progression → exactly singular.
+        let m = Matrix::<3>::from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]);
+        let det = m.det_exact().unwrap();
+        assert_eq!(det, BigRational::from_integer(BigInt::from(0)));
+    }
+
+    #[test]
+    fn det_exact_near_singular_perturbation() {
+        // Same 2^-50 perturbation case: exact det = -3 × 2^-50.
+        let perturbation = f64::from_bits(0x3CD0_0000_0000_0000); // 2^-50
+        let m = Matrix::<3>::from_rows([
+            [1.0 + perturbation, 2.0, 3.0],
+            [4.0, 5.0, 6.0],
+            [7.0, 8.0, 9.0],
+        ]);
+        let det = m.det_exact().unwrap();
+        // det should be exactly -3 × 2^-50.
+        let expected = BigRational::new(BigInt::from(-3), BigInt::from(1u64 << 50));
+        assert_eq!(det, expected);
+    }
+
+    #[test]
+    fn det_exact_5x5_permutation() {
+        // Single swap (rows 0↔1) → det = -1.
+        let m = Matrix::<5>::from_rows([
+            [0.0, 1.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0],
+        ]);
+        let det = m.det_exact().unwrap();
+        assert_eq!(det, BigRational::from_integer(BigInt::from(-1)));
+    }
+
+    #[test]
+    fn det_exact_err_on_nan() {
+        let m = Matrix::<2>::from_rows([[f64::NAN, 0.0], [0.0, 1.0]]);
+        assert_eq!(m.det_exact(), Err(LaError::NonFinite { col: 0 }));
+    }
+
+    #[test]
+    fn det_exact_err_on_inf() {
+        let m = Matrix::<2>::from_rows([[f64::INFINITY, 0.0], [0.0, 1.0]]);
+        assert_eq!(m.det_exact(), Err(LaError::NonFinite { col: 0 }));
+    }
+
+    // -----------------------------------------------------------------------
+    // det_exact_f64 tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn det_exact_f64_identity_3d() {
+        let det = Matrix::<3>::identity().det_exact_f64().unwrap();
+        assert!((det - 1.0).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn det_exact_f64_known_2x2() {
+        let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+        let det = m.det_exact_f64().unwrap();
+        assert!((det - (-2.0)).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn det_exact_f64_agrees_with_det_direct_2d() {
+        let m = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
+        let exact = m.det_exact_f64().unwrap();
+        let direct = m.det_direct().unwrap();
+        assert!((exact - direct).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn det_exact_f64_agrees_with_det_direct_3d() {
+        let m = Matrix::<3>::from_rows([[2.0, 1.0, 0.0], [0.0, 3.0, 1.0], [1.0, 0.0, 2.0]]);
+        let exact = m.det_exact_f64().unwrap();
+        let direct = m.det_direct().unwrap();
+        assert!((exact - direct).abs() <= 1e-12);
+    }
+
+    #[test]
+    fn det_exact_f64_agrees_with_det_direct_4d() {
+        let m = Matrix::<4>::from_rows([
+            [2.0, 1.0, 0.0, 0.0],
+            [1.0, 3.0, 1.0, 0.0],
+            [0.0, 1.0, 4.0, 1.0],
+            [0.0, 0.0, 1.0, 5.0],
+        ]);
+        let exact = m.det_exact_f64().unwrap();
+        let direct = m.det_direct().unwrap();
+        assert!((exact - direct).abs() <= 1e-12);
+    }
+
+    #[test]
+    fn det_exact_f64_err_on_nan() {
+        let m = Matrix::<2>::from_rows([[f64::NAN, 0.0], [0.0, 1.0]]);
+        assert_eq!(m.det_exact_f64(), Err(LaError::NonFinite { col: 0 }));
+    }
+
+    #[test]
+    fn det_exact_f64_overflow_returns_err() {
+        // Entries near f64::MAX produce a determinant too large for f64.
+        let big = f64::MAX / 2.0;
+        let m = Matrix::<3>::from_rows([[0.0, 0.0, 1.0], [big, 0.0, 1.0], [0.0, big, 1.0]]);
+        // det = big^2, which overflows f64.
+        assert_eq!(m.det_exact_f64(), Err(LaError::NonFinite { col: 0 }));
+    }
+
+    // -----------------------------------------------------------------------
+    // validate_finite tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn validate_finite_ok_for_finite() {
+        assert!(validate_finite(&Matrix::<3>::identity()).is_ok());
+    }
+
+    #[test]
+    fn validate_finite_err_on_nan() {
+        let mut m = Matrix::<2>::identity();
+        m.set(1, 0, f64::NAN);
+        assert_eq!(validate_finite(&m), Err(LaError::NonFinite { col: 0 }));
+    }
+
+    #[test]
+    fn validate_finite_err_on_inf() {
+        let mut m = Matrix::<2>::identity();
+        m.set(0, 1, f64::NEG_INFINITY);
+        assert_eq!(validate_finite(&m), Err(LaError::NonFinite { col: 1 }));
     }
 }

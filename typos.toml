@@ -27,6 +27,8 @@ Parlett = "Parlett"
 Schreiber = "Schreiber"
 Tikhomirov = "Tikhomirov"
 Trefethen = "Trefethen"
+# Foreign-language terms in reference titles
+methode = "methode"
 # Math / crate terms
 faer = "faer"
 frhs = "frhs"
