@@ -1,17 +1,21 @@
-//! Exact determinant sign via arbitrary-precision rational arithmetic.
+//! Exact determinant value and sign via arbitrary-precision rational arithmetic.
 //!
 //! This module is only compiled when the `"exact"` Cargo feature is enabled.
 //!
 //! # Architecture
 //!
-//! `det_sign_exact` uses a two-stage adaptive-precision approach inspired by
-//! Shewchuk's robust geometric predicates:
+//! All three public methods (`det_exact`, `det_exact_f64`, `det_sign_exact`)
+//! share the same core: entries are converted losslessly to `BigRational` and
+//! the Bareiss algorithm (fraction-free Gaussian elimination) computes the
+//! exact determinant.
+//!
+//! `det_sign_exact` adds a two-stage adaptive-precision optimisation inspired
+//! by Shewchuk's robust geometric predicates:
 //!
 //! 1. **Fast filter (D ≤ 4)**: compute `det_direct()` and a conservative error
 //!    bound. If `|det| > bound`, the f64 sign is provably correct — return
 //!    immediately without allocating.
-//! 2. **Exact fallback**: convert entries to `BigRational` and run the Bareiss
-//!    algorithm (fraction-free Gaussian elimination) for a guaranteed-correct
+//! 2. **Exact fallback**: run the Bareiss algorithm for a guaranteed-correct
 //!    sign.
 
 use num_bigint::{BigInt, Sign};
@@ -44,7 +48,7 @@ fn validate_finite<const D: usize>(m: &Matrix<D>) -> Result<(), LaError> {
 /// # Panics
 /// Panics if `x` is NaN or infinite.
 fn f64_to_bigrational(x: f64) -> BigRational {
-    BigRational::from_float(x).expect("non-finite matrix entry in det_sign_exact")
+    BigRational::from_float(x).expect("non-finite matrix entry in exact determinant")
 }
 
 /// Compute the exact determinant of a `D×D` matrix using the Bareiss algorithm
@@ -158,8 +162,9 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if any matrix entry is NaN or infinite,
-    /// or if the exact determinant is too large to represent as a finite `f64`.
+    /// Returns [`LaError::NonFinite`] if any matrix entry is NaN or infinite.
+    /// Returns [`LaError::Overflow`] if the exact determinant is too large to
+    /// represent as a finite `f64`.
     #[inline]
     pub fn det_exact_f64(&self) -> Result<f64, LaError> {
         let exact = self.det_exact()?;
@@ -167,7 +172,7 @@ impl<const D: usize> Matrix<D> {
         if val.is_finite() {
             Ok(val)
         } else {
-            Err(LaError::NonFinite { col: 0 })
+            Err(LaError::Overflow)
         }
     }
 
@@ -239,6 +244,100 @@ impl<const D: usize> Matrix<D> {
 mod tests {
     use super::*;
     use crate::DEFAULT_PIVOT_TOL;
+
+    use pastey::paste;
+
+    // -----------------------------------------------------------------------
+    // Macro-generated per-dimension tests (D=2..5)
+    // -----------------------------------------------------------------------
+
+    macro_rules! gen_det_exact_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<det_exact_identity_ $d d>]() {
+                    let det = Matrix::<$d>::identity().det_exact().unwrap();
+                    assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
+                }
+
+                #[test]
+                fn [<det_exact_err_on_nan_ $d d>]() {
+                    let mut m = Matrix::<$d>::identity();
+                    m.set(0, 0, f64::NAN);
+                    assert_eq!(m.det_exact(), Err(LaError::NonFinite { col: 0 }));
+                }
+
+                #[test]
+                fn [<det_exact_err_on_inf_ $d d>]() {
+                    let mut m = Matrix::<$d>::identity();
+                    m.set(0, 0, f64::INFINITY);
+                    assert_eq!(m.det_exact(), Err(LaError::NonFinite { col: 0 }));
+                }
+            }
+        };
+    }
+
+    gen_det_exact_tests!(2);
+    gen_det_exact_tests!(3);
+    gen_det_exact_tests!(4);
+    gen_det_exact_tests!(5);
+
+    macro_rules! gen_det_exact_f64_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<det_exact_f64_identity_ $d d>]() {
+                    let det = Matrix::<$d>::identity().det_exact_f64().unwrap();
+                    assert!((det - 1.0).abs() <= f64::EPSILON);
+                }
+
+                #[test]
+                fn [<det_exact_f64_err_on_nan_ $d d>]() {
+                    let mut m = Matrix::<$d>::identity();
+                    m.set(0, 0, f64::NAN);
+                    assert_eq!(m.det_exact_f64(), Err(LaError::NonFinite { col: 0 }));
+                }
+            }
+        };
+    }
+
+    gen_det_exact_f64_tests!(2);
+    gen_det_exact_f64_tests!(3);
+    gen_det_exact_f64_tests!(4);
+    gen_det_exact_f64_tests!(5);
+
+    /// For D ≤ 4, `det_exact_f64` should agree with `det_direct` on
+    /// well-conditioned matrices.
+    macro_rules! gen_det_exact_f64_agrees_with_det_direct {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                #[allow(clippy::cast_precision_loss)]
+                fn [<det_exact_f64_agrees_with_det_direct_ $d d>]() {
+                    // Diagonally dominant → well-conditioned.
+                    let mut rows = [[0.0f64; $d]; $d];
+                    for r in 0..$d {
+                        for c in 0..$d {
+                            rows[r][c] = if r == c {
+                                (r as f64) + f64::from($d) + 1.0
+                            } else {
+                                0.1 / ((r + c + 1) as f64)
+                            };
+                        }
+                    }
+                    let m = Matrix::<$d>::from_rows(rows);
+                    let exact = m.det_exact_f64().unwrap();
+                    let direct = m.det_direct().unwrap();
+                    let eps = direct.abs().mul_add(1e-12, 1e-12);
+                    assert!((exact - direct).abs() <= eps);
+                }
+            }
+        };
+    }
+
+    gen_det_exact_f64_agrees_with_det_direct!(2);
+    gen_det_exact_f64_agrees_with_det_direct!(3);
+    gen_det_exact_f64_agrees_with_det_direct!(4);
 
     #[test]
     fn det_sign_exact_d0_is_positive() {
@@ -538,18 +637,12 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // det_exact tests
+    // det_exact: dimension-specific tests
     // -----------------------------------------------------------------------
 
     #[test]
     fn det_exact_d0_is_one() {
         let det = Matrix::<0>::zero().det_exact().unwrap();
-        assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
-    }
-
-    #[test]
-    fn det_exact_identity_3d() {
-        let det = Matrix::<3>::identity().det_exact().unwrap();
         assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
     }
 
@@ -598,27 +691,9 @@ mod tests {
         assert_eq!(det, BigRational::from_integer(BigInt::from(-1)));
     }
 
-    #[test]
-    fn det_exact_err_on_nan() {
-        let m = Matrix::<2>::from_rows([[f64::NAN, 0.0], [0.0, 1.0]]);
-        assert_eq!(m.det_exact(), Err(LaError::NonFinite { col: 0 }));
-    }
-
-    #[test]
-    fn det_exact_err_on_inf() {
-        let m = Matrix::<2>::from_rows([[f64::INFINITY, 0.0], [0.0, 1.0]]);
-        assert_eq!(m.det_exact(), Err(LaError::NonFinite { col: 0 }));
-    }
-
     // -----------------------------------------------------------------------
-    // det_exact_f64 tests
+    // det_exact_f64: dimension-specific tests
     // -----------------------------------------------------------------------
-
-    #[test]
-    fn det_exact_f64_identity_3d() {
-        let det = Matrix::<3>::identity().det_exact_f64().unwrap();
-        assert!((det - 1.0).abs() <= f64::EPSILON);
-    }
 
     #[test]
     fn det_exact_f64_known_2x2() {
@@ -628,47 +703,12 @@ mod tests {
     }
 
     #[test]
-    fn det_exact_f64_agrees_with_det_direct_2d() {
-        let m = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
-        let exact = m.det_exact_f64().unwrap();
-        let direct = m.det_direct().unwrap();
-        assert!((exact - direct).abs() <= f64::EPSILON);
-    }
-
-    #[test]
-    fn det_exact_f64_agrees_with_det_direct_3d() {
-        let m = Matrix::<3>::from_rows([[2.0, 1.0, 0.0], [0.0, 3.0, 1.0], [1.0, 0.0, 2.0]]);
-        let exact = m.det_exact_f64().unwrap();
-        let direct = m.det_direct().unwrap();
-        assert!((exact - direct).abs() <= 1e-12);
-    }
-
-    #[test]
-    fn det_exact_f64_agrees_with_det_direct_4d() {
-        let m = Matrix::<4>::from_rows([
-            [2.0, 1.0, 0.0, 0.0],
-            [1.0, 3.0, 1.0, 0.0],
-            [0.0, 1.0, 4.0, 1.0],
-            [0.0, 0.0, 1.0, 5.0],
-        ]);
-        let exact = m.det_exact_f64().unwrap();
-        let direct = m.det_direct().unwrap();
-        assert!((exact - direct).abs() <= 1e-12);
-    }
-
-    #[test]
-    fn det_exact_f64_err_on_nan() {
-        let m = Matrix::<2>::from_rows([[f64::NAN, 0.0], [0.0, 1.0]]);
-        assert_eq!(m.det_exact_f64(), Err(LaError::NonFinite { col: 0 }));
-    }
-
-    #[test]
     fn det_exact_f64_overflow_returns_err() {
         // Entries near f64::MAX produce a determinant too large for f64.
         let big = f64::MAX / 2.0;
         let m = Matrix::<3>::from_rows([[0.0, 0.0, 1.0], [big, 0.0, 1.0], [0.0, big, 1.0]]);
         // det = big^2, which overflows f64.
-        assert_eq!(m.det_exact_f64(), Err(LaError::NonFinite { col: 0 }));
+        assert_eq!(m.det_exact_f64(), Err(LaError::Overflow));
     }
 
     // -----------------------------------------------------------------------

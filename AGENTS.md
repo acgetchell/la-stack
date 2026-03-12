@@ -56,6 +56,51 @@ When user requests commit message generation:
   take references (`&T`, `&mut T`, `&[T]`) as arguments and return borrowed views (`&T`, `&[T]`) when possible.
   Only take ownership or return `Vec`/allocated data when required.
 
+### Dimension Coverage (2D–5D)
+
+This library uses `const`-generic dimensions. Tests for dimension-generic code
+**must cover D=2 through D=5** whenever possible.
+
+#### Use macros for per-dimension test generation
+
+Define a macro that accepts a dimension literal and generates the full set
+of test functions for that dimension. Invoke it once per dimension:
+
+```rust
+macro_rules! gen_tests {
+    ($d:literal) => {
+        paste! {
+            #[test]
+            fn [<test_foo_ $d d>]() {
+                // assertions …
+            }
+        }
+    };
+}
+
+gen_tests!(2);
+gen_tests!(3);
+gen_tests!(4);
+gen_tests!(5);
+```
+
+#### Keep core logic in generic helper functions
+
+The macro body should be thin — primarily calling `const`-generic helpers and
+asserting results. This keeps the macro readable and the helpers independently
+testable.
+
+#### Reference examples
+
+- `src/matrix.rs` — `gen_public_api_matrix_tests!`
+- `src/exact.rs` — `gen_det_exact_tests!`, `gen_det_exact_f64_tests!`
+
+#### When single-dimension tests are acceptable
+
+Some tests are inherently dimension-specific (e.g. known values for a crafted
+matrix, error-handling with a specific layout). These do not need
+macro-ification.
+
 ### Python
 
 - Use `uv run` for all Python scripts (never `python3` or `python` directly)
@@ -144,7 +189,8 @@ When creating or updating issues:
   - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve_vec`, `det`)
   - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for symmetric SPD/PSD matrices (`solve_vec`, `det`)
   - `src/exact.rs`: `det_exact()`, `det_exact_f64()`, `det_sign_exact()` — exact determinant
-    value and sign (Shewchuk-style f64 filter + Bareiss in `BigRational`); `features = ["exact"]`
+    value and sign via Bareiss in `BigRational`; `det_sign_exact()` adds a Shewchuk-style f64
+    filter for fast sign resolution; `features = ["exact"]`
 - Rust tests are inline `#[cfg(test)]` modules in each `src/*.rs` file.
 - Python tests live in `scripts/tests/` and run via `just test-python` (`uv run pytest`).
 - The public API re-exports these items from `src/lib.rs`.
