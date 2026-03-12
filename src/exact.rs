@@ -163,15 +163,9 @@ fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<Vec<BigRa
     for k in 0..D {
         // Find first non-zero pivot in column k at or below row k.
         if aug[k][k] == zero {
-            let mut found = false;
-            for i in (k + 1)..D {
-                if aug[i][k] != zero {
-                    aug.swap(k, i);
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
+            if let Some(swap_row) = ((k + 1)..D).find(|&i| aug[i][k] != zero) {
+                aug.swap(k, swap_row);
+            } else {
                 return Err(LaError::Singular { pivot_col: k });
             }
         }
@@ -179,18 +173,17 @@ fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<Vec<BigRa
         // Eliminate below pivot.
         let pivot = aug[k][k].clone();
         for i in (k + 1)..D {
-            if aug[i][k] == zero {
-                continue;
+            if aug[i][k] != zero {
+                let factor = &aug[i][k] / &pivot;
+                // We need index `j` to read aug[k][j] and write aug[i][j]
+                // (two distinct rows) — iterators can't borrow both.
+                #[allow(clippy::needless_range_loop)]
+                for j in (k + 1)..=D {
+                    let term = &factor * &aug[k][j];
+                    aug[i][j] -= term;
+                }
+                aug[i][k] = zero.clone();
             }
-            let factor = &aug[i][k] / &pivot;
-            // We need index `j` to read aug[k][j] and write aug[i][j]
-            // (two distinct rows) — iterators can't borrow both.
-            #[allow(clippy::needless_range_loop)]
-            for j in (k + 1)..=D {
-                let term = &factor * &aug[k][j];
-                aug[i][j] -= term;
-            }
-            aug[i][k] = zero.clone();
         }
     }
 
