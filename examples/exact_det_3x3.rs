@@ -24,7 +24,7 @@ fn main() {
         [7.0, 8.0, 9.0],
     ]);
 
-    let det_f64_approx = m.det(DEFAULT_PIVOT_TOL).unwrap();
+    let det_f64_approx = m.det_direct().unwrap();
     let det_exact = m.det_exact().unwrap();
     let det_exact_as_f64 = m.det_exact_f64().unwrap();
 
@@ -40,7 +40,7 @@ fn main() {
         println!("]");
     }
     println!();
-    println!("f64 det()          = {det_f64_approx:+.6e}");
+    println!("f64 det_direct()   = {det_f64_approx:+.6e}");
     println!("det_exact()        = {det_exact}");
     println!("det_exact_f64()    = {det_exact_as_f64:+.6e}");
     println!();
