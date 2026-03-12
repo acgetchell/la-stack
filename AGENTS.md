@@ -93,6 +93,8 @@ testable.
 #### Reference examples
 
 - `src/matrix.rs` — `gen_public_api_matrix_tests!`
+- `src/lu.rs` — `gen_public_api_pivoting_solve_vec_and_det_tests!`, `gen_public_api_tridiagonal_smoke_solve_vec_and_det_tests!`
+- `src/ldlt.rs` — `gen_public_api_ldlt_identity_tests!`, `gen_public_api_ldlt_diagonal_tests!`
 - `src/exact.rs` — `gen_det_exact_tests!`, `gen_det_exact_f64_tests!`, `gen_solve_exact_tests!`, `gen_solve_exact_f64_tests!`
 
 #### When single-dimension tests are acceptable
@@ -143,7 +145,8 @@ just examples         # Run all examples
 - Run a single test (by name filter): `cargo test solve_2x2_basic` (or the full path: `cargo test lu::tests::solve_2x2_basic`)
 - Run exact-feature tests: `cargo test --features exact --verbose` (or `just test-exact`)
 - Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5` /
-  `cargo run --example const_det_4x4` / `cargo run --features exact --example exact_det_3x3` /
+  `cargo run --example ldlt_solve_3x3` / `cargo run --example const_det_4x4` /
+  `cargo run --features exact --example exact_det_3x3` /
   `cargo run --features exact --example exact_sign_3x3` /
   `cargo run --features exact --example exact_solve_3x3`)
 - Spell check: `just spell-check` (uses `typos.toml` at repo root; add false positives to `[default.extend-words]`)
@@ -202,7 +205,7 @@ When creating or updating issues:
     - Determinants: `det_exact()`, `det_exact_f64()`, `det_sign_exact()` via Bareiss in
       `BigRational`; `det_sign_exact()` adds a Shewchuk-style f64 filter for fast sign resolution
     - Linear system solve: `solve_exact()`, `solve_exact_f64()` via Gaussian elimination
-      with partial pivoting in `BigRational`
+      with first-non-zero pivoting in `BigRational`
 - Rust tests are inline `#[cfg(test)]` modules in each `src/*.rs` file.
 - Python tests live in `scripts/tests/` and run via `just test-python` (`uv run pytest`).
 - The public API re-exports these items from `src/lib.rs`.

@@ -160,6 +160,7 @@ la-stack = { version = "0.2.2", features = ["exact"] }
 ```rust,ignore
 use la_stack::prelude::*;
 
+// Exact determinant
 let m = Matrix::<3>::from_rows([
     [1.0, 2.0, 3.0],
     [4.0, 5.0, 6.0],
@@ -169,6 +170,13 @@ assert_eq!(m.det_sign_exact().unwrap(), 0); // exactly singular
 
 let det = m.det_exact().unwrap();
 assert_eq!(det, BigRational::from_integer(0.into())); // exact zero
+
+// Exact linear system solve
+let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+let b = Vector::<2>::new([5.0, 11.0]);
+let x = a.solve_exact_f64(b).unwrap().into_array();
+assert!((x[0] - 1.0).abs() <= f64::EPSILON);
+assert!((x[1] - 2.0).abs() <= f64::EPSILON);
 ```
 
 `BigRational` is re-exported from the crate root and prelude when the `exact`
@@ -216,7 +224,7 @@ exposed for advanced use cases.
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 
-Storage shown above reflects the current `f64` implementation.
+Storage shown above reflects the `f64` implementation.
 
 `Matrix<D>` key methods: `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`,
 `det_exact`¹, `det_exact_f64`¹, `det_sign_exact`¹, `solve_exact`¹, `solve_exact_f64`¹.
@@ -229,6 +237,7 @@ The `examples/` directory contains small, runnable programs:
 
 - **`solve_5x5`** — solve a 5×5 system via LU with partial pivoting
 - **`det_5x5`** — determinant of a 5×5 matrix via LU
+- **`ldlt_solve_3x3`** — solve a 3×3 symmetric positive definite system via LDLT
 - **`const_det_4x4`** — compile-time 4×4 determinant via `det_direct()`
 - **`exact_det_3x3`** — exact determinant value of a near-singular 3×3 matrix (requires `exact` feature)
 - **`exact_sign_3x3`** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
@@ -239,6 +248,7 @@ just examples
 # or individually:
 cargo run --example solve_5x5
 cargo run --example det_5x5
+cargo run --example ldlt_solve_3x3
 cargo run --example const_det_4x4
 cargo run --features exact --example exact_det_3x3
 cargo run --features exact --example exact_sign_3x3
