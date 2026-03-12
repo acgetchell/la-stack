@@ -106,7 +106,12 @@ pub const DEFAULT_SINGULAR_TOL: f64 = 1e-12;
 pub const DEFAULT_PIVOT_TOL: f64 = DEFAULT_SINGULAR_TOL;
 
 /// Linear algebra errors.
+///
+/// This enum is `#[non_exhaustive]` — downstream `match` arms must include a
+/// wildcard (`_`) pattern to compile, allowing new variants to be added in
+/// future minor releases without breaking existing code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LaError {
     /// The matrix is (numerically) singular.
     Singular {
@@ -123,6 +128,8 @@ pub enum LaError {
     /// This is returned by `Matrix::det_exact_f64` (requires `exact` feature)
     /// when the exact `BigRational` determinant is too large to represent as
     /// a finite `f64`.
+    ///
+    /// *Added in 0.3.0.*
     Overflow,
 }
 
