@@ -16,7 +16,7 @@ keywords = [ "linear-algebra", "geometry", "const-generics", "exact-arithmetic",
 # All runtime deps are optional; see [features] below.
 criterion = { version = "0.8.2", features = [ "html_reports" ], optional = true }
 faer = { version = "0.24.0", default-features = false, features = [ "std", "linalg" ], optional = true }
-nalgebra = { version = "0.34.1", optional = true }
+nalgebra = { version = "0.34.2", optional = true }
 num-bigint = { version = "0.4.6", optional = true }
 num-rational = { version = "0.4.2", features = [ "num-bigint-std" ], optional = true }
 num-traits = { version = "0.2.19", optional = true }
@@ -24,7 +24,7 @@ num-traits = { version = "0.2.19", optional = true }
 [dev-dependencies]
 approx = "0.5.1"
 pastey = "0.2.1"
-proptest = "1.10.0"
+proptest = "1.11.0"
 
 [features]
 default = [  ]
