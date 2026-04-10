@@ -70,3 +70,25 @@ elimination [7] in `BigRational`. See `src/exact.rs` for the full architecture d
    [DOI](https://doi.org/10.1007/PL00009321) ·
    [PDF](https://people.eecs.berkeley.edu/~jrs/papers/robustr.pdf)
    Also: Technical Report CMU-CS-96-140, Carnegie Mellon University, May 1996.
+
+### f64 → BigRational conversion (`f64_to_bigrational`)
+
+`f64_to_bigrational` converts an f64 to an exact `BigRational` by decomposing the IEEE 754
+binary64 bit representation into its sign, exponent, and significand fields.  Because every
+finite f64 is exactly `±m × 2^e` (where `m` is an integer), the rational can be constructed
+directly via `BigRational::new_raw` without GCD normalization — trailing zeros in the
+significand are stripped first so the fraction is already in lowest terms.
+
+See references [9-10] below.
+
+9. IEEE Computer Society. "IEEE Standard for Floating-Point Arithmetic." *IEEE Std 754-2019*
+   (Revision of IEEE 754-2008), 2019.
+   [DOI](https://doi.org/10.1109/IEEESTD.2019.8766229)
+   Section 3.4 (binary64 format): 1 sign bit, 11 exponent bits (bias 1023), 52 trailing
+   significand bits; subnormals have biased exponent 0 with implicit leading 0.
+10. Goldberg, David. "What Every Computer Scientist Should Know About Floating-Point
+    Arithmetic." *ACM Computing Surveys* 23.1 (1991): 5–48.
+    [DOI](https://doi.org/10.1145/103162.103163) ·
+    [PDF](https://www.validlab.com/goldberg/paper.pdf)
+    Comprehensive survey of IEEE 754 representation, rounding, and exact rational
+    reconstruction of floating-point values.

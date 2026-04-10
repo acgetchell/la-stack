@@ -27,6 +27,15 @@
 //! Since all arithmetic is exact, any non-zero pivot gives the correct result
 //! (there is no numerical stability concern).  Every finite `f64` is exactly
 //! representable as a rational, so the result is provably correct.
+//!
+//! ## f64 → `BigRational` conversion
+//!
+//! All entry conversions use `f64_to_bigrational`, which decomposes the
+//! IEEE 754 binary64 bit representation (\[9\]) into sign, exponent, and
+//! significand and constructs a `BigRational` directly — avoiding the GCD
+//! normalization that `BigRational::from_float` performs.  See Goldberg
+//! \[10\] for background on floating-point representation and exact
+//! rational reconstruction.  Reference numbers refer to `REFERENCES.md`.
 
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
@@ -67,15 +76,62 @@ fn validate_finite_vec<const D: usize>(v: &Vector<D>) -> Result<(), LaError> {
     Ok(())
 }
 
-/// Convert an `f64` to an exact `BigRational`.
+/// Convert an `f64` to an exact `BigRational` via IEEE 754 bit decomposition.
 ///
-/// Every finite `f64` is exactly representable as a rational number (`m × 2^e`),
-/// so this conversion is lossless.
+/// Every finite `f64` is exactly representable as `±m × 2^e` where `m` is a
+/// non-negative integer and `e` is an integer.  This function extracts `(m, e)`
+/// directly from the IEEE 754 binary64 bit layout \[9\], strips trailing zeros
+/// from `m` so the resulting fraction is already in lowest terms, then
+/// constructs a `BigRational` via `new_raw` — bypassing the GCD reduction
+/// that `BigRational::from_float` performs internally.
+///
+/// See `REFERENCES.md` \[9-10\] for the IEEE 754 standard and Goldberg's
+/// survey of floating-point representation.
 ///
 /// # Panics
 /// Panics if `x` is NaN or infinite.
 fn f64_to_bigrational(x: f64) -> BigRational {
-    BigRational::from_float(x).expect("non-finite matrix entry in exact determinant")
+    let bits = x.to_bits();
+    let biased_exp = ((bits >> 52) & 0x7FF) as i32;
+    let fraction = bits & 0x000F_FFFF_FFFF_FFFF;
+
+    // ±0.0
+    if biased_exp == 0 && fraction == 0 {
+        return BigRational::from_integer(BigInt::from(0));
+    }
+
+    // NaN / Inf — callers must validate finiteness before reaching here.
+    assert!(biased_exp != 0x7FF, "non-finite f64 in exact conversion");
+
+    let (mantissa, raw_exp) = if biased_exp == 0 {
+        // Subnormal: (-1)^s × 0.fraction × 2^(-1022)
+        //          = (-1)^s × fraction × 2^(-1074)
+        (fraction, -1074_i32)
+    } else {
+        // Normal: (-1)^s × 1.fraction × 2^(biased_exp - 1023)
+        //       = (-1)^s × (2^52 | fraction) × 2^(biased_exp - 1075)
+        ((1u64 << 52) | fraction, biased_exp - 1075)
+    };
+
+    // Strip trailing zeros so the fraction is already in lowest terms:
+    // after stripping, mantissa is odd and the denominator (if any) is a
+    // power of 2, so gcd(mantissa, denom) = 1.
+    let tz = mantissa.trailing_zeros();
+    let mantissa = mantissa >> tz;
+    let exponent = raw_exp + tz.cast_signed();
+
+    let is_negative = bits >> 63 != 0;
+    let numer = if is_negative {
+        -BigInt::from(mantissa)
+    } else {
+        BigInt::from(mantissa)
+    };
+
+    if exponent >= 0 {
+        BigRational::new_raw(numer << exponent.cast_unsigned(), BigInt::from(1u32))
+    } else {
+        BigRational::new_raw(numer, BigInt::from(1u32) << (-exponent).cast_unsigned())
+    }
 }
 
 /// Compute the exact determinant of a `D×D` matrix using the Bareiss algorithm
@@ -1156,6 +1212,132 @@ mod tests {
         let a = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
         let b = Vector::<3>::new([1.0, 2.0, 3.0]);
         assert_eq!(gauss_solve(&a, &b), Err(LaError::Singular { pivot_col: 1 }));
+    }
+
+    // -----------------------------------------------------------------------
+    // f64_to_bigrational tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn f64_to_bigrational_positive_zero() {
+        let r = f64_to_bigrational(0.0);
+        assert_eq!(r, BigRational::from_integer(BigInt::from(0)));
+    }
+
+    #[test]
+    fn f64_to_bigrational_negative_zero() {
+        let r = f64_to_bigrational(-0.0);
+        assert_eq!(r, BigRational::from_integer(BigInt::from(0)));
+    }
+
+    #[test]
+    fn f64_to_bigrational_one() {
+        let r = f64_to_bigrational(1.0);
+        assert_eq!(r, BigRational::from_integer(BigInt::from(1)));
+    }
+
+    #[test]
+    fn f64_to_bigrational_negative_one() {
+        let r = f64_to_bigrational(-1.0);
+        assert_eq!(r, BigRational::from_integer(BigInt::from(-1)));
+    }
+
+    #[test]
+    fn f64_to_bigrational_half() {
+        let r = f64_to_bigrational(0.5);
+        assert_eq!(r, BigRational::new(BigInt::from(1), BigInt::from(2)));
+    }
+
+    #[test]
+    fn f64_to_bigrational_quarter() {
+        let r = f64_to_bigrational(0.25);
+        assert_eq!(r, BigRational::new(BigInt::from(1), BigInt::from(4)));
+    }
+
+    #[test]
+    fn f64_to_bigrational_negative_three_and_a_half() {
+        // -3.5 = -7/2
+        let r = f64_to_bigrational(-3.5);
+        assert_eq!(r, BigRational::new(BigInt::from(-7), BigInt::from(2)));
+    }
+
+    #[test]
+    fn f64_to_bigrational_integer() {
+        let r = f64_to_bigrational(42.0);
+        assert_eq!(r, BigRational::from_integer(BigInt::from(42)));
+    }
+
+    #[test]
+    fn f64_to_bigrational_power_of_two() {
+        let r = f64_to_bigrational(1024.0);
+        assert_eq!(r, BigRational::from_integer(BigInt::from(1024)));
+    }
+
+    #[test]
+    fn f64_to_bigrational_subnormal() {
+        let tiny = 5e-324_f64; // smallest positive subnormal
+        assert!(tiny.is_subnormal());
+        let r = f64_to_bigrational(tiny);
+        // 5e-324 = 1 × 2^(-1074)
+        assert_eq!(
+            r,
+            BigRational::new(BigInt::from(1), BigInt::from(1u32) << 1074u32)
+        );
+    }
+
+    #[test]
+    fn f64_to_bigrational_already_lowest_terms() {
+        // 0.5 should produce numer=1, denom=2 (already reduced).
+        let r = f64_to_bigrational(0.5);
+        assert_eq!(*r.numer(), BigInt::from(1));
+        assert_eq!(*r.denom(), BigInt::from(2));
+    }
+
+    #[test]
+    fn f64_to_bigrational_round_trip() {
+        // -0.0 is excluded: it maps to BigRational(0) which round-trips
+        // to +0.0 (correct; tested separately in f64_to_bigrational_negative_zero).
+        let values = [
+            0.0,
+            1.0,
+            -1.0,
+            0.5,
+            0.25,
+            0.1,
+            42.0,
+            -3.5,
+            1e10,
+            1e-10,
+            f64::MAX / 2.0,
+            f64::MIN_POSITIVE,
+            5e-324,
+        ];
+        for &v in &values {
+            let r = f64_to_bigrational(v);
+            let back = r.to_f64().expect("round-trip to_f64 failed");
+            assert!(
+                v.to_bits() == back.to_bits(),
+                "round-trip failed for {v}: got {back}"
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "non-finite f64 in exact conversion")]
+    fn f64_to_bigrational_panics_on_nan() {
+        f64_to_bigrational(f64::NAN);
+    }
+
+    #[test]
+    #[should_panic(expected = "non-finite f64 in exact conversion")]
+    fn f64_to_bigrational_panics_on_inf() {
+        f64_to_bigrational(f64::INFINITY);
+    }
+
+    #[test]
+    #[should_panic(expected = "non-finite f64 in exact conversion")]
+    fn f64_to_bigrational_panics_on_neg_inf() {
+        f64_to_bigrational(f64::NEG_INFINITY);
     }
 
     // -----------------------------------------------------------------------
