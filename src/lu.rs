@@ -31,13 +31,19 @@ impl<const D: usize> Lu<D> {
             let mut pivot_row = k;
             let mut pivot_abs = lu.rows[k][k].abs();
             if !pivot_abs.is_finite() {
-                return Err(LaError::NonFinite { col: k });
+                return Err(LaError::NonFinite {
+                    row: Some(k),
+                    col: k,
+                });
             }
 
             for r in (k + 1)..D {
                 let v = lu.rows[r][k].abs();
                 if !v.is_finite() {
-                    return Err(LaError::NonFinite { col: k });
+                    return Err(LaError::NonFinite {
+                        row: Some(r),
+                        col: k,
+                    });
                 }
                 if v > pivot_abs {
                     pivot_abs = v;
@@ -57,14 +63,20 @@ impl<const D: usize> Lu<D> {
 
             let pivot = lu.rows[k][k];
             if !pivot.is_finite() {
-                return Err(LaError::NonFinite { col: k });
+                return Err(LaError::NonFinite {
+                    row: Some(k),
+                    col: k,
+                });
             }
 
             // Eliminate below pivot.
             for r in (k + 1)..D {
                 let mult = lu.rows[r][k] / pivot;
                 if !mult.is_finite() {
-                    return Err(LaError::NonFinite { col: k });
+                    return Err(LaError::NonFinite {
+                        row: Some(r),
+                        col: k,
+                    });
                 }
                 lu.rows[r][k] = mult;
 
@@ -120,7 +132,7 @@ impl<const D: usize> Lu<D> {
                 sum = (-row[j]).mul_add(*x_j, sum);
             }
             if !sum.is_finite() {
-                return Err(LaError::NonFinite { col: i });
+                return Err(LaError::NonFinite { row: None, col: i });
             }
             x[i] = sum;
         }
@@ -136,13 +148,17 @@ impl<const D: usize> Lu<D> {
 
             let diag = row[i];
             if !diag.is_finite() || !sum.is_finite() {
-                return Err(LaError::NonFinite { col: i });
+                return Err(LaError::NonFinite { row: None, col: i });
             }
             if diag.abs() <= self.tol {
                 return Err(LaError::Singular { pivot_col: i });
             }
 
-            x[i] = sum / diag;
+            let q = sum / diag;
+            if !q.is_finite() {
+                return Err(LaError::NonFinite { row: None, col: i });
+            }
+            x[i] = q;
         }
 
         Ok(Vector::new(x))
@@ -415,14 +431,26 @@ mod tests {
     fn nonfinite_detected_on_pivot_entry() {
         let a = Matrix::<2>::from_rows([[f64::NAN, 0.0], [0.0, 1.0]]);
         let err = a.lu(DEFAULT_PIVOT_TOL).unwrap_err();
-        assert_eq!(err, LaError::NonFinite { col: 0 });
+        assert_eq!(
+            err,
+            LaError::NonFinite {
+                row: Some(0),
+                col: 0
+            }
+        );
     }
 
     #[test]
     fn nonfinite_detected_in_pivot_column_scan() {
         let a = Matrix::<2>::from_rows([[1.0, 0.0], [f64::INFINITY, 1.0]]);
         let err = a.lu(DEFAULT_PIVOT_TOL).unwrap_err();
-        assert_eq!(err, LaError::NonFinite { col: 0 });
+        assert_eq!(
+            err,
+            LaError::NonFinite {
+                row: Some(1),
+                col: 0
+            }
+        );
     }
 
     #[test]
@@ -433,7 +461,7 @@ mod tests {
 
         let b = Vector::<3>::new([1.0e308, 1.0e308, 0.0]);
         let err = lu.solve_vec(b).unwrap_err();
-        assert_eq!(err, LaError::NonFinite { col: 1 });
+        assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
 
     #[test]
@@ -444,6 +472,6 @@ mod tests {
 
         let b = Vector::<2>::new([0.0, 1.0e300]);
         let err = lu.solve_vec(b).unwrap_err();
-        assert_eq!(err, LaError::NonFinite { col: 0 });
+        assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
 }

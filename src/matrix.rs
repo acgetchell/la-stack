@@ -296,7 +296,19 @@ impl<const D: usize> Matrix<D> {
             return if d.is_finite() {
                 Ok(d)
             } else {
-                Err(LaError::NonFinite { col: 0 })
+                // Scan for the first non-finite entry to preserve coordinates.
+                for r in 0..D {
+                    for c in 0..D {
+                        if !self.rows[r][c].is_finite() {
+                            return Err(LaError::NonFinite {
+                                row: Some(r),
+                                col: c,
+                            });
+                        }
+                    }
+                }
+                // All entries are finite but the determinant overflowed.
+                Err(LaError::NonFinite { row: None, col: 0 })
             };
         }
         self.lu(tol).map(|lu| lu.det())
@@ -669,14 +681,26 @@ mod tests {
     #[test]
     fn det_returns_nonfinite_error_for_nan_d2() {
         let m = Matrix::<2>::from_rows([[f64::NAN, 1.0], [1.0, 1.0]]);
-        assert_eq!(m.det(DEFAULT_PIVOT_TOL), Err(LaError::NonFinite { col: 0 }));
+        assert_eq!(
+            m.det(DEFAULT_PIVOT_TOL),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 0
+            })
+        );
     }
 
     #[test]
     fn det_returns_nonfinite_error_for_inf_d3() {
         let m =
             Matrix::<3>::from_rows([[f64::INFINITY, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
-        assert_eq!(m.det(DEFAULT_PIVOT_TOL), Err(LaError::NonFinite { col: 0 }));
+        assert_eq!(
+            m.det(DEFAULT_PIVOT_TOL),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 0
+            })
+        );
     }
 
     #[test]
