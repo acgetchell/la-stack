@@ -154,7 +154,11 @@ impl<const D: usize> Lu<D> {
                 return Err(LaError::Singular { pivot_col: i });
             }
 
-            x[i] = sum / diag;
+            let q = sum / diag;
+            if !q.is_finite() {
+                return Err(LaError::NonFinite { row: None, col: i });
+            }
+            x[i] = q;
         }
 
         Ok(Vector::new(x))
@@ -468,6 +472,6 @@ mod tests {
 
         let b = Vector::<2>::new([0.0, 1.0e300]);
         let err = lu.solve_vec(b).unwrap_err();
-        assert_eq!(err, LaError::NonFinite { row: None, col: 0 });
+        assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
 }

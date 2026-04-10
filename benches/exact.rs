@@ -11,7 +11,7 @@ use std::hint::black_box;
 
 #[inline]
 #[allow(clippy::cast_precision_loss)]
-fn matrix_entry<const D: usize>(r: usize, c: usize) -> f64 {
+const fn matrix_entry<const D: usize>(r: usize, c: usize) -> f64 {
     if r == c {
         (r as f64).mul_add(1.0e-3, (D as f64) + 1.0)
     } else {
@@ -20,7 +20,7 @@ fn matrix_entry<const D: usize>(r: usize, c: usize) -> f64 {
 }
 
 #[inline]
-fn make_matrix_rows<const D: usize>() -> [[f64; D]; D] {
+const fn make_matrix_rows<const D: usize>() -> [[f64; D]; D] {
     let mut rows = [[0.0; D]; D];
     let mut r = 0;
     while r < D {

@@ -71,7 +71,7 @@ impl<const D: usize> Ldlt<D> {
                     if !new_val.is_finite() {
                         return Err(LaError::NonFinite {
                             row: Some(i),
-                            col: j,
+                            col: k,
                         });
                     }
                     f.rows[i][k] = new_val;
@@ -373,7 +373,7 @@ mod tests {
             err,
             LaError::NonFinite {
                 row: Some(1),
-                col: 0
+                col: 1
             }
         );
     }
@@ -390,6 +390,20 @@ mod tests {
         let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<3>::new([1e156, 0.0, 0.0]);
+        let err = ldlt.solve_vec(b).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
+    }
+
+    #[test]
+    fn nonfinite_solve_vec_back_substitution_overflow() {
+        // SPD matrix: [[1,0,0],[0,1,2],[0,2,5]] has LDLT factors
+        // D=[1,1,1], L[2,1]=2.  Forward sub and diagonal solve produce
+        // z=[0,0,1e308].  Back-substitution: x[2]=1e308 then
+        // x[1] = 0 - 2*1e308 = -inf (overflows f64).
+        let a = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 1.0, 2.0], [0.0, 2.0, 5.0]]);
+        let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
+
+        let b = Vector::<3>::new([0.0, 0.0, 1e308]);
         let err = ldlt.solve_vec(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
