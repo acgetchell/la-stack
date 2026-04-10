@@ -48,6 +48,11 @@ name = "vs_linalg"
 harness = false
 required-features = [ "bench" ]
 
+[[bench]]
+name = "exact"
+harness = false
+required-features = [ "bench", "exact" ]
+
 [profile.release]
 lto = "fat"
 codegen-units = 1

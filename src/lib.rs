@@ -118,19 +118,25 @@ pub enum LaError {
         /// The factorization column/step where a suitable pivot/diagonal could not be found.
         pivot_col: usize,
     },
-    /// A non-finite value (NaN/∞) was encountered in the input.
+    /// A non-finite value (NaN/∞) was encountered.
     NonFinite {
-        /// The column where a non-finite value was detected.
+        /// Row of the non-finite entry (for matrix inputs), or `None` when
+        /// the error originates from a vector input or a computed intermediate.
+        row: Option<usize>,
+        /// Column index (for matrix inputs), vector index, or factorization
+        /// step where the non-finite value was detected.
         col: usize,
     },
     /// The exact result overflows the target representation (e.g. `f64`).
     ///
-    /// This is returned by `Matrix::det_exact_f64` (requires `exact` feature)
-    /// when the exact `BigRational` determinant is too large to represent as
-    /// a finite `f64`.
-    ///
-    /// *Added in 0.3.0.*
-    Overflow,
+    /// Returned by `Matrix::det_exact_f64` and `Matrix::solve_exact_f64`
+    /// (requires `exact` feature) when an exact value is too large to
+    /// represent as a finite `f64`.
+    Overflow {
+        /// For vector results (e.g. `solve_exact_f64`), the index of the
+        /// component that overflowed.  `None` for scalar results.
+        index: Option<usize>,
+    },
 }
 
 impl fmt::Display for LaError {
@@ -139,10 +145,19 @@ impl fmt::Display for LaError {
             Self::Singular { pivot_col } => {
                 write!(f, "singular matrix at pivot column {pivot_col}")
             }
-            Self::NonFinite { col } => {
-                write!(f, "non-finite value encountered at column {col}")
+            Self::NonFinite { row: Some(r), col } => {
+                write!(f, "non-finite value at ({r}, {col})")
             }
-            Self::Overflow => {
+            Self::NonFinite { row: None, col } => {
+                write!(f, "non-finite value at index {col}")
+            }
+            Self::Overflow { index: Some(i) } => {
+                write!(
+                    f,
+                    "exact result overflows the target representation at index {i}"
+                )
+            }
+            Self::Overflow { index: None } => {
                 write!(f, "exact result overflows the target representation")
             }
         }
@@ -193,17 +208,35 @@ mod tests {
     }
 
     #[test]
-    fn laerror_display_formats_nonfinite() {
-        let err = LaError::NonFinite { col: 2 };
-        assert_eq!(err.to_string(), "non-finite value encountered at column 2");
+    fn laerror_display_formats_nonfinite_with_row() {
+        let err = LaError::NonFinite {
+            row: Some(1),
+            col: 2,
+        };
+        assert_eq!(err.to_string(), "non-finite value at (1, 2)");
+    }
+
+    #[test]
+    fn laerror_display_formats_nonfinite_without_row() {
+        let err = LaError::NonFinite { row: None, col: 3 };
+        assert_eq!(err.to_string(), "non-finite value at index 3");
     }
 
     #[test]
     fn laerror_display_formats_overflow() {
-        let err = LaError::Overflow;
+        let err = LaError::Overflow { index: None };
         assert_eq!(
             err.to_string(),
             "exact result overflows the target representation"
+        );
+    }
+
+    #[test]
+    fn laerror_display_formats_overflow_with_index() {
+        let err = LaError::Overflow { index: Some(2) };
+        assert_eq!(
+            err.to_string(),
+            "exact result overflows the target representation at index 2"
         );
     }
 

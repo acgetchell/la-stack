@@ -44,7 +44,10 @@ fn validate_finite<const D: usize>(m: &Matrix<D>) -> Result<(), LaError> {
     for r in 0..D {
         for c in 0..D {
             if !m.rows[r][c].is_finite() {
-                return Err(LaError::NonFinite { col: c });
+                return Err(LaError::NonFinite {
+                    row: Some(r),
+                    col: c,
+                });
             }
         }
     }
@@ -58,7 +61,7 @@ fn validate_finite<const D: usize>(m: &Matrix<D>) -> Result<(), LaError> {
 fn validate_finite_vec<const D: usize>(v: &Vector<D>) -> Result<(), LaError> {
     for (i, &x) in v.data.iter().enumerate() {
         if !x.is_finite() {
-            return Err(LaError::NonFinite { col: i });
+            return Err(LaError::NonFinite { row: None, col: i });
         }
     }
     Ok(())
@@ -88,14 +91,8 @@ fn bareiss_det<const D: usize>(m: &Matrix<D>) -> BigRational {
     }
 
     // Convert f64 entries to exact BigRational.
-    let mut a: Vec<Vec<BigRational>> = Vec::with_capacity(D);
-    for r in 0..D {
-        let mut row = Vec::with_capacity(D);
-        for c in 0..D {
-            row.push(f64_to_bigrational(m.rows[r][c]));
-        }
-        a.push(row);
-    }
+    let mut a: [[BigRational; D]; D] =
+        std::array::from_fn(|r| std::array::from_fn(|c| f64_to_bigrational(m.rows[r][c])));
 
     let zero = BigRational::from_integer(BigInt::from(0));
     let mut prev_pivot = BigRational::from_integer(BigInt::from(1));
@@ -144,62 +141,56 @@ fn bareiss_det<const D: usize>(m: &Matrix<D>) -> BigRational {
 /// (no numerical stability concern).  This matches the pivoting strategy used
 /// by `bareiss_det`.
 ///
-/// Returns the exact solution as a `Vec<BigRational>` of length `D`.
+/// Returns the exact solution as `[BigRational; D]`.
 /// Returns `Err(LaError::Singular)` if the matrix is exactly singular.
-fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<Vec<BigRational>, LaError> {
-    if D == 0 {
-        return Ok(Vec::new());
-    }
-
+fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<[BigRational; D], LaError> {
     let zero = BigRational::from_integer(BigInt::from(0));
 
-    // Build augmented matrix [A | b] as D × (D+1).
-    let mut aug: Vec<Vec<BigRational>> = Vec::with_capacity(D);
-    for r in 0..D {
-        let mut row = Vec::with_capacity(D + 1);
-        for c in 0..D {
-            row.push(f64_to_bigrational(m.rows[r][c]));
-        }
-        row.push(f64_to_bigrational(b.data[r]));
-        aug.push(row);
-    }
+    // Build matrix and RHS separately (cannot use [BigRational; D+1] augmented
+    // columns because const-generic expressions are unstable).
+    let mut mat: [[BigRational; D]; D] =
+        std::array::from_fn(|r| std::array::from_fn(|c| f64_to_bigrational(m.rows[r][c])));
+    let mut rhs: [BigRational; D] = std::array::from_fn(|r| f64_to_bigrational(b.data[r]));
 
     // Forward elimination with first-non-zero pivoting.
     for k in 0..D {
         // Find first non-zero pivot in column k at or below row k.
-        if aug[k][k] == zero {
-            if let Some(swap_row) = ((k + 1)..D).find(|&i| aug[i][k] != zero) {
-                aug.swap(k, swap_row);
+        if mat[k][k] == zero {
+            if let Some(swap_row) = ((k + 1)..D).find(|&i| mat[i][k] != zero) {
+                mat.swap(k, swap_row);
+                rhs.swap(k, swap_row);
             } else {
                 return Err(LaError::Singular { pivot_col: k });
             }
         }
 
         // Eliminate below pivot.
-        let pivot = aug[k][k].clone();
+        let pivot = mat[k][k].clone();
         for i in (k + 1)..D {
-            if aug[i][k] != zero {
-                let factor = &aug[i][k] / &pivot;
-                // We need index `j` to read aug[k][j] and write aug[i][j]
+            if mat[i][k] != zero {
+                let factor = &mat[i][k] / &pivot;
+                // We need index `j` to read mat[k][j] and write mat[i][j]
                 // (two distinct rows) — iterators can't borrow both.
                 #[allow(clippy::needless_range_loop)]
-                for j in (k + 1)..=D {
-                    let term = &factor * &aug[k][j];
-                    aug[i][j] -= term;
+                for j in (k + 1)..D {
+                    let term = &factor * &mat[k][j];
+                    mat[i][j] -= term;
                 }
-                aug[i][k] = zero.clone();
+                let rhs_term = &factor * &rhs[k];
+                rhs[i] -= rhs_term;
+                mat[i][k] = zero.clone();
             }
         }
     }
 
     // Back-substitution.
-    let mut x: Vec<BigRational> = vec![zero; D];
+    let mut x: [BigRational; D] = std::array::from_fn(|_| zero.clone());
     for i in (0..D).rev() {
-        let mut sum = aug[i][D].clone();
+        let mut sum = rhs[i].clone();
         for j in (i + 1)..D {
-            sum -= &aug[i][j] * &x[j];
+            sum -= &mat[i][j] * &x[j];
         }
-        x[i] = sum / &aug[i][i];
+        x[i] = sum / &mat[i][i];
     }
 
     Ok(x)
@@ -264,7 +255,7 @@ impl<const D: usize> Matrix<D> {
         if val.is_finite() {
             Ok(val)
         } else {
-            Err(LaError::Overflow)
+            Err(LaError::Overflow { index: None })
         }
     }
 
@@ -301,8 +292,7 @@ impl<const D: usize> Matrix<D> {
     pub fn solve_exact(&self, b: Vector<D>) -> Result<[BigRational; D], LaError> {
         validate_finite(self)?;
         validate_finite_vec(&b)?;
-        let solution = gauss_solve(self, &b)?;
-        Ok(std::array::from_fn(|i| solution[i].clone()))
+        gauss_solve(self, &b)
     }
 
     /// Exact linear system solve converted to `f64`.
@@ -336,7 +326,7 @@ impl<const D: usize> Matrix<D> {
         for (i, val) in exact.iter().enumerate() {
             let f = val.to_f64().unwrap_or(f64::INFINITY);
             if !f.is_finite() {
-                return Err(LaError::Overflow);
+                return Err(LaError::Overflow { index: Some(i) });
             }
             result[i] = f;
         }
@@ -431,14 +421,14 @@ mod tests {
                 fn [<det_exact_err_on_nan_ $d d>]() {
                     let mut m = Matrix::<$d>::identity();
                     m.set(0, 0, f64::NAN);
-                    assert_eq!(m.det_exact(), Err(LaError::NonFinite { col: 0 }));
+                    assert_eq!(m.det_exact(), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
 
                 #[test]
                 fn [<det_exact_err_on_inf_ $d d>]() {
                     let mut m = Matrix::<$d>::identity();
                     m.set(0, 0, f64::INFINITY);
-                    assert_eq!(m.det_exact(), Err(LaError::NonFinite { col: 0 }));
+                    assert_eq!(m.det_exact(), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
             }
         };
@@ -462,7 +452,7 @@ mod tests {
                 fn [<det_exact_f64_err_on_nan_ $d d>]() {
                     let mut m = Matrix::<$d>::identity();
                     m.set(0, 0, f64::NAN);
-                    assert_eq!(m.det_exact_f64(), Err(LaError::NonFinite { col: 0 }));
+                    assert_eq!(m.det_exact_f64(), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
             }
         };
@@ -647,13 +637,25 @@ mod tests {
     #[test]
     fn det_sign_exact_returns_err_on_nan() {
         let m = Matrix::<2>::from_rows([[f64::NAN, 0.0], [0.0, 1.0]]);
-        assert_eq!(m.det_sign_exact(), Err(LaError::NonFinite { col: 0 }));
+        assert_eq!(
+            m.det_sign_exact(),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 0
+            })
+        );
     }
 
     #[test]
     fn det_sign_exact_returns_err_on_infinity() {
         let m = Matrix::<2>::from_rows([[f64::INFINITY, 0.0], [0.0, 1.0]]);
-        assert_eq!(m.det_sign_exact(), Err(LaError::NonFinite { col: 0 }));
+        assert_eq!(
+            m.det_sign_exact(),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 0
+            })
+        );
     }
 
     #[test]
@@ -661,14 +663,26 @@ mod tests {
         // D ≥ 5 bypasses the fast filter, exercising the bareiss_det path.
         let mut m = Matrix::<5>::identity();
         m.set(2, 3, f64::NAN);
-        assert_eq!(m.det_sign_exact(), Err(LaError::NonFinite { col: 3 }));
+        assert_eq!(
+            m.det_sign_exact(),
+            Err(LaError::NonFinite {
+                row: Some(2),
+                col: 3
+            })
+        );
     }
 
     #[test]
     fn det_sign_exact_returns_err_on_infinity_5x5() {
         let mut m = Matrix::<5>::identity();
         m.set(0, 0, f64::INFINITY);
-        assert_eq!(m.det_sign_exact(), Err(LaError::NonFinite { col: 0 }));
+        assert_eq!(
+            m.det_sign_exact(),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 0
+            })
+        );
     }
 
     #[test]
@@ -875,7 +889,7 @@ mod tests {
         let big = f64::MAX / 2.0;
         let m = Matrix::<3>::from_rows([[0.0, 0.0, 1.0], [big, 0.0, 1.0], [0.0, big, 1.0]]);
         // det = big^2, which overflows f64.
-        assert_eq!(m.det_exact_f64(), Err(LaError::Overflow));
+        assert_eq!(m.det_exact_f64(), Err(LaError::Overflow { index: None }));
     }
 
     // -----------------------------------------------------------------------
@@ -910,7 +924,7 @@ mod tests {
                     let mut a = Matrix::<$d>::identity();
                     a.set(0, 0, f64::NAN);
                     let b = arbitrary_rhs::<$d>();
-                    assert_eq!(a.solve_exact(b), Err(LaError::NonFinite { col: 0 }));
+                    assert_eq!(a.solve_exact(b), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
 
                 #[test]
@@ -918,7 +932,7 @@ mod tests {
                     let mut a = Matrix::<$d>::identity();
                     a.set(0, 0, f64::INFINITY);
                     let b = arbitrary_rhs::<$d>();
-                    assert_eq!(a.solve_exact(b), Err(LaError::NonFinite { col: 0 }));
+                    assert_eq!(a.solve_exact(b), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
 
                 #[test]
@@ -927,7 +941,7 @@ mod tests {
                     let mut b_arr = [1.0f64; $d];
                     b_arr[0] = f64::NAN;
                     let b = Vector::<$d>::new(b_arr);
-                    assert_eq!(a.solve_exact(b), Err(LaError::NonFinite { col: 0 }));
+                    assert_eq!(a.solve_exact(b), Err(LaError::NonFinite { row: None, col: 0 }));
                 }
 
                 #[test]
@@ -936,7 +950,7 @@ mod tests {
                     let mut b_arr = [1.0f64; $d];
                     b_arr[$d - 1] = f64::INFINITY;
                     let b = Vector::<$d>::new(b_arr);
-                    assert_eq!(a.solve_exact(b), Err(LaError::NonFinite { col: $d - 1 }));
+                    assert_eq!(a.solve_exact(b), Err(LaError::NonFinite { row: None, col: $d - 1 }));
                 }
 
                 #[test]
@@ -973,7 +987,7 @@ mod tests {
                     let mut a = Matrix::<$d>::identity();
                     a.set(0, 0, f64::NAN);
                     let b = arbitrary_rhs::<$d>();
-                    assert_eq!(a.solve_exact_f64(b), Err(LaError::NonFinite { col: 0 }));
+                    assert_eq!(a.solve_exact_f64(b), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
             }
         };
@@ -1112,7 +1126,10 @@ mod tests {
         let big = f64::MAX / 2.0;
         let a = Matrix::<2>::from_rows([[1.0 / big, 0.0], [0.0, 1.0 / big]]);
         let b = Vector::<2>::new([big, big]);
-        assert_eq!(a.solve_exact_f64(b), Err(LaError::Overflow));
+        assert_eq!(
+            a.solve_exact_f64(b),
+            Err(LaError::Overflow { index: Some(0) })
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1154,7 +1171,7 @@ mod tests {
     fn validate_finite_vec_err_on_nan() {
         assert_eq!(
             validate_finite_vec(&Vector::<2>::new([f64::NAN, 1.0])),
-            Err(LaError::NonFinite { col: 0 })
+            Err(LaError::NonFinite { row: None, col: 0 })
         );
     }
 
@@ -1162,7 +1179,7 @@ mod tests {
     fn validate_finite_vec_err_on_inf() {
         assert_eq!(
             validate_finite_vec(&Vector::<2>::new([1.0, f64::NEG_INFINITY])),
-            Err(LaError::NonFinite { col: 1 })
+            Err(LaError::NonFinite { row: None, col: 1 })
         );
     }
 
@@ -1179,13 +1196,25 @@ mod tests {
     fn validate_finite_err_on_nan() {
         let mut m = Matrix::<2>::identity();
         m.set(1, 0, f64::NAN);
-        assert_eq!(validate_finite(&m), Err(LaError::NonFinite { col: 0 }));
+        assert_eq!(
+            validate_finite(&m),
+            Err(LaError::NonFinite {
+                row: Some(1),
+                col: 0
+            })
+        );
     }
 
     #[test]
     fn validate_finite_err_on_inf() {
         let mut m = Matrix::<2>::identity();
         m.set(0, 1, f64::NEG_INFINITY);
-        assert_eq!(validate_finite(&m), Err(LaError::NonFinite { col: 1 }));
+        assert_eq!(
+            validate_finite(&m),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 1
+            })
+        );
     }
 }
