@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Add benchmark comparison tool and performance documentation [`d448fc3`](https://github.com/acgetchell/la-stack/commit/d448fc3e3c884d6145580e5a40eb265bf1f83cb8)
+
+### Changed
+
+- Update version to 0.3.0 and refine metadata keywords [`cc0e967`](https://github.com/acgetchell/la-stack/commit/cc0e967aedb4eabbcd98714b16ef67a8290c112e)
+- Improve non-finite error reporting and coordinate accuracy [`d4b1452`](https://github.com/acgetchell/la-stack/commit/d4b14524a02b49a1a8e832818913ab875c4e5fe0)
+- Refine benchmark comparison reporting and documentation [`e1b5955`](https://github.com/acgetchell/la-stack/commit/e1b5955fb5024232e34e9df9701bb24fb98efa15)
+- Expand test coverage for benchmark comparison edge cases [`bced7d9`](https://github.com/acgetchell/la-stack/commit/bced7d988bd2f42cb6bb5af9c54dabdcf787a5fc)
+- Update documentation and tests for integer-only Bareiss [`2ee3f05`](https://github.com/acgetchell/la-stack/commit/2ee3f05caecfdf1a23b61257a7465b3bb6d63614)
+
+### Maintenance
+
+- Bump astral-sh/setup-uv from 7.3.1 to 7.5.0 [`0505061`](https://github.com/acgetchell/la-stack/commit/050506123b1da9bc79b04e7d8b44d8195d115199)
+- Bump taiki-e/install-action from 2.68.25 to 2.68.31 [`dcff501`](https://github.com/acgetchell/la-stack/commit/dcff501354df2e6434fd6f817a7c15b86a40685f)
+- Bump actions-rust-lang/setup-rust-toolchain [`4678d2e`](https://github.com/acgetchell/la-stack/commit/4678d2e8b121c3116d638b59b03eca95510888fe)
+- Bump actions/cache from 5.0.3 to 5.0.4 [`633c6e2`](https://github.com/acgetchell/la-stack/commit/633c6e234dc4a94744fa433f41bceb84efe1c99c)
+- Bump taiki-e/install-action from 2.68.34 to 2.69.6 [`89a306b`](https://github.com/acgetchell/la-stack/commit/89a306b64bf586ec201957953afac0a3d9c13eb7)
+- Bump astral-sh/setup-uv from 7.5.0 to 7.6.0 [`676a6ff`](https://github.com/acgetchell/la-stack/commit/676a6ffe3df416ab316daa84119161893eeeadd0)
+- Bump codecov/codecov-action from 5.5.2 to 5.5.3 [`2c15dc1`](https://github.com/acgetchell/la-stack/commit/2c15dc1a0c93f75dd23e0d540041bc01f2e3b71a)
+- Bump the dependencies group with 2 updates [`23ade13`](https://github.com/acgetchell/la-stack/commit/23ade1343e575edead08ab49a4e361c9e37f5ca0)
+- Bump taiki-e/install-action from 2.69.6 to 2.70.1 [`4073197`](https://github.com/acgetchell/la-stack/commit/40731976f465f69bacb0a6dc4b8520fb9bc9c8f4)
+- Bump codecov/codecov-action from 5.5.3 to 6.0.0 [`b3e1380`](https://github.com/acgetchell/la-stack/commit/b3e1380e0b8df85478648036eeb1d9b2c79aaac5)
+- Bump taiki-e/install-action from 2.70.1 to 2.73.0 [`7de720d`](https://github.com/acgetchell/la-stack/commit/7de720dfb8328d01843cfabd15d23086ee98832b)
+- Bump astral-sh/setup-uv from 7.6.0 to 8.0.0 [`af40753`](https://github.com/acgetchell/la-stack/commit/af40753130fac56d48da7fce2f18b11dc391ebe6)
+
+### Performance
+
+- Stack-backed storage for exact arithmetic kernels [`b64ac60`](https://github.com/acgetchell/la-stack/commit/b64ac60e286bcdc1c21334ab271e6ffacfadc187)
+- Custom f64 → BigRational via IEEE 754 bit decomposition [#63](https://github.com/acgetchell/la-stack/pull/63) [`0a8ce5b`](https://github.com/acgetchell/la-stack/commit/0a8ce5b45e21fa88e4e9832bc6ada38b3ba68eeb)
+- Integer-only Bareiss determinant via BigInt [#64](https://github.com/acgetchell/la-stack/pull/64) [`d422b25`](https://github.com/acgetchell/la-stack/commit/d422b251ca86a914522f80285964d4513bca1817)
+
 ## [0.3.0] - 2026-03-12
 
 ### Added
@@ -24,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Clarify pivoting strategy and use idiomatic rev() in exact.rs [`d884581`](https://github.com/acgetchell/la-stack/commit/d8845816b4cc4cb282913f67d7b94b58fbf91bd2)
 - Add LDLT example, solve_exact README snippet, and sync examples [`2bddccf`](https://github.com/acgetchell/la-stack/commit/2bddccf3f20156fadb4fee6a4093e76b1b631de1)
+
+### Maintenance
+
+- Release v0.3.0 [`a09bd6f`](https://github.com/acgetchell/la-stack/commit/a09bd6f9f5f5a9cfa97f56e37481601264a210d6)
 
 ## [0.2.2] - 2026-03-11
 
@@ -187,6 +226,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add tarpaulin coverage upload [`7486dfd`](https://github.com/acgetchell/la-stack/commit/7486dfd54e16a6dbde41575c3f35a1acb65f57d2)
 
+[unreleased]: https://github.com/acgetchell/la-stack/compare/v0.3.0..HEAD
 [0.3.0]: https://github.com/acgetchell/la-stack/compare/v0.2.2..v0.3.0
 [0.2.2]: https://github.com/acgetchell/la-stack/compare/v0.2.1..v0.2.2
 [0.2.1]: https://github.com/acgetchell/la-stack/compare/v0.2.0..v0.2.1

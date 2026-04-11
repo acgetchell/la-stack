@@ -1,0 +1,173 @@
+name: Benchmarks
+
+# Detect performance regressions in exact-arithmetic benchmarks.
+# - Push to main: run benchmarks, save Criterion baseline, upload as artifact.
+# - PRs: find latest main baseline artifact, download, compare, report.
+# Regressions are warning-only — this workflow never fails on regression.
+
+permissions:
+  contents: read
+  actions: read
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "benches/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "benches/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+concurrency:
+  group: >
+    bench-${{ github.workflow }}-${{
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number ||
+      github.ref
+    }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606 # v1.15.4
+        with:
+          cache: true
+
+      # ── PR: find and download the latest main baseline ──────────────
+      - name: Find latest main baseline
+        if: github.event_name == 'pull_request'
+        id: find-baseline
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            // Find the most recent successful run of this workflow on main.
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'benchmarks.yml',
+              branch: 'main',
+              status: 'completed',
+              conclusion: 'success',
+              per_page: 5,
+            });
+
+            for (const run of runs.data.workflow_runs) {
+              const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id,
+              });
+
+              const baseline = artifacts.data.artifacts.find(
+                a => a.name === 'bench-baseline-main' && !a.expired
+              );
+
+              if (baseline) {
+                console.log(`Found baseline from run ${run.id} (${run.created_at})`);
+                core.setOutput('found', 'true');
+                core.setOutput('run_id', run.id.toString());
+                return;
+              }
+            }
+
+            console.log('No baseline artifact found');
+            core.setOutput('found', 'false');
+
+      - name: Download baseline artifact
+        if: >
+          github.event_name == 'pull_request' &&
+          steps.find-baseline.outputs.found == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: bench-baseline-main
+          path: target/criterion
+          run-id: ${{ steps.find-baseline.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── PR: run benchmarks and compare ──────────────────────────────
+      - name: Run benchmarks (compare against main)
+        if: github.event_name == 'pull_request'
+        id: bench-compare
+        run: |
+          set -euo pipefail
+
+          if [ -d target/criterion/exact_d2/det/main ]; then
+            echo "::notice::Baseline found — comparing against main"
+            cargo bench --features bench,exact --bench exact \
+              -- --baseline main 2>&1 | tee bench-output.txt
+          else
+            echo "::notice::No baseline found — running without comparison"
+            cargo bench --features bench,exact --bench exact \
+              2>&1 | tee bench-output.txt
+          fi
+
+          if grep -q "Performance has regressed" bench-output.txt; then
+            echo "regression=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "regression=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Main push: run benchmarks and save baseline ─────────────────
+      - name: Run benchmarks (save baseline)
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: >
+          cargo bench --features bench,exact --bench exact
+          -- --save-baseline main
+
+      - name: Upload baseline artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: bench-baseline-main
+          path: target/criterion
+          retention-days: 30
+          if-no-files-found: error
+
+      # ── PR: report results ──────────────────────────────────────────
+      - name: Benchmark summary
+        if: github.event_name == 'pull_request' && always()
+        run: |
+          set -euo pipefail
+
+          regression="${{ steps.bench-compare.outputs.regression }}"
+
+          if [ "$regression" = "true" ]; then
+            {
+              echo "### ⚠️ Performance Regression Detected"
+              echo ""
+              echo "Exact-arithmetic benchmarks show regression vs main baseline."
+              echo "This is a **warning only** — the workflow will not fail."
+              echo ""
+              echo '```'
+              grep -B1 "Performance has regressed" bench-output.txt || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Performance regression detected in exact-arithmetic benchmarks"
+          else
+            {
+              echo "### ✅ No Performance Regression"
+              echo ""
+              echo "Exact-arithmetic benchmarks are within expected range vs main."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
