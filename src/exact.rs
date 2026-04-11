@@ -37,6 +37,8 @@
 //! \[10\] for background on floating-point representation and exact
 //! rational reconstruction.  Reference numbers refer to `REFERENCES.md`.
 
+use std::array::from_fn;
+
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
 use num_traits::ToPrimitive;
@@ -76,28 +78,22 @@ fn validate_finite_vec<const D: usize>(v: &Vector<D>) -> Result<(), LaError> {
     Ok(())
 }
 
-/// Convert an `f64` to an exact `BigRational` via IEEE 754 bit decomposition.
+/// Decompose a finite `f64` into its IEEE 754 components.
 ///
-/// Every finite `f64` is exactly representable as `±m × 2^e` where `m` is a
-/// non-negative integer and `e` is an integer.  This function extracts `(m, e)`
-/// directly from the IEEE 754 binary64 bit layout \[9\], strips trailing zeros
-/// from `m` so the resulting fraction is already in lowest terms, then
-/// constructs a `BigRational` via `new_raw` — bypassing the GCD reduction
-/// that `BigRational::from_float` performs internally.
-///
-/// See `REFERENCES.md` \[9-10\] for the IEEE 754 standard and Goldberg's
-/// survey of floating-point representation.
+/// Returns `None` for ±0.0, or `Some((mantissa, exponent, is_negative))` where
+/// the value is exactly `(-1)^is_negative × mantissa × 2^exponent` and
+/// `mantissa` is odd (trailing zeros stripped).  See `REFERENCES.md` \[9-10\].
 ///
 /// # Panics
 /// Panics if `x` is NaN or infinite.
-fn f64_to_bigrational(x: f64) -> BigRational {
+fn f64_decompose(x: f64) -> Option<(u64, i32, bool)> {
     let bits = x.to_bits();
     let biased_exp = ((bits >> 52) & 0x7FF) as i32;
     let fraction = bits & 0x000F_FFFF_FFFF_FFFF;
 
     // ±0.0
     if biased_exp == 0 && fraction == 0 {
-        return BigRational::from_integer(BigInt::from(0));
+        return None;
     }
 
     // NaN / Inf — callers must validate finiteness before reaching here.
@@ -113,14 +109,34 @@ fn f64_to_bigrational(x: f64) -> BigRational {
         ((1u64 << 52) | fraction, biased_exp - 1075)
     };
 
-    // Strip trailing zeros so the fraction is already in lowest terms:
-    // after stripping, mantissa is odd and the denominator (if any) is a
-    // power of 2, so gcd(mantissa, denom) = 1.
+    // Strip trailing zeros so the mantissa is odd.
     let tz = mantissa.trailing_zeros();
     let mantissa = mantissa >> tz;
     let exponent = raw_exp + tz.cast_signed();
-
     let is_negative = bits >> 63 != 0;
+
+    Some((mantissa, exponent, is_negative))
+}
+
+/// Convert an `f64` to an exact `BigRational` via IEEE 754 bit decomposition.
+///
+/// Every finite `f64` is exactly representable as `±m × 2^e` where `m` is a
+/// non-negative integer and `e` is an integer.  This function extracts `(m, e)`
+/// directly from the IEEE 754 binary64 bit layout \[9\], strips trailing zeros
+/// from `m` so the resulting fraction is already in lowest terms, then
+/// constructs a `BigRational` via `new_raw` — bypassing the GCD reduction
+/// that `BigRational::from_float` performs internally.
+///
+/// See `REFERENCES.md` \[9-10\] for the IEEE 754 standard and Goldberg's
+/// survey of floating-point representation.
+///
+/// # Panics
+/// Panics if `x` is NaN or infinite.
+fn f64_to_bigrational(x: f64) -> BigRational {
+    let Some((mantissa, exponent, is_negative)) = f64_decompose(x) else {
+        return BigRational::from_integer(BigInt::from(0));
+    };
+
     let numer = if is_negative {
         -BigInt::from(mantissa)
     } else {
@@ -134,28 +150,101 @@ fn f64_to_bigrational(x: f64) -> BigRational {
     }
 }
 
-/// Compute the exact determinant of a `D×D` matrix using the Bareiss algorithm
-/// (fraction-free Gaussian elimination) in `BigRational` arithmetic.
+/// Convert a `BigInt × 2^exp` pair to a reduced `BigRational`.
 ///
-/// Returns the determinant as an exact `BigRational`.
-fn bareiss_det<const D: usize>(m: &Matrix<D>) -> BigRational {
+/// When `exp < 0` (denominator is `2^(-exp)`), shared factors of 2 are
+/// stripped from `value` to keep the fraction in lowest terms without a
+/// full GCD computation.
+fn bigint_exp_to_bigrational(mut value: BigInt, mut exp: i32) -> BigRational {
+    if value == BigInt::from(0) {
+        return BigRational::from_integer(BigInt::from(0));
+    }
+
+    // Strip shared powers of 2 between value and the 2^(-exp) denominator.
+    if exp < 0
+        && let Some(tz) = value.trailing_zeros()
+    {
+        let reduce = tz.min(u64::from((-exp).cast_unsigned()));
+        value >>= reduce;
+        exp += i32::try_from(reduce).expect("reduce ≤ -exp which fits in i32");
+    }
+
+    if exp >= 0 {
+        BigRational::new_raw(value << exp.cast_unsigned(), BigInt::from(1u32))
+    } else {
+        BigRational::new_raw(value, BigInt::from(1u32) << (-exp).cast_unsigned())
+    }
+}
+
+/// Compute the exact determinant using integer-only Bareiss elimination.
+///
+/// Returns `(det_int, scale_exp)` where the true determinant is
+/// `det_int × 2^scale_exp`.  Since the scale factor `2^scale_exp` is always
+/// positive, `det_int.sign()` gives the sign of the determinant directly.
+///
+/// All arithmetic is in `BigInt` — no `BigRational`, no GCD, no denominator
+/// tracking.  Each f64 entry is decomposed into `mantissa × 2^exponent` and
+/// scaled to a common base `2^e_min` so every entry becomes an integer.
+/// The Bareiss inner-loop division is exact (guaranteed by the algorithm).
+fn bareiss_det_int<const D: usize>(m: &Matrix<D>) -> (BigInt, i32) {
     if D == 0 {
-        return BigRational::from_integer(BigInt::from(1));
+        return (BigInt::from(1), 0);
     }
     if D == 1 {
-        return f64_to_bigrational(m.rows[0][0]);
+        return match f64_decompose(m.rows[0][0]) {
+            None => (BigInt::from(0), 0),
+            Some((mant, exp, neg)) => {
+                let v = if neg {
+                    -BigInt::from(mant)
+                } else {
+                    BigInt::from(mant)
+                };
+                (v, exp)
+            }
+        };
     }
 
-    // Convert f64 entries to exact BigRational.
-    let mut a: [[BigRational; D]; D] =
-        std::array::from_fn(|r| std::array::from_fn(|c| f64_to_bigrational(m.rows[r][c])));
+    // Decompose all entries and find the minimum exponent.
+    let mut components = [[(0u64, 0i32, false); D]; D];
+    let mut e_min = i32::MAX;
 
-    let zero = BigRational::from_integer(BigInt::from(0));
-    let mut prev_pivot = BigRational::from_integer(BigInt::from(1));
+    for (r, row) in m.rows.iter().enumerate() {
+        for (c, &entry) in row.iter().enumerate() {
+            if let Some((mant, exp, neg)) = f64_decompose(entry) {
+                components[r][c] = (mant, exp, neg);
+                e_min = e_min.min(exp);
+            }
+            // Zero entries keep the default (0, 0, false); their exponent is
+            // excluded from e_min.
+        }
+    }
+
+    // All entries are zero → singular.
+    if e_min == i32::MAX {
+        return (BigInt::from(0), 0);
+    }
+
+    // Build the integer matrix: a[r][c] = (±mantissa) × 2^(exp − e_min).
+    let mut a: [[BigInt; D]; D] = from_fn(|r| {
+        from_fn(|c| {
+            let (mant, exp, neg) = components[r][c];
+            if mant == 0 {
+                BigInt::from(0)
+            } else {
+                let shift = (exp - e_min).cast_unsigned();
+                let v = BigInt::from(mant) << shift;
+                if neg { -v } else { v }
+            }
+        })
+    });
+
+    // Bareiss elimination in BigInt.
+    let zero = BigInt::from(0);
+    let mut prev_pivot = BigInt::from(1);
     let mut sign: i8 = 1;
 
     for k in 0..D {
-        // Find first non-zero entry in column k at or below row k.
+        // Pivot search.
         if a[k][k] == zero {
             let mut found = false;
             for i in (k + 1)..D {
@@ -167,27 +256,41 @@ fn bareiss_det<const D: usize>(m: &Matrix<D>) -> BigRational {
                 }
             }
             if !found {
-                // Entire column below (and including) diagonal is zero → singular.
-                return zero;
+                return (BigInt::from(0), 0);
             }
         }
 
-        // Bareiss elimination for rows below k.
+        // Elimination.
         for i in (k + 1)..D {
             for j in (k + 1)..D {
-                // a[i][j] = (a[k][k] * a[i][j] - a[i][k] * a[k][j]) / prev_pivot
                 a[i][j] = (&a[k][k] * &a[i][j] - &a[i][k] * &a[k][j]) / &prev_pivot;
             }
-            // Zero out the eliminated column entry (not needed for det, but keeps
-            // the matrix consistent for potential debugging).
-            a[i][k] = zero.clone();
+            a[i][k].clone_from(&zero);
         }
 
-        prev_pivot = a[k][k].clone();
+        prev_pivot.clone_from(&a[k][k]);
     }
 
-    let det = &a[D - 1][D - 1];
-    if sign < 0 { -det } else { det.clone() }
+    let det_int = if sign < 0 {
+        -&a[D - 1][D - 1]
+    } else {
+        a[D - 1][D - 1].clone()
+    };
+
+    // det(original) = det_int × 2^(D × e_min)
+    let d_i32 = i32::try_from(D).expect("dimension exceeds i32");
+    let total_exp = e_min
+        .checked_mul(d_i32)
+        .expect("exponent overflow in bareiss_det_int");
+
+    (det_int, total_exp)
+}
+
+/// Compute the exact determinant of a `D×D` matrix using integer-only Bareiss
+/// elimination and return the result as a `BigRational`.
+fn bareiss_det<const D: usize>(m: &Matrix<D>) -> BigRational {
+    let (det_int, total_exp) = bareiss_det_int(m);
+    bigint_exp_to_bigrational(det_int, total_exp)
 }
 
 /// Solve `A x = b` using Gaussian elimination with first-non-zero pivoting
@@ -204,9 +307,8 @@ fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<[BigRatio
 
     // Build matrix and RHS separately (cannot use [BigRational; D+1] augmented
     // columns because const-generic expressions are unstable).
-    let mut mat: [[BigRational; D]; D] =
-        std::array::from_fn(|r| std::array::from_fn(|c| f64_to_bigrational(m.rows[r][c])));
-    let mut rhs: [BigRational; D] = std::array::from_fn(|r| f64_to_bigrational(b.data[r]));
+    let mut mat: [[BigRational; D]; D] = from_fn(|r| from_fn(|c| f64_to_bigrational(m.rows[r][c])));
+    let mut rhs: [BigRational; D] = from_fn(|r| f64_to_bigrational(b.data[r]));
 
     // Forward elimination with first-non-zero pivoting.
     for k in 0..D {
@@ -240,7 +342,7 @@ fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<[BigRatio
     }
 
     // Back-substitution.
-    let mut x: [BigRational; D] = std::array::from_fn(|_| zero.clone());
+    let mut x: [BigRational; D] = from_fn(|_| zero.clone());
     for i in (0..D).rev() {
         let mut sum = rhs[i].clone();
         for j in (i + 1)..D {
@@ -443,9 +545,10 @@ impl<const D: usize> Matrix<D> {
             }
         }
 
-        // Stage 2: exact Bareiss fallback.
-        let det = bareiss_det(self);
-        Ok(match det.numer().sign() {
+        // Stage 2: integer Bareiss fallback — the 2^(D×e_min) scale factor
+        // is always positive, so det_int.sign() == det(A).sign().
+        let (det_int, _) = bareiss_det_int(self);
+        Ok(match det_int.sign() {
             Sign::Plus => 1,
             Sign::Minus => -1,
             Sign::NoSign => 0,
@@ -831,6 +934,195 @@ mod tests {
     fn det_errbound_d5_is_none() {
         assert_eq!(Matrix::<5>::identity().det_errbound(), None);
     }
+
+    // -----------------------------------------------------------------------
+    // f64_decompose tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn f64_decompose_zero() {
+        assert!(f64_decompose(0.0).is_none());
+        assert!(f64_decompose(-0.0).is_none());
+    }
+
+    #[test]
+    fn f64_decompose_one() {
+        let (mant, exp, neg) = f64_decompose(1.0).unwrap();
+        assert_eq!(mant, 1);
+        assert_eq!(exp, 0);
+        assert!(!neg);
+    }
+
+    #[test]
+    fn f64_decompose_negative() {
+        let (mant, exp, neg) = f64_decompose(-3.5).unwrap();
+        // -3.5 = -7 × 2^(-1), mantissa is 7 (odd after stripping)
+        assert_eq!(mant, 7);
+        assert_eq!(exp, -1);
+        assert!(neg);
+    }
+
+    #[test]
+    fn f64_decompose_subnormal() {
+        let tiny = 5e-324_f64;
+        assert!(tiny.is_subnormal());
+        let (mant, exp, neg) = f64_decompose(tiny).unwrap();
+        assert_eq!(mant, 1);
+        assert_eq!(exp, -1074);
+        assert!(!neg);
+    }
+
+    #[test]
+    fn f64_decompose_power_of_two() {
+        let (mant, exp, neg) = f64_decompose(1024.0).unwrap();
+        assert_eq!(mant, 1);
+        assert_eq!(exp, 10); // 1024 = 2^10
+        assert!(!neg);
+    }
+
+    #[test]
+    #[should_panic(expected = "non-finite f64 in exact conversion")]
+    fn f64_decompose_panics_on_nan() {
+        f64_decompose(f64::NAN);
+    }
+
+    // -----------------------------------------------------------------------
+    // bareiss_det_int tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn bareiss_det_int_d0() {
+        let (det, exp) = bareiss_det_int(&Matrix::<0>::zero());
+        assert_eq!(det, BigInt::from(1));
+        assert_eq!(exp, 0);
+    }
+
+    #[test]
+    fn bareiss_det_int_d1_value() {
+        // 7.0 = 7 × 2^0
+        let (det, exp) = bareiss_det_int(&Matrix::<1>::from_rows([[7.0]]));
+        assert_eq!(det, BigInt::from(7));
+        assert_eq!(exp, 0);
+    }
+
+    #[test]
+    fn bareiss_det_int_d1_zero() {
+        let (det, _) = bareiss_det_int(&Matrix::<1>::from_rows([[0.0]]));
+        assert_eq!(det, BigInt::from(0));
+    }
+
+    #[test]
+    fn bareiss_det_int_d2_known() {
+        // det([[1,2],[3,4]]) = -2
+        let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+        let (det_int, total_exp) = bareiss_det_int(&m);
+        // Reconstruct and verify.
+        let det = bigint_exp_to_bigrational(det_int, total_exp);
+        assert_eq!(det, BigRational::from_integer(BigInt::from(-2)));
+    }
+
+    #[test]
+    fn bareiss_det_int_all_zeros() {
+        let (det, _) = bareiss_det_int(&Matrix::<3>::zero());
+        assert_eq!(det, BigInt::from(0));
+    }
+
+    #[test]
+    fn bareiss_det_int_sign_matches_det_sign_exact() {
+        // The sign of det_int should match det_sign_exact for various matrices.
+        let m = Matrix::<3>::from_rows([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
+        let (det_int, _) = bareiss_det_int(&m);
+        assert_eq!(det_int.sign(), Sign::Minus); // det = -1
+    }
+
+    #[test]
+    fn bareiss_det_int_fractional_entries() {
+        // Entries with negative exponents: 0.5 = 1×2^(-1), 0.25 = 1×2^(-2).
+        // det([[0.5, 0.25], [1.0, 1.0]]) = 0.5×1.0 − 0.25×1.0 = 0.25
+        let m = Matrix::<2>::from_rows([[0.5, 0.25], [1.0, 1.0]]);
+        let (det_int, total_exp) = bareiss_det_int(&m);
+        let det = bigint_exp_to_bigrational(det_int, total_exp);
+        assert_eq!(det, BigRational::new(BigInt::from(1), BigInt::from(4)));
+    }
+
+    #[test]
+    fn bareiss_det_int_d1_fractional() {
+        // 0.5 = 1 × 2^(-1)
+        let (det, exp) = bareiss_det_int(&Matrix::<1>::from_rows([[0.5]]));
+        assert_eq!(det, BigInt::from(1));
+        assert_eq!(exp, -1);
+    }
+
+    /// Per AGENTS.md: dimension-generic tests must cover D=2–5.
+    macro_rules! gen_bareiss_det_int_identity_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<bareiss_det_int_identity_ $d d>]() {
+                    let (det_int, total_exp) = bareiss_det_int(&Matrix::<$d>::identity());
+                    let det = bigint_exp_to_bigrational(det_int, total_exp);
+                    assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
+                }
+            }
+        };
+    }
+
+    gen_bareiss_det_int_identity_tests!(2);
+    gen_bareiss_det_int_identity_tests!(3);
+    gen_bareiss_det_int_identity_tests!(4);
+    gen_bareiss_det_int_identity_tests!(5);
+
+    // -----------------------------------------------------------------------
+    // bigint_exp_to_bigrational tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn bigint_exp_to_bigrational_zero() {
+        let r = bigint_exp_to_bigrational(BigInt::from(0), -50);
+        assert_eq!(r, BigRational::from_integer(BigInt::from(0)));
+    }
+
+    #[test]
+    fn bigint_exp_to_bigrational_positive_exp() {
+        // 3 × 2^2 = 12
+        let r = bigint_exp_to_bigrational(BigInt::from(3), 2);
+        assert_eq!(r, BigRational::from_integer(BigInt::from(12)));
+    }
+
+    #[test]
+    fn bigint_exp_to_bigrational_negative_exp_reduced() {
+        // 6 × 2^(-2) = 6/4 → reduced to 3/2 (strip one shared factor of 2)
+        let r = bigint_exp_to_bigrational(BigInt::from(6), -2);
+        assert_eq!(*r.numer(), BigInt::from(3));
+        assert_eq!(*r.denom(), BigInt::from(2));
+    }
+
+    #[test]
+    fn bigint_exp_to_bigrational_negative_exp_already_odd() {
+        // 3 × 2^(-2) = 3/4 (already in lowest terms since 3 is odd)
+        let r = bigint_exp_to_bigrational(BigInt::from(3), -2);
+        assert_eq!(*r.numer(), BigInt::from(3));
+        assert_eq!(*r.denom(), BigInt::from(4));
+    }
+
+    #[test]
+    fn bigint_exp_to_bigrational_negative_value() {
+        // -5 × 2^1 = -10
+        let r = bigint_exp_to_bigrational(BigInt::from(-5), 1);
+        assert_eq!(r, BigRational::from_integer(BigInt::from(-10)));
+    }
+
+    #[test]
+    fn bigint_exp_to_bigrational_negative_value_with_denominator() {
+        // -3 × 2^(-2) = -3/4
+        let r = bigint_exp_to_bigrational(BigInt::from(-3), -2);
+        assert_eq!(*r.numer(), BigInt::from(-3));
+        assert_eq!(*r.denom(), BigInt::from(4));
+    }
+
+    // -----------------------------------------------------------------------
+    // bareiss_det (wrapper) tests
+    // -----------------------------------------------------------------------
 
     #[test]
     fn bareiss_det_d0_is_one() {

@@ -160,12 +160,42 @@ just examples         # Run all examples
 - Use `just changelog` to regenerate
 - Use `just changelog-unreleased <version>` to prepend unreleased changes
 
+### GitHub CLI (`gh`)
+
+When using `gh` to view issues, PRs, or other GitHub objects:
+
+- **ALWAYS** use `--json` with `| cat` to avoid pager and scope errors:
+
+  ```bash
+  gh issue view 64 --repo acgetchell/la-stack --json title,body | cat
+  ```
+
+- To extract specific fields cleanly, combine `--json` with `--jq`:
+
+  ```bash
+  gh issue view 64 --repo acgetchell/la-stack --json title,body --jq '.title + "\n" + .body' | cat
+  ```
+
+- **AVOID** plain `gh issue view N` — it may fail with `read:project`
+  scope errors or open a pager.
+
+- For **arbitrary Markdown** (backticks, quotes, special characters) in
+  comments, prefer `--body-file -` with a heredoc:
+
+  ```bash
+  gh issue comment 64 --repo acgetchell/la-stack --body-file - <<'EOF'
+  ## Heading
+
+  Body with `backticks`, **bold**, and apostrophes that's safe.
+  EOF
+  ```
+
 ### GitHub Issues
 
 Use the `gh` CLI to read, create, and edit issues:
 
-- **Read**: `gh issue view <number>` (or `--json title,body,labels,milestone` for structured data)
-- **List**: `gh issue list` (add `--label enhancement`, `--milestone v0.3.0`, etc. to filter)
+- **Read**: `gh issue view <number> --json title,body,labels,milestone | cat`
+- **List**: `gh issue list` (add `--label enhancement`, `--milestone v0.4.0`, etc. to filter)
 - **Create**: `gh issue create --title "..." --body "..." --label enhancement --label rust`
 - **Edit**: `gh issue edit <number> --add-label "..."`, `--milestone "..."`, `--title "..."`
 - **Comment**: `gh issue comment <number> --body "..."`
