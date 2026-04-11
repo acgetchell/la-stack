@@ -7,9 +7,15 @@
 //! ## Determinants
 //!
 //! All three determinant methods (`det_exact`, `det_exact_f64`, `det_sign_exact`)
-//! share the same core: entries are converted losslessly to `BigRational` and
-//! the Bareiss algorithm (fraction-free Gaussian elimination) computes the
-//! exact determinant.
+//! share the same integer-only Bareiss core (`bareiss_det_int`).  Each f64
+//! entry is decomposed via `f64_decompose` into `mantissa × 2^exponent`,
+//! all entries are scaled to a common `BigInt` matrix (shifting by
+//! `e - e_min`), and Bareiss elimination runs entirely in `BigInt`
+//! arithmetic — no `BigRational`, no GCD, no denominator tracking.
+//! The result is `(det_int, total_exp)` where `det = det_int × 2^(D × e_min)`.
+//! `bareiss_det` wraps this with `bigint_exp_to_bigrational` to reconstruct
+//! a reduced `BigRational`; `det_sign_exact` reads the sign directly from
+//! `det_int` (the scale factor is always positive).
 //!
 //! `det_sign_exact` adds a two-stage adaptive-precision optimisation inspired
 //! by Shewchuk's robust geometric predicates:
@@ -17,7 +23,7 @@
 //! 1. **Fast filter (D ≤ 4)**: compute `det_direct()` and a conservative error
 //!    bound. If `|det| > bound`, the f64 sign is provably correct — return
 //!    immediately without allocating.
-//! 2. **Exact fallback**: run the Bareiss algorithm for a guaranteed-correct
+//! 2. **Exact fallback**: run integer-only Bareiss for a guaranteed-correct
 //!    sign.
 //!
 //! ## Linear system solve
@@ -498,8 +504,9 @@ impl<const D: usize> Matrix<D> {
     /// For D ≤ 4, a fast f64 filter is tried first: `det_direct()` is compared
     /// against a conservative error bound derived from the matrix permanent.
     /// If the f64 result clearly exceeds the bound, the sign is returned
-    /// immediately without allocating.  Otherwise (and always for D ≥ 5), the
-    /// Bareiss algorithm runs in exact [`BigRational`] arithmetic.
+    /// immediately without allocating.  Otherwise (and always for D ≥ 5),
+    /// integer-only Bareiss elimination (`bareiss_det_int`) computes the exact
+    /// sign without constructing any `BigRational` values.
     ///
     /// # When to use
     ///
@@ -1046,11 +1053,28 @@ mod tests {
     }
 
     #[test]
+    fn bareiss_det_int_d1_negative() {
+        // -3.5 = -7 × 2^(-1)
+        let (det, exp) = bareiss_det_int(&Matrix::<1>::from_rows([[-3.5]]));
+        assert_eq!(det, BigInt::from(-7));
+        assert_eq!(exp, -1);
+    }
+
+    #[test]
     fn bareiss_det_int_d1_fractional() {
         // 0.5 = 1 × 2^(-1)
         let (det, exp) = bareiss_det_int(&Matrix::<1>::from_rows([[0.5]]));
         assert_eq!(det, BigInt::from(1));
         assert_eq!(exp, -1);
+    }
+
+    #[test]
+    fn bareiss_det_int_d3_with_pivoting() {
+        // Zero on diagonal → exercises pivot swap inside bareiss_det_int.
+        let m = Matrix::<3>::from_rows([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
+        let (det_int, total_exp) = bareiss_det_int(&m);
+        let det = bigint_exp_to_bigrational(det_int, total_exp);
+        assert_eq!(det, BigRational::from_integer(BigInt::from(-1)));
     }
 
     /// Per AGENTS.md: dimension-generic tests must cover D=2–5.

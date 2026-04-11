@@ -28,8 +28,10 @@ matrices, see [6].
 
 ### Exact determinant sign (adaptive-precision Bareiss)
 
-`det_sign_exact()` uses a Shewchuk-style f64 error-bound filter [8] backed by exact Bareiss
-elimination [7] in `BigRational`. See `src/exact.rs` for the full architecture description.
+`det_sign_exact()` uses a Shewchuk-style f64 error-bound filter [8] backed by integer-only
+Bareiss elimination [7] in `BigInt`. Each f64 entry is decomposed into `mantissa × 2^exponent`,
+scaled to a common integer base, and eliminated without any `BigRational` or GCD overhead.
+See `src/exact.rs` for the full architecture description.
 
 ## References
 

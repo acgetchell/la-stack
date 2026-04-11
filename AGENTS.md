@@ -195,7 +195,7 @@ When using `gh` to view issues, PRs, or other GitHub objects:
 Use the `gh` CLI to read, create, and edit issues:
 
 - **Read**: `gh issue view <number> --json title,body,labels,milestone | cat`
-- **List**: `gh issue list` (add `--label enhancement`, `--milestone v0.4.0`, etc. to filter)
+- **List**: `gh issue list --json number,title,labels --jq '.[] | "#\(.number) \(.title)"' | cat` (add `--label enhancement`, `--milestone v0.4.0`, etc. to filter)
 - **Create**: `gh issue create --title "..." --body "..." --label enhancement --label rust`
 - **Edit**: `gh issue edit <number> --add-label "..."`, `--milestone "..."`, `--title "..."`
 - **Comment**: `gh issue comment <number> --body "..."`
@@ -235,8 +235,9 @@ When creating or updating issues:
   - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve_vec`, `det`)
   - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for symmetric SPD/PSD matrices (`solve_vec`, `det`)
   - `src/exact.rs`: exact arithmetic behind `features = ["exact"]`:
-    - Determinants: `det_exact()`, `det_exact_f64()`, `det_sign_exact()` via Bareiss in
-      `BigRational`; `det_sign_exact()` adds a Shewchuk-style f64 filter for fast sign resolution
+    - Determinants: `det_exact()`, `det_exact_f64()`, `det_sign_exact()` via integer-only
+      Bareiss in `BigInt` (`bareiss_det_int`); `det_sign_exact()` adds a Shewchuk-style
+      f64 filter for fast sign resolution
     - Linear system solve: `solve_exact()`, `solve_exact_f64()` via Gaussian elimination
       with first-non-zero pivoting in `BigRational`
 - Rust tests are inline `#[cfg(test)]` modules in each `src/*.rs` file.
