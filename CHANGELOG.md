@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-04-11
 
 ### Added
 
@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refine benchmark comparison reporting and documentation [`e1b5955`](https://github.com/acgetchell/la-stack/commit/e1b5955fb5024232e34e9df9701bb24fb98efa15)
 - Expand test coverage for benchmark comparison edge cases [`bced7d9`](https://github.com/acgetchell/la-stack/commit/bced7d988bd2f42cb6bb5af9c54dabdcf787a5fc)
 - Update documentation and tests for integer-only Bareiss [`2ee3f05`](https://github.com/acgetchell/la-stack/commit/2ee3f05caecfdf1a23b61257a7465b3bb6d63614)
+- Restrict benchmark baselines to main and improve reporting [`9a7caa2`](https://github.com/acgetchell/la-stack/commit/9a7caa241b5f476c2659772f3189468b10fcba2e)
 
 ### Maintenance
 
@@ -33,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump codecov/codecov-action from 5.5.3 to 6.0.0 [`b3e1380`](https://github.com/acgetchell/la-stack/commit/b3e1380e0b8df85478648036eeb1d9b2c79aaac5)
 - Bump taiki-e/install-action from 2.70.1 to 2.73.0 [`7de720d`](https://github.com/acgetchell/la-stack/commit/7de720dfb8328d01843cfabd15d23086ee98832b)
 - Bump astral-sh/setup-uv from 7.6.0 to 8.0.0 [`af40753`](https://github.com/acgetchell/la-stack/commit/af40753130fac56d48da7fce2f18b11dc391ebe6)
+- Add performance regression detection for exact-arithmetic benchmarks [`44bce99`](https://github.com/acgetchell/la-stack/commit/44bce99bcae8f852dbf7500e71fa182730e08bca)
 
 ### Performance
 
@@ -226,7 +228,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add tarpaulin coverage upload [`7486dfd`](https://github.com/acgetchell/la-stack/commit/7486dfd54e16a6dbde41575c3f35a1acb65f57d2)
 
-[unreleased]: https://github.com/acgetchell/la-stack/compare/v0.3.0..HEAD
+[0.4.0]: https://github.com/acgetchell/la-stack/compare/v0.3.0..v0.4.0
 [0.3.0]: https://github.com/acgetchell/la-stack/compare/v0.2.2..v0.3.0
 [0.2.2]: https://github.com/acgetchell/la-stack/compare/v0.2.1..v0.2.2
 [0.2.1]: https://github.com/acgetchell/la-stack/compare/v0.2.0..v0.2.1

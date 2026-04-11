@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "la-stack: Fast, stack-allocated linear algebra for fixed dimensions in Rust"
-version: 0.3.0
+version: 0.4.0
 url: "https://github.com/acgetchell/la-stack"
 repository-code: "https://github.com/acgetchell/la-stack"
 identifiers:
