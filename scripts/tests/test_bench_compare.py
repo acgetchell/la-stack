@@ -95,6 +95,20 @@ def test_read_estimate_success(tmp_path: Path) -> None:
     assert hi == pytest.approx(42.0 * 1.1)
 
 
+def test_read_estimate_no_ci(tmp_path: Path) -> None:
+    """When confidence_interval is missing, all three values equal the point estimate."""
+    est = tmp_path / "estimates.json"
+    est.parent.mkdir(parents=True, exist_ok=True)
+    est.write_text(
+        json.dumps({"median": {"point_estimate": 99.0}}),
+        encoding="utf-8",
+    )
+    point, lo, hi = bench_compare._read_estimate(est, "median")
+    assert point == 99.0
+    assert lo == 99.0
+    assert hi == 99.0
+
+
 def test_read_estimate_missing_stat(tmp_path: Path) -> None:
     est = tmp_path / "estimates.json"
     _write_estimates(est, "median", 1.0)
@@ -134,6 +148,21 @@ def test_collect_comparisons(tmp_path: Path) -> None:
     assert len(comparisons) == 4  # 2 benches x 2 dims (near-singular has no baseline)
     for c in comparisons:
         assert c.speedup == pytest.approx(c.baseline_ns / c.current_ns)
+
+
+def test_collect_comparisons_zero_current(tmp_path: Path) -> None:
+    """When the current estimate is zero, speedup should be infinity."""
+    group = tmp_path / "exact_d2"
+    # Current (new) has a zero point estimate.
+    _write_estimates(group / "det" / "new" / "estimates.json", "median", 0.0)
+    # Baseline has a normal value.
+    _write_estimates(group / "det" / "v0.3.0" / "estimates.json", "median", 5.0)
+
+    comparisons = bench_compare._collect_comparisons(tmp_path, "v0.3.0", "median")
+    assert len(comparisons) == 1
+    c = comparisons[0]
+    assert c.speedup == float("inf")
+    assert c.pct_change == pytest.approx(-100.0)
 
 
 def test_collect_comparisons_missing_baseline(tmp_path: Path) -> None:
