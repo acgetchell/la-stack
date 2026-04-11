@@ -91,7 +91,20 @@ just plot-vs-linalg-readme
 Review the updated table in `README.md` and the plot in `docs/assets/` for
 accuracy.
 
-5. Stage and commit release artifacts
+5. Save an exact-arithmetic benchmark baseline for this release
+
+```bash
+# Run exact benchmarks and save a named Criterion baseline
+just bench-save-baseline $TAG
+
+# Generate a performance snapshot in docs/PERFORMANCE.md
+just bench-compare
+```
+
+This baseline can be compared against in future optimization work using
+`just bench-compare $TAG`. See `docs/PERFORMANCE.md` after generation.
+
+6. Stage and commit release artifacts
 
 ```bash
 git add Cargo.toml Cargo.lock CHANGELOG.md README.md docs/
@@ -104,7 +117,7 @@ git commit -m "chore(release): release $TAG
 - Update documentation for release"
 ```
 
-6. Push the branch and open a PR
+7. Push the branch and open a PR
 
 ```bash
 git push -u origin "release/$TAG"

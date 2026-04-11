@@ -93,6 +93,26 @@ bench:
 bench-compile:
     RUSTFLAGS='-D warnings' cargo bench --no-run --features bench
 
+# Compare exact-arithmetic benchmarks against a saved baseline.
+# Omit the baseline arg to generate a snapshot without comparison.
+bench-compare baseline="": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    baseline="{{baseline}}"
+    if [ -n "$baseline" ]; then
+        uv run bench-compare "$baseline"
+    else
+        uv run bench-compare
+    fi
+
+# Run the exact-arithmetic benchmark suite.
+bench-exact:
+    cargo bench --features bench,exact --bench exact
+
+# Save a Criterion baseline for the exact-arithmetic benchmarks.
+bench-save-baseline tag:
+    cargo bench --features bench,exact --bench exact -- --save-baseline {{tag}}
+
 # Bench the la-stack vs nalgebra/faer comparison suite.
 bench-vs-linalg filter="":
     #!/usr/bin/env bash
@@ -342,7 +362,7 @@ python-sync: _ensure-uv
 
 python-typecheck: python-sync
     uv run ty check scripts/
-    uv run mypy scripts/criterion_dim_plot.py scripts/tag_release.py scripts/postprocess_changelog.py scripts/subprocess_utils.py
+    uv run mypy scripts/bench_compare.py scripts/criterion_dim_plot.py scripts/tag_release.py scripts/postprocess_changelog.py scripts/subprocess_utils.py
 
 # Setup
 setup: setup-tools
