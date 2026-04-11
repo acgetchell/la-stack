@@ -96,13 +96,10 @@ accuracy.
 ```bash
 # Run exact benchmarks and save a named Criterion baseline
 just bench-save-baseline $TAG
-
-# Generate a performance snapshot in docs/PERFORMANCE.md
-just bench-compare
 ```
 
-This baseline can be compared against in future optimization work using
-`just bench-compare $TAG`. See `docs/PERFORMANCE.md` after generation.
+This baseline can be compared against in future optimization work.
+See `docs/BENCHMARKING.md` for the full comparison workflow.
 
 6. Stage and commit release artifacts
 

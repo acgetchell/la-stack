@@ -124,7 +124,10 @@ just examples         # Run all examples
 ### Detailed Command Reference
 
 - All tests (Rust + Python): `just test-all`
+- Benchmark comparison (generate `docs/PERFORMANCE.md`): `just bench-compare` (snapshot) or `just bench-compare v0.3.0` (vs baseline)
 - Benchmarks: `cargo bench` (or `just bench`)
+- Benchmarks (exact arithmetic): `just bench-exact`
+- Benchmarks (save baseline): `just bench-save-baseline v0.3.0`
 - Build (debug): `cargo build` (or `just build`)
 - Build (release): `cargo build --release` (or `just build-release`)
 - Changelog (generate full): `just changelog` (runs `git-cliff -o CHANGELOG.md` + post-processing)
@@ -210,8 +213,10 @@ When creating or updating issues:
 - Python tests live in `scripts/tests/` and run via `just test-python` (`uv run pytest`).
 - The public API re-exports these items from `src/lib.rs`.
 - The `justfile` defines all dev workflows (see `just --list`).
-- Dev-only benchmarks live in `benches/vs_linalg.rs` (Criterion + nalgebra/faer comparison).
+- Dev-only benchmarks live in `benches/vs_linalg.rs` (Criterion + nalgebra/faer comparison)
+  and `benches/exact.rs` (exact arithmetic across D=2–5).
 - Python scripts under `scripts/`:
+  - `bench_compare.py`: exact-arithmetic benchmark comparison across releases (generates `docs/PERFORMANCE.md`)
   - `criterion_dim_plot.py`: benchmark plotting (CSV + SVG + README table update)
   - `tag_release.py`: annotated tag creation from CHANGELOG.md sections
   - `postprocess_changelog.py`: strips trailing blank lines from git-cliff output

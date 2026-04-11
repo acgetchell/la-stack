@@ -5,6 +5,9 @@
 /cobertura.xml
 .DS_Store
 
+# Generated benchmark results (machine-specific)
+docs/PERFORMANCE.md
+
 # Python / uv
 **/__pycache__/
 *.egg-info/

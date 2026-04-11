@@ -31,6 +31,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypeVar
 
 # ---------------------------------------------------------------------------
 # Benchmark group / bench discovery
@@ -183,37 +184,65 @@ def _format_pct(pct: float) -> str:
     return f"{pct:+.1f}%"
 
 
-def _snapshot_table(results: list[BenchResult]) -> str:
-    """Generate a markdown table for a single set of results (no baseline)."""
-    lines = [
-        "| Group | Benchmark | Median | 95% CI |",
-        "|-------|-----------|-------:|-------:|",
-    ]
-
-    for r in results:
-        ci_range = f"[{_format_time(r.ci_lo_ns)}, {_format_time(r.ci_hi_ns)}]"
-        lines.append(f"| {r.group} | {r.bench} | {_format_time(r.point_ns)} | {ci_range} |")
-
-    return "\n".join(lines)
+_T = TypeVar("_T", BenchResult, Comparison)
 
 
-def _comparison_table(comparisons: list[Comparison], baseline_name: str) -> str:
-    """Generate a markdown table comparing baseline vs current."""
-    lines = [
-        f"| Group | Benchmark | {baseline_name} | Current | Change | Speedup |",
-        "|-------|-----------|-------:|--------:|-------:|--------:|",
-    ]
+def _group_by_group(items: list[_T]) -> dict[str, list[_T]]:
+    """Group results or comparisons by their Criterion group name."""
+    groups: dict[str, list[_T]] = {}
+    for item in items:
+        groups.setdefault(item.group, []).append(item)
+    return groups
 
-    for c in comparisons:
-        lines.append(
-            f"| {c.group} | {c.bench} "
-            f"| {_format_time(c.baseline_ns)} "
-            f"| {_format_time(c.current_ns)} "
-            f"| {_format_pct(c.pct_change)} "
-            f"| {c.speedup:.2f}x |"
-        )
 
-    return "\n".join(lines)
+def _group_heading(group: str) -> str:
+    """Turn a Criterion group name into a readable heading."""
+    # exact_d3 -> "D=3", exact_near_singular_3x3 -> "Near-singular 3x3"
+    if group.startswith("exact_d"):
+        return f"D={group.removeprefix('exact_d')}"
+    if group == "exact_near_singular_3x3":
+        return "Near-singular 3x3"
+    return group
+
+
+def _snapshot_tables(results: list[BenchResult], stat: str) -> str:
+    """Generate per-dimension markdown tables for a single set of results."""
+    stat_label = stat.capitalize()
+    sections: list[str] = []
+
+    for group, items in _group_by_group(results).items():
+        lines = [
+            f"### {_group_heading(group)}",
+            "",
+            f"| Benchmark | {stat_label} | 95% CI |",
+            "|-----------|-------:|-------:|",
+        ]
+        for r in items:
+            ci_range = f"[{_format_time(r.ci_lo_ns)}, {_format_time(r.ci_hi_ns)}]"
+            lines.append(f"| {r.bench} | {_format_time(r.point_ns)} | {ci_range} |")
+        sections.append("\n".join(lines))
+
+    return "\n\n".join(sections)
+
+
+def _comparison_tables(comparisons: list[Comparison], baseline_name: str) -> str:
+    """Generate per-dimension markdown tables comparing baseline vs current."""
+    sections: list[str] = []
+
+    for group, items in _group_by_group(comparisons).items():
+        lines = [
+            f"### {_group_heading(group)}",
+            "",
+            f"| Benchmark | {baseline_name} | Current | Change | Speedup |",
+            "|-----------|-------:|--------:|-------:|--------:|",
+        ]
+        for c in items:
+            lines.append(
+                f"| {c.bench} | {_format_time(c.baseline_ns)} | {_format_time(c.current_ns)} | {_format_pct(c.pct_change)} | {c.speedup:.2f}x |"
+            )
+        sections.append("\n".join(lines))
+
+    return "\n\n".join(sections)
 
 
 def _read_cargo_version(root: Path) -> str:
@@ -296,16 +325,28 @@ def _generate_markdown(
             "",
             "```bash",
             "# Save a baseline at the current release",
-            "just bench-save-baseline v0.3.0",
+            "just bench-save-baseline <TAG>",
             "",
             "# Compare current code against a saved baseline",
-            "just bench-compare v0.3.0",
+            "just bench-compare <TAG>",
             "",
             "# Generate a snapshot without comparison",
             "just bench-compare",
             "```",
             "",
-            "See `docs/RELEASING.md` for the full release workflow.",
+            "To compare against a *previous* release, check out the old tag first:",
+            "",
+            "```bash",
+            "git checkout v0.2.0",
+            "just bench-save-baseline v0.2.0",
+            "git checkout main",
+            "just bench-exact",
+            "just bench-compare v0.2.0",
+            "```",
+            "",
+            "Baselines persist in `target/criterion/` across checkouts (but not `cargo clean`).",
+            "",
+            "See `docs/BENCHMARKING.md` for the full comparison workflow.",
         ]
     )
 
@@ -370,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        table = _comparison_table(comparisons, args.baseline)
+        table = _comparison_tables(comparisons, args.baseline)
     else:
         results = _collect_results(criterion_dir, "new", args.stat)
         if not results:
@@ -379,7 +420,7 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        table = _snapshot_table(results)
+        table = _snapshot_tables(results, args.stat)
 
     md = _generate_markdown(root, table, args.baseline, args.stat)
 
