@@ -28,20 +28,34 @@
 //!
 //! ## Linear system solve
 //!
-//! `solve_exact` and `solve_exact_f64` solve `A x = b` using Gaussian
-//! elimination with first-non-zero pivoting in `BigRational` arithmetic.
-//! Since all arithmetic is exact, any non-zero pivot gives the correct result
-//! (there is no numerical stability concern).  Every finite `f64` is exactly
-//! representable as a rational, so the result is provably correct.
+//! `solve_exact` and `solve_exact_f64` solve `A x = b` with a hybrid
+//! algorithm that reuses the integer-only Bareiss core used for
+//! determinants.  Matrix and RHS entries are decomposed via
+//! `f64_decompose` into `mantissa × 2^exponent`, scaled to a shared
+//! base `2^e_min`, and assembled into a `BigInt` augmented system
+//! `(A | b)`.  Forward elimination runs entirely in `BigInt` with
+//! fraction-free Bareiss updates — no `BigRational`, no GCD
+//! normalisation in the `O(D³)` phase.  Once the system is upper
+//! triangular, back-substitution is performed in `BigRational`, where
+//! fractions are inherent; this phase is only `O(D²)` so the rational
+//! overhead is modest.  First-non-zero pivoting is used throughout;
+//! since all arithmetic is exact, any non-zero pivot gives the correct
+//! result (no numerical stability concern).  Every finite `f64` is
+//! exactly representable as a rational, so the result is provably
+//! correct.
 //!
-//! ## f64 → `BigRational` conversion
+//! ## f64 → integer decomposition
 //!
-//! All entry conversions use `f64_to_bigrational`, which decomposes the
-//! IEEE 754 binary64 bit representation (\[9\]) into sign, exponent, and
-//! significand and constructs a `BigRational` directly — avoiding the GCD
-//! normalization that `BigRational::from_float` performs.  See Goldberg
-//! \[10\] for background on floating-point representation and exact
-//! rational reconstruction.  Reference numbers refer to `REFERENCES.md`.
+//! Both the determinant and solve paths share a single conversion
+//! primitive, `f64_decompose`, which extracts `(mantissa, exponent,
+//! sign)` from the IEEE 754 binary64 bit representation (\[9\]).  The
+//! determinant path combines those components into a `BigInt` matrix
+//! (for Bareiss) and a `2^(D × e_min)` scale factor, while the solve
+//! path builds a `BigInt` augmented system and lifts the
+//! upper-triangular result into `BigRational` for back-substitution.
+//! See Goldberg \[10\] for background on floating-point representation
+//! and exact rational reconstruction.  Reference numbers refer to
+//! `REFERENCES.md`.
 
 use core::hint::cold_path;
 use std::array::from_fn;
@@ -136,8 +150,13 @@ fn f64_decompose(x: f64) -> Option<(u64, i32, bool)> {
 /// See `REFERENCES.md` \[9-10\] for the IEEE 754 standard and Goldberg's
 /// survey of floating-point representation.
 ///
+/// Retained as a test helper for constructing expected `BigRational`
+/// values from `f64` literals; the production code paths decompose f64
+/// entries into `BigInt` matrices directly (see `f64_decompose`).
+///
 /// # Panics
 /// Panics if `x` is NaN or infinite.
+#[cfg(test)]
 fn f64_to_bigrational(x: f64) -> BigRational {
     let Some((mantissa, exponent, is_negative)) = f64_decompose(x) else {
         return BigRational::from_integer(BigInt::from(0));
@@ -299,63 +318,133 @@ fn bareiss_det<const D: usize>(m: &Matrix<D>) -> BigRational {
     bigint_exp_to_bigrational(det_int, total_exp)
 }
 
-/// Solve `A x = b` using Gaussian elimination with first-non-zero pivoting
-/// in `BigRational` arithmetic.
+/// Solve `A x = b` using a hybrid BigInt/BigRational algorithm.
 ///
-/// Since all arithmetic is exact, any non-zero pivot gives the correct result
-/// (no numerical stability concern).  This matches the pivoting strategy used
-/// by `bareiss_det`.
+/// Forward elimination runs entirely in `BigInt` using fraction-free
+/// Bareiss updates on the augmented system `(A | b)`: every f64 entry
+/// is decomposed into `mantissa × 2^exponent` and scaled to a shared
+/// base `2^e_min` so both the matrix and the RHS become integer.
+/// Because the same power-of-two scaling is applied to both sides of
+/// `A x = b`, the solution is unchanged.  Row swaps also swap the RHS
+/// row; no sign tracking is needed (pivot permutations do not affect
+/// the solution of a linear system).
+///
+/// After forward elimination, the upper-triangular `BigInt` system and
+/// its RHS are lifted into `BigRational` for back-substitution, where
+/// fractions are inherent.  This keeps the expensive `O(D³)` phase
+/// GCD-free and limits `BigRational` work to the cheaper `O(D²)` phase.
 ///
 /// Returns the exact solution as `[BigRational; D]`.
 /// Returns `Err(LaError::Singular)` if the matrix is exactly singular.
+///
+/// # Preconditions
+/// All entries of `m` and `b` must be finite.  Callers (`solve_exact`,
+/// `solve_exact_f64`) validate this via `validate_finite` /
+/// `validate_finite_vec` before invoking this function; `f64_decompose`
+/// would otherwise panic on NaN/±∞.
 fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<[BigRational; D], LaError> {
-    let zero = BigRational::from_integer(BigInt::from(0));
+    // Decompose matrix and RHS entries, tracking the minimum exponent across
+    // both so the shared scaling `2^(exp − e_min)` yields integers everywhere.
+    let mut m_components = [[(0u64, 0i32, false); D]; D];
+    let mut b_components = [(0u64, 0i32, false); D];
+    let mut e_min = i32::MAX;
 
-    // Build matrix and RHS separately (cannot use [BigRational; D+1] augmented
-    // columns because const-generic expressions are unstable).
-    let mut mat: [[BigRational; D]; D] = from_fn(|r| from_fn(|c| f64_to_bigrational(m.rows[r][c])));
-    let mut rhs: [BigRational; D] = from_fn(|r| f64_to_bigrational(b.data[r]));
+    for (r, row) in m.rows.iter().enumerate() {
+        for (c, &entry) in row.iter().enumerate() {
+            if let Some((mant, exp, neg)) = f64_decompose(entry) {
+                m_components[r][c] = (mant, exp, neg);
+                e_min = e_min.min(exp);
+            }
+        }
+    }
+    for (i, &entry) in b.data.iter().enumerate() {
+        if let Some((mant, exp, neg)) = f64_decompose(entry) {
+            b_components[i] = (mant, exp, neg);
+            e_min = e_min.min(exp);
+        }
+    }
 
-    // Forward elimination with first-non-zero pivoting.
-    for k in 0..D {
-        // Find first non-zero pivot in column k at or below row k.
-        if mat[k][k] == zero {
-            if let Some(swap_row) = ((k + 1)..D).find(|&i| mat[i][k] != zero) {
-                mat.swap(k, swap_row);
-                rhs.swap(k, swap_row);
+    // All matrix + RHS entries are zero.  For `D > 0` this is singular; for
+    // `D == 0` we fall through and return an empty solution.  Pick any
+    // finite value for `e_min` so the shift-computation below is well-defined
+    // (it is never actually used since every entry is zero).
+    if e_min == i32::MAX {
+        e_min = 0;
+    }
+
+    // Build the integer augmented system.  Each non-zero entry becomes
+    // `(±mantissa) << (exp − e_min)`.
+    let shift_of = |exp: i32| -> u32 { (exp - e_min).cast_unsigned() };
+    let mut a: [[BigInt; D]; D] = from_fn(|r| {
+        from_fn(|c| {
+            let (mant, exp, neg) = m_components[r][c];
+            if mant == 0 {
+                BigInt::from(0)
             } else {
+                let v = BigInt::from(mant) << shift_of(exp);
+                if neg { -v } else { v }
+            }
+        })
+    });
+    let mut rhs: [BigInt; D] = from_fn(|i| {
+        let (mant, exp, neg) = b_components[i];
+        if mant == 0 {
+            BigInt::from(0)
+        } else {
+            let v = BigInt::from(mant) << shift_of(exp);
+            if neg { -v } else { v }
+        }
+    });
+
+    // Bareiss fraction-free forward elimination on `(A | b)`.
+    let zero = BigInt::from(0);
+    let mut prev_pivot = BigInt::from(1);
+
+    for k in 0..D {
+        // First-non-zero pivot: swap both the matrix row and RHS row.
+        if a[k][k] == zero {
+            let mut found = false;
+            for i in (k + 1)..D {
+                if a[i][k] != zero {
+                    a.swap(k, i);
+                    rhs.swap(k, i);
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
                 cold_path();
                 return Err(LaError::Singular { pivot_col: k });
             }
         }
 
-        // Eliminate below pivot.
-        let pivot = mat[k][k].clone();
+        // Eliminate below the pivot.  The Bareiss update uses the current
+        // `a[i][k]` in both the inner j-loop and the RHS update, so it must
+        // only be zeroed *after* those reads.
         for i in (k + 1)..D {
-            if mat[i][k] != zero {
-                let factor = &mat[i][k] / &pivot;
-                // We need index `j` to read mat[k][j] and write mat[i][j]
-                // (two distinct rows) — iterators can't borrow both.
-                #[allow(clippy::needless_range_loop)]
-                for j in (k + 1)..D {
-                    let term = &factor * &mat[k][j];
-                    mat[i][j] -= term;
-                }
-                let rhs_term = &factor * &rhs[k];
-                rhs[i] -= rhs_term;
-                mat[i][k] = zero.clone();
+            for j in (k + 1)..D {
+                a[i][j] = (&a[k][k] * &a[i][j] - &a[i][k] * &a[k][j]) / &prev_pivot;
             }
+            rhs[i] = (&a[k][k] * &rhs[i] - &a[i][k] * &rhs[k]) / &prev_pivot;
+            a[i][k].clone_from(&zero);
         }
+
+        prev_pivot.clone_from(&a[k][k]);
     }
 
-    // Back-substitution.
-    let mut x: [BigRational; D] = from_fn(|_| zero.clone());
+    // Back-substitution in `BigRational`.  Only the upper triangle of `a`
+    // and the transformed `rhs` are needed; convert on-the-fly to avoid
+    // allocating a full rational copy of the lower triangle.
+    let zero_rat = BigRational::from_integer(BigInt::from(0));
+    let mut x: [BigRational; D] = from_fn(|_| zero_rat.clone());
     for i in (0..D).rev() {
-        let mut sum = rhs[i].clone();
+        let mut sum = BigRational::from_integer(rhs[i].clone());
         for j in (i + 1)..D {
-            sum -= &mat[i][j] * &x[j];
+            let a_ij = BigRational::from_integer(a[i][j].clone());
+            sum -= &a_ij * &x[j];
         }
-        x[i] = sum / &mat[i][i];
+        let a_ii = BigRational::from_integer(a[i][i].clone());
+        x[i] = sum / &a_ii;
     }
 
     Ok(x)
@@ -1419,6 +1508,63 @@ mod tests {
     gen_solve_exact_f64_agrees_with_lu!(4);
     gen_solve_exact_f64_agrees_with_lu!(5);
 
+    /// Round-trip: for a well-conditioned integer matrix `A` and integer
+    /// target `x0`, solving `A x = A x0` must return `x0` exactly.  All
+    /// intermediate values stay small enough that `A * x0` is exactly
+    /// representable in `f64`, so the round-trip is a precise equality
+    /// check on the hybrid BigInt/BigRational path.
+    macro_rules! gen_solve_exact_roundtrip_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                #[allow(clippy::cast_precision_loss)]
+                fn [<solve_exact_roundtrip_ $d d>]() {
+                    // A = D * I + J (diag = D+1, off-diag = 1).  Invertible
+                    // for any D >= 1 and cheap to multiply by hand.
+                    let mut rows = [[0.0f64; $d]; $d];
+                    for r in 0..$d {
+                        for c in 0..$d {
+                            rows[r][c] = if r == c {
+                                f64::from($d) + 1.0
+                            } else {
+                                1.0
+                            };
+                        }
+                    }
+                    let a = Matrix::<$d>::from_rows(rows);
+
+                    // x0 = [1, 2, ..., D].
+                    let mut x0 = [0.0f64; $d];
+                    for i in 0..$d {
+                        x0[i] = (i + 1) as f64;
+                    }
+
+                    // b = A * x0 computed in f64.  With small integers the
+                    // multiply-add sequence is exact.
+                    let mut b_arr = [0.0f64; $d];
+                    for r in 0..$d {
+                        let mut sum = 0.0_f64;
+                        for c in 0..$d {
+                            sum += rows[r][c] * x0[c];
+                        }
+                        b_arr[r] = sum;
+                    }
+                    let b = Vector::<$d>::new(b_arr);
+
+                    let x = a.solve_exact(b).unwrap();
+                    for i in 0..$d {
+                        assert_eq!(x[i], f64_to_bigrational(x0[i]));
+                    }
+                }
+            }
+        };
+    }
+
+    gen_solve_exact_roundtrip_tests!(2);
+    gen_solve_exact_roundtrip_tests!(3);
+    gen_solve_exact_roundtrip_tests!(4);
+    gen_solve_exact_roundtrip_tests!(5);
+
     // -----------------------------------------------------------------------
     // solve_exact: dimension-specific tests
     // -----------------------------------------------------------------------
@@ -1487,6 +1633,67 @@ mod tests {
         assert_eq!(x[2], f64_to_bigrational(30.0));
         assert_eq!(x[3], f64_to_bigrational(40.0));
         assert_eq!(x[4], f64_to_bigrational(50.0));
+    }
+
+    /// Entries near `f64::MAX / 2` are finite but their product would
+    /// overflow to ±∞ in pure f64 arithmetic.  The `BigInt` augmented-system
+    /// path computes the correct solution without any overflow.
+    #[test]
+    fn solve_exact_large_finite_entries() {
+        let big = f64::MAX / 2.0;
+        assert!(big.is_finite());
+        let a = Matrix::<3>::from_rows([[big, 0.0, 0.0], [0.0, big, 0.0], [0.0, 0.0, big]]);
+        // Diagonal system: b = [big, big, 0] → x = [1, 1, 0].
+        let b = Vector::<3>::new([big, big, 0.0]);
+        let x = a.solve_exact(b).unwrap();
+        assert_eq!(x[0], BigRational::from_integer(BigInt::from(1)));
+        assert_eq!(x[1], BigRational::from_integer(BigInt::from(1)));
+        assert_eq!(x[2], BigRational::from_integer(BigInt::from(0)));
+    }
+
+    /// Matrix and RHS entries span many orders of magnitude (from
+    /// `f64::MIN_POSITIVE` up through `1e100`).  This exercises the
+    /// shared `e_min` scaling: even the largest shift keeps every entry a
+    /// representable `BigInt`.
+    #[test]
+    fn solve_exact_mixed_magnitude_entries() {
+        let tiny = f64::MIN_POSITIVE; // 2^-1022, smallest normal
+        let huge = 1.0e100_f64;
+        let a = Matrix::<2>::from_rows([[huge, 0.0], [0.0, tiny]]);
+        let b = Vector::<2>::new([huge, tiny]);
+        let x = a.solve_exact(b).unwrap();
+        assert_eq!(x[0], BigRational::from_integer(BigInt::from(1)));
+        assert_eq!(x[1], BigRational::from_integer(BigInt::from(1)));
+    }
+
+    /// Subnormal RHS entries must survive the decomposition and
+    /// back-substitution paths unchanged.
+    #[test]
+    fn solve_exact_subnormal_rhs() {
+        let tiny = 5e-324_f64; // smallest positive subnormal
+        assert!(tiny.is_subnormal());
+        let a = Matrix::<2>::identity();
+        let b = Vector::<2>::new([tiny, 2.0 * tiny]);
+        let x = a.solve_exact(b).unwrap();
+        assert_eq!(x[0], f64_to_bigrational(tiny));
+        assert_eq!(x[1], f64_to_bigrational(2.0 * tiny));
+    }
+
+    /// Pivoting path with a zero top-left entry forces a row swap in the
+    /// `BigInt` forward-elimination loop and propagates it to the RHS.
+    /// Combined with a fractional solution, this exercises the
+    /// `BigRational` back-substitution after integer forward elimination.
+    #[test]
+    fn solve_exact_pivot_swap_with_fractional_result() {
+        // Swap puts [2, 1] in row 0, then elimination produces a
+        // fractional solution.
+        // A = [[0, 1], [2, 1]], b = [3, 4] → after swap: [[2, 1], [0, 1]],
+        // [4, 3] → x[1] = 3, x[0] = (4 - 3)/2 = 1/2.
+        let a = Matrix::<2>::from_rows([[0.0, 1.0], [2.0, 1.0]]);
+        let b = Vector::<2>::new([3.0, 4.0]);
+        let x = a.solve_exact(b).unwrap();
+        assert_eq!(x[0], BigRational::new(BigInt::from(1), BigInt::from(2)));
+        assert_eq!(x[1], BigRational::from_integer(BigInt::from(3)));
     }
 
     // -----------------------------------------------------------------------
