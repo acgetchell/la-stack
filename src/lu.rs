@@ -485,4 +485,20 @@ mod tests {
         let err = lu.solve_vec(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
+
+    #[test]
+    fn solve_vec_nonfinite_back_substitution_sum_overflow() {
+        // Upper-triangular U with a very large off-diagonal in row 1 and a
+        // very large x[2] produced by the RHS.  The back-substitution
+        // accumulator `sum = (-row[j]).mul_add(x[j], sum)` overflows while
+        // reducing row 1, so the failure is detected via the `!sum.is_finite()`
+        // branch of the combined diag/sum check (distinct from the
+        // `q = sum / diag` overflow path covered above).
+        let a = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 1.0, 1.0e200], [0.0, 0.0, 1.0]]);
+        let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+
+        let b = Vector::<3>::new([0.0, 0.0, 1.0e200]);
+        let err = lu.solve_vec(b).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
+    }
 }

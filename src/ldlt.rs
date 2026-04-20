@@ -418,4 +418,19 @@ mod tests {
         let err = ldlt.solve_vec(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
+
+    #[test]
+    fn nonfinite_solve_vec_diagonal_solve_overflow() {
+        // Diagonal SPD matrix with a tiny diagonal entry just above the
+        // singularity tolerance.  Forward substitution passes through the
+        // large RHS unchanged, then the diagonal solve z[1] = y[1] / D[1]
+        // = 1e300 / 1e-11 = 1e311 overflows f64, exercising the
+        // `!v.is_finite()` branch of the diagonal solve.
+        let a = Matrix::<2>::from_rows([[1.0, 0.0], [0.0, 1.0e-11]]);
+        let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
+
+        let b = Vector::<2>::new([0.0, 1.0e300]);
+        let err = ldlt.solve_vec(b).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
+    }
 }

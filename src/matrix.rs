@@ -711,6 +711,19 @@ mod tests {
     }
 
     #[test]
+    fn det_returns_nonfinite_error_for_overflow_with_finite_entries() {
+        // det_direct produces an overflowing f64 (1e300 * 1e300 = ∞) even
+        // though every matrix entry is finite.  The entry scan in `det`
+        // falls through and returns NonFinite { row: None, col: 0 } to signal
+        // a computed overflow rather than a NaN/∞ input.
+        let m = Matrix::<2>::from_rows([[1e300, 0.0], [0.0, 1e300]]);
+        assert_eq!(
+            m.det(DEFAULT_PIVOT_TOL),
+            Err(LaError::NonFinite { row: None, col: 0 })
+        );
+    }
+
+    #[test]
     fn det_direct_is_const_evaluable_d2() {
         // Const evaluation proves the function is truly const fn.
         const DET: Option<f64> = {
