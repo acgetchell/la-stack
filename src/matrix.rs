@@ -113,12 +113,22 @@ impl<const D: usize> Matrix<D> {
 
     /// Infinity norm (maximum absolute row sum).
     ///
+    /// # Non-finite handling
+    /// If any entry is NaN, the result is NaN.  NaN is detected explicitly
+    /// because a naive `row_sum > max_row_sum` comparison silently skips NaN
+    /// rows (every ordered comparison against NaN is `false`).  If any entry
+    /// is infinite (and no entry is NaN), the result is `+∞`.
+    ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
     /// let m = Matrix::<2>::from_rows([[1.0, -2.0], [3.0, 4.0]]);
     /// assert!((m.inf_norm() - 7.0).abs() <= 1e-12);
+    ///
+    /// // NaN entries propagate to the norm.
+    /// let nan = Matrix::<2>::from_rows([[f64::NAN, 1.0], [2.0, 3.0]]);
+    /// assert!(nan.inf_norm().is_nan());
     /// ```
     #[inline]
     #[must_use]
@@ -127,6 +137,13 @@ impl<const D: usize> Matrix<D> {
 
         for row in &self.rows {
             let row_sum: f64 = row.iter().map(|&x| x.abs()).sum();
+            // Propagate NaN explicitly: `f64::max` drops NaN (IEEE 754 `maxNum`)
+            // and `f64::maximum` (IEEE 754-2019 `maximum`) is still unstable,
+            // so we short-circuit on NaN instead.
+            if row_sum.is_nan() {
+                cold_path();
+                return f64::NAN;
+            }
             if row_sum > max_row_sum {
                 max_row_sum = row_sum;
             }
@@ -758,4 +775,48 @@ mod tests {
         // D=5 has no fast filter
         assert_eq!(Matrix::<5>::identity().det_errbound(), None);
     }
+
+    // === inf_norm NaN / Inf propagation (regression tests for #85) ===
+
+    macro_rules! gen_inf_norm_nonfinite_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<inf_norm_all_nan_returns_nan_ $d d>]() {
+                    // Before the fix, `NaN > max_row_sum` was always false, so a
+                    // matrix full of NaN silently produced inf_norm == 0.0.
+                    let m = Matrix::<$d>::from_rows([[f64::NAN; $d]; $d]);
+                    assert!(m.inf_norm().is_nan());
+                }
+
+                #[test]
+                fn [<inf_norm_single_nan_entry_returns_nan_ $d d>]() {
+                    // A single NaN entry must contaminate its row sum and
+                    // propagate through `f64::maximum` to the final result.
+                    let mut rows = [[0.0f64; $d]; $d];
+                    rows[0][0] = f64::NAN;
+                    rows[$d - 1][$d - 1] = 1.0;
+                    let m = Matrix::<$d>::from_rows(rows);
+                    assert!(m.inf_norm().is_nan());
+                }
+
+                #[test]
+                fn [<inf_norm_infinity_entry_propagates_ $d d>]() {
+                    // Infinity entries should propagate to +∞ via the row sum,
+                    // not be silently dropped.  The norm is a sum of absolute
+                    // values, so any infinite result is necessarily +∞.
+                    let mut rows = [[0.0f64; $d]; $d];
+                    rows[0][0] = f64::INFINITY;
+                    let m = Matrix::<$d>::from_rows(rows);
+                    let norm = m.inf_norm();
+                    assert!(norm.is_infinite() && norm.is_sign_positive());
+                }
+            }
+        };
+    }
+
+    gen_inf_norm_nonfinite_tests!(2);
+    gen_inf_norm_nonfinite_tests!(3);
+    gen_inf_norm_nonfinite_tests!(4);
+    gen_inf_norm_nonfinite_tests!(5);
 }
