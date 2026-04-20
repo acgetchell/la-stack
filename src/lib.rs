@@ -119,11 +119,22 @@ pub enum LaError {
         pivot_col: usize,
     },
     /// A non-finite value (NaN/∞) was encountered.
+    ///
+    /// The `(row, col)` coordinate follows a consistent convention across the crate:
+    ///
+    /// - `row: Some(r), col: c` — a *stored* matrix cell at `(r, c)` is non-finite.
+    ///   Used by `Matrix::det`, `Lu::factor`, `Ldlt::factor`, and the `solve_vec`
+    ///   paths when they detect a corrupt stored factor (only reachable via
+    ///   direct struct construction; `factor` itself rejects such inputs).
+    /// - `row: None, col: c` — the non-finite value is either a *vector input*
+    ///   entry at index `c`, or a *computed intermediate* at step `c`
+    ///   (e.g. an accumulator that overflowed during forward/back substitution).
     NonFinite {
-        /// Row of the non-finite entry (for matrix inputs), or `None` when
-        /// the error originates from a vector input or a computed intermediate.
+        /// Row of the non-finite entry for a stored matrix cell, or `None` for
+        /// a vector-input entry or a computed intermediate. See the variant
+        /// docs for the full convention.
         row: Option<usize>,
-        /// Column index (for matrix inputs), vector index, or factorization
+        /// Column index (stored cell), vector index, or factorization/solve
         /// step where the non-finite value was detected.
         col: usize,
     },
