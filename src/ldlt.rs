@@ -62,10 +62,7 @@ impl<const D: usize> Ldlt<D> {
             let d = f.rows[j][j];
             if !d.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite {
-                    row: Some(j),
-                    col: j,
-                });
+                return Err(LaError::non_finite_cell(j, j));
             }
             if d <= tol {
                 cold_path();
@@ -77,10 +74,7 @@ impl<const D: usize> Ldlt<D> {
                 let l = f.rows[i][j] / d;
                 if !l.is_finite() {
                     cold_path();
-                    return Err(LaError::NonFinite {
-                        row: Some(i),
-                        col: j,
-                    });
+                    return Err(LaError::non_finite_cell(i, j));
                 }
                 f.rows[i][j] = l;
             }
@@ -95,10 +89,7 @@ impl<const D: usize> Ldlt<D> {
                     let new_val = (-l_i_d).mul_add(l_k, f.rows[i][k]);
                     if !new_val.is_finite() {
                         cold_path();
-                        return Err(LaError::NonFinite {
-                            row: Some(i),
-                            col: k,
-                        });
+                        return Err(LaError::non_finite_cell(i, k));
                     }
                     f.rows[i][k] = new_val;
                 }
@@ -124,10 +115,12 @@ impl<const D: usize> Ldlt<D> {
     /// ```
     #[inline]
     #[must_use]
-    pub fn det(&self) -> f64 {
+    pub const fn det(&self) -> f64 {
         let mut det = 1.0;
-        for i in 0..D {
+        let mut i = 0;
+        while i < D {
             det *= self.factors.rows[i][i];
+            i += 1;
         }
         det
     }
@@ -154,57 +147,79 @@ impl<const D: usize> Ldlt<D> {
     /// # Errors
     /// Returns [`LaError::Singular`] if a diagonal entry `d = D[i,i]` satisfies `d <= tol`
     /// (non-positive or too small), where `tol` is the tolerance that was used during factorization.
-    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected.
+    ///
+    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected. The `row`/`col` coordinates
+    /// follow the convention documented on [`LaError::NonFinite`]:
+    ///
+    /// - `row: Some(i), col: i` — the stored `D` diagonal at `(i, i)` is non-finite
+    ///   (only reachable via direct `Ldlt` construction; [`Matrix::ldlt`](crate::Matrix::ldlt)
+    ///   rejects such factorizations).
+    /// - `row: None, col: i` — a computed intermediate (forward/back-substitution
+    ///   accumulator or the quotient `x[i] / diag`) overflowed to NaN/∞ at step `i`.
     #[inline]
-    pub fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
+    pub const fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
         let mut x = b.data;
 
         // Forward substitution: L y = b (L has unit diagonal).
-        for i in 0..D {
+        let mut i = 0;
+        while i < D {
             let mut sum = x[i];
             let row = self.factors.rows[i];
-            for (j, x_j) in x.iter().enumerate().take(i) {
-                sum = (-row[j]).mul_add(*x_j, sum);
+            let mut j = 0;
+            while j < i {
+                sum = (-row[j]).mul_add(x[j], sum);
+                j += 1;
             }
             if !sum.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
             x[i] = sum;
+            i += 1;
         }
 
         // Diagonal solve: D z = y.
-        for (i, x_i) in x.iter_mut().enumerate().take(D) {
+        let mut i = 0;
+        while i < D {
             let diag = self.factors.rows[i][i];
+            // A corrupt stored diagonal is a specific matrix cell (i, i),
+            // distinct from a computed overflow — report it with
+            // `row: Some(i)` per the `LaError::NonFinite` convention used by
+            // `Matrix::det`, `Lu::factor`, and `Ldlt::factor`.
             if !diag.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_cell(i, i));
             }
             if diag <= self.tol {
                 cold_path();
                 return Err(LaError::Singular { pivot_col: i });
             }
 
-            let v = *x_i / diag;
-            if !v.is_finite() {
+            let quotient = x[i] / diag;
+            if !quotient.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
-            *x_i = v;
+            x[i] = quotient;
+            i += 1;
         }
 
         // Back substitution: Lᵀ x = z.
-        for ii in 0..D {
+        let mut ii = 0;
+        while ii < D {
             let i = D - 1 - ii;
             let mut sum = x[i];
-            for (j, x_j) in x.iter().enumerate().skip(i + 1) {
-                sum = (-self.factors.rows[j][i]).mul_add(*x_j, sum);
+            let mut j = i + 1;
+            while j < D {
+                sum = (-self.factors.rows[j][i]).mul_add(x[j], sum);
+                j += 1;
             }
             if !sum.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
             x[i] = sum;
+            ii += 1;
         }
 
         Ok(Vector::new(x))
@@ -487,7 +502,9 @@ mod tests {
             paste! {
                 /// `solve_vec` must surface `NonFinite` when a stored
                 /// diagonal is NaN, even though `factor` cannot produce
-                /// such a factorization.
+                /// such a factorization. The error must pinpoint the
+                /// corrupt cell at `(D-1, D-1)` per the
+                /// [`LaError::NonFinite`] convention.
                 #[test]
                 fn [<solve_vec_defensive_non_finite_diagonal_ $d d>]() {
                     let mut factors = Matrix::<$d>::identity();
@@ -498,7 +515,13 @@ mod tests {
                     };
                     let b = Vector::<$d>::new([1.0; $d]);
                     let err = ldlt.solve_vec(b).unwrap_err();
-                    assert_eq!(err, LaError::NonFinite { row: None, col: $d - 1 });
+                    assert_eq!(
+                        err,
+                        LaError::NonFinite {
+                            row: Some($d - 1),
+                            col: $d - 1,
+                        }
+                    );
                 }
 
                 /// `solve_vec` must surface `Singular` when a stored
@@ -524,4 +547,74 @@ mod tests {
     gen_solve_vec_defensive_tests!(3);
     gen_solve_vec_defensive_tests!(4);
     gen_solve_vec_defensive_tests!(5);
+
+    // -----------------------------------------------------------------------
+    // Const-evaluability tests.
+    //
+    // These prove that `Ldlt::det` and `Ldlt::solve_vec` are truly `const fn`
+    // by forcing the compiler to evaluate them inside a `const` initializer.
+    // `Ldlt::factor` is not (yet) `const fn` because the rank-1 update loop
+    // uses array indexing patterns that still require non-const helpers on
+    // some toolchains; we therefore construct `Ldlt<D>` directly.
+    // -----------------------------------------------------------------------
+
+    macro_rules! gen_ldlt_const_eval_tests {
+        ($d:literal) => {
+            paste! {
+                /// `Ldlt::det` must be fully const-evaluable. Setting
+                /// `factors[0][0] = 2.0` and leaving the remaining identity
+                /// diagonals at `1.0` gives `det = 2.0` for every `D ≥ 1`,
+                /// exercising the multiply-accumulate loop at each dimension.
+                #[test]
+                fn [<ldlt_det_const_eval_ $d d>]() {
+                    const DET: f64 = {
+                        let mut factors = Matrix::<$d>::identity();
+                        factors.rows[0][0] = 2.0;
+                        let ldlt = Ldlt::<$d> {
+                            factors,
+                            tol: DEFAULT_SINGULAR_TOL,
+                        };
+                        ldlt.det()
+                    };
+                    assert!((DET - 2.0).abs() <= 1e-12);
+                }
+
+                /// `Ldlt::solve_vec` must be fully const-evaluable. Identity
+                /// factors with RHS `b = [1.0, 2.0, …, D]` round-trips `b`
+                /// unchanged, exercising the full forward sub / diagonal solve
+                /// / back sub pipeline inside a `const { … }` initializer.
+                #[test]
+                fn [<ldlt_solve_vec_const_eval_ $d d>]() {
+                    #[allow(clippy::cast_precision_loss)]
+                    const X: [f64; $d] = {
+                        let ldlt = Ldlt::<$d> {
+                            factors: Matrix::<$d>::identity(),
+                            tol: DEFAULT_SINGULAR_TOL,
+                        };
+                        let mut b_arr = [0.0f64; $d];
+                        let mut i = 0;
+                        while i < $d {
+                            b_arr[i] = i as f64 + 1.0;
+                            i += 1;
+                        }
+                        let b = Vector::<$d>::new(b_arr);
+                        match ldlt.solve_vec(b) {
+                            Ok(v) => v.into_array(),
+                            Err(_) => [0.0f64; $d],
+                        }
+                    };
+                    #[allow(clippy::cast_precision_loss)]
+                    for i in 0..$d {
+                        let expected = i as f64 + 1.0;
+                        assert!((X[i] - expected).abs() <= 1e-12);
+                    }
+                }
+            }
+        };
+    }
+
+    gen_ldlt_const_eval_tests!(2);
+    gen_ldlt_const_eval_tests!(3);
+    gen_ldlt_const_eval_tests!(4);
+    gen_ldlt_const_eval_tests!(5);
 }

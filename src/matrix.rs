@@ -5,6 +5,7 @@ use core::hint::cold_path;
 use crate::LaError;
 use crate::ldlt::Ldlt;
 use crate::lu::Lu;
+use crate::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};
 
 /// Fixed-size square matrix `D×D`, stored inline.
 #[must_use]
@@ -132,11 +133,21 @@ impl<const D: usize> Matrix<D> {
     /// ```
     #[inline]
     #[must_use]
-    pub fn inf_norm(&self) -> f64 {
+    pub const fn inf_norm(&self) -> f64 {
         let mut max_row_sum: f64 = 0.0;
 
-        for row in &self.rows {
-            let row_sum: f64 = row.iter().map(|&x| x.abs()).sum();
+        let mut r = 0;
+        while r < D {
+            // Iterator chains like `row.iter().map(|x| x.abs()).sum()` are
+            // not yet const-stable, so accumulate the absolute row sum with
+            // a manual `while` loop.
+            let row = &self.rows[r];
+            let mut row_sum: f64 = 0.0;
+            let mut c = 0;
+            while c < D {
+                row_sum += row[c].abs();
+                c += 1;
+            }
             // Propagate NaN explicitly: `f64::max` drops NaN (IEEE 754 `maxNum`)
             // and `f64::maximum` (IEEE 754-2019 `maximum`) is still unstable,
             // so we short-circuit on NaN instead.
@@ -147,6 +158,7 @@ impl<const D: usize> Matrix<D> {
             if row_sum > max_row_sum {
                 max_row_sum = row_sum;
             }
+            r += 1;
         }
 
         max_row_sum
@@ -444,15 +456,12 @@ impl<const D: usize> Matrix<D> {
                 for r in 0..D {
                     for c in 0..D {
                         if !self.rows[r][c].is_finite() {
-                            return Err(LaError::NonFinite {
-                                row: Some(r),
-                                col: c,
-                            });
+                            return Err(LaError::non_finite_cell(r, c));
                         }
                     }
                 }
                 // All entries are finite but the determinant overflowed.
-                Err(LaError::NonFinite { row: None, col: 0 })
+                Err(LaError::non_finite_at(0))
             };
         }
         self.lu(tol).map(|lu| lu.det())
@@ -463,9 +472,13 @@ impl<const D: usize> Matrix<D> {
     /// Returns `Some(bound)` such that `|det_direct() - det_exact| ≤ bound`,
     /// or `None` for D ≥ 5 where no fast bound is available.
     ///
-    /// For D ≤ 4, the bound is derived from the matrix permanent using
-    /// Shewchuk-style error analysis. For D = 0 or 1, returns `Some(0.0)`
-    /// since the determinant computation is exact (no arithmetic).
+    /// For D ≤ 4, the bound is derived from the absolute Leibniz sum using
+    /// Shewchuk-style error analysis (see `REFERENCES.md` \[8\] and the
+    /// per-constant docs on [`ERR_COEFF_2`](crate::ERR_COEFF_2),
+    /// [`ERR_COEFF_3`](crate::ERR_COEFF_3), and
+    /// [`ERR_COEFF_4`](crate::ERR_COEFF_4)). For D = 0 or 1, returns
+    /// `Some(0.0)` since the determinant computation is exact (no
+    /// arithmetic).
     ///
     /// This method does NOT require the `exact` feature — the bounds use
     /// pure f64 arithmetic and are useful for custom adaptive-precision logic.
@@ -510,13 +523,13 @@ impl<const D: usize> Matrix<D> {
     /// ```
     #[must_use]
     #[inline]
-    pub fn det_errbound(&self) -> Option<f64> {
+    pub const fn det_errbound(&self) -> Option<f64> {
         match D {
             0 | 1 => Some(0.0), // No arithmetic — result is exact.
             2 => {
                 let r = &self.rows;
                 let permanent = (r[0][0] * r[1][1]).abs() + (r[0][1] * r[1][0]).abs();
-                Some(crate::ERR_COEFF_2 * permanent)
+                Some(ERR_COEFF_2 * permanent)
             }
             3 => {
                 let r = &self.rows;
@@ -526,7 +539,7 @@ impl<const D: usize> Matrix<D> {
                 let permanent = r[0][2]
                     .abs()
                     .mul_add(pm02, r[0][1].abs().mul_add(pm01, r[0][0].abs() * pm00));
-                Some(crate::ERR_COEFF_3 * permanent)
+                Some(ERR_COEFF_3 * permanent)
             }
             4 => {
                 let r = &self.rows;
@@ -556,7 +569,7 @@ impl<const D: usize> Matrix<D> {
                         .abs()
                         .mul_add(pc2, r[0][1].abs().mul_add(pc1, r[0][0].abs() * pc0)),
                 );
-                Some(crate::ERR_COEFF_4 * permanent)
+                Some(ERR_COEFF_4 * permanent)
             }
             _ => None,
         }
@@ -860,23 +873,36 @@ mod tests {
         );
     }
 
-    #[test]
-    fn det_direct_is_const_evaluable_d2() {
-        // Const evaluation proves the function is truly const fn.
-        const DET: Option<f64> = {
-            let m = Matrix::<2>::from_rows([[1.0, 0.0], [0.0, 1.0]]);
-            m.det_direct()
+    // === det_direct const-evaluability tests (D = 2..=5) ===
+    //
+    // Every dimension hits a distinct arm of the `match D { … }` body inside
+    // `det_direct`, so exercising each at compile time is the tightest
+    // const-fn proof available.
+
+    macro_rules! gen_det_direct_const_eval_tests {
+        ($d:literal) => {
+            paste! {
+                /// `Matrix::<D>::det_direct()` on the identity must const-evaluate
+                /// to `Some(1.0)` for every closed-form dimension `D ∈ {1, 2, 3, 4}`.
+                #[test]
+                fn [<det_direct_const_eval_ $d d>]() {
+                    const DET: Option<f64> = Matrix::<$d>::identity().det_direct();
+                    assert_eq!(DET, Some(1.0));
+                }
+            }
         };
-        assert_eq!(DET, Some(1.0));
     }
 
+    gen_det_direct_const_eval_tests!(2);
+    gen_det_direct_const_eval_tests!(3);
+    gen_det_direct_const_eval_tests!(4);
+
     #[test]
-    fn det_direct_is_const_evaluable_d3() {
-        const DET: Option<f64> = {
-            let m = Matrix::<3>::from_rows([[2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 5.0]]);
-            m.det_direct()
-        };
-        assert_eq!(DET, Some(30.0));
+    fn det_direct_const_eval_d5_is_none() {
+        // D ≥ 5 has no closed-form arm; `det_direct` returns `None`.  Verify
+        // that the wildcard arm is reachable in a `const { … }` context.
+        const DET: Option<f64> = Matrix::<5>::identity().det_direct();
+        assert_eq!(DET, None);
     }
 
     // === det_errbound tests (no `exact` feature required) ===
@@ -895,6 +921,58 @@ mod tests {
         // D=5 has no fast filter
         assert_eq!(Matrix::<5>::identity().det_errbound(), None);
     }
+
+    // === det_errbound const-evaluability tests (D = 2..=5) ===
+
+    macro_rules! gen_det_errbound_const_eval_tests {
+        ($d:literal) => {
+            paste! {
+                /// `Matrix::<D>::det_errbound()` on the identity must const-evaluate
+                /// to `Some(bound)` with `bound > 0` for every closed-form dimension
+                /// `D ∈ {2, 3, 4}`.  Each dimension hits a distinct arm of
+                /// `det_errbound` with a dimension-specific permanent computation.
+                #[test]
+                fn [<det_errbound_const_eval_ $d d>]() {
+                    const BOUND: Option<f64> = Matrix::<$d>::identity().det_errbound();
+                    assert!(BOUND.is_some());
+                    assert!(BOUND.unwrap() > 0.0);
+                }
+            }
+        };
+    }
+
+    gen_det_errbound_const_eval_tests!(2);
+    gen_det_errbound_const_eval_tests!(3);
+    gen_det_errbound_const_eval_tests!(4);
+
+    #[test]
+    fn det_errbound_const_eval_d5_is_none() {
+        // D ≥ 5 has no fast-filter bound; `det_errbound` returns `None`.
+        const BOUND: Option<f64> = Matrix::<5>::identity().det_errbound();
+        assert_eq!(BOUND, None);
+    }
+
+    // === inf_norm const-evaluability tests (D = 2..=5) ===
+
+    macro_rules! gen_inf_norm_const_eval_tests {
+        ($d:literal) => {
+            paste! {
+                /// `Matrix::<D>::inf_norm()` on the identity must const-evaluate
+                /// to `1.0` for every `D ≥ 1` — each row has a single `1.0`
+                /// entry, so the max absolute row sum is exactly `1.0`.
+                #[test]
+                fn [<inf_norm_const_eval_ $d d>]() {
+                    const NORM: f64 = Matrix::<$d>::identity().inf_norm();
+                    assert!((NORM - 1.0).abs() <= 1e-12);
+                }
+            }
+        };
+    }
+
+    gen_inf_norm_const_eval_tests!(2);
+    gen_inf_norm_const_eval_tests!(3);
+    gen_inf_norm_const_eval_tests!(4);
+    gen_inf_norm_const_eval_tests!(5);
 
     // === inf_norm NaN / Inf propagation (regression tests for #85) ===
 

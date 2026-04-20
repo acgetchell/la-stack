@@ -34,20 +34,14 @@ impl<const D: usize> Lu<D> {
             let mut pivot_abs = lu.rows[k][k].abs();
             if !pivot_abs.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite {
-                    row: Some(k),
-                    col: k,
-                });
+                return Err(LaError::non_finite_cell(k, k));
             }
 
             for r in (k + 1)..D {
                 let v = lu.rows[r][k].abs();
                 if !v.is_finite() {
                     cold_path();
-                    return Err(LaError::NonFinite {
-                        row: Some(r),
-                        col: k,
-                    });
+                    return Err(LaError::non_finite_cell(r, k));
                 }
                 if v > pivot_abs {
                     pivot_abs = v;
@@ -69,10 +63,7 @@ impl<const D: usize> Lu<D> {
             let pivot = lu.rows[k][k];
             if !pivot.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite {
-                    row: Some(k),
-                    col: k,
-                });
+                return Err(LaError::non_finite_cell(k, k));
             }
 
             // Eliminate below pivot.
@@ -80,10 +71,7 @@ impl<const D: usize> Lu<D> {
                 let mult = lu.rows[r][k] / pivot;
                 if !mult.is_finite() {
                     cold_path();
-                    return Err(LaError::NonFinite {
-                        row: Some(r),
-                        col: k,
-                    });
+                    return Err(LaError::non_finite_cell(r, k));
                 }
                 lu.rows[r][k] = mult;
 
@@ -123,53 +111,78 @@ impl<const D: usize> Lu<D> {
     /// # Errors
     /// Returns [`LaError::Singular`] if a diagonal entry of `U` satisfies `|u_ii| <= tol`, where
     /// `tol` is the tolerance that was used during factorization.
-    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected.
+    ///
+    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected. The `row`/`col` coordinates
+    /// follow the convention documented on [`LaError::NonFinite`]:
+    ///
+    /// - `row: Some(i), col: i` — the stored `U` diagonal at `(i, i)` is non-finite
+    ///   (only reachable via direct `Lu` construction; [`Matrix::lu`](crate::Matrix::lu)
+    ///   rejects such factorizations).
+    /// - `row: None, col: i` — a computed intermediate (forward/back-substitution
+    ///   accumulator or the quotient `sum / diag`) overflowed to NaN/∞ at step `i`.
     #[inline]
-    pub fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
+    pub const fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
         let mut x = [0.0; D];
-        for (i, x_i) in x.iter_mut().enumerate() {
-            *x_i = b.data[self.piv[i]];
+        let mut i = 0;
+        while i < D {
+            x[i] = b.data[self.piv[i]];
+            i += 1;
         }
 
         // Forward substitution for L (unit diagonal).
-        for i in 0..D {
+        let mut i = 0;
+        while i < D {
             let mut sum = x[i];
             let row = self.factors.rows[i];
-            for (j, x_j) in x.iter().enumerate().take(i) {
-                sum = (-row[j]).mul_add(*x_j, sum);
+            let mut j = 0;
+            while j < i {
+                sum = (-row[j]).mul_add(x[j], sum);
+                j += 1;
             }
             if !sum.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
             x[i] = sum;
+            i += 1;
         }
 
         // Back substitution for U.
-        for ii in 0..D {
+        let mut ii = 0;
+        while ii < D {
             let i = D - 1 - ii;
             let mut sum = x[i];
             let row = self.factors.rows[i];
-            for (j, x_j) in x.iter().enumerate().skip(i + 1) {
-                sum = (-row[j]).mul_add(*x_j, sum);
+            let mut j = i + 1;
+            while j < D {
+                sum = (-row[j]).mul_add(x[j], sum);
+                j += 1;
             }
 
             let diag = row[i];
-            if !diag.is_finite() || !sum.is_finite() {
+            // Distinguish a corrupt stored pivot (row: Some(i), col: i) from
+            // a computed intermediate overflow (row: None, col: i) so callers
+            // can diagnose the failure source without inspecting internals.
+            if !diag.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_cell(i, i));
+            }
+            if !sum.is_finite() {
+                cold_path();
+                return Err(LaError::non_finite_at(i));
             }
             if diag.abs() <= self.tol {
                 cold_path();
                 return Err(LaError::Singular { pivot_col: i });
             }
 
-            let q = sum / diag;
-            if !q.is_finite() {
+            let quotient = sum / diag;
+            if !quotient.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
-            x[i] = q;
+            x[i] = quotient;
+            ii += 1;
         }
 
         Ok(Vector::new(x))
@@ -192,10 +205,12 @@ impl<const D: usize> Lu<D> {
     /// ```
     #[inline]
     #[must_use]
-    pub fn det(&self) -> f64 {
+    pub const fn det(&self) -> f64 {
         let mut det = self.piv_sign;
-        for i in 0..D {
+        let mut i = 0;
+        while i < D {
             det *= self.factors.rows[i][i];
+            i += 1;
         }
         det
     }
@@ -505,15 +520,17 @@ mod tests {
     // -----------------------------------------------------------------------
     // Defensive-path coverage for `solve_vec`.
     //
-    // `Lu::factor` guarantees that every stored U diagonal satisfies
-    // `|U[i,i]| > tol`.  `solve_vec` still re-checks during back-substitution
-    // as a safety net (see the `diag.abs() <= self.tol` guard).  That branch
-    // is unreachable through the public API, so the only way to exercise it
-    // is to construct `Lu` directly with a corrupt U.  The tests below
-    // document and verify that the safety net returns `Singular`.
+    // `Lu::factor` guarantees that every stored U diagonal is finite and
+    // satisfies `|U[i,i]| > tol`.  `solve_vec` still re-checks during
+    // back-substitution as a safety net (see the `!diag.is_finite()` and
+    // `diag.abs() <= self.tol` guards).  Those branches are unreachable
+    // through the public API, so the only way to exercise them is to
+    // construct `Lu` directly with a corrupt U.  The tests below document
+    // and verify that the safety nets return the documented error variants
+    // with coordinates that locate the offending stored cell.
     // -----------------------------------------------------------------------
 
-    macro_rules! gen_solve_vec_defensive_singular_tests {
+    macro_rules! gen_solve_vec_defensive_tests {
         ($d:literal) => {
             paste! {
                 /// `solve_vec` must surface `Singular` when a stored U
@@ -539,12 +556,107 @@ mod tests {
                     let err = lu.solve_vec(b).unwrap_err();
                     assert_eq!(err, LaError::Singular { pivot_col: $d - 1 });
                 }
+
+                /// `solve_vec` must surface `NonFinite` with the corrupt
+                /// cell's coordinates when a stored U diagonal is NaN,
+                /// even though `factor` cannot produce such a
+                /// factorization. The error must pinpoint `(D-1, D-1)`
+                /// per the [`LaError::NonFinite`] convention.
+                #[test]
+                fn [<solve_vec_defensive_non_finite_diagonal_ $d d>]() {
+                    let mut factors = Matrix::<$d>::identity();
+                    factors.rows[$d - 1][$d - 1] = f64::NAN;
+
+                    let mut piv = [0usize; $d];
+                    for (i, p) in piv.iter_mut().enumerate() {
+                        *p = i;
+                    }
+
+                    let lu = Lu::<$d> {
+                        factors,
+                        piv,
+                        piv_sign: 1.0,
+                        tol: DEFAULT_PIVOT_TOL,
+                    };
+                    let b = Vector::<$d>::new([1.0; $d]);
+                    let err = lu.solve_vec(b).unwrap_err();
+                    assert_eq!(
+                        err,
+                        LaError::NonFinite {
+                            row: Some($d - 1),
+                            col: $d - 1,
+                        }
+                    );
+                }
             }
         };
     }
 
-    gen_solve_vec_defensive_singular_tests!(2);
-    gen_solve_vec_defensive_singular_tests!(3);
-    gen_solve_vec_defensive_singular_tests!(4);
-    gen_solve_vec_defensive_singular_tests!(5);
+    gen_solve_vec_defensive_tests!(2);
+    gen_solve_vec_defensive_tests!(3);
+    gen_solve_vec_defensive_tests!(4);
+    gen_solve_vec_defensive_tests!(5);
+
+    // -----------------------------------------------------------------------
+    // Const-evaluability tests.
+    //
+    // These prove that `Lu::det` and `Lu::solve_vec` are truly `const fn` by
+    // forcing the compiler to evaluate them inside a `const` initializer.
+    // `Lu::factor` is not (yet) `const fn` because it relies on `<[T]>::swap`,
+    // which is not const-stable; we therefore construct `Lu<D>` directly.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn lu_det_const_eval_d2() {
+        const DET: f64 = {
+            // Triangular factors with diag [2.0, 3.0] and no row swaps.
+            let mut factors = Matrix::<2>::identity();
+            factors.rows[0][0] = 2.0;
+            factors.rows[1][1] = 3.0;
+            let lu = Lu::<2> {
+                factors,
+                piv: [0, 1],
+                piv_sign: 1.0,
+                tol: DEFAULT_PIVOT_TOL,
+            };
+            lu.det()
+        };
+        assert!((DET - 6.0).abs() <= 1e-12);
+    }
+
+    #[test]
+    fn lu_det_const_eval_d3_row_swap() {
+        const DET: f64 = {
+            // Identity factors but `piv_sign = -1.0` encoding a single row swap;
+            // the determinant magnitude is 1 but the sign flips.
+            let lu = Lu::<3> {
+                factors: Matrix::<3>::identity(),
+                piv: [1, 0, 2],
+                piv_sign: -1.0,
+                tol: DEFAULT_PIVOT_TOL,
+            };
+            lu.det()
+        };
+        assert!((DET - (-1.0)).abs() <= 1e-12);
+    }
+
+    #[test]
+    fn lu_solve_vec_const_eval_d2() {
+        // Identity LU ⇒ solve_vec returns the permuted RHS untouched.
+        const X: [f64; 2] = {
+            let lu = Lu::<2> {
+                factors: Matrix::<2>::identity(),
+                piv: [0, 1],
+                piv_sign: 1.0,
+                tol: DEFAULT_PIVOT_TOL,
+            };
+            let b = Vector::<2>::new([1.0, 2.0]);
+            match lu.solve_vec(b) {
+                Ok(v) => v.into_array(),
+                Err(_) => [0.0, 0.0],
+            }
+        };
+        assert!((X[0] - 1.0).abs() <= 1e-12);
+        assert!((X[1] - 2.0).abs() <= 1e-12);
+    }
 }
