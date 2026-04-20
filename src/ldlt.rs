@@ -468,4 +468,60 @@ mod tests {
         let a = Matrix::<3>::from_rows([[4.0, 2.0, 0.0], [-2.0, 5.0, 1.0], [0.0, 1.0, 3.0]]);
         let _ = a.ldlt(DEFAULT_SINGULAR_TOL);
     }
+
+    // -----------------------------------------------------------------------
+    // Defensive-path coverage for `solve_vec`.
+    //
+    // `Ldlt::factor` guarantees that every stored diagonal is finite and
+    // strictly greater than the recorded `tol`.  `solve_vec` still re-checks
+    // both invariants as a safety net (see the `!diag.is_finite()` and
+    // `diag <= self.tol` guards in the diagonal solve).  Those branches are
+    // unreachable through the public API, so the only way to exercise them
+    // is to construct `Ldlt` directly with corrupt factors.  The tests below
+    // document and verify that the safety nets return the documented error
+    // variants.
+    // -----------------------------------------------------------------------
+
+    macro_rules! gen_solve_vec_defensive_tests {
+        ($d:literal) => {
+            paste! {
+                /// `solve_vec` must surface `NonFinite` when a stored
+                /// diagonal is NaN, even though `factor` cannot produce
+                /// such a factorization.
+                #[test]
+                fn [<solve_vec_defensive_non_finite_diagonal_ $d d>]() {
+                    let mut factors = Matrix::<$d>::identity();
+                    factors.rows[$d - 1][$d - 1] = f64::NAN;
+                    let ldlt = Ldlt::<$d> {
+                        factors,
+                        tol: DEFAULT_SINGULAR_TOL,
+                    };
+                    let b = Vector::<$d>::new([1.0; $d]);
+                    let err = ldlt.solve_vec(b).unwrap_err();
+                    assert_eq!(err, LaError::NonFinite { row: None, col: $d - 1 });
+                }
+
+                /// `solve_vec` must surface `Singular` when a stored
+                /// diagonal is at or below the recorded tolerance, even
+                /// though `factor` cannot produce such a factorization.
+                #[test]
+                fn [<solve_vec_defensive_sub_tolerance_diagonal_ $d d>]() {
+                    let mut factors = Matrix::<$d>::identity();
+                    factors.rows[$d - 1][$d - 1] = 0.0;
+                    let ldlt = Ldlt::<$d> {
+                        factors,
+                        tol: DEFAULT_SINGULAR_TOL,
+                    };
+                    let b = Vector::<$d>::new([1.0; $d]);
+                    let err = ldlt.solve_vec(b).unwrap_err();
+                    assert_eq!(err, LaError::Singular { pivot_col: $d - 1 });
+                }
+            }
+        };
+    }
+
+    gen_solve_vec_defensive_tests!(2);
+    gen_solve_vec_defensive_tests!(3);
+    gen_solve_vec_defensive_tests!(4);
+    gen_solve_vec_defensive_tests!(5);
 }
