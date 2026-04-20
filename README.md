@@ -108,6 +108,17 @@ let det = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap().det();
 assert!((det - 1.0).abs() <= 1e-12);
 ```
 
+> ⚠️ **LDLT precondition:** The input matrix must be **symmetric**.  Symmetry is
+> verified by a `debug_assert!` in debug builds only; release builds silently accept
+> asymmetric inputs and produce a meaningless factorization.  Pre-validate with
+> [`Matrix::is_symmetric`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.is_symmetric)
+> (or locate the offending pair with
+> [`Matrix::first_asymmetry`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.first_asymmetry))
+> when you cannot statically guarantee symmetry, or fall back to `lu()` if your
+> matrices may not be symmetric at all.  See
+> [`Matrix::ldlt`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.ldlt)
+> for details.
+
 ## ⚡ Compile-time determinants (D ≤ 4)
 
 `det_direct()` is a `const fn` providing closed-form determinants for D=0–4,

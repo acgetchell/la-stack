@@ -3,6 +3,16 @@
 //! This module provides a stack-allocated LDLT factorization (`A = L D Lᵀ`) intended for
 //! symmetric positive definite (SPD) and positive semi-definite (PSD) matrices (e.g. Gram
 //! matrices) without pivoting.
+//!
+//! # Preconditions
+//! The input matrix must be **symmetric**.  This is a correctness contract, not a hint:
+//! the factorization algorithm reads only the lower triangle and implicitly assumes the
+//! upper triangle mirrors it.  Symmetry is verified by a `debug_assert!` in debug builds
+//! only; in release builds an asymmetric input will silently produce a meaningless
+//! factorization.  Callers who cannot statically guarantee symmetry should pre-validate
+//! with [`Matrix::is_symmetric`](crate::Matrix::is_symmetric) (or locate the offending
+//! pair with [`Matrix::first_asymmetry`](crate::Matrix::first_asymmetry)), or fall back
+//! to [`crate::Lu`] if their matrices are not guaranteed to be symmetric at all.
 
 use core::hint::cold_path;
 
@@ -14,6 +24,16 @@ use crate::vector::Vector;
 ///
 /// This factorization is **not** a general-purpose symmetric-indefinite LDLT (no pivoting).
 /// It assumes the input matrix is symmetric and (numerically) SPD/PSD.
+///
+/// # Preconditions
+/// The source matrix passed to [`Matrix::ldlt`](crate::Matrix::ldlt) must be symmetric
+/// (`A[i][j] == A[j][i]` within rounding).  Asymmetric inputs panic in debug builds via
+/// `debug_assert!` and are silently accepted in release builds — producing a
+/// mathematically meaningless factorization whose [`Self::det`] and [`Self::solve_vec`]
+/// results are wrong without any error being reported.  Pre-validate with
+/// [`Matrix::is_symmetric`](crate::Matrix::is_symmetric) when the input cannot be
+/// statically guaranteed symmetric; see [`Matrix::ldlt`](crate::Matrix::ldlt) for further
+/// details and alternatives.
 ///
 /// # Storage
 /// The factors are stored in a single [`Matrix`]:
@@ -193,17 +213,18 @@ impl<const D: usize> Ldlt<D> {
 
 #[cfg(debug_assertions)]
 fn debug_assert_symmetric<const D: usize>(a: &Matrix<D>) {
-    let scale = a.inf_norm().max(1.0);
-    let eps = 1e-12 * scale;
-
-    for r in 0..D {
-        for c in (r + 1)..D {
-            let diff = (a.rows[r][c] - a.rows[c][r]).abs();
-            debug_assert!(
-                diff <= eps,
-                "matrix must be symmetric (diff={diff}, eps={eps}) at ({r}, {c})"
-            );
-        }
+    // Delegate to the public predicate so the runtime check and the documented
+    // contract on `Matrix::ldlt` cannot drift apart.  `first_asymmetry` is used
+    // (rather than `is_symmetric`) so the panic message can name the offending
+    // pair — which is invaluable for debugging.
+    if let Some((r, c)) = a.first_asymmetry(1e-12) {
+        let diff = (a.rows[r][c] - a.rows[c][r]).abs();
+        let eps = 1e-12 * a.inf_norm().max(1.0);
+        debug_assert!(
+            false,
+            "matrix must be symmetric (diff={diff}, eps={eps}) at ({r}, {c}); \
+             pre-validate with Matrix::is_symmetric before calling ldlt"
+        );
     }
 }
 
@@ -432,5 +453,19 @@ mod tests {
         let b = Vector::<2>::new([0.0, 1.0e300]);
         let err = ldlt.solve_vec(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
+    }
+
+    /// Verifies the symmetry precondition documented on [`Matrix::ldlt`] is
+    /// enforced by `debug_assert_symmetric` in debug builds.  The test is
+    /// gated on `debug_assertions` so `cargo test --release` simply skips it
+    /// (the assertion is compiled out in release builds — see the
+    /// Preconditions section of `Matrix::ldlt`).
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "matrix must be symmetric")]
+    fn debug_asymmetric_input_panics() {
+        // a[0][1] = 2.0 but a[1][0] = -2.0 → clearly asymmetric.
+        let a = Matrix::<3>::from_rows([[4.0, 2.0, 0.0], [-2.0, 5.0, 1.0], [0.0, 1.0, 3.0]]);
+        let _ = a.ldlt(DEFAULT_SINGULAR_TOL);
     }
 }
