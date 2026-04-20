@@ -62,10 +62,7 @@ impl<const D: usize> Ldlt<D> {
             let d = f.rows[j][j];
             if !d.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite {
-                    row: Some(j),
-                    col: j,
-                });
+                return Err(LaError::non_finite_cell(j, j));
             }
             if d <= tol {
                 cold_path();
@@ -77,10 +74,7 @@ impl<const D: usize> Ldlt<D> {
                 let l = f.rows[i][j] / d;
                 if !l.is_finite() {
                     cold_path();
-                    return Err(LaError::NonFinite {
-                        row: Some(i),
-                        col: j,
-                    });
+                    return Err(LaError::non_finite_cell(i, j));
                 }
                 f.rows[i][j] = l;
             }
@@ -95,10 +89,7 @@ impl<const D: usize> Ldlt<D> {
                     let new_val = (-l_i_d).mul_add(l_k, f.rows[i][k]);
                     if !new_val.is_finite() {
                         cold_path();
-                        return Err(LaError::NonFinite {
-                            row: Some(i),
-                            col: k,
-                        });
+                        return Err(LaError::non_finite_cell(i, k));
                     }
                     f.rows[i][k] = new_val;
                 }
@@ -181,7 +172,7 @@ impl<const D: usize> Ldlt<D> {
             }
             if !sum.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
             x[i] = sum;
             i += 1;
@@ -197,10 +188,7 @@ impl<const D: usize> Ldlt<D> {
             // `Matrix::det`, `Lu::factor`, and `Ldlt::factor`.
             if !diag.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite {
-                    row: Some(i),
-                    col: i,
-                });
+                return Err(LaError::non_finite_cell(i, i));
             }
             if diag <= self.tol {
                 cold_path();
@@ -210,7 +198,7 @@ impl<const D: usize> Ldlt<D> {
             let quotient = x[i] / diag;
             if !quotient.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
             x[i] = quotient;
             i += 1;
@@ -228,7 +216,7 @@ impl<const D: usize> Ldlt<D> {
             }
             if !sum.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
             x[i] = sum;
             ii += 1;

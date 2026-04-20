@@ -456,15 +456,12 @@ impl<const D: usize> Matrix<D> {
                 for r in 0..D {
                     for c in 0..D {
                         if !self.rows[r][c].is_finite() {
-                            return Err(LaError::NonFinite {
-                                row: Some(r),
-                                col: c,
-                            });
+                            return Err(LaError::non_finite_cell(r, c));
                         }
                     }
                 }
                 // All entries are finite but the determinant overflowed.
-                Err(LaError::NonFinite { row: None, col: 0 })
+                Err(LaError::non_finite_at(0))
             };
         }
         self.lu(tol).map(|lu| lu.det())
@@ -475,9 +472,13 @@ impl<const D: usize> Matrix<D> {
     /// Returns `Some(bound)` such that `|det_direct() - det_exact| ≤ bound`,
     /// or `None` for D ≥ 5 where no fast bound is available.
     ///
-    /// For D ≤ 4, the bound is derived from the matrix permanent using
-    /// Shewchuk-style error analysis. For D = 0 or 1, returns `Some(0.0)`
-    /// since the determinant computation is exact (no arithmetic).
+    /// For D ≤ 4, the bound is derived from the absolute Leibniz sum using
+    /// Shewchuk-style error analysis (see `REFERENCES.md` \[8\] and the
+    /// per-constant docs on [`ERR_COEFF_2`](crate::ERR_COEFF_2),
+    /// [`ERR_COEFF_3`](crate::ERR_COEFF_3), and
+    /// [`ERR_COEFF_4`](crate::ERR_COEFF_4)). For D = 0 or 1, returns
+    /// `Some(0.0)` since the determinant computation is exact (no
+    /// arithmetic).
     ///
     /// This method does NOT require the `exact` feature — the bounds use
     /// pure f64 arithmetic and are useful for custom adaptive-precision logic.

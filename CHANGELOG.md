@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Regression tests for solver and determinant overflow handling [`f763b11`](https://github.com/acgetchell/la-stack/commit/f763b119bcc57276b83f370b0bf7abce654c7eb8)
+- Defensive-path test coverage for LU and LDLT solve_vec [`87d426f`](https://github.com/acgetchell/la-stack/commit/87d426fca1627445b804fd26b62fc7d9d4f0ae48)
+- Const-ify Lu/Ldlt det + solve_vec and Matrix inf_norm + det_errbound [`81ecb35`](https://github.com/acgetchell/la-stack/commit/81ecb35bdaf159f1f44d1eb24274ecf82c6567d5)
+
+### Changed
+
+- Report infinite vs finite off-diagonal pairs as asymmetric [`1805779`](https://github.com/acgetchell/la-stack/commit/1805779dbca49183fbfa95c68ec00984966aa551)
+
+### Documentation
+
+- Strengthen LDLT symmetry precondition and add is_symmetric API [`1693307`](https://github.com/acgetchell/la-stack/commit/1693307c58e30a804e9b79abc783af99be8dc947)
+
+### Fixed
+
+- Propagate NaN in Matrix::inf_norm [#85](https://github.com/acgetchell/la-stack/pull/85) [`16ffa45`](https://github.com/acgetchell/la-stack/commit/16ffa45ade11b21a179cad8fcecc51d802086a1d)
+
+### Maintenance
+
+- Bump taiki-e/install-action from 2.73.0 to 2.75.7 [`a1d1c1e`](https://github.com/acgetchell/la-stack/commit/a1d1c1edba7d5bf6928de4e8cab86ba853685430)
+- Bump actions/download-artifact from 4.3.0 to 8.0.1 [`8772ea2`](https://github.com/acgetchell/la-stack/commit/8772ea2f18cf1b94a21e269b4bc0c8e0a3b650eb)
+- Bump rand from 0.9.2 to 0.9.4 [`b91670a`](https://github.com/acgetchell/la-stack/commit/b91670a46f82306dde5433ca7c406a8757e3fc59)
+- Bump actions/upload-artifact from 7.0.0 to 7.0.1 [`7579274`](https://github.com/acgetchell/la-stack/commit/7579274d56ab8c46eae6906c07a3c0d0fd41c84f)
+- Bump actions/github-script from 8.0.0 to 9.0.0 [`a522abd`](https://github.com/acgetchell/la-stack/commit/a522abdabf211d47f0f52cbfc2a349fa72ce87e2)
+- Bump actions/cache from 5.0.4 to 5.0.5 [`b12d95c`](https://github.com/acgetchell/la-stack/commit/b12d95c8ce242ea6014c6a6aaa7845ff501d2e4d)
+- Bump actions-rust-lang/setup-rust-toolchain [`c728774`](https://github.com/acgetchell/la-stack/commit/c72877460efba3d598f64ff253d2df8f3695acb1)
+- Bump astral-sh/setup-uv from 8.0.0 to 8.1.0 [`7a18733`](https://github.com/acgetchell/la-stack/commit/7a18733ba0f39102678bbe30772fcde10f20e9d8)
+- Bump taiki-e/install-action from 2.75.7 to 2.75.18 [`433cfc1`](https://github.com/acgetchell/la-stack/commit/433cfc1b01c9128e93c82cb553aa63d4091bace3)
+- Bump MSRV to Rust 1.95 and adopt new stable features [`0ab3c33`](https://github.com/acgetchell/la-stack/commit/0ab3c336074f2b866256fbe5db8a8ec5306d580a)
+
 ## [0.4.0] - 2026-04-11
 
 ### Added
@@ -35,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump taiki-e/install-action from 2.70.1 to 2.73.0 [`7de720d`](https://github.com/acgetchell/la-stack/commit/7de720dfb8328d01843cfabd15d23086ee98832b)
 - Bump astral-sh/setup-uv from 7.6.0 to 8.0.0 [`af40753`](https://github.com/acgetchell/la-stack/commit/af40753130fac56d48da7fce2f18b11dc391ebe6)
 - Add performance regression detection for exact-arithmetic benchmarks [`44bce99`](https://github.com/acgetchell/la-stack/commit/44bce99bcae8f852dbf7500e71fa182730e08bca)
+- Release v0.4.0 [`843bb3c`](https://github.com/acgetchell/la-stack/commit/843bb3cfcc88e114bdd5e00d242b605af9b2b434)
 
 ### Performance
 
@@ -228,6 +262,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add tarpaulin coverage upload [`7486dfd`](https://github.com/acgetchell/la-stack/commit/7486dfd54e16a6dbde41575c3f35a1acb65f57d2)
 
+[unreleased]: https://github.com/acgetchell/la-stack/compare/v0.4.0..HEAD
 [0.4.0]: https://github.com/acgetchell/la-stack/compare/v0.3.0..v0.4.0
 [0.3.0]: https://github.com/acgetchell/la-stack/compare/v0.2.2..v0.3.0
 [0.2.2]: https://github.com/acgetchell/la-stack/compare/v0.2.1..v0.2.2

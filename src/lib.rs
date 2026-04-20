@@ -61,34 +61,111 @@ mod vector;
 use core::fmt;
 
 // ---------------------------------------------------------------------------
-// Error-bound constants for determinant error analysis.
+// Error-bound constants for `Matrix::det_errbound()`.
 //
-// These constants bound the absolute error of `det_direct()` relative to the
-// *permanent* (sum of absolute products in the Leibniz expansion). The
-// constants are conservative over-estimates following Shewchuk's methodology.
+// For `D ∈ {2, 3, 4}`, `Matrix::det_direct()` evaluates the Leibniz expansion
+// of the determinant as a tree of f64 multiplies and fused multiply-adds
+// (FMAs).  Following Shewchuk's error-analysis methodology (REFERENCES.md
+// [8]), the absolute error of that computation is bounded by
 //
-// These are NOT feature-gated because they use pure f64 arithmetic and are
-// useful for adaptive-precision logic even without the `exact` feature.
+//     |det_direct(A) - det_exact(A)|  ≤  ERR_COEFF_D · p(|A|)
+//
+// where `p(|A|)` is the **absolute Leibniz sum**
+//
+//     p(|A|) = Σ_σ ∏ᵢ |A[i, σ(i)]|,
+//
+// i.e. the same cofactor-expansion tree as `det_direct` but with each
+// entry replaced by its magnitude.  Note that `p(|A|)` is *not* the
+// combinatorial matrix permanent — the name "permanent" appears in the
+// source for brevity and to match the cited literature.
+//
+// Each constant has the shape `a · EPS + b · EPS²`: the linear term bounds
+// the first-order rounding and the quadratic term absorbs the interaction
+// of errors in nested FMAs.  The coefficients `a` and `b` are conservative
+// over-estimates derived from the longest dependency chain of `det_direct`
+// at that dimension.
+//
+// These constants are NOT feature-gated — they rely only on f64 arithmetic
+// and are useful for adaptive-precision logic even without the `exact`
+// feature.  Most callers should prefer `Matrix::det_errbound()`, which
+// applies these constants to the actual matrix; the raw constants are
+// exposed for advanced use cases (composing the bound with a pre-reduced
+// permanent, rolling a custom adaptive filter, etc.).  See
+// `Matrix::det_sign_exact()` (behind the `exact` feature) for the
+// reference adaptive-filter that consumes these internally.
 // ---------------------------------------------------------------------------
 
 const EPS: f64 = f64::EPSILON; // 2^-52
 
-/// Error coefficient for D=2 determinant error bound.
+/// Absolute error coefficient for [`Matrix::<2>::det_direct`](crate::Matrix::det_direct).
 ///
-/// Accounts for one f64 multiply + one FMA → 2 rounding events.
-/// Used in computing the absolute error bound for 2×2 determinants.
+/// For any 2×2 matrix `A = [[a, b], [c, d]]` with finite f64 entries,
+///
+/// ```text
+/// |A.det_direct() - det_exact(A)|  ≤  ERR_COEFF_2 · (|a·d| + |b·c|)
+/// ```
+///
+/// `det_direct` evaluates `a·d - b·c` as one multiply followed by one FMA
+/// (2 rounding events); the linear `3·EPS` term bounds those roundings
+/// and the quadratic `16·EPS²` term is a conservative cushion for their
+/// interaction.  Derivation follows Shewchuk's framework; see
+/// `REFERENCES.md` \[8\].
+///
+/// Prefer [`Matrix::det_errbound`](crate::Matrix::det_errbound) unless
+/// you already have the absolute-Leibniz sum available; see
+/// [`Matrix::det_sign_exact`](crate::Matrix::det_sign_exact) (under the
+/// `exact` feature) for the reference adaptive-precision filter.
+///
+/// # Example
+/// ```
+/// use la_stack::prelude::*;
+///
+/// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+/// let det = m.det_direct().unwrap();
+/// // Compute the bound from the raw constant for illustration; most
+/// // callers would just use `m.det_errbound().unwrap()` instead.
+/// let p = (1.0_f64 * 4.0).abs() + (2.0_f64 * 3.0).abs();
+/// let bound = ERR_COEFF_2 * p;
+/// if det.abs() > bound {
+///     // The f64 sign is provably correct without exact arithmetic.
+/// }
+/// ```
 pub const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
 
-/// Error coefficient for D=3 determinant error bound.
+/// Absolute error coefficient for [`Matrix::<3>::det_direct`](crate::Matrix::det_direct).
 ///
-/// Accounts for three 2×2 FMA minors + nested FMA combination.
-/// Used in computing the absolute error bound for 3×3 determinants.
+/// For any 3×3 matrix `A` with finite f64 entries,
+///
+/// ```text
+/// |A.det_direct() - det_exact(A)|  ≤  ERR_COEFF_3 · p(|A|)
+/// ```
+///
+/// where `p(|A|)` is the absolute Leibniz sum (the same cofactor
+/// expansion as `det_direct` but with `|·|` at every leaf).
+/// `det_direct` for D=3 uses three 2×2 FMA minors combined by a nested
+/// FMA, yielding the `8·EPS + 64·EPS²` bound.  See `REFERENCES.md`
+/// \[8\] for the Shewchuk framework these bounds follow.
+///
+/// Prefer [`Matrix::det_errbound`](crate::Matrix::det_errbound) over this
+/// constant for typical use; see [`ERR_COEFF_2`] for a worked example.
 pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
 
-/// Error coefficient for D=4 determinant error bound.
+/// Absolute error coefficient for [`Matrix::<4>::det_direct`](crate::Matrix::det_direct).
 ///
-/// Accounts for six hoisted 2×2 minors → four 3×3 cofactors → FMA row combination.
-/// Used in computing the absolute error bound for 4×4 determinants.
+/// For any 4×4 matrix `A` with finite f64 entries,
+///
+/// ```text
+/// |A.det_direct() - det_exact(A)|  ≤  ERR_COEFF_4 · p(|A|)
+/// ```
+///
+/// where `p(|A|)` is the absolute Leibniz sum.  `det_direct` for D=4
+/// hoists six 2×2 minors, combines them into four 3×3 cofactors, then
+/// reduces those with an FMA row combination, yielding the
+/// `12·EPS + 128·EPS²` bound.  See `REFERENCES.md` \[8\] for the
+/// Shewchuk framework these bounds follow.
+///
+/// Prefer [`Matrix::det_errbound`](crate::Matrix::det_errbound) over this
+/// constant for typical use; see [`ERR_COEFF_2`] for a worked example.
 pub const ERR_COEFF_4: f64 = 12.0 * EPS + 128.0 * EPS * EPS;
 
 /// Default absolute threshold used for singularity/degeneracy detection.
@@ -148,6 +225,38 @@ pub enum LaError {
         /// component that overflowed.  `None` for scalar results.
         index: Option<usize>,
     },
+}
+
+impl LaError {
+    /// Construct a [`LaError::NonFinite`] pinpointing a stored matrix cell at `(row, col)`.
+    ///
+    /// Use this for non-finite values read from a stored `Matrix` entry or
+    /// factorization cell.  The resulting error has `row: Some(row), col`,
+    /// matching the stored-cell convention documented on
+    /// [`NonFinite`](Self::NonFinite).  For vector-input entries or computed
+    /// intermediates, use [`non_finite_at`](Self::non_finite_at).
+    #[inline]
+    #[must_use]
+    pub const fn non_finite_cell(row: usize, col: usize) -> Self {
+        Self::NonFinite {
+            row: Some(row),
+            col,
+        }
+    }
+
+    /// Construct a [`LaError::NonFinite`] pinpointing a vector-input entry or
+    /// computed-intermediate step at index `col`.
+    ///
+    /// Use this for non-finite values in a `Vector` input or an accumulator
+    /// that overflowed during forward/back substitution.  The resulting error
+    /// has `row: None, col`, matching the vector/intermediate convention
+    /// documented on [`NonFinite`](Self::NonFinite).  For stored matrix cells,
+    /// use [`non_finite_cell`](Self::non_finite_cell).
+    #[inline]
+    #[must_use]
+    pub const fn non_finite_at(col: usize) -> Self {
+        Self::NonFinite { row: None, col }
+    }
 }
 
 impl fmt::Display for LaError {

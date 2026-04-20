@@ -34,20 +34,14 @@ impl<const D: usize> Lu<D> {
             let mut pivot_abs = lu.rows[k][k].abs();
             if !pivot_abs.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite {
-                    row: Some(k),
-                    col: k,
-                });
+                return Err(LaError::non_finite_cell(k, k));
             }
 
             for r in (k + 1)..D {
                 let v = lu.rows[r][k].abs();
                 if !v.is_finite() {
                     cold_path();
-                    return Err(LaError::NonFinite {
-                        row: Some(r),
-                        col: k,
-                    });
+                    return Err(LaError::non_finite_cell(r, k));
                 }
                 if v > pivot_abs {
                     pivot_abs = v;
@@ -69,10 +63,7 @@ impl<const D: usize> Lu<D> {
             let pivot = lu.rows[k][k];
             if !pivot.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite {
-                    row: Some(k),
-                    col: k,
-                });
+                return Err(LaError::non_finite_cell(k, k));
             }
 
             // Eliminate below pivot.
@@ -80,10 +71,7 @@ impl<const D: usize> Lu<D> {
                 let mult = lu.rows[r][k] / pivot;
                 if !mult.is_finite() {
                     cold_path();
-                    return Err(LaError::NonFinite {
-                        row: Some(r),
-                        col: k,
-                    });
+                    return Err(LaError::non_finite_cell(r, k));
                 }
                 lu.rows[r][k] = mult;
 
@@ -153,7 +141,7 @@ impl<const D: usize> Lu<D> {
             }
             if !sum.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
             x[i] = sum;
             i += 1;
@@ -177,14 +165,11 @@ impl<const D: usize> Lu<D> {
             // can diagnose the failure source without inspecting internals.
             if !diag.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite {
-                    row: Some(i),
-                    col: i,
-                });
+                return Err(LaError::non_finite_cell(i, i));
             }
             if !sum.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
             if diag.abs() <= self.tol {
                 cold_path();
@@ -194,7 +179,7 @@ impl<const D: usize> Lu<D> {
             let quotient = sum / diag;
             if !quotient.is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite { row: None, col: i });
+                return Err(LaError::non_finite_at(i));
             }
             x[i] = quotient;
             ii += 1;

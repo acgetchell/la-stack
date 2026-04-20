@@ -242,6 +242,27 @@ Storage shown above reflects the `f64` implementation.
 
 ¹ Requires `features = ["exact"]`.
 
+## 📊 Benchmarks (vs nalgebra/faer)
+
+![LU solve (factor + solve): median time vs dimension](docs/assets/bench/vs_linalg_lu_solve_median.svg)
+
+Raw data: [docs/assets/bench/vs_linalg_lu_solve_median.csv](docs/assets/bench/vs_linalg_lu_solve_median.csv)
+
+Summary (median time; lower is better). The “la-stack vs nalgebra/faer” columns show the % time reduction relative to each baseline (positive = la-stack faster):
+
+<!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
+| D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | la-stack vs nalgebra | la-stack vs faer |
+|---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|
+| 2 | 2.309 | 4.365 | 140.156 | +47.1% | +98.4% |
+| 3 | 18.331 | 22.706 | 181.074 | +19.3% | +89.9% |
+| 4 | 27.430 | 51.372 | 210.451 | +46.6% | +87.0% |
+| 5 | 53.819 | 70.722 | 276.064 | +23.9% | +80.5% |
+| 8 | 143.611 | 160.309 | 356.960 | +10.4% | +59.8% |
+| 16 | 611.393 | 580.793 | 871.704 | -5.3% | +29.9% |
+| 32 | 2,631.241 | 2,733.946 | 2,832.816 | +3.8% | +7.1% |
+| 64 | 17,233.345 | 14,112.678 | 12,164.571 | -22.1% | -41.7% |
+<!-- BENCH_TABLE:lu_solve:median:new:END -->
+
 ## 📋 Examples
 
 The `examples/` directory contains small, runnable programs:
@@ -289,26 +310,26 @@ If you use this library in academic work, please cite it using [CITATION.cff](CI
 
 For canonical references to the algorithms used by this crate, see [REFERENCES.md](REFERENCES.md).
 
-## 📊 Benchmarks (vs nalgebra/faer)
+## 🤖 AI Agents
 
-![LU solve (factor + solve): median time vs dimension](docs/assets/bench/vs_linalg_lu_solve_median.svg)
+This repository contains an `AGENTS.md` file, which defines the canonical rules and invariants
+for all AI coding assistants and autonomous agents working on this codebase.
 
-Raw data: [docs/assets/bench/vs_linalg_lu_solve_median.csv](docs/assets/bench/vs_linalg_lu_solve_median.csv)
+AI tools (including `ChatGPT`, `Claude`, `CodeRabbit`, `KiloCode`, and `WARP`) are expected to read
+and follow `AGENTS.md` when proposing or applying changes.
 
-Summary (median time; lower is better). The “la-stack vs nalgebra/faer” columns show the % time reduction relative to each baseline (positive = la-stack faster):
+Portions of this library were developed with the assistance of these AI tools:
 
-<!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
-| D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | la-stack vs nalgebra | la-stack vs faer |
-|---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|
-| 2 | 2.309 | 4.365 | 140.156 | +47.1% | +98.4% |
-| 3 | 18.331 | 22.706 | 181.074 | +19.3% | +89.9% |
-| 4 | 27.430 | 51.372 | 210.451 | +46.6% | +87.0% |
-| 5 | 53.819 | 70.722 | 276.064 | +23.9% | +80.5% |
-| 8 | 143.611 | 160.309 | 356.960 | +10.4% | +59.8% |
-| 16 | 611.393 | 580.793 | 871.704 | -5.3% | +29.9% |
-| 32 | 2,631.241 | 2,733.946 | 2,832.816 | +3.8% | +7.1% |
-| 64 | 17,233.345 | 14,112.678 | 12,164.571 | -22.1% | -41.7% |
-<!-- BENCH_TABLE:lu_solve:median:new:END -->
+- [ChatGPT](https://openai.com/chatgpt)
+- [Claude](https://www.anthropic.com/claude)
+- [CodeRabbit](https://coderabbit.ai/)
+- [KiloCode](https://kilocode.ai/)
+- [WARP](https://www.warp.dev)
+
+> All code was written and/or reviewed and validated by the author.
+
+For full tool citation metadata, see the [AI-Assisted Development Tools](REFERENCES.md#ai-assisted-development-tools)
+section of `REFERENCES.md`.
 
 ## 📄 License
 

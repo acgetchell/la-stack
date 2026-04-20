@@ -63,10 +63,7 @@ fn validate_finite<const D: usize>(m: &Matrix<D>) -> Result<(), LaError> {
         for c in 0..D {
             if !m.rows[r][c].is_finite() {
                 cold_path();
-                return Err(LaError::NonFinite {
-                    row: Some(r),
-                    col: c,
-                });
+                return Err(LaError::non_finite_cell(r, c));
             }
         }
     }
@@ -81,7 +78,7 @@ fn validate_finite_vec<const D: usize>(v: &Vector<D>) -> Result<(), LaError> {
     for (i, &x) in v.data.iter().enumerate() {
         if !x.is_finite() {
             cold_path();
-            return Err(LaError::NonFinite { row: None, col: i });
+            return Err(LaError::non_finite_at(i));
         }
     }
     Ok(())
