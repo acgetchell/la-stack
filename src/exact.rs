@@ -138,43 +138,6 @@ fn f64_decompose(x: f64) -> Option<(u64, i32, bool)> {
     Some((mantissa, exponent, is_negative))
 }
 
-/// Convert an `f64` to an exact `BigRational` via IEEE 754 bit decomposition.
-///
-/// Every finite `f64` is exactly representable as `±m × 2^e` where `m` is a
-/// non-negative integer and `e` is an integer.  This function extracts `(m, e)`
-/// directly from the IEEE 754 binary64 bit layout \[9\], strips trailing zeros
-/// from `m` so the resulting fraction is already in lowest terms, then
-/// constructs a `BigRational` via `new_raw` — bypassing the GCD reduction
-/// that `BigRational::from_float` performs internally.
-///
-/// See `REFERENCES.md` \[9-10\] for the IEEE 754 standard and Goldberg's
-/// survey of floating-point representation.
-///
-/// Retained as a test helper for constructing expected `BigRational`
-/// values from `f64` literals; the production code paths decompose f64
-/// entries into `BigInt` matrices directly (see `f64_decompose`).
-///
-/// # Panics
-/// Panics if `x` is NaN or infinite.
-#[cfg(test)]
-fn f64_to_bigrational(x: f64) -> BigRational {
-    let Some((mantissa, exponent, is_negative)) = f64_decompose(x) else {
-        return BigRational::from_integer(BigInt::from(0));
-    };
-
-    let numer = if is_negative {
-        -BigInt::from(mantissa)
-    } else {
-        BigInt::from(mantissa)
-    };
-
-    if exponent >= 0 {
-        BigRational::new_raw(numer << exponent.cast_unsigned(), BigInt::from(1u32))
-    } else {
-        BigRational::new_raw(numer, BigInt::from(1u32) << (-exponent).cast_unsigned())
-    }
-}
-
 /// Convert a `BigInt × 2^exp` pair to a reduced `BigRational`.
 ///
 /// When `exp < 0` (denominator is `2^(-exp)`), shared factors of 2 are
@@ -514,7 +477,7 @@ impl<const D: usize> Matrix<D> {
         }
     }
 
-    /// Exact linear system solve using arbitrary-precision rational arithmetic.
+    /// Exact linear system solve using hybrid integer/rational arithmetic.
     ///
     /// Solves `A x = b` where `A` is `self` and `b` is the given vector.
     /// Returns the exact solution as `[BigRational; D]`.  Every finite `f64`
@@ -526,6 +489,18 @@ impl<const D: usize> Matrix<D> {
     /// Use this when you need a provably correct solution — for example,
     /// exact circumcenter computation for near-degenerate simplices where
     /// f64 arithmetic may produce wildly wrong results.
+    ///
+    /// # Algorithm
+    ///
+    /// Matrix and RHS entries are decomposed via IEEE 754 bit extraction and
+    /// scaled to a shared power-of-two base so the augmented system `(A | b)`
+    /// becomes integer-valued.  Forward elimination runs entirely in `BigInt`
+    /// with fraction-free Bareiss updates — no `BigRational`, no GCD, no
+    /// denominator tracking in the `O(D³)` phase.  Only the upper-triangular
+    /// result is lifted into `BigRational` for back-substitution (the `O(D²)`
+    /// phase where fractions are inherent).  First-non-zero pivoting is used
+    /// throughout; since all arithmetic is exact, any non-zero pivot yields
+    /// the correct answer (no numerical-stability concerns).
     ///
     /// # Examples
     /// ```
@@ -669,6 +644,43 @@ mod tests {
     use crate::DEFAULT_PIVOT_TOL;
 
     use pastey::paste;
+
+    // -----------------------------------------------------------------------
+    // Test helpers
+    // -----------------------------------------------------------------------
+
+    /// Build an exact `BigRational` from an `f64` via IEEE 754 bit decomposition.
+    ///
+    /// Thin wrapper over [`f64_decompose`] that packs the mantissa/exponent
+    /// pair into a fully-formed `BigRational` of the form `±m · 2^e`.  The
+    /// production code paths (`bareiss_det_int`, `gauss_solve`) instead
+    /// decompose every entry into a shared-scale `BigInt` matrix, which
+    /// avoids per-entry GCD work in the elimination loops — so this helper
+    /// is not used by them and lives here to keep test assertions concise
+    /// (e.g. `assert_eq!(x[0], f64_to_bigrational(3.0))`).
+    ///
+    /// See `REFERENCES.md` \[9-10\] for the IEEE 754 standard and Goldberg's
+    /// survey of floating-point representation.
+    ///
+    /// # Panics
+    /// Panics if `x` is NaN or infinite.
+    fn f64_to_bigrational(x: f64) -> BigRational {
+        let Some((mantissa, exponent, is_negative)) = f64_decompose(x) else {
+            return BigRational::from_integer(BigInt::from(0));
+        };
+
+        let numer = if is_negative {
+            -BigInt::from(mantissa)
+        } else {
+            BigInt::from(mantissa)
+        };
+
+        if exponent >= 0 {
+            BigRational::new_raw(numer << exponent.cast_unsigned(), BigInt::from(1u32))
+        } else {
+            BigRational::new_raw(numer, BigInt::from(1u32) << (-exponent).cast_unsigned())
+        }
+    }
 
     // -----------------------------------------------------------------------
     // Macro-generated per-dimension tests (D=2..5)
