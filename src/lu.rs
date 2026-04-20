@@ -1,5 +1,7 @@
 //! LU decomposition and solves.
 
+use core::hint::cold_path;
+
 use crate::LaError;
 use crate::matrix::Matrix;
 use crate::vector::Vector;
@@ -31,6 +33,7 @@ impl<const D: usize> Lu<D> {
             let mut pivot_row = k;
             let mut pivot_abs = lu.rows[k][k].abs();
             if !pivot_abs.is_finite() {
+                cold_path();
                 return Err(LaError::NonFinite {
                     row: Some(k),
                     col: k,
@@ -40,6 +43,7 @@ impl<const D: usize> Lu<D> {
             for r in (k + 1)..D {
                 let v = lu.rows[r][k].abs();
                 if !v.is_finite() {
+                    cold_path();
                     return Err(LaError::NonFinite {
                         row: Some(r),
                         col: k,
@@ -52,6 +56,7 @@ impl<const D: usize> Lu<D> {
             }
 
             if pivot_abs <= tol {
+                cold_path();
                 return Err(LaError::Singular { pivot_col: k });
             }
 
@@ -63,6 +68,7 @@ impl<const D: usize> Lu<D> {
 
             let pivot = lu.rows[k][k];
             if !pivot.is_finite() {
+                cold_path();
                 return Err(LaError::NonFinite {
                     row: Some(k),
                     col: k,
@@ -73,6 +79,7 @@ impl<const D: usize> Lu<D> {
             for r in (k + 1)..D {
                 let mult = lu.rows[r][k] / pivot;
                 if !mult.is_finite() {
+                    cold_path();
                     return Err(LaError::NonFinite {
                         row: Some(r),
                         col: k,
@@ -132,6 +139,7 @@ impl<const D: usize> Lu<D> {
                 sum = (-row[j]).mul_add(*x_j, sum);
             }
             if !sum.is_finite() {
+                cold_path();
                 return Err(LaError::NonFinite { row: None, col: i });
             }
             x[i] = sum;
@@ -148,14 +156,17 @@ impl<const D: usize> Lu<D> {
 
             let diag = row[i];
             if !diag.is_finite() || !sum.is_finite() {
+                cold_path();
                 return Err(LaError::NonFinite { row: None, col: i });
             }
             if diag.abs() <= self.tol {
+                cold_path();
                 return Err(LaError::Singular { pivot_col: i });
             }
 
             let q = sum / diag;
             if !q.is_finite() {
+                cold_path();
                 return Err(LaError::NonFinite { row: None, col: i });
             }
             x[i] = q;
@@ -471,6 +482,22 @@ mod tests {
         let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
 
         let b = Vector::<2>::new([0.0, 1.0e300]);
+        let err = lu.solve_vec(b).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
+    }
+
+    #[test]
+    fn solve_vec_nonfinite_back_substitution_sum_overflow() {
+        // Upper-triangular U with a very large off-diagonal in row 1 and a
+        // very large x[2] produced by the RHS.  The back-substitution
+        // accumulator `sum = (-row[j]).mul_add(x[j], sum)` overflows while
+        // reducing row 1, so the failure is detected via the `!sum.is_finite()`
+        // branch of the combined diag/sum check (distinct from the
+        // `q = sum / diag` overflow path covered above).
+        let a = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 1.0, 1.0e200], [0.0, 0.0, 1.0]]);
+        let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+
+        let b = Vector::<3>::new([0.0, 0.0, 1.0e200]);
         let err = lu.solve_vec(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }

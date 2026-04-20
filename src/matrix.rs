@@ -1,5 +1,7 @@
 //! Fixed-size, stack-allocated square matrices.
 
+use core::hint::cold_path;
+
 use crate::LaError;
 use crate::ldlt::Ldlt;
 use crate::lu::Lu;
@@ -266,7 +268,11 @@ impl<const D: usize> Matrix<D> {
                     (-r[0][1]).mul_add(c01, r[0][2].mul_add(c02, -(r[0][3] * c03))),
                 ))
             }
-            _ => None,
+            _ => {
+                // Cold in the common D ≤ 4 case; callers fall back to LU for D ≥ 5.
+                cold_path();
+                None
+            }
         }
     }
 
@@ -296,6 +302,7 @@ impl<const D: usize> Matrix<D> {
             return if d.is_finite() {
                 Ok(d)
             } else {
+                cold_path();
                 // Scan for the first non-finite entry to preserve coordinates.
                 for r in 0..D {
                     for c in 0..D {
@@ -700,6 +707,19 @@ mod tests {
                 row: Some(0),
                 col: 0
             })
+        );
+    }
+
+    #[test]
+    fn det_returns_nonfinite_error_for_overflow_with_finite_entries() {
+        // det_direct produces an overflowing f64 (1e300 * 1e300 = ∞) even
+        // though every matrix entry is finite.  The entry scan in `det`
+        // falls through and returns NonFinite { row: None, col: 0 } to signal
+        // a computed overflow rather than a NaN/∞ input.
+        let m = Matrix::<2>::from_rows([[1e300, 0.0], [0.0, 1e300]]);
+        assert_eq!(
+            m.det(DEFAULT_PIVOT_TOL),
+            Err(LaError::NonFinite { row: None, col: 0 })
         );
     }
 
