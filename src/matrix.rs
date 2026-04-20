@@ -1,5 +1,7 @@
 //! Fixed-size, stack-allocated square matrices.
 
+use core::hint::cold_path;
+
 use crate::LaError;
 use crate::ldlt::Ldlt;
 use crate::lu::Lu;
@@ -266,7 +268,11 @@ impl<const D: usize> Matrix<D> {
                     (-r[0][1]).mul_add(c01, r[0][2].mul_add(c02, -(r[0][3] * c03))),
                 ))
             }
-            _ => None,
+            _ => {
+                // Cold in the common D ≤ 4 case; callers fall back to LU for D ≥ 5.
+                cold_path();
+                None
+            }
         }
     }
 
@@ -296,6 +302,7 @@ impl<const D: usize> Matrix<D> {
             return if d.is_finite() {
                 Ok(d)
             } else {
+                cold_path();
                 // Scan for the first non-finite entry to preserve coordinates.
                 for r in 0..D {
                     for c in 0..D {

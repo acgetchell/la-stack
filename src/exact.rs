@@ -43,6 +43,7 @@
 //! \[10\] for background on floating-point representation and exact
 //! rational reconstruction.  Reference numbers refer to `REFERENCES.md`.
 
+use core::hint::cold_path;
 use std::array::from_fn;
 
 use num_bigint::{BigInt, Sign};
@@ -61,6 +62,7 @@ fn validate_finite<const D: usize>(m: &Matrix<D>) -> Result<(), LaError> {
     for r in 0..D {
         for c in 0..D {
             if !m.rows[r][c].is_finite() {
+                cold_path();
                 return Err(LaError::NonFinite {
                     row: Some(r),
                     col: c,
@@ -78,6 +80,7 @@ fn validate_finite<const D: usize>(m: &Matrix<D>) -> Result<(), LaError> {
 fn validate_finite_vec<const D: usize>(v: &Vector<D>) -> Result<(), LaError> {
     for (i, &x) in v.data.iter().enumerate() {
         if !x.is_finite() {
+            cold_path();
             return Err(LaError::NonFinite { row: None, col: i });
         }
     }
@@ -324,6 +327,7 @@ fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<[BigRatio
                 mat.swap(k, swap_row);
                 rhs.swap(k, swap_row);
             } else {
+                cold_path();
                 return Err(LaError::Singular { pivot_col: k });
             }
         }
@@ -419,6 +423,7 @@ impl<const D: usize> Matrix<D> {
         if val.is_finite() {
             Ok(val)
         } else {
+            cold_path();
             Err(LaError::Overflow { index: None })
         }
     }
@@ -490,6 +495,7 @@ impl<const D: usize> Matrix<D> {
         for (i, val) in exact.iter().enumerate() {
             let f = val.to_f64().unwrap_or(f64::INFINITY);
             if !f.is_finite() {
+                cold_path();
                 return Err(LaError::Overflow { index: Some(i) });
             }
             result[i] = f;
@@ -537,12 +543,16 @@ impl<const D: usize> Matrix<D> {
         validate_finite(self)?;
 
         // Stage 1: f64 fast filter for D ≤ 4.
-        if let (Some(det_f64), Some(err)) = (self.det_direct(), self.det_errbound()) {
-            // When entries are large (e.g. near f64::MAX) the determinant can
-            // overflow to infinity even though every individual entry is finite.
-            // In that case the fast filter is inconclusive; fall through to the
-            // exact Bareiss path.
-            if det_f64.is_finite() {
+        //
+        // When entries are large (e.g. near f64::MAX) the determinant can
+        // overflow to infinity even though every individual entry is finite.
+        // In that case the fast filter is inconclusive; fall through to the
+        // exact Bareiss path.
+        match self.det_direct() {
+            Some(det_f64)
+                if let Some(err) = self.det_errbound()
+                    && det_f64.is_finite() =>
+            {
                 if det_f64 > err {
                     return Ok(1);
                 }
@@ -550,10 +560,14 @@ impl<const D: usize> Matrix<D> {
                     return Ok(-1);
                 }
             }
+            _ => {}
         }
 
         // Stage 2: integer Bareiss fallback — the 2^(D×e_min) scale factor
         // is always positive, so det_int.sign() == det(A).sign().
+        // This is the cold path: the fast filter resolves the vast majority of
+        // well-conditioned calls without allocating.
+        cold_path();
         let (det_int, _) = bareiss_det_int(self);
         Ok(match det_int.sign() {
             Sign::Plus => 1,

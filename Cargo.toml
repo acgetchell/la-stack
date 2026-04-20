@@ -2,7 +2,7 @@
 name = "la-stack"
 version = "0.4.0"
 edition = "2024"
-rust-version = "1.94"
+rust-version = "1.95"
 license = "BSD-3-Clause"
 description = "Fast, stack-allocated linear algebra for fixed dimensions"
 readme = "README.md"
