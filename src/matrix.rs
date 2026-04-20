@@ -873,23 +873,36 @@ mod tests {
         );
     }
 
-    #[test]
-    fn det_direct_const_eval_d2() {
-        // Const evaluation proves the function is truly const fn.
-        const DET: Option<f64> = {
-            let m = Matrix::<2>::from_rows([[1.0, 0.0], [0.0, 1.0]]);
-            m.det_direct()
+    // === det_direct const-evaluability tests (D = 2..=5) ===
+    //
+    // Every dimension hits a distinct arm of the `match D { … }` body inside
+    // `det_direct`, so exercising each at compile time is the tightest
+    // const-fn proof available.
+
+    macro_rules! gen_det_direct_const_eval_tests {
+        ($d:literal) => {
+            paste! {
+                /// `Matrix::<D>::det_direct()` on the identity must const-evaluate
+                /// to `Some(1.0)` for every closed-form dimension `D ∈ {1, 2, 3, 4}`.
+                #[test]
+                fn [<det_direct_const_eval_ $d d>]() {
+                    const DET: Option<f64> = Matrix::<$d>::identity().det_direct();
+                    assert_eq!(DET, Some(1.0));
+                }
+            }
         };
-        assert_eq!(DET, Some(1.0));
     }
 
+    gen_det_direct_const_eval_tests!(2);
+    gen_det_direct_const_eval_tests!(3);
+    gen_det_direct_const_eval_tests!(4);
+
     #[test]
-    fn det_direct_const_eval_d3() {
-        const DET: Option<f64> = {
-            let m = Matrix::<3>::from_rows([[2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 5.0]]);
-            m.det_direct()
-        };
-        assert_eq!(DET, Some(30.0));
+    fn det_direct_const_eval_d5_is_none() {
+        // D ≥ 5 has no closed-form arm; `det_direct` returns `None`.  Verify
+        // that the wildcard arm is reachable in a `const { … }` context.
+        const DET: Option<f64> = Matrix::<5>::identity().det_direct();
+        assert_eq!(DET, None);
     }
 
     // === det_errbound tests (no `exact` feature required) ===
@@ -909,45 +922,57 @@ mod tests {
         assert_eq!(Matrix::<5>::identity().det_errbound(), None);
     }
 
-    #[test]
-    fn det_errbound_const_eval_d2() {
-        // Const evaluation proves the function is truly const fn.
-        const BOUND: Option<f64> = {
-            let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-            m.det_errbound()
+    // === det_errbound const-evaluability tests (D = 2..=5) ===
+
+    macro_rules! gen_det_errbound_const_eval_tests {
+        ($d:literal) => {
+            paste! {
+                /// `Matrix::<D>::det_errbound()` on the identity must const-evaluate
+                /// to `Some(bound)` with `bound > 0` for every closed-form dimension
+                /// `D ∈ {2, 3, 4}`.  Each dimension hits a distinct arm of
+                /// `det_errbound` with a dimension-specific permanent computation.
+                #[test]
+                fn [<det_errbound_const_eval_ $d d>]() {
+                    const BOUND: Option<f64> = Matrix::<$d>::identity().det_errbound();
+                    assert!(BOUND.is_some());
+                    assert!(BOUND.unwrap() > 0.0);
+                }
+            }
         };
-        assert!(BOUND.is_some());
-        assert!(BOUND.unwrap() > 0.0);
     }
 
-    #[test]
-    fn det_errbound_const_eval_d3() {
-        const BOUND: Option<f64> = {
-            let m = Matrix::<3>::from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]);
-            m.det_errbound()
-        };
-        assert!(BOUND.is_some());
-        assert!(BOUND.unwrap() > 0.0);
-    }
+    gen_det_errbound_const_eval_tests!(2);
+    gen_det_errbound_const_eval_tests!(3);
+    gen_det_errbound_const_eval_tests!(4);
 
     #[test]
-    fn inf_norm_const_eval_d2() {
-        // Maximum absolute row sum: row 0 = 3, row 1 = 7 ⇒ 7.
-        const NORM: f64 = {
-            let m = Matrix::<2>::from_rows([[1.0, -2.0], [3.0, 4.0]]);
-            m.inf_norm()
-        };
-        assert!((NORM - 7.0).abs() <= 1e-12);
+    fn det_errbound_const_eval_d5_is_none() {
+        // D ≥ 5 has no fast-filter bound; `det_errbound` returns `None`.
+        const BOUND: Option<f64> = Matrix::<5>::identity().det_errbound();
+        assert_eq!(BOUND, None);
     }
 
-    #[test]
-    fn inf_norm_const_eval_d3() {
-        const NORM: f64 = {
-            let m = Matrix::<3>::identity();
-            m.inf_norm()
+    // === inf_norm const-evaluability tests (D = 2..=5) ===
+
+    macro_rules! gen_inf_norm_const_eval_tests {
+        ($d:literal) => {
+            paste! {
+                /// `Matrix::<D>::inf_norm()` on the identity must const-evaluate
+                /// to `1.0` for every `D ≥ 1` — each row has a single `1.0`
+                /// entry, so the max absolute row sum is exactly `1.0`.
+                #[test]
+                fn [<inf_norm_const_eval_ $d d>]() {
+                    const NORM: f64 = Matrix::<$d>::identity().inf_norm();
+                    assert!((NORM - 1.0).abs() <= 1e-12);
+                }
+            }
         };
-        assert!((NORM - 1.0).abs() <= 1e-12);
     }
+
+    gen_inf_norm_const_eval_tests!(2);
+    gen_inf_norm_const_eval_tests!(3);
+    gen_inf_norm_const_eval_tests!(4);
+    gen_inf_norm_const_eval_tests!(5);
 
     // === inf_norm NaN / Inf propagation (regression tests for #85) ===
 

@@ -558,54 +558,63 @@ mod tests {
     // some toolchains; we therefore construct `Ldlt<D>` directly.
     // -----------------------------------------------------------------------
 
-    #[test]
-    fn ldlt_det_const_eval_d2() {
-        const DET: f64 = {
-            // Diagonal D = [4.0, 0.25] ⇒ det = 1.0.
-            let mut factors = Matrix::<2>::identity();
-            factors.rows[0][0] = 4.0;
-            factors.rows[1][1] = 0.25;
-            let ldlt = Ldlt::<2> {
-                factors,
-                tol: DEFAULT_SINGULAR_TOL,
-            };
-            ldlt.det()
-        };
-        assert!((DET - 1.0).abs() <= 1e-12);
-    }
+    macro_rules! gen_ldlt_const_eval_tests {
+        ($d:literal) => {
+            paste! {
+                /// `Ldlt::det` must be fully const-evaluable. Setting
+                /// `factors[0][0] = 2.0` and leaving the remaining identity
+                /// diagonals at `1.0` gives `det = 2.0` for every `D ≥ 1`,
+                /// exercising the multiply-accumulate loop at each dimension.
+                #[test]
+                fn [<ldlt_det_const_eval_ $d d>]() {
+                    const DET: f64 = {
+                        let mut factors = Matrix::<$d>::identity();
+                        factors.rows[0][0] = 2.0;
+                        let ldlt = Ldlt::<$d> {
+                            factors,
+                            tol: DEFAULT_SINGULAR_TOL,
+                        };
+                        ldlt.det()
+                    };
+                    assert!((DET - 2.0).abs() <= 1e-12);
+                }
 
-    #[test]
-    fn ldlt_det_const_eval_d3() {
-        const DET: f64 = {
-            // Diagonal D = [2.0, 3.0, 5.0] ⇒ det = 30.0.
-            let mut factors = Matrix::<3>::identity();
-            factors.rows[0][0] = 2.0;
-            factors.rows[1][1] = 3.0;
-            factors.rows[2][2] = 5.0;
-            let ldlt = Ldlt::<3> {
-                factors,
-                tol: DEFAULT_SINGULAR_TOL,
-            };
-            ldlt.det()
-        };
-        assert!((DET - 30.0).abs() <= 1e-12);
-    }
-
-    #[test]
-    fn ldlt_solve_vec_const_eval_d2() {
-        // Identity factors ⇒ solve_vec returns the RHS untouched.
-        const X: [f64; 2] = {
-            let ldlt = Ldlt::<2> {
-                factors: Matrix::<2>::identity(),
-                tol: DEFAULT_SINGULAR_TOL,
-            };
-            let b = Vector::<2>::new([1.0, 2.0]);
-            match ldlt.solve_vec(b) {
-                Ok(v) => v.into_array(),
-                Err(_) => [0.0, 0.0],
+                /// `Ldlt::solve_vec` must be fully const-evaluable. Identity
+                /// factors with RHS `b = [1.0, 2.0, …, D]` round-trips `b`
+                /// unchanged, exercising the full forward sub / diagonal solve
+                /// / back sub pipeline inside a `const { … }` initializer.
+                #[test]
+                fn [<ldlt_solve_vec_const_eval_ $d d>]() {
+                    #[allow(clippy::cast_precision_loss)]
+                    const X: [f64; $d] = {
+                        let ldlt = Ldlt::<$d> {
+                            factors: Matrix::<$d>::identity(),
+                            tol: DEFAULT_SINGULAR_TOL,
+                        };
+                        let mut b_arr = [0.0f64; $d];
+                        let mut i = 0;
+                        while i < $d {
+                            b_arr[i] = i as f64 + 1.0;
+                            i += 1;
+                        }
+                        let b = Vector::<$d>::new(b_arr);
+                        match ldlt.solve_vec(b) {
+                            Ok(v) => v.into_array(),
+                            Err(_) => [0.0f64; $d],
+                        }
+                    };
+                    #[allow(clippy::cast_precision_loss)]
+                    for i in 0..$d {
+                        let expected = i as f64 + 1.0;
+                        assert!((X[i] - expected).abs() <= 1e-12);
+                    }
+                }
             }
         };
-        assert!((X[0] - 1.0).abs() <= 1e-12);
-        assert!((X[1] - 2.0).abs() <= 1e-12);
     }
+
+    gen_ldlt_const_eval_tests!(2);
+    gen_ldlt_const_eval_tests!(3);
+    gen_ldlt_const_eval_tests!(4);
+    gen_ldlt_const_eval_tests!(5);
 }
