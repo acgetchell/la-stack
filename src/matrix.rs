@@ -166,11 +166,15 @@ impl<const D: usize> Matrix<D> {
     /// offending pair when this returns `false`.
     ///
     /// # NaN / infinity handling
-    /// Any NaN off-diagonal entry causes this predicate to return `false`
-    /// (because `NaN <= eps` is `false`).  A matrix whose [`inf_norm`](Self::inf_norm)
-    /// is `+∞` can produce an `eps` of `+∞`, under which any finite asymmetry
-    /// is tolerated — callers who need strict equality on infinite entries
-    /// should validate finiteness separately.
+    /// Any non-finite `|self[r][c] - self[c][r]|` (NaN or ±∞) causes this
+    /// predicate to return `false`.  This catches both NaN off-diagonals and
+    /// asymmetric pairs where one side is infinite and the other is finite
+    /// (which would otherwise slip through when `inf_norm()` blows `eps` up
+    /// to `+∞` and makes `diff > eps` trivially false).  A matrix whose
+    /// [`inf_norm`](Self::inf_norm) is `+∞` can still tolerate *finite*
+    /// asymmetries under an infinite `eps` — callers who need strict equality
+    /// on large-magnitude finite entries should validate finiteness
+    /// separately.
     ///
     /// # Panics
     /// In debug builds, panics if `rel_tol` is negative or NaN; in release
@@ -228,10 +232,15 @@ impl<const D: usize> Matrix<D> {
         for r in 0..D {
             for c in (r + 1)..D {
                 let diff = (self.rows[r][c] - self.rows[c][r]).abs();
-                // NaN is reported as asymmetric: a NaN entry contaminates `diff`,
-                // and `diff > eps` alone would silently skip it because ordered
-                // comparisons against NaN are always `false`.
-                if diff.is_nan() || diff > eps {
+                // Any non-finite `diff` is reported as asymmetric:
+                //  * NaN contaminates one side only, and `diff > eps` would
+                //    silently skip it because ordered comparisons against NaN
+                //    are always `false`.
+                //  * ±∞ arises when exactly one of `self[r][c]` / `self[c][r]`
+                //    is infinite; a naive `diff > eps` misses this when the
+                //    matrix's `inf_norm()` pushes `eps` to `+∞` (because
+                //    `∞ > ∞` is `false`).
+                if !diff.is_finite() || diff > eps {
                     cold_path();
                     return Some((r, c));
                 }
@@ -1025,6 +1034,18 @@ mod tests {
         // Two asymmetric pairs: (0, 2) and (1, 2).  We must get (0, 2) first.
         let a = Matrix::<3>::from_rows([[1.0, 0.0, 2.0], [0.0, 1.0, 3.0], [-2.0, -3.0, 1.0]]);
         assert_eq!(a.first_asymmetry(1e-12), Some((0, 2)));
+    }
+
+    /// Regression: a single infinite off-diagonal paired with a finite entry
+    /// used to slip through as "symmetric" because `inf_norm()` blew `eps` up
+    /// to `+∞` and `∞ > ∞` evaluates to `false`.  After the fix, any
+    /// non-finite `|a[r][c] - a[c][r]|` is reported as an asymmetry regardless
+    /// of `eps`.
+    #[test]
+    fn first_asymmetry_flags_infinite_offdiagonal_against_finite() {
+        let a = Matrix::<2>::from_rows([[1.0, f64::INFINITY], [0.0, 1.0]]);
+        assert_eq!(a.first_asymmetry(1e-12), Some((0, 1)));
+        assert!(!a.is_symmetric(1e-12));
     }
 
     #[cfg(debug_assertions)]
