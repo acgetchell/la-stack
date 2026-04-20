@@ -501,4 +501,50 @@ mod tests {
         let err = lu.solve_vec(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
+
+    // -----------------------------------------------------------------------
+    // Defensive-path coverage for `solve_vec`.
+    //
+    // `Lu::factor` guarantees that every stored U diagonal satisfies
+    // `|U[i,i]| > tol`.  `solve_vec` still re-checks during back-substitution
+    // as a safety net (see the `diag.abs() <= self.tol` guard).  That branch
+    // is unreachable through the public API, so the only way to exercise it
+    // is to construct `Lu` directly with a corrupt U.  The tests below
+    // document and verify that the safety net returns `Singular`.
+    // -----------------------------------------------------------------------
+
+    macro_rules! gen_solve_vec_defensive_singular_tests {
+        ($d:literal) => {
+            paste! {
+                /// `solve_vec` must surface `Singular` when a stored U
+                /// diagonal is at or below the recorded tolerance, even
+                /// though `factor` cannot produce such a factorization.
+                #[test]
+                fn [<solve_vec_defensive_sub_tolerance_diagonal_ $d d>]() {
+                    let mut factors = Matrix::<$d>::identity();
+                    factors.rows[$d - 1][$d - 1] = 0.0;
+
+                    let mut piv = [0usize; $d];
+                    for (i, p) in piv.iter_mut().enumerate() {
+                        *p = i;
+                    }
+
+                    let lu = Lu::<$d> {
+                        factors,
+                        piv,
+                        piv_sign: 1.0,
+                        tol: DEFAULT_PIVOT_TOL,
+                    };
+                    let b = Vector::<$d>::new([0.0; $d]);
+                    let err = lu.solve_vec(b).unwrap_err();
+                    assert_eq!(err, LaError::Singular { pivot_col: $d - 1 });
+                }
+            }
+        };
+    }
+
+    gen_solve_vec_defensive_singular_tests!(2);
+    gen_solve_vec_defensive_singular_tests!(3);
+    gen_solve_vec_defensive_singular_tests!(4);
+    gen_solve_vec_defensive_singular_tests!(5);
 }

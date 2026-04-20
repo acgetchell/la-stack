@@ -3,6 +3,16 @@
 //! This module provides a stack-allocated LDLT factorization (`A = L D Lᵀ`) intended for
 //! symmetric positive definite (SPD) and positive semi-definite (PSD) matrices (e.g. Gram
 //! matrices) without pivoting.
+//!
+//! # Preconditions
+//! The input matrix must be **symmetric**.  This is a correctness contract, not a hint:
+//! the factorization algorithm reads only the lower triangle and implicitly assumes the
+//! upper triangle mirrors it.  Symmetry is verified by a `debug_assert!` in debug builds
+//! only; in release builds an asymmetric input will silently produce a meaningless
+//! factorization.  Callers who cannot statically guarantee symmetry should pre-validate
+//! with [`Matrix::is_symmetric`](crate::Matrix::is_symmetric) (or locate the offending
+//! pair with [`Matrix::first_asymmetry`](crate::Matrix::first_asymmetry)), or fall back
+//! to [`crate::Lu`] if their matrices are not guaranteed to be symmetric at all.
 
 use core::hint::cold_path;
 
@@ -14,6 +24,16 @@ use crate::vector::Vector;
 ///
 /// This factorization is **not** a general-purpose symmetric-indefinite LDLT (no pivoting).
 /// It assumes the input matrix is symmetric and (numerically) SPD/PSD.
+///
+/// # Preconditions
+/// The source matrix passed to [`Matrix::ldlt`](crate::Matrix::ldlt) must be symmetric
+/// (`A[i][j] == A[j][i]` within rounding).  Asymmetric inputs panic in debug builds via
+/// `debug_assert!` and are silently accepted in release builds — producing a
+/// mathematically meaningless factorization whose [`Self::det`] and [`Self::solve_vec`]
+/// results are wrong without any error being reported.  Pre-validate with
+/// [`Matrix::is_symmetric`](crate::Matrix::is_symmetric) when the input cannot be
+/// statically guaranteed symmetric; see [`Matrix::ldlt`](crate::Matrix::ldlt) for further
+/// details and alternatives.
 ///
 /// # Storage
 /// The factors are stored in a single [`Matrix`]:
@@ -193,17 +213,18 @@ impl<const D: usize> Ldlt<D> {
 
 #[cfg(debug_assertions)]
 fn debug_assert_symmetric<const D: usize>(a: &Matrix<D>) {
-    let scale = a.inf_norm().max(1.0);
-    let eps = 1e-12 * scale;
-
-    for r in 0..D {
-        for c in (r + 1)..D {
-            let diff = (a.rows[r][c] - a.rows[c][r]).abs();
-            debug_assert!(
-                diff <= eps,
-                "matrix must be symmetric (diff={diff}, eps={eps}) at ({r}, {c})"
-            );
-        }
+    // Delegate to the public predicate so the runtime check and the documented
+    // contract on `Matrix::ldlt` cannot drift apart.  `first_asymmetry` is used
+    // (rather than `is_symmetric`) so the panic message can name the offending
+    // pair — which is invaluable for debugging.
+    if let Some((r, c)) = a.first_asymmetry(1e-12) {
+        let diff = (a.rows[r][c] - a.rows[c][r]).abs();
+        let eps = 1e-12 * a.inf_norm().max(1.0);
+        debug_assert!(
+            false,
+            "matrix must be symmetric (diff={diff}, eps={eps}) at ({r}, {c}); \
+             pre-validate with Matrix::is_symmetric before calling ldlt"
+        );
     }
 }
 
@@ -433,4 +454,74 @@ mod tests {
         let err = ldlt.solve_vec(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
+
+    /// Verifies the symmetry precondition documented on [`Matrix::ldlt`] is
+    /// enforced by `debug_assert_symmetric` in debug builds.  The test is
+    /// gated on `debug_assertions` so `cargo test --release` simply skips it
+    /// (the assertion is compiled out in release builds — see the
+    /// Preconditions section of `Matrix::ldlt`).
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "matrix must be symmetric")]
+    fn debug_asymmetric_input_panics() {
+        // a[0][1] = 2.0 but a[1][0] = -2.0 → clearly asymmetric.
+        let a = Matrix::<3>::from_rows([[4.0, 2.0, 0.0], [-2.0, 5.0, 1.0], [0.0, 1.0, 3.0]]);
+        let _ = a.ldlt(DEFAULT_SINGULAR_TOL);
+    }
+
+    // -----------------------------------------------------------------------
+    // Defensive-path coverage for `solve_vec`.
+    //
+    // `Ldlt::factor` guarantees that every stored diagonal is finite and
+    // strictly greater than the recorded `tol`.  `solve_vec` still re-checks
+    // both invariants as a safety net (see the `!diag.is_finite()` and
+    // `diag <= self.tol` guards in the diagonal solve).  Those branches are
+    // unreachable through the public API, so the only way to exercise them
+    // is to construct `Ldlt` directly with corrupt factors.  The tests below
+    // document and verify that the safety nets return the documented error
+    // variants.
+    // -----------------------------------------------------------------------
+
+    macro_rules! gen_solve_vec_defensive_tests {
+        ($d:literal) => {
+            paste! {
+                /// `solve_vec` must surface `NonFinite` when a stored
+                /// diagonal is NaN, even though `factor` cannot produce
+                /// such a factorization.
+                #[test]
+                fn [<solve_vec_defensive_non_finite_diagonal_ $d d>]() {
+                    let mut factors = Matrix::<$d>::identity();
+                    factors.rows[$d - 1][$d - 1] = f64::NAN;
+                    let ldlt = Ldlt::<$d> {
+                        factors,
+                        tol: DEFAULT_SINGULAR_TOL,
+                    };
+                    let b = Vector::<$d>::new([1.0; $d]);
+                    let err = ldlt.solve_vec(b).unwrap_err();
+                    assert_eq!(err, LaError::NonFinite { row: None, col: $d - 1 });
+                }
+
+                /// `solve_vec` must surface `Singular` when a stored
+                /// diagonal is at or below the recorded tolerance, even
+                /// though `factor` cannot produce such a factorization.
+                #[test]
+                fn [<solve_vec_defensive_sub_tolerance_diagonal_ $d d>]() {
+                    let mut factors = Matrix::<$d>::identity();
+                    factors.rows[$d - 1][$d - 1] = 0.0;
+                    let ldlt = Ldlt::<$d> {
+                        factors,
+                        tol: DEFAULT_SINGULAR_TOL,
+                    };
+                    let b = Vector::<$d>::new([1.0; $d]);
+                    let err = ldlt.solve_vec(b).unwrap_err();
+                    assert_eq!(err, LaError::Singular { pivot_col: $d - 1 });
+                }
+            }
+        };
+    }
+
+    gen_solve_vec_defensive_tests!(2);
+    gen_solve_vec_defensive_tests!(3);
+    gen_solve_vec_defensive_tests!(4);
+    gen_solve_vec_defensive_tests!(5);
 }
