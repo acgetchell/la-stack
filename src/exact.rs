@@ -699,6 +699,7 @@ mod tests {
     use super::*;
     use crate::DEFAULT_PIVOT_TOL;
 
+    use num_traits::Signed;
     use pastey::paste;
     use std::array::from_fn;
 
@@ -2022,8 +2023,8 @@ mod tests {
     fn bigrational_matvec<const D: usize>(a: &Matrix<D>, x: &[BigRational; D]) -> [BigRational; D] {
         from_fn(|i| {
             let mut sum = BigRational::from_integer(BigInt::from(0));
-            for (j, xj) in x.iter().enumerate() {
-                sum += f64_to_bigrational(a.rows[i][j]) * xj;
+            for (aij, xj) in a.rows[i].iter().zip(x.iter()) {
+                sum += f64_to_bigrational(*aij) * xj;
             }
             sum
         })
@@ -2085,8 +2086,10 @@ mod tests {
         // this exercises the Bareiss cold path.
         assert!(!a.det_direct().is_some_and(f64::is_finite));
         assert_eq!(a.det_sign_exact().unwrap(), 1);
-        // Exact BigRational determinant is representable; f64 conversion is not.
-        assert!(a.det_exact().is_ok());
+        // Cross-validate: the exact `BigRational` determinant must agree
+        // on sign with `det_sign_exact`, and `det_exact_f64` must overflow
+        // (the value is representable in BigRational but far exceeds f64).
+        assert!(a.det_exact().unwrap().is_positive());
         assert_eq!(a.det_exact_f64(), Err(LaError::Overflow { index: None }));
     }
 

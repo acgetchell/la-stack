@@ -43,8 +43,8 @@ fn small_int_f64() -> impl Strategy<Value = f64> {
 fn bigrational_matvec<const D: usize>(a: &[[f64; D]; D], x: &[BigRational; D]) -> [BigRational; D] {
     from_fn(|i| {
         let mut sum = BigRational::from_integer(BigInt::from(0));
-        for (j, xj) in x.iter().enumerate() {
-            let entry = BigRational::from_f64(a[i][j]).expect("small int fits in BigRational");
+        for (aij, xj) in a[i].iter().zip(x.iter()) {
+            let entry = BigRational::from_f64(*aij).expect("small int fits in BigRational");
             sum += entry * xj;
         }
         sum
@@ -52,21 +52,26 @@ fn bigrational_matvec<const D: usize>(a: &[[f64; D]; D], x: &[BigRational; D]) -
 }
 
 /// Build a strictly diagonally-dominant f64 matrix from:
-/// - an off-diagonal matrix of small integers, and
-/// - diagonal entries shifted by `D · max_offdiag_abs + 1` so every row
-///   satisfies `|A[i][i]| > Σ_{j≠i} |A[i][j]|`, which guarantees
-///   invertibility (Levy–Desplanques).
+/// - an off-diagonal matrix of small integers (entries in `[-10, 10]`
+///   per `small_int_f64`), and
+/// - diagonal entries shifted by `D · 10 + 1` so every row satisfies
+///   `|A[i][i]| > Σ_{j≠i} |A[i][j]|`, which guarantees invertibility
+///   (Levy–Desplanques).
 ///
-/// The shift keeps every entry a small exact `f64` integer, so matrix
-/// × small-integer-vector products are exact in f64.
+/// The shift must match the off-diagonal strategy's maximum magnitude
+/// (`max_off_diag = 10`): with `D - 1` off-diagonals of magnitude ≤ 10
+/// the row sum is at most `10 (D - 1) < 10 D + 1`, so the shifted
+/// diagonal strictly dominates.  The shift keeps every entry a small
+/// exact `f64` integer, so matrix × small-integer-vector products are
+/// exact in f64.
 fn make_diagonally_dominant<const D: usize>(
     offdiag: [[f64; D]; D],
     diag: [f64; D],
 ) -> [[f64; D]; D] {
     let mut rows = offdiag;
-    // `D + 5` upper-bounds (D · 5 + 1) once D ≤ 5 entries of magnitude ≤ 5;
-    // shift the supplied diagonal by this amount while preserving its sign.
-    let shift = f64::from(u8::try_from(D).unwrap_or(u8::MAX)).mul_add(5.0, 1.0);
+    // Must track `small_int_f64`'s `max_off_diag = 10`: `D · 10 + 1`
+    // strictly dominates the worst-case row sum of `10 (D - 1)`.
+    let shift = f64::from(u8::try_from(D).unwrap_or(u8::MAX)).mul_add(10.0, 1.0);
     for i in 0..D {
         rows[i][i] = if diag[i] >= 0.0 {
             diag[i] + shift
@@ -272,3 +277,53 @@ gen_det_sign_agrees_with_det_exact_proptests!(2);
 gen_det_sign_agrees_with_det_exact_proptests!(3);
 gen_det_sign_agrees_with_det_exact_proptests!(4);
 gen_det_sign_agrees_with_det_exact_proptests!(5);
+
+/// Fast-filter invariant: whenever `|det_direct()| > det_errbound()`,
+/// the f64 sign is provably correct — so
+/// `det_direct().signum() == det_sign_exact()`.  This is the
+/// correctness guarantee the Shewchuk-style filter inside
+/// `det_sign_exact` relies on.  The proptest cross-checks that the
+/// fast-filter boundary itself is honoured, independent of whether
+/// `det_sign_exact` ended up using the filter or the Bareiss fallback
+/// on any particular input.  Only D=2..=4 have a closed-form
+/// `det_direct` / `det_errbound` pair.
+macro_rules! gen_det_sign_fast_filter_boundary_proptests {
+    ($d:literal) => {
+        paste! {
+            proptest! {
+                #![proptest_config(ProptestConfig::with_cases(64))]
+
+                #[test]
+                fn [<det_sign_exact_agrees_with_det_direct_when_filter_conclusive_ $d d>](
+                    entries in proptest::array::[<uniform $d>](
+                        proptest::array::[<uniform $d>](small_int_f64()),
+                    ),
+                ) {
+                    let m = Matrix::<$d>::from_rows(entries);
+                    let det = m.det_direct().expect("D<=4 has closed-form det_direct");
+                    let bound = m.det_errbound().expect("D<=4 has a det_errbound");
+                    let sign = m.det_sign_exact().unwrap();
+
+                    // Only assert when the filter is conclusive.  When
+                    // `|det| <= bound` the f64 sign may disagree with the
+                    // exact sign; that case is covered by the other
+                    // proptests via the Bareiss fallback.
+                    if det.abs() > bound {
+                        let direct_sign: i8 = if det > 0.0 {
+                            1
+                        } else if det < 0.0 {
+                            -1
+                        } else {
+                            0
+                        };
+                        prop_assert_eq!(direct_sign, sign);
+                    }
+                }
+            }
+        }
+    };
+}
+
+gen_det_sign_fast_filter_boundary_proptests!(2);
+gen_det_sign_fast_filter_boundary_proptests!(3);
+gen_det_sign_fast_filter_boundary_proptests!(4);
