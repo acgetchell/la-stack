@@ -2091,9 +2091,12 @@ mod tests {
     }
 
     /// Hilbert matrices are symmetric positive-definite, so
-    /// `det_sign_exact` must return `1` for every D.  For D ≥ 5 the fast
-    /// filter is skipped entirely, so this exercises the Bareiss path on
-    /// inputs whose `(mantissa, exponent)` pairs all differ.
+    /// `det_sign_exact` must return `1` for every D.  For D=2..=4 the
+    /// fast f64 filter resolves the positive sign without falling
+    /// through (Hilbert's determinant is tiny but still well above the
+    /// `det_errbound` cushion); for D=5 the filter is skipped entirely
+    /// and the Bareiss path handles inputs whose `(mantissa, exponent)`
+    /// pairs all differ.
     macro_rules! gen_det_sign_exact_hilbert_positive_tests {
         ($d:literal) => {
             paste! {
@@ -2113,6 +2116,7 @@ mod tests {
         };
     }
 
+    gen_det_sign_exact_hilbert_positive_tests!(2);
     gen_det_sign_exact_hilbert_positive_tests!(3);
     gen_det_sign_exact_hilbert_positive_tests!(4);
     gen_det_sign_exact_hilbert_positive_tests!(5);
@@ -2154,6 +2158,7 @@ mod tests {
         };
     }
 
+    gen_solve_exact_hilbert_residual_tests!(2);
     gen_solve_exact_hilbert_residual_tests!(3);
     gen_solve_exact_hilbert_residual_tests!(4);
     gen_solve_exact_hilbert_residual_tests!(5);

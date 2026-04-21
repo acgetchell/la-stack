@@ -114,8 +114,11 @@ jobs:
 
           if [ -d target/criterion/exact_d2/det/main ]; then
             echo "::notice::Baseline found — comparing against main"
+            # --baseline-lenient rather than --baseline: benches added on the
+            # PR branch that don't yet exist in the main baseline get a
+            # "no baseline data" notice instead of aborting the whole run.
             cargo bench --features bench,exact --bench exact \
-              -- --baseline main 2>&1 | tee bench-output.txt
+              -- --baseline-lenient main 2>&1 | tee bench-output.txt
           else
             echo "::notice::No baseline found — running without comparison"
             cargo bench --features bench,exact --bench exact \

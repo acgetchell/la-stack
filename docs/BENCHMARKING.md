@@ -14,6 +14,20 @@ la-stack has two Criterion benchmark suites:
   (`det_exact`, `solve_exact`, `det_sign_exact`, etc.) alongside f64
   baselines (`det`, `det_direct`) across D=2–5. Use this to understand
   the cost of exact arithmetic and track optimization progress.
+  In addition to the per-dimension groups (`exact_d{2..5}`), the suite
+  includes four adversarial-input groups designed to stress specific
+  corners of the pipeline:
+  - `exact_near_singular_3x3` — a 2^-50 perturbation of a singular base
+    matrix; forces the Bareiss fallback in `det_sign_exact` and
+    exercises the largest intermediate `BigInt` values in `solve_exact`.
+  - `exact_large_entries_3x3` — diagonal entries near `f64::MAX / 2`
+    stress `BigInt` growth during Bareiss forward elimination.
+  - `exact_hilbert_4x4` / `exact_hilbert_5x5` — classically
+    ill-conditioned matrices whose non-terminating-in-binary entries
+    stress the `f64_decompose → BigInt` scaling path.
+  Each adversarial group runs the same four benches (`det_sign_exact`,
+  `det_exact`, `solve_exact`, `solve_exact_f64`) so the resulting tables
+  are directly comparable across input classes.
 
 ## Quick reference
 
