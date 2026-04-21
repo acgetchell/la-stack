@@ -39,10 +39,10 @@ just bench-vs-linalg
 just bench-exact
 
 # Save an exact baseline (e.g., before optimising)
-just bench-save-baseline v0.4.0
+just bench-save-baseline v0.4.1
 
 # Compare current code against a saved baseline
-just bench-compare v0.4.0
+just bench-compare v0.4.1
 
 # Generate a snapshot without comparison
 just bench-compare
