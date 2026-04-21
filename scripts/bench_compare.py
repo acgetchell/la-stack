@@ -38,12 +38,22 @@ from typing import TypeVar
 # ---------------------------------------------------------------------------
 
 # Groups and the benchmarks within each group that we track.
+#
+# Mirrors the structure of `benches/exact.rs`: general-case per-dimension
+# groups (`exact_d{2..5}`) plus adversarial/extreme-input groups that
+# share a fixed four-bench layout (`det_sign_exact`, `det_exact`,
+# `solve_exact`, `solve_exact_f64`).
+_EXTREME_BENCHES: list[str] = ["det_sign_exact", "det_exact", "solve_exact", "solve_exact_f64"]
+
 EXACT_GROUPS: dict[str, list[str]] = {
     "exact_d2": ["det", "det_direct", "det_exact", "det_exact_f64", "det_sign_exact", "solve_exact", "solve_exact_f64"],
     "exact_d3": ["det", "det_direct", "det_exact", "det_exact_f64", "det_sign_exact", "solve_exact", "solve_exact_f64"],
     "exact_d4": ["det", "det_direct", "det_exact", "det_exact_f64", "det_sign_exact", "solve_exact", "solve_exact_f64"],
     "exact_d5": ["det", "det_direct", "det_exact", "det_exact_f64", "det_sign_exact", "solve_exact", "solve_exact_f64"],
-    "exact_near_singular_3x3": ["det_sign_exact", "det_exact"],
+    "exact_near_singular_3x3": _EXTREME_BENCHES,
+    "exact_large_entries_3x3": _EXTREME_BENCHES,
+    "exact_hilbert_4x4": _EXTREME_BENCHES,
+    "exact_hilbert_5x5": _EXTREME_BENCHES,
 }
 
 
@@ -197,11 +207,16 @@ def _group_by_group(items: list[_T]) -> dict[str, list[_T]]:
 
 def _group_heading(group: str) -> str:
     """Turn a Criterion group name into a readable heading."""
-    # exact_d3 -> "D=3", exact_near_singular_3x3 -> "Near-singular 3x3"
+    # exact_d3 -> "D=3", exact_near_singular_3x3 -> "Near-singular 3x3",
+    # exact_hilbert_4x4 -> "Hilbert 4x4", etc.
     if group.startswith("exact_d"):
         return f"D={group.removeprefix('exact_d')}"
     if group == "exact_near_singular_3x3":
         return "Near-singular 3x3"
+    if group == "exact_large_entries_3x3":
+        return "Large entries 3x3"
+    if group.startswith("exact_hilbert_"):
+        return f"Hilbert {group.removeprefix('exact_hilbert_')}"
     return group
 
 

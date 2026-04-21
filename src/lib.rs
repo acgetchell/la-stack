@@ -51,7 +51,11 @@ mod readme_doctests {
 #[cfg(feature = "exact")]
 mod exact;
 #[cfg(feature = "exact")]
+pub use num_bigint::BigInt;
+#[cfg(feature = "exact")]
 pub use num_rational::BigRational;
+#[cfg(feature = "exact")]
+pub use num_traits::{FromPrimitive, Signed, ToPrimitive};
 
 mod ldlt;
 mod lu;
@@ -297,8 +301,14 @@ pub use vector::Vector;
 /// [`Ldlt`], [`LaError`], [`DEFAULT_PIVOT_TOL`], [`DEFAULT_SINGULAR_TOL`], and the determinant
 /// error bound coefficients [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`].
 ///
-/// When the `exact` feature is enabled, `BigRational` is also
-/// re-exported for use with `Matrix::det_exact`.
+/// When the `exact` feature is enabled, [`BigInt`] and [`BigRational`]
+/// are also re-exported so callers can construct exact values (e.g. as
+/// the expected result of `Matrix::det_exact`) without adding
+/// `num-bigint` / `num-rational` to their own dependencies.  The most
+/// commonly needed `num-traits` items are re-exported alongside them:
+/// [`FromPrimitive`] for `BigRational::from_f64` / `from_i64`,
+/// [`ToPrimitive`] for `BigRational::to_f64` / `to_i64`, and [`Signed`]
+/// for `.is_positive()` / `.is_negative()` / `.abs()`.
 pub mod prelude {
     pub use crate::{
         DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError,
@@ -306,7 +316,7 @@ pub mod prelude {
     };
 
     #[cfg(feature = "exact")]
-    pub use crate::BigRational;
+    pub use crate::{BigInt, BigRational, FromPrimitive, Signed, ToPrimitive};
 }
 
 #[cfg(test)]

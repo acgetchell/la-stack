@@ -700,6 +700,7 @@ mod tests {
     use crate::DEFAULT_PIVOT_TOL;
 
     use pastey::paste;
+    use std::array::from_fn;
 
     // -----------------------------------------------------------------------
     // Test helpers
@@ -2005,6 +2006,157 @@ mod tests {
     gen_solve_exact_zero_rhs_tests!(3);
     gen_solve_exact_zero_rhs_tests!(4);
     gen_solve_exact_zero_rhs_tests!(5);
+
+    // -----------------------------------------------------------------------
+    // Adversarial-input coverage mirroring `benches/exact.rs`
+    // -----------------------------------------------------------------------
+    //
+    // These tests pin the behaviour of the extreme-input benchmark groups
+    // (`exact_near_singular_3x3`, `exact_large_entries_3x3`,
+    // `exact_hilbert_{4x4,5x5}`) so a regression would be caught even
+    // when benchmarks are not running.
+
+    /// Multiply `A · x` entirely in `BigRational`, using `f64_to_bigrational`
+    /// to lift each matrix entry.  Used by residual assertions for inputs
+    /// whose exact solution has no closed form we can easily type out.
+    fn bigrational_matvec<const D: usize>(a: &Matrix<D>, x: &[BigRational; D]) -> [BigRational; D] {
+        from_fn(|i| {
+            let mut sum = BigRational::from_integer(BigInt::from(0));
+            for (j, xj) in x.iter().enumerate() {
+                sum += f64_to_bigrational(a.rows[i][j]) * xj;
+            }
+            sum
+        })
+    }
+
+    /// Near-singular 3×3 solve (matches the `exact_near_singular_3x3`
+    /// bench).  With `A = [[1+2^-50, 2, 3], [4, 5, 6], [7, 8, 9]]` and
+    /// `x0 = [1, 1, 1]`, `A · x0 = [6 + 2^-50, 15, 24]`; every component is
+    /// exactly representable in `f64` (`6` has ulp `2^-50` at its exponent).
+    /// `solve_exact` must recover `x0` exactly — the fractional denominator
+    /// introduced by `det(A) = -3 × 2^-50` cancels cleanly against the
+    /// augmented RHS.
+    #[test]
+    fn solve_exact_near_singular_3x3_integer_x0() {
+        let perturbation = f64::from_bits(0x3CD0_0000_0000_0000); // 2^-50
+        let a = Matrix::<3>::from_rows([
+            [1.0 + perturbation, 2.0, 3.0],
+            [4.0, 5.0, 6.0],
+            [7.0, 8.0, 9.0],
+        ]);
+        let b = Vector::<3>::new([6.0 + perturbation, 15.0, 24.0]);
+        let x = a.solve_exact(b).unwrap();
+        let one = BigRational::from_integer(BigInt::from(1));
+        assert_eq!(x[0], one);
+        assert_eq!(x[1], one);
+        assert_eq!(x[2], one);
+    }
+
+    /// Large-entry 3×3 solve (matches the `exact_large_entries_3x3`
+    /// bench).  `A = big · I + (1 - I)` with `big = f64::MAX / 2` and
+    /// `b = [big, 1, 1] = A · [1, 0, 0]`.  The `BigInt` augmented system
+    /// sees entries of ~1023 bits on the diagonal and unit entries
+    /// elsewhere; Bareiss elimination still produces the exact integer
+    /// solution `[1, 0, 0]`.
+    #[test]
+    fn solve_exact_large_entries_3x3_unit_vector() {
+        let big = f64::MAX / 2.0;
+        assert!(big.is_finite());
+        let a = Matrix::<3>::from_rows([[big, 1.0, 1.0], [1.0, big, 1.0], [1.0, 1.0, big]]);
+        let b = Vector::<3>::new([big, 1.0, 1.0]);
+        let x = a.solve_exact(b).unwrap();
+        let zero = BigRational::from_integer(BigInt::from(0));
+        let one = BigRational::from_integer(BigInt::from(1));
+        assert_eq!(x[0], one);
+        assert_eq!(x[1], zero);
+        assert_eq!(x[2], zero);
+    }
+
+    /// Determinant of the large-entry 3×3 is roughly `big^3`, which
+    /// overflows `f64`.  `det_direct()` therefore returns `±∞`, the fast
+    /// filter inside `det_sign_exact` falls through on the `is_finite()`
+    /// guard, and the Bareiss fallback resolves the positive sign
+    /// correctly.  `det_exact_f64` must report `Overflow`.
+    #[test]
+    fn det_sign_exact_large_entries_3x3_positive() {
+        let big = f64::MAX / 2.0;
+        let a = Matrix::<3>::from_rows([[big, 1.0, 1.0], [1.0, big, 1.0], [1.0, 1.0, big]]);
+        // Fast filter is inconclusive (big^3 overflows f64 to +∞), so
+        // this exercises the Bareiss cold path.
+        assert!(!a.det_direct().is_some_and(f64::is_finite));
+        assert_eq!(a.det_sign_exact().unwrap(), 1);
+        // Exact BigRational determinant is representable; f64 conversion is not.
+        assert!(a.det_exact().is_ok());
+        assert_eq!(a.det_exact_f64(), Err(LaError::Overflow { index: None }));
+    }
+
+    /// Hilbert matrices are symmetric positive-definite, so
+    /// `det_sign_exact` must return `1` for every D.  For D ≥ 5 the fast
+    /// filter is skipped entirely, so this exercises the Bareiss path on
+    /// inputs whose `(mantissa, exponent)` pairs all differ.
+    macro_rules! gen_det_sign_exact_hilbert_positive_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                #[allow(clippy::cast_precision_loss)]
+                fn [<det_sign_exact_hilbert_positive_ $d d>]() {
+                    let mut rows = [[0.0f64; $d]; $d];
+                    for r in 0..$d {
+                        for c in 0..$d {
+                            rows[r][c] = 1.0 / ((r + c + 1) as f64);
+                        }
+                    }
+                    let h = Matrix::<$d>::from_rows(rows);
+                    assert_eq!(h.det_sign_exact().unwrap(), 1);
+                }
+            }
+        };
+    }
+
+    gen_det_sign_exact_hilbert_positive_tests!(3);
+    gen_det_sign_exact_hilbert_positive_tests!(4);
+    gen_det_sign_exact_hilbert_positive_tests!(5);
+
+    /// `solve_exact` on a Hilbert matrix must produce a solution whose
+    /// residual `A · x - b` is *exactly* zero in `BigRational` arithmetic.
+    /// Hilbert entries (`1/3`, `1/5`, `1/6`, `1/7`, …) are non-terminating
+    /// in binary, so this is a stronger test than the
+    /// `gen_solve_exact_roundtrip_tests` construction (which requires the
+    /// RHS to be representable as an exact `f64` product).
+    macro_rules! gen_solve_exact_hilbert_residual_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                #[allow(clippy::cast_precision_loss)]
+                fn [<solve_exact_hilbert_residual_ $d d>]() {
+                    let mut rows = [[0.0f64; $d]; $d];
+                    for r in 0..$d {
+                        for c in 0..$d {
+                            rows[r][c] = 1.0 / ((r + c + 1) as f64);
+                        }
+                    }
+                    let h = Matrix::<$d>::from_rows(rows);
+                    // Use a non-trivial RHS with both positive and negative
+                    // entries to avoid accidental structural cancellation.
+                    let mut b_arr = [0.0f64; $d];
+                    for i in 0usize..$d {
+                        let sign = if i.is_multiple_of(2) { 1.0 } else { -1.0 };
+                        b_arr[i] = sign * ((i + 1) as f64);
+                    }
+                    let b = Vector::<$d>::new(b_arr);
+                    let x = h.solve_exact(b).unwrap();
+                    let ax = bigrational_matvec(&h, &x);
+                    for i in 0..$d {
+                        assert_eq!(ax[i], f64_to_bigrational(b_arr[i]));
+                    }
+                }
+            }
+        };
+    }
+
+    gen_solve_exact_hilbert_residual_tests!(3);
+    gen_solve_exact_hilbert_residual_tests!(4);
+    gen_solve_exact_hilbert_residual_tests!(5);
 
     // -----------------------------------------------------------------------
     // solve_exact_f64: dimension-specific tests
