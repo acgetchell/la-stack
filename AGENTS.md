@@ -221,7 +221,10 @@ When creating or updating issues:
 
 - `exact` — enables exact arithmetic methods via `BigRational`:
   `det_exact()`, `det_exact_f64()`, `det_sign_exact()`, `solve_exact()`, and `solve_exact_f64()`.
-  Also re-exports `BigRational` from the crate root and prelude.
+  Re-exports `BigInt`, `BigRational`, and the commonly needed `num-traits`
+  items (`FromPrimitive`, `ToPrimitive`, and `Signed`) from the crate root and prelude
+  (so consumers get usable `from_f64` / `to_f64` / `is_positive` etc. without adding
+  `num-bigint` / `num-rational` / `num-traits` as their own deps).
   Gates `src/exact.rs`, additional tests, and the `exact_det_3x3`/`exact_sign_3x3`/`exact_solve_3x3` examples.
   Clippy, doc builds, and test commands have dedicated `--features exact` variants.
 
@@ -245,7 +248,8 @@ When creating or updating issues:
 - The public API re-exports these items from `src/lib.rs`.
 - The `justfile` defines all dev workflows (see `just --list`).
 - Dev-only benchmarks live in `benches/vs_linalg.rs` (Criterion + nalgebra/faer comparison)
-  and `benches/exact.rs` (exact arithmetic across D=2–5).
+  and `benches/exact.rs` (exact arithmetic across D=2–5, plus adversarial-input groups
+  `exact_near_singular_3x3`, `exact_large_entries_3x3`, `exact_hilbert_4x4`, `exact_hilbert_5x5`).
 - Python scripts under `scripts/`:
   - `bench_compare.py`: exact-arithmetic benchmark comparison across releases (generates `docs/PERFORMANCE.md`)
   - `criterion_dim_plot.py`: benchmark plotting (CSV + SVG + README table update)

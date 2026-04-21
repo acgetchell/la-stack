@@ -77,6 +77,15 @@ class TestGroupHeading:
     def test_near_singular(self) -> None:
         assert bench_compare._group_heading("exact_near_singular_3x3") == "Near-singular 3x3"
 
+    def test_large_entries(self) -> None:
+        assert bench_compare._group_heading("exact_large_entries_3x3") == "Large entries 3x3"
+
+    def test_hilbert_4x4(self) -> None:
+        assert bench_compare._group_heading("exact_hilbert_4x4") == "Hilbert 4x4"
+
+    def test_hilbert_5x5(self) -> None:
+        assert bench_compare._group_heading("exact_hilbert_5x5") == "Hilbert 5x5"
+
     def test_unknown_passthrough(self) -> None:
         assert bench_compare._group_heading("something_else") == "something_else"
 

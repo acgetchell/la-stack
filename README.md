@@ -190,8 +190,13 @@ assert!((x[0] - 1.0).abs() <= f64::EPSILON);
 assert!((x[1] - 2.0).abs() <= f64::EPSILON);
 ```
 
-`BigRational` is re-exported from the crate root and prelude when the `exact`
-feature is enabled, so consumers don't need to depend on `num-rational` directly.
+With the `exact` feature enabled, `BigInt` and `BigRational` are re-exported
+from the crate root and prelude, alongside the most commonly needed
+`num-traits` items (`FromPrimitive`, `ToPrimitive`, `Signed`).  This lets
+consumers construct exact values (`BigRational::from_f64`, `from_i64`), query
+sign (`is_positive` / `is_negative`), and convert back to `f64` (`to_f64`)
+with a single `use la_stack::prelude::*;` — no need to add `num-bigint`,
+`num-rational`, or `num-traits` to their own `Cargo.toml`.
 
 For `det_sign_exact()`, D ≤ 4 matrices use a fast f64 filter (error-bounded
 `det_direct()`) that resolves the sign without allocating.  Only near-degenerate
