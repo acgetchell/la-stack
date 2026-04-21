@@ -221,8 +221,8 @@ When creating or updating issues:
 
 - `exact` — enables exact arithmetic methods via `BigRational`:
   `det_exact()`, `det_exact_f64()`, `det_sign_exact()`, `solve_exact()`, and `solve_exact_f64()`.
-  Re-exports `BigInt` and `BigRational` from the crate root and prelude, plus
-  `FromPrimitive`, `ToPrimitive`, and `Signed` from `num-traits` in the prelude
+  Re-exports `BigInt`, `BigRational`, and the commonly needed `num-traits`
+  items (`FromPrimitive`, `ToPrimitive`, and `Signed`) from the crate root and prelude
   (so consumers get usable `from_f64` / `to_f64` / `is_positive` etc. without adding
   `num-bigint` / `num-rational` / `num-traits` as their own deps).
   Gates `src/exact.rs`, additional tests, and the `exact_det_3x3`/`exact_sign_3x3`/`exact_solve_3x3` examples.
