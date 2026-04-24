@@ -304,6 +304,7 @@ just fix          # apply auto-fixes (mutating)
 just ci           # lint + tests + examples + bench compile
 ```
 
+For coverage commands and report locations, see [`docs/COVERAGE.md`](docs/COVERAGE.md).
 For the full set of developer commands, see `just --list` and `AGENTS.md`.
 
 ## 📝 Citation
