@@ -41,8 +41,6 @@ jobs:
         with:
           path: ~/.cargo/bin/cargo-llvm-cov
           key: cargo-llvm-cov-${{ runner.os }}-${{ env.CARGO_LLVM_COV_VERSION }}
-          restore-keys: |
-            cargo-llvm-cov-${{ runner.os }}-
 
       - name: Install cargo-llvm-cov
         run: |
