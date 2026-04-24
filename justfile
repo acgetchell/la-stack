@@ -6,11 +6,22 @@
 # Use bash with strict error handling for all recipes
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+cargo_llvm_cov_version := "0.8.5"
+
 # Internal helpers: ensure external tooling is installed
 _ensure-actionlint:
     #!/usr/bin/env bash
     set -euo pipefail
     command -v actionlint >/dev/null || { echo "❌ 'actionlint' not found. See 'just setup' or https://github.com/rhysd/actionlint"; exit 1; }
+
+_ensure-cargo-llvm-cov:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cargo-llvm-cov >/dev/null; then
+        echo "❌ 'cargo-llvm-cov' not found. See 'just setup-tools' or install:"
+        echo "   cargo install --locked cargo-llvm-cov --version {{cargo_llvm_cov_version}}"
+        exit 1
+    fi
 
 _ensure-git-cliff:
     #!/usr/bin/env bash
@@ -172,7 +183,7 @@ ci: check bench-compile test-all examples
 # Clean build artifacts
 clean:
     cargo clean
-    rm -rf target/tarpaulin
+    rm -rf target/llvm-cov
     rm -rf coverage
 
 # Code quality and formatting
@@ -183,41 +194,29 @@ clippy:
 clippy-exact:
     cargo clippy --features exact --all-targets -- -D warnings -W clippy::pedantic
 
-# Coverage (cargo-tarpaulin)
+# Coverage (cargo-llvm-cov)
 #
-# Common tarpaulin arguments for all coverage runs
-# Note: -t 300 sets per-test timeout to 5 minutes (needed for slow CI environments)
-_coverage_base_args := '''--exclude-files 'benches/*' --exclude-files 'examples/*' \
-  --features exact \
+# Common cargo-llvm-cov arguments for all coverage runs.
+_coverage_base_args := '''--features exact \
   --workspace --lib --tests \
-  -t 300 --verbose --implicit-test-threads'''
+  --verbose'''
 
 # Coverage analysis for local development (HTML output)
-coverage:
+coverage: _ensure-cargo-llvm-cov
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if ! command -v cargo-tarpaulin >/dev/null 2>&1; then
-        echo "cargo-tarpaulin not found. Install with: cargo install cargo-tarpaulin"
-        exit 1
-    fi
-
-    mkdir -p target/tarpaulin
-    cargo tarpaulin {{_coverage_base_args}} --out Html --output-dir target/tarpaulin
-    echo "Coverage report generated: target/tarpaulin/tarpaulin-report.html"
+    mkdir -p target/llvm-cov
+    cargo llvm-cov {{_coverage_base_args}} --open --output-dir target/llvm-cov
+    echo "Coverage report generated: target/llvm-cov/html/index.html"
 
 # Coverage analysis for CI (XML output for codecov/codacy)
-coverage-ci:
+coverage-ci: _ensure-cargo-llvm-cov
     #!/usr/bin/env bash
     set -euo pipefail
 
-    if ! command -v cargo-tarpaulin >/dev/null 2>&1; then
-        echo "cargo-tarpaulin not found. Install with: cargo install cargo-tarpaulin"
-        exit 1
-    fi
-
     mkdir -p coverage
-    cargo tarpaulin {{_coverage_base_args}} --out Xml --output-dir coverage
+    cargo llvm-cov {{_coverage_base_args}} --cobertura --output-path coverage/cobertura.xml
 
 # Default recipe shows available commands
 default:
@@ -429,7 +428,7 @@ setup-tools:
         echo "❌ 'rustup' not found. Install Rust via https://rustup.rs and re-run: just setup-tools"
         exit 1
     fi
-    rustup component add clippy rustfmt rust-docs rust-src
+    rustup component add clippy rustfmt rust-docs rust-src llvm-tools-preview
     echo ""
 
     echo "Ensuring cargo tools..."
@@ -454,21 +453,17 @@ setup-tools:
         echo "  ✓ typos"
     fi
 
-    if ! have cargo-tarpaulin; then
-        if [[ "$os" == "Linux" ]]; then
-            echo "  ⏳ Installing cargo-tarpaulin (cargo)..."
-            cargo install --locked cargo-tarpaulin
-        else
-            echo "  ⚠️  Skipping cargo-tarpaulin install on $os (coverage is typically Linux-only)"
-        fi
+    if ! have cargo-llvm-cov; then
+        echo "  ⏳ Installing cargo-llvm-cov {{cargo_llvm_cov_version}} (cargo)..."
+        cargo install --locked cargo-llvm-cov --version {{cargo_llvm_cov_version}}
     else
-        echo "  ✓ cargo-tarpaulin"
+        echo "  ✓ cargo-llvm-cov"
     fi
 
     echo ""
     echo "Verifying required commands are available..."
     missing=0
-    for cmd in uv jq taplo yamllint shfmt shellcheck actionlint node npx typos git-cliff; do
+    for cmd in uv jq taplo yamllint shfmt shellcheck actionlint node npx typos git-cliff cargo-llvm-cov; do
         if have "$cmd"; then
             echo "  ✓ $cmd"
         else

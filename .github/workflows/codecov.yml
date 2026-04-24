@@ -21,7 +21,7 @@ jobs:
     name: Code Coverage
     runs-on: ubuntu-latest
     env:
-      TARPAULIN_VERSION: "0.32.8"
+      CARGO_LLVM_COV_VERSION: "0.8.5"
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -33,18 +33,25 @@ jobs:
         with:
           cache: true # toolchain/components are specified in rust-toolchain.toml
 
-      - name: Cache tarpaulin
+      - name: Install LLVM coverage tools
+        run: rustup component add llvm-tools-preview
+
+      - name: Cache cargo-llvm-cov
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: ~/.cargo/bin/cargo-tarpaulin
-          key: tarpaulin-${{ runner.os }}-${{ env.TARPAULIN_VERSION }}
-          restore-keys: |
-            tarpaulin-${{ runner.os }}-
+          path: ~/.cargo/bin/cargo-llvm-cov
+          key: cargo-llvm-cov-${{ runner.os }}-${{ env.CARGO_LLVM_COV_VERSION }}
 
-      - name: Install tarpaulin
+      - name: Install cargo-llvm-cov
         run: |
-          if ! command -v cargo-tarpaulin &> /dev/null; then
-            cargo install cargo-tarpaulin --locked --version "${TARPAULIN_VERSION}"
+          installed_version=""
+          if command -v cargo-llvm-cov &> /dev/null; then
+            installed_version="$(cargo llvm-cov --version)"
+            installed_version="${installed_version#cargo-llvm-cov }"
+          fi
+
+          if [ "$installed_version" != "$CARGO_LLVM_COV_VERSION" ]; then
+            cargo install cargo-llvm-cov --locked --version "${CARGO_LLVM_COV_VERSION}"
           fi
 
       - name: Install just
@@ -66,7 +73,7 @@ jobs:
           ls -la coverage/ || true
 
           if [ ! -f coverage/cobertura.xml ]; then
-            echo "::error::coverage/cobertura.xml not found. Tarpaulin failed to generate XML output."
+            echo "::error::coverage/cobertura.xml not found. cargo-llvm-cov failed to generate XML output."
             exit 2
           fi
           echo "::notice::Coverage report generated successfully: $(wc -l < coverage/cobertura.xml) lines"
