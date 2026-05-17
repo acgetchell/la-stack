@@ -57,7 +57,7 @@ jobs:
 
       - name: Install just
         if: matrix.os != 'windows-latest'
-        uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+        uses: taiki-e/install-action@0e01fba183f89b991766ac4092315c09f1acb55c # v2.78.3
         with:
           tool: just
 
@@ -80,13 +80,13 @@ jobs:
 
       - name: Install typos-cli
         if: matrix.os != 'windows-latest'
-        uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+        uses: taiki-e/install-action@0e01fba183f89b991766ac4092315c09f1acb55c # v2.78.3
         with:
           tool: typos-cli@${{ env.TYPOS_VERSION }}
 
       - name: Install taplo (for TOML formatting and linting)
         if: matrix.os != 'windows-latest'
-        uses: taiki-e/install-action@e3134ec54b36203e18f2d1e80652058bd078dd91 # v2.77.3
+        uses: taiki-e/install-action@0e01fba183f89b991766ac4092315c09f1acb55c # v2.78.3
         with:
           tool: taplo-cli
 
