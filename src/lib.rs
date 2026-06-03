@@ -10,15 +10,15 @@ mod readme_doctests {
     ///
     /// # fn main() -> Result<(), LaError> {
     /// // This system requires pivoting (a[0][0] = 0), so it's a good LU demo.
-    /// let a = Matrix::<5>::from_rows([
+    /// let a = Matrix::<5>::try_from_rows([
     ///     [0.0, 1.0, 1.0, 1.0, 1.0],
     ///     [1.0, 0.0, 1.0, 1.0, 1.0],
     ///     [1.0, 1.0, 0.0, 1.0, 1.0],
     ///     [1.0, 1.0, 1.0, 0.0, 1.0],
     ///     [1.0, 1.0, 1.0, 1.0, 0.0],
-    /// ]);
+    /// ])?;
     ///
-    /// let b = Vector::<5>::new([14.0, 13.0, 12.0, 11.0, 10.0]);
+    /// let b = Vector::<5>::try_new([14.0, 13.0, 12.0, 11.0, 10.0])?;
     ///
     /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
     /// let x = lu.solve_vec(b)?.into_array();
@@ -38,13 +38,13 @@ mod readme_doctests {
     ///
     /// # fn main() -> Result<(), LaError> {
     /// // This matrix is symmetric positive-definite (A = L*L^T) so LDLT works without pivoting.
-    /// let a = Matrix::<5>::from_rows([
+    /// let a = Matrix::<5>::try_from_rows([
     ///     [1.0, 1.0, 0.0, 0.0, 0.0],
     ///     [1.0, 2.0, 1.0, 0.0, 0.0],
     ///     [0.0, 1.0, 2.0, 1.0, 0.0],
     ///     [0.0, 0.0, 1.0, 2.0, 1.0],
     ///     [0.0, 0.0, 0.0, 1.0, 2.0],
-    /// ]);
+    /// ])?;
     ///
     /// let det = a.ldlt(DEFAULT_SINGULAR_TOL)?.det()?;
     /// assert!((det - 1.0).abs() <= 1e-12);
@@ -135,7 +135,7 @@ const EPS: f64 = f64::EPSILON; // 2^-52
 /// use la_stack::prelude::*;
 ///
 /// # fn main() -> Result<(), LaError> {
-/// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+/// let m = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
 /// let Some(det) = m.det_direct()? else {
 ///     return Ok(());
 /// };

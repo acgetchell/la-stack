@@ -7,13 +7,15 @@
 //! - Determinant is benchmarked via LU on all sides (nalgebra uses closed-forms for 1×1/2×2/3×3).
 //! - Matrix infinity norm is the maximum absolute row sum on all sides.
 
+use std::fmt::Display;
+use std::hint::black_box;
+
 use criterion::Criterion;
 use faer::linalg::solvers::{PartialPivLu, Solve};
 use faer::perm::PermRef;
-use la_stack::{DEFAULT_PIVOT_TOL, Matrix, Vector};
 use pastey::paste;
-use std::fmt::Display;
-use std::hint::black_box;
+
+use la_stack::{DEFAULT_PIVOT_TOL, Matrix, Vector};
 
 /// Return a successful benchmark operation result or panic with the named operation.
 fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
@@ -28,10 +30,11 @@ fn require_some<T>(value: Option<T>, operation: &str) -> T {
     value.unwrap_or_else(|| panic!("{operation} returned no result"))
 }
 
+/// Return `det(P)` for faer's permutation representation.
+///
+/// Sign(det(P)) is +1 for even permutations and -1 for odd. Parity is computed
+/// from the number of cycles: `sign = (-1)^(n - cycles)`.
 fn faer_perm_sign(p: PermRef<'_, usize>) -> f64 {
-    // Sign(det(P)) for a permutation matrix P is +1 for even permutations, -1 for odd.
-    // Parity can be computed from the number of cycles:
-    //   sign = (-1)^(n - cycles)
     let (forward, _inverse) = p.arrays();
     let n = forward.len();
 
@@ -58,6 +61,7 @@ fn faer_perm_sign(p: PermRef<'_, usize>) -> f64 {
     }
 }
 
+/// Compute a determinant from a faer partial-pivot LU factorization.
 fn faer_det_from_partial_piv_lu(lu: &PartialPivLu<f64>) -> f64 {
     // For PA = LU with unit-lower L, det(A) = det(P) * det(U).
     let u = lu.U();
@@ -68,6 +72,7 @@ fn faer_det_from_partial_piv_lu(lu: &PartialPivLu<f64>) -> f64 {
     det * faer_perm_sign(lu.P())
 }
 
+/// Return a deterministic, strictly diagonally-dominant benchmark matrix entry.
 #[inline]
 #[allow(clippy::cast_precision_loss)] // D, r, c are small integers, precision loss is not an issue.
 fn matrix_entry<const D: usize>(r: usize, c: usize) -> f64 {
@@ -80,6 +85,7 @@ fn matrix_entry<const D: usize>(r: usize, c: usize) -> f64 {
     }
 }
 
+/// Build the shared matrix rows used by all crates for a dimension.
 #[inline]
 fn make_matrix_rows<const D: usize>() -> [[f64; D]; D] {
     let mut rows = [[0.0; D]; D];
@@ -97,12 +103,14 @@ fn make_matrix_rows<const D: usize>() -> [[f64; D]; D] {
     rows
 }
 
+/// Return a deterministic benchmark vector entry.
 #[inline]
 #[allow(clippy::cast_precision_loss)] // i is a small integer, precision loss is not an issue.
 fn vector_entry(i: usize, offset: f64) -> f64 {
     (i as f64) + 1.0 + offset
 }
 
+/// Build the shared vector input used by all crates for a dimension.
 #[inline]
 fn make_vector_array<const D: usize>(offset: f64) -> [f64; D] {
     let mut data = [0.0; D];
@@ -116,6 +124,7 @@ fn make_vector_array<const D: usize>(offset: f64) -> [f64; D] {
     data
 }
 
+/// Compute nalgebra's matrix infinity norm using la-stack's row-sum convention.
 #[inline]
 fn nalgebra_inf_norm<const D: usize>(m: &nalgebra::SMatrix<f64, D, D>) -> f64 {
     // Infinity norm = max absolute row sum.
@@ -143,10 +152,22 @@ macro_rules! gen_vs_linalg_benches_for_dim {
         paste! {{
             // Isolate each dimension's inputs to keep types and captures clean.
             {
-                let a = Matrix::<$d>::from_rows(make_matrix_rows::<$d>());
-                let rhs = Vector::<$d>::new(make_vector_array::<$d>(0.0));
-                let v1 = Vector::<$d>::new(make_vector_array::<$d>(0.0));
-                let v2 = Vector::<$d>::new(make_vector_array::<$d>(1.0));
+                let a = require_ok(
+                    Matrix::<$d>::try_from_rows(make_matrix_rows::<$d>()),
+                    "la_stack matrix construction",
+                );
+                let rhs = require_ok(
+                    Vector::<$d>::try_new(make_vector_array::<$d>(0.0)),
+                    "la_stack RHS vector construction",
+                );
+                let v1 = require_ok(
+                    Vector::<$d>::try_new(make_vector_array::<$d>(0.0)),
+                    "la_stack vector construction",
+                );
+                let v2 = require_ok(
+                    Vector::<$d>::try_new(make_vector_array::<$d>(1.0)),
+                    "la_stack vector construction",
+                );
 
                 let na = nalgebra::SMatrix::<f64, $d, $d>::from_fn(|r, c| matrix_entry::<$d>(r, c));
                 let nrhs = nalgebra::SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 0.0));

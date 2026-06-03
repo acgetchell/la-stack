@@ -10,10 +10,10 @@ use la_stack::prelude::*;
 
 fn main() -> Result<(), LaError> {
     // Symmetric positive definite 3×3 matrix (classic SPD tridiagonal).
-    let a = Matrix::<3>::from_rows([[4.0, -1.0, 0.0], [-1.0, 4.0, -1.0], [0.0, -1.0, 4.0]]);
+    let a = Matrix::<3>::try_from_rows([[4.0, -1.0, 0.0], [-1.0, 4.0, -1.0], [0.0, -1.0, 4.0]])?;
 
     // Choose x = [1, 2, 3].  Then b = A x = [2, 4, 10].
-    let b = Vector::<3>::new([2.0, 4.0, 10.0]);
+    let b = Vector::<3>::try_new([2.0, 4.0, 10.0])?;
 
     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL)?;
     let x = ldlt.solve_vec(b)?.into_array();

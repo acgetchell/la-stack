@@ -6,12 +6,15 @@
 use la_stack::prelude::*;
 
 /// An example 4×4 matrix with small integer entries.
-const MAT: Matrix<4> = Matrix::<4>::from_rows([
+const MAT: Matrix<4> = match Matrix::<4>::try_from_rows([
     [1.0, 2.0, 3.0, 4.0],
     [5.0, 6.0, 7.0, 8.0],
     [2.0, 6.0, 1.0, 5.0],
     [3.0, 8.0, 2.0, 9.0],
-]);
+]) {
+    Ok(matrix) => matrix,
+    Err(_) => panic!("matrix entries must be finite"),
+};
 
 /// Determinant computed at compile time.
 const DET: f64 = match MAT.det_direct() {

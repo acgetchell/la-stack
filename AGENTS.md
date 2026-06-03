@@ -63,6 +63,9 @@ invariant over the convenient edit.
 - `Result<_, LaError>` for all fallible operations. Panics are reserved
   for debug-only precondition violations (e.g. LDLT symmetry check) and
   documented on the method.
+- Public APIs that return plain values must be genuinely infallible for all
+  representable inputs. If callers can observe failure, return `Result` or
+  `Option` instead of relying on `panic!`, `assert!`, `unwrap`, or `expect`.
 - Borrow by default (`&T`, `&[T]`); return borrowed views when possible.
 - Type and function names match textbook vocabulary (`Matrix`, `Vector`,
   `Lu`, `Ldlt`, `solve_vec`, `det`, `inf_norm`). Avoid Rust-ecosystem
