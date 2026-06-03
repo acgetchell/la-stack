@@ -19,7 +19,16 @@
 use criterion::{BenchmarkGroup, Criterion, measurement::WallTime};
 use la_stack::{Matrix, Vector};
 use pastey::paste;
+use std::fmt::Display;
 use std::hint::black_box;
+
+/// Return a successful benchmark operation result or panic with the named operation.
+fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(err) => panic!("{operation} failed: {err}"),
+    }
+}
 
 #[inline]
 #[allow(clippy::cast_precision_loss)]
@@ -134,34 +143,34 @@ fn bench_extreme_group<const D: usize>(
 ) {
     group.bench_function("det_sign_exact", |bencher| {
         bencher.iter(|| {
-            let sign = black_box(m)
-                .det_sign_exact()
-                .expect("finite matrix entries");
+            let sign = require_ok(black_box(m).det_sign_exact(), "exact determinant sign");
             black_box(sign);
         });
     });
 
     group.bench_function("det_exact", |bencher| {
         bencher.iter(|| {
-            let det = black_box(m).det_exact().expect("finite matrix entries");
+            let det = require_ok(black_box(m).det_exact(), "exact determinant");
             black_box(det);
         });
     });
 
     group.bench_function("solve_exact", |bencher| {
         bencher.iter(|| {
-            let x = black_box(m)
-                .solve_exact(black_box(rhs))
-                .expect("non-singular matrix with finite entries");
+            let x = require_ok(
+                black_box(m).solve_exact(black_box(rhs)),
+                "exact linear solve",
+            );
             let _ = black_box(x);
         });
     });
 
     group.bench_function("solve_exact_f64", |bencher| {
         bencher.iter(|| {
-            let x = black_box(m)
-                .solve_exact_f64(black_box(rhs))
-                .expect("solution representable in f64");
+            let x = require_ok(
+                black_box(m).solve_exact_f64(black_box(rhs)),
+                "exact linear solve converted to f64",
+            );
             let _ = black_box(x);
         });
     });
@@ -178,9 +187,7 @@ macro_rules! gen_exact_benches_for_dim {
             // === f64 baselines ===
             [<group_d $d>].bench_function("det", |bencher| {
                 bencher.iter(|| {
-                    let det = black_box(a)
-                        .det()
-                        .expect("diagonally dominant matrix is non-singular");
+                    let det = require_ok(black_box(a).det(), "f64 determinant");
                     black_box(det);
                 });
             });
@@ -195,7 +202,7 @@ macro_rules! gen_exact_benches_for_dim {
             // === det_exact (BigRational result) ===
             [<group_d $d>].bench_function("det_exact", |bencher| {
                 bencher.iter(|| {
-                    let det = black_box(a).det_exact().expect("finite matrix entries");
+                    let det = require_ok(black_box(a).det_exact(), "exact determinant");
                     black_box(det);
                 });
             });
@@ -203,9 +210,10 @@ macro_rules! gen_exact_benches_for_dim {
             // === det_exact_f64 (exact → f64) ===
             [<group_d $d>].bench_function("det_exact_f64", |bencher| {
                 bencher.iter(|| {
-                    let det = black_box(a)
-                        .det_exact_f64()
-                        .expect("det representable in f64");
+                    let det = require_ok(
+                        black_box(a).det_exact_f64(),
+                        "exact determinant converted to f64",
+                    );
                     black_box(det);
                 });
             });
@@ -213,9 +221,7 @@ macro_rules! gen_exact_benches_for_dim {
             // === det_sign_exact (adaptive: fast filter + exact fallback) ===
             [<group_d $d>].bench_function("det_sign_exact", |bencher| {
                 bencher.iter(|| {
-                    let sign = black_box(a)
-                        .det_sign_exact()
-                        .expect("finite matrix entries");
+                    let sign = require_ok(black_box(a).det_sign_exact(), "exact determinant sign");
                     black_box(sign);
                 });
             });
@@ -223,9 +229,10 @@ macro_rules! gen_exact_benches_for_dim {
             // === solve_exact (BigRational result) ===
             [<group_d $d>].bench_function("solve_exact", |bencher| {
                 bencher.iter(|| {
-                    let x = black_box(a)
-                        .solve_exact(black_box(rhs))
-                        .expect("diagonally dominant matrix is non-singular");
+                    let x = require_ok(
+                        black_box(a).solve_exact(black_box(rhs)),
+                        "exact linear solve",
+                    );
                     black_box(x);
                 });
             });
@@ -233,9 +240,10 @@ macro_rules! gen_exact_benches_for_dim {
             // === solve_exact_f64 (exact → f64) ===
             [<group_d $d>].bench_function("solve_exact_f64", |bencher| {
                 bencher.iter(|| {
-                    let x = black_box(a)
-                        .solve_exact_f64(black_box(rhs))
-                        .expect("solution representable in f64");
+                    let x = require_ok(
+                        black_box(a).solve_exact_f64(black_box(rhs)),
+                        "exact linear solve converted to f64",
+                    );
                     black_box(x);
                 });
             });
