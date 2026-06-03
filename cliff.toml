@@ -95,7 +95,7 @@ commit_parsers = [
     # Dependency bumps: keep all bump commits so archived release history
     # preserves CI/action/tooling dependency updates as well as Rust crates.
     { message = "^chore\\(deps\\): bump ", group = "Dependencies" },
-    { message = "(?i)^bump ", group = "Dependencies" },
+    { message = "(?i)^bump\\s+(deps?\\b|dependencies\\b|[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+|[A-Za-z0-9_.-]+\\s+from\\s+)", group = "Dependencies" },
 
     # Conventional commit types
     { message = "^feat", group = "Added" },
