@@ -11,6 +11,8 @@
 [![Audit dependencies](https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/audit.yml)
 [![Codacy Security Scan](https://github.com/acgetchell/la-stack/actions/workflows/codacy.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/codacy.yml)
 
+![la-stack](docs/assets/la-stack.jpg)
+
 Fast, stack-allocated linear algebra for fixed dimensions in Rust.
 
 This crate grew from the need to support [`delaunay`](https://crates.io/crates/delaunay) with fast, stack-allocated linear algebra primitives and algorithms
@@ -117,14 +119,13 @@ let det = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap().det();
 assert!((det - 1.0).abs() <= 1e-12);
 ```
 
-> ⚠️ **LDLT precondition:** The input matrix must be **symmetric**. Symmetry is
-> verified by a `debug_assert!` in debug builds only; release builds silently accept
-> asymmetric inputs and produce a meaningless factorization. Pre-validate with
+> ⚠️ **LDLT invariant:** The input matrix must be **symmetric**. Asymmetric
+> inputs return a typed `LaError::Asymmetric` before factorization starts.
+> You can pre-check with
 > [`Matrix::is_symmetric`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.is_symmetric)
 > (or locate the offending pair with
-> [`Matrix::first_asymmetry`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.first_asymmetry))
-> when you cannot statically guarantee symmetry, or fall back to `lu()` if your
-> matrices may not be symmetric at all. See
+> [`Matrix::first_asymmetry`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.first_asymmetry)),
+> or fall back to `lu()` if your matrices may not be symmetric at all. See
 > [`Matrix::ldlt`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.ldlt)
 > for details.
 

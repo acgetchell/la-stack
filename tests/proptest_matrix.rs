@@ -41,12 +41,29 @@ macro_rules! gen_public_api_matrix_proptests {
                     for r in 0..$d {
                         for c in 0..$d {
                             assert_abs_diff_eq!(m.get(r, c).unwrap(), rows[r][c], epsilon = 0.0);
+                            assert_abs_diff_eq!(m.get_checked(r, c).unwrap(), rows[r][c], epsilon = 0.0);
                         }
                     }
 
                     // Out-of-bounds is None.
                     prop_assert_eq!(m.get($d, 0), None);
                     prop_assert_eq!(m.get(0, $d), None);
+                    prop_assert_eq!(
+                        m.get_checked($d, 0),
+                        Err(LaError::IndexOutOfBounds {
+                            row: $d,
+                            col: 0,
+                            dim: $d,
+                        })
+                    );
+                    prop_assert_eq!(
+                        m.get_checked(0, $d),
+                        Err(LaError::IndexOutOfBounds {
+                            row: 0,
+                            col: $d,
+                            dim: $d,
+                        })
+                    );
                 }
 
                 #[test]
@@ -58,6 +75,8 @@ macro_rules! gen_public_api_matrix_proptests {
                     let mut m = Matrix::<$d>::zero();
                     prop_assert!(m.set(r, c, v));
                     assert_abs_diff_eq!(m.get(r, c).unwrap(), v, epsilon = 0.0);
+                    prop_assert_eq!(m.set_checked(r, c, -v), Ok(()));
+                    assert_abs_diff_eq!(m.get_checked(r, c).unwrap(), -v, epsilon = 0.0);
                 }
 
                 #[test]

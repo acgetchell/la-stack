@@ -186,12 +186,20 @@ pub const DEFAULT_SINGULAR_TOL: f64 = 1e-12;
 /// tolerance is not specifically about pivot selection.
 pub const DEFAULT_PIVOT_TOL: f64 = DEFAULT_SINGULAR_TOL;
 
+/// Largest dimension supported by [`try_with_stack_matrix!`].
+///
+/// The crate can represent `Matrix<D>` for any compile-time `D`, but runtime
+/// dispatch must enumerate a finite set of concrete stack types.  Dimensions
+/// `0..=7` cover downstream geometric predicate matrices while keeping the
+/// dispatch surface explicit.
+pub const MAX_STACK_MATRIX_DISPATCH_DIM: usize = 7;
+
 /// Linear algebra errors.
 ///
 /// This enum is `#[non_exhaustive]` — downstream `match` arms must include a
 /// wildcard (`_`) pattern to compile, allowing new variants to be added in
 /// future minor releases without breaking existing code.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum LaError {
     /// The matrix is (numerically) singular.
@@ -229,6 +237,36 @@ pub enum LaError {
         /// component that overflowed.  `None` for scalar results.
         index: Option<usize>,
     },
+    /// A requested runtime matrix dimension has no stack-dispatch arm.
+    UnsupportedDimension {
+        /// Runtime dimension requested by the caller.
+        requested: usize,
+        /// Largest runtime dimension supported by the dispatch helper.
+        max: usize,
+    },
+    /// A matrix index is outside the `D×D` storage domain.
+    IndexOutOfBounds {
+        /// Requested row index.
+        row: usize,
+        /// Requested column index.
+        col: usize,
+        /// Matrix dimension `D`; valid row and column indices are `< dim`.
+        dim: usize,
+    },
+    /// A tolerance value is not finite and non-negative.
+    InvalidTolerance {
+        /// Raw tolerance supplied by the caller.
+        value: f64,
+    },
+    /// A matrix required to be symmetric has an asymmetric off-diagonal pair.
+    Asymmetric {
+        /// Row index of the first asymmetric pair.
+        row: usize,
+        /// Column index of the first asymmetric pair.
+        col: usize,
+        /// Matrix dimension `D`.
+        dim: usize,
+    },
 }
 
 impl LaError {
@@ -261,6 +299,111 @@ impl LaError {
     pub const fn non_finite_at(col: usize) -> Self {
         Self::NonFinite { row: None, col }
     }
+
+    /// Construct a [`LaError::UnsupportedDimension`] for runtime stack dispatch.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// assert_eq!(
+    ///     LaError::unsupported_dimension(8, MAX_STACK_MATRIX_DISPATCH_DIM),
+    ///     LaError::UnsupportedDimension {
+    ///         requested: 8,
+    ///         max: MAX_STACK_MATRIX_DISPATCH_DIM,
+    ///     }
+    /// );
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn unsupported_dimension(requested: usize, max: usize) -> Self {
+        Self::UnsupportedDimension { requested, max }
+    }
+
+    /// Construct a [`LaError::IndexOutOfBounds`] for a `D×D` matrix index.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// assert_eq!(
+    ///     LaError::index_out_of_bounds(2, 0, 2),
+    ///     LaError::IndexOutOfBounds {
+    ///         row: 2,
+    ///         col: 0,
+    ///         dim: 2,
+    ///     }
+    /// );
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn index_out_of_bounds(row: usize, col: usize, dim: usize) -> Self {
+        Self::IndexOutOfBounds { row, col, dim }
+    }
+
+    /// Construct a [`LaError::InvalidTolerance`] for a raw tolerance value.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// assert_eq!(
+    ///     LaError::invalid_tolerance(-1.0),
+    ///     LaError::InvalidTolerance { value: -1.0 }
+    /// );
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn invalid_tolerance(value: f64) -> Self {
+        Self::InvalidTolerance { value }
+    }
+
+    /// Construct a [`LaError::Asymmetric`] for a `D×D` matrix.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// assert_eq!(
+    ///     LaError::asymmetric(0, 1, 3),
+    ///     LaError::Asymmetric {
+    ///         row: 0,
+    ///         col: 1,
+    ///         dim: 3,
+    ///     }
+    /// );
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn asymmetric(row: usize, col: usize, dim: usize) -> Self {
+        Self::Asymmetric { row, col, dim }
+    }
+
+    /// Validate that a tolerance is finite and non-negative.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// assert_eq!(LaError::validate_tolerance(1e-12)?, 1e-12);
+    /// assert_eq!(
+    ///     LaError::validate_tolerance(-1.0),
+    ///     Err(LaError::InvalidTolerance { value: -1.0 })
+    /// );
+    /// # Ok::<(), LaError>(())
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::InvalidTolerance`] when `value` is NaN, infinite, or
+    /// negative.
+    #[inline]
+    pub const fn validate_tolerance(value: f64) -> Result<f64, Self> {
+        if value >= 0.0 && value.is_finite() {
+            Ok(value)
+        } else {
+            Err(Self::invalid_tolerance(value))
+        }
+    }
 }
 
 impl fmt::Display for LaError {
@@ -284,6 +427,27 @@ impl fmt::Display for LaError {
             Self::Overflow { index: None } => {
                 write!(f, "exact result overflows the target representation")
             }
+            Self::UnsupportedDimension { requested, max } => {
+                write!(
+                    f,
+                    "unsupported matrix dimension {requested}; maximum stack-dispatch dimension is {max}"
+                )
+            }
+            Self::IndexOutOfBounds { row, col, dim } => {
+                write!(
+                    f,
+                    "matrix index ({row}, {col}) is out of bounds for dimension {dim}"
+                )
+            }
+            Self::InvalidTolerance { value } => {
+                write!(f, "invalid tolerance {value}; expected finite value >= 0")
+            }
+            Self::Asymmetric { row, col, dim } => {
+                write!(
+                    f,
+                    "matrix is not symmetric for dimension {dim}: asymmetric pair ({row}, {col})"
+                )
+            }
         }
     }
 }
@@ -295,11 +459,94 @@ pub use lu::Lu;
 pub use matrix::Matrix;
 pub use vector::Vector;
 
+/// Fallibly dispatch a runtime dimension to a concrete stack-allocated matrix.
+///
+/// The macro creates a zero matrix with type `Matrix<N>` for the selected
+/// runtime dimension `N`, then evaluates the supplied closure body.  Supported
+/// runtime dimensions run from `0` through [`MAX_STACK_MATRIX_DISPATCH_DIM`].
+/// Unsupported dimensions return
+/// `Err(LaError::UnsupportedDimension { requested, max })` converted with
+/// `From<LaError>`, so downstream crates can use their own public error type.
+///
+/// # Errors
+/// Returns [`LaError::UnsupportedDimension`] (converted through `From<LaError>`)
+/// when the requested runtime dimension is greater than
+/// [`MAX_STACK_MATRIX_DISPATCH_DIM`].  The closure body may return any other
+/// error representable by its declared `Result` type.
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+///
+/// # fn main() -> Result<(), LaError> {
+/// let requested = 2usize;
+/// let det = try_with_stack_matrix!(requested, |mut m| -> Result<f64, LaError> {
+///     m.set_checked(0, 0, 1.0)?;
+///     m.set_checked(1, 1, 1.0)?;
+///     m.det(DEFAULT_PIVOT_TOL)
+/// })?;
+///
+/// assert_eq!(det, 1.0);
+/// # Ok(())
+/// # }
+/// ```
+#[macro_export]
+macro_rules! try_with_stack_matrix {
+    ($dim:expr, |$matrix:ident| -> $ret:ty $body:block $(,)?) => {{
+        let __la_stack_requested_dim: usize = $dim;
+        match __la_stack_requested_dim {
+            0 => $crate::try_with_stack_matrix!(@arm 0, $matrix, $ret, $body),
+            1 => $crate::try_with_stack_matrix!(@arm 1, $matrix, $ret, $body),
+            2 => $crate::try_with_stack_matrix!(@arm 2, $matrix, $ret, $body),
+            3 => $crate::try_with_stack_matrix!(@arm 3, $matrix, $ret, $body),
+            4 => $crate::try_with_stack_matrix!(@arm 4, $matrix, $ret, $body),
+            5 => $crate::try_with_stack_matrix!(@arm 5, $matrix, $ret, $body),
+            6 => $crate::try_with_stack_matrix!(@arm 6, $matrix, $ret, $body),
+            7 => $crate::try_with_stack_matrix!(@arm 7, $matrix, $ret, $body),
+            requested => Err(::core::convert::From::from(
+                $crate::LaError::unsupported_dimension(
+                    requested,
+                    $crate::MAX_STACK_MATRIX_DISPATCH_DIM,
+                ),
+            )),
+        }
+    }};
+    ($dim:expr, |mut $matrix:ident| -> $ret:ty $body:block $(,)?) => {{
+        let __la_stack_requested_dim: usize = $dim;
+        match __la_stack_requested_dim {
+            0 => $crate::try_with_stack_matrix!(@arm_mut 0, $matrix, $ret, $body),
+            1 => $crate::try_with_stack_matrix!(@arm_mut 1, $matrix, $ret, $body),
+            2 => $crate::try_with_stack_matrix!(@arm_mut 2, $matrix, $ret, $body),
+            3 => $crate::try_with_stack_matrix!(@arm_mut 3, $matrix, $ret, $body),
+            4 => $crate::try_with_stack_matrix!(@arm_mut 4, $matrix, $ret, $body),
+            5 => $crate::try_with_stack_matrix!(@arm_mut 5, $matrix, $ret, $body),
+            6 => $crate::try_with_stack_matrix!(@arm_mut 6, $matrix, $ret, $body),
+            7 => $crate::try_with_stack_matrix!(@arm_mut 7, $matrix, $ret, $body),
+            requested => Err(::core::convert::From::from(
+                $crate::LaError::unsupported_dimension(
+                    requested,
+                    $crate::MAX_STACK_MATRIX_DISPATCH_DIM,
+                ),
+            )),
+        }
+    }};
+    (@arm $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
+        let __la_stack_body = |$matrix: $crate::Matrix<$d>| -> $ret { $body };
+        __la_stack_body($crate::Matrix::<$d>::zero())
+    }};
+    (@arm_mut $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
+        let __la_stack_body = |mut $matrix: $crate::Matrix<$d>| -> $ret { $body };
+        __la_stack_body($crate::Matrix::<$d>::zero())
+    }};
+}
+
 /// Common imports for ergonomic usage.
 ///
 /// This prelude re-exports the primary types and constants: [`Matrix`], [`Vector`], [`Lu`],
 /// [`Ldlt`], [`LaError`], [`DEFAULT_PIVOT_TOL`], [`DEFAULT_SINGULAR_TOL`], and the determinant
 /// error bound coefficients [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`].
+/// It also re-exports [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
+/// [`try_with_stack_matrix!`] for runtime-to-const matrix dispatch.
 ///
 /// When the `exact` feature is enabled, [`BigInt`] and [`BigRational`]
 /// are also re-exported so callers can construct exact values (e.g. as
@@ -312,7 +559,7 @@ pub use vector::Vector;
 pub mod prelude {
     pub use crate::{
         DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError,
-        Ldlt, Lu, Matrix, Vector,
+        Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, Vector, try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]
@@ -371,6 +618,53 @@ mod tests {
     }
 
     #[test]
+    fn laerror_display_formats_unsupported_dimension() {
+        let err = LaError::UnsupportedDimension {
+            requested: 8,
+            max: MAX_STACK_MATRIX_DISPATCH_DIM,
+        };
+        assert_eq!(
+            err.to_string(),
+            "unsupported matrix dimension 8; maximum stack-dispatch dimension is 7"
+        );
+    }
+
+    #[test]
+    fn laerror_display_formats_index_out_of_bounds() {
+        let err = LaError::IndexOutOfBounds {
+            row: 3,
+            col: 0,
+            dim: 3,
+        };
+        assert_eq!(
+            err.to_string(),
+            "matrix index (3, 0) is out of bounds for dimension 3"
+        );
+    }
+
+    #[test]
+    fn laerror_display_formats_invalid_tolerance() {
+        let err = LaError::InvalidTolerance { value: -1.0 };
+        assert_eq!(
+            err.to_string(),
+            "invalid tolerance -1; expected finite value >= 0"
+        );
+    }
+
+    #[test]
+    fn laerror_display_formats_asymmetric() {
+        let err = LaError::Asymmetric {
+            row: 0,
+            col: 2,
+            dim: 3,
+        };
+        assert_eq!(
+            err.to_string(),
+            "matrix is not symmetric for dimension 3: asymmetric pair (0, 2)"
+        );
+    }
+
+    #[test]
     fn laerror_is_std_error_with_no_source() {
         let err = LaError::Singular { pivot_col: 0 };
         let e: &dyn std::error::Error = &err;
@@ -386,6 +680,86 @@ mod tests {
         let v = Vector::<2>::new([1.0, 2.0]);
         let _ = m.lu(DEFAULT_PIVOT_TOL).unwrap().solve_vec(v).unwrap();
         let _ = m.ldlt(DEFAULT_SINGULAR_TOL).unwrap().solve_vec(v).unwrap();
+        assert_eq!(MAX_STACK_MATRIX_DISPATCH_DIM, 7);
+    }
+
+    macro_rules! gen_stack_matrix_dispatch_tests {
+        ($d:literal) => {
+            pastey::paste! {
+                #[test]
+                fn [<try_with_stack_matrix_dispatches_ $d d>]() {
+                    let requested = $d;
+                    let got = try_with_stack_matrix!(requested, |mut m| -> Result<usize, LaError> {
+                        if $d > 0 {
+                            m.set_checked($d - 1, $d - 1, f64::from($d))?;
+                            assert_abs_diff_eq!(
+                                m.get_checked($d - 1, $d - 1)?,
+                                f64::from($d),
+                                epsilon = 0.0
+                            );
+                        }
+                        Ok($d)
+                    });
+
+                    assert_eq!(got, Ok($d));
+                }
+            }
+        };
+    }
+
+    gen_stack_matrix_dispatch_tests!(2);
+    gen_stack_matrix_dispatch_tests!(3);
+    gen_stack_matrix_dispatch_tests!(4);
+    gen_stack_matrix_dispatch_tests!(5);
+    gen_stack_matrix_dispatch_tests!(7);
+
+    #[test]
+    fn try_with_stack_matrix_supports_zero_dimension() {
+        let got = try_with_stack_matrix!(0usize, |m| -> Result<Option<f64>, LaError> {
+            Ok(m.det_direct())
+        });
+
+        assert_eq!(got, Ok(Some(1.0)));
+    }
+
+    #[test]
+    fn try_with_stack_matrix_reports_unsupported_dimension() {
+        let got = try_with_stack_matrix!(8usize, |m| -> Result<f64, LaError> {
+            m.det(DEFAULT_PIVOT_TOL)
+        });
+
+        assert_eq!(
+            got,
+            Err(LaError::UnsupportedDimension {
+                requested: 8,
+                max: MAX_STACK_MATRIX_DISPATCH_DIM,
+            })
+        );
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct DownstreamError(LaError);
+
+    impl From<LaError> for DownstreamError {
+        fn from(err: LaError) -> Self {
+            Self(err)
+        }
+    }
+
+    #[test]
+    fn try_with_stack_matrix_converts_unsupported_dimension_error() {
+        let got = try_with_stack_matrix!(9usize, |m| -> Result<usize, DownstreamError> {
+            assert_abs_diff_eq!(m.inf_norm(), 0.0, epsilon = 0.0);
+            Ok(0)
+        });
+
+        assert_eq!(
+            got,
+            Err(DownstreamError(LaError::UnsupportedDimension {
+                requested: 9,
+                max: MAX_STACK_MATRIX_DISPATCH_DIM,
+            }))
+        );
     }
 
     /// Exercise every exact-feature re-export via the prelude so a future

@@ -7,12 +7,9 @@
 //! # Preconditions
 //! The input matrix must be **symmetric**.  This is a correctness contract, not a hint:
 //! the factorization algorithm reads only the lower triangle and implicitly assumes the
-//! upper triangle mirrors it.  Symmetry is verified by a `debug_assert!` in debug builds
-//! only; in release builds an asymmetric input will silently produce a meaningless
-//! factorization.  Callers who cannot statically guarantee symmetry should pre-validate
-//! with [`Matrix::is_symmetric`](crate::Matrix::is_symmetric) (or locate the offending
-//! pair with [`Matrix::first_asymmetry`](crate::Matrix::first_asymmetry)), or fall back
-//! to [`crate::Lu`] if their matrices are not guaranteed to be symmetric at all.
+//! upper triangle mirrors it.  Asymmetric inputs return [`LaError::Asymmetric`]
+//! before factorization starts.  Callers who know their matrices may not be
+//! symmetric at all should use [`crate::Lu`] instead.
 
 use core::hint::cold_path;
 
@@ -20,20 +17,19 @@ use crate::LaError;
 use crate::matrix::Matrix;
 use crate::vector::Vector;
 
+/// Relative tolerance used by LDLT's mandatory symmetry validation.
+const LDLT_SYMMETRY_REL_TOL: f64 = 1e-12;
+
 /// LDLT factorization (`A = L D Lᵀ`) for symmetric positive (semi)definite matrices.
 ///
 /// This factorization is **not** a general-purpose symmetric-indefinite LDLT (no pivoting).
 /// It assumes the input matrix is symmetric and (numerically) SPD/PSD.
 ///
 /// # Preconditions
-/// The source matrix passed to [`Matrix::ldlt`](crate::Matrix::ldlt) must be symmetric
-/// (`A[i][j] == A[j][i]` within rounding).  Asymmetric inputs panic in debug builds via
-/// `debug_assert!` and are silently accepted in release builds — producing a
-/// mathematically meaningless factorization whose [`Self::det`] and [`Self::solve_vec`]
-/// results are wrong without any error being reported.  Pre-validate with
-/// [`Matrix::is_symmetric`](crate::Matrix::is_symmetric) when the input cannot be
-/// statically guaranteed symmetric; see [`Matrix::ldlt`](crate::Matrix::ldlt) for further
-/// details and alternatives.
+/// The source matrix passed to [`Matrix::ldlt`](crate::Matrix::ldlt) must be
+/// symmetric (`A[i][j] == A[j][i]` within rounding).  Asymmetric inputs return
+/// [`LaError::Asymmetric`] before factorization starts; see
+/// [`Matrix::ldlt`](crate::Matrix::ldlt) for details and alternatives.
 ///
 /// # Storage
 /// The factors are stored in a single [`Matrix`]:
@@ -48,12 +44,15 @@ pub struct Ldlt<const D: usize> {
 }
 
 impl<const D: usize> Ldlt<D> {
+    /// Factor a symmetric square matrix into in-place LDLT storage for [`Matrix::ldlt`].
+    ///
+    /// This is the single validation boundary for LDLT construction: it rejects
+    /// invalid tolerances, asymmetric inputs, non-finite values, and degenerate
+    /// diagonals before callers can observe an [`Ldlt`] value.
     #[inline]
     pub(crate) fn factor(a: Matrix<D>, tol: f64) -> Result<Self, LaError> {
-        debug_assert!(tol >= 0.0, "tol must be non-negative");
-
-        #[cfg(debug_assertions)]
-        debug_assert_symmetric(&a);
+        let tol = LaError::validate_tolerance(tol)?;
+        reject_asymmetric(&a)?;
 
         let mut f = a;
 
@@ -226,20 +225,17 @@ impl<const D: usize> Ldlt<D> {
     }
 }
 
-#[cfg(debug_assertions)]
-fn debug_assert_symmetric<const D: usize>(a: &Matrix<D>) {
-    // Delegate to the public predicate so the runtime check and the documented
-    // contract on `Matrix::ldlt` cannot drift apart.  `first_asymmetry` is used
-    // (rather than `is_symmetric`) so the panic message can name the offending
-    // pair — which is invaluable for debugging.
-    if let Some((r, c)) = a.first_asymmetry(1e-12) {
-        let diff = (a.rows[r][c] - a.rows[c][r]).abs();
-        let eps = 1e-12 * a.inf_norm().max(1.0);
-        debug_assert!(
-            false,
-            "matrix must be symmetric (diff={diff}, eps={eps}) at ({r}, {c}); \
-             pre-validate with Matrix::is_symmetric before calling ldlt"
-        );
+/// Reject asymmetric matrices before the no-pivot LDLT algorithm reads only the lower triangle.
+///
+/// This preserves the public [`Matrix::ldlt`] contract: an input that would
+/// otherwise produce a factorization for a different implicit matrix returns
+/// [`LaError::Asymmetric`] instead.
+fn reject_asymmetric<const D: usize>(a: &Matrix<D>) -> Result<(), LaError> {
+    if let Some((row, col)) = a.first_asymmetry(LDLT_SYMMETRY_REL_TOL)? {
+        cold_path();
+        Err(LaError::asymmetric(row, col, D))
+    } else {
+        Ok(())
     }
 }
 
@@ -397,6 +393,19 @@ mod tests {
     }
 
     #[test]
+    fn nonfinite_offdiagonal_detected_before_asymmetry() {
+        let a = Matrix::<2>::from_rows([[1.0, f64::NAN], [0.0, 1.0]]);
+        let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
+        assert_eq!(
+            err,
+            LaError::NonFinite {
+                row: Some(0),
+                col: 1,
+            }
+        );
+    }
+
+    #[test]
     fn nonfinite_l_multiplier_overflow() {
         // d = 1e-11 > tol, but l = 1e300 / 1e-11 = 1e311 overflows f64.
         let a = Matrix::<2>::from_rows([[1e-11, 1e300], [1e300, 1.0]]);
@@ -470,18 +479,35 @@ mod tests {
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
 
-    /// Verifies the symmetry precondition documented on [`Matrix::ldlt`] is
-    /// enforced by `debug_assert_symmetric` in debug builds.  The test is
-    /// gated on `debug_assertions` so `cargo test --release` simply skips it
-    /// (the assertion is compiled out in release builds — see the
-    /// Preconditions section of `Matrix::ldlt`).
-    #[cfg(debug_assertions)]
     #[test]
-    #[should_panic(expected = "matrix must be symmetric")]
-    fn debug_asymmetric_input_panics() {
+    fn asymmetric_input_returns_typed_error() {
         // a[0][1] = 2.0 but a[1][0] = -2.0 → clearly asymmetric.
         let a = Matrix::<3>::from_rows([[4.0, 2.0, 0.0], [-2.0, 5.0, 1.0], [0.0, 1.0, 3.0]]);
-        let _ = a.ldlt(DEFAULT_SINGULAR_TOL);
+        assert_eq!(
+            a.ldlt(DEFAULT_SINGULAR_TOL),
+            Err(LaError::Asymmetric {
+                row: 0,
+                col: 1,
+                dim: 3,
+            })
+        );
+    }
+
+    #[test]
+    fn invalid_tolerance_rejected() {
+        let a = Matrix::<2>::identity();
+        assert_eq!(a.ldlt(-1.0), Err(LaError::InvalidTolerance { value: -1.0 }));
+
+        assert!(matches!(
+            a.ldlt(f64::NAN),
+            Err(LaError::InvalidTolerance { value }) if value.is_nan()
+        ));
+        assert_eq!(
+            a.ldlt(f64::INFINITY),
+            Err(LaError::InvalidTolerance {
+                value: f64::INFINITY,
+            })
+        );
     }
 
     // -----------------------------------------------------------------------
