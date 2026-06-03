@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-RULE_ANNOTATION = re.compile(r"\b(?:ruleid|todoruleid):\s*([A-Za-z0-9_.-]+(?:\s*,\s*[A-Za-z0-9_.-]+)*)")
+RULE_ANNOTATION = re.compile(r"\bruleid:\s*([A-Za-z0-9_.-]+(?:\s*,\s*[A-Za-z0-9_.-]+)*)")
 
 
 def _path_argument(argv: list[str]) -> Path | None:
@@ -37,10 +37,18 @@ def _semgrep_results() -> dict[str, Any] | None:
         print("Missing required SEMGREP_JSON environment variable", file=sys.stderr)
         return None
     try:
-        return json.loads(semgrep_json)
+        data = json.loads(semgrep_json)
     except json.JSONDecodeError as error:
         print(f"Invalid JSON in SEMGREP_JSON: {error}", file=sys.stderr)
         return None
+
+    if not isinstance(data, dict):
+        print("Invalid SEMGREP_JSON shape: expected a JSON object", file=sys.stderr)
+        return None
+    if not isinstance(data.get("results"), list):
+        print("Invalid SEMGREP_JSON shape: expected 'results' to be a list", file=sys.stderr)
+        return None
+    return data
 
 
 def main() -> int:
@@ -57,7 +65,27 @@ def main() -> int:
     if data is None:
         return 1
 
-    actual: collections.Counter[str] = collections.Counter(result["check_id"] for result in data["results"])
+    results = data["results"]
+    actual: collections.Counter[str] = collections.Counter()
+    malformed_results: list[str] = []
+    for index, result in enumerate(results):
+        if not isinstance(result, dict):
+            malformed_results.append(f"result {index} is not an object")
+            continue
+
+        check_id = result.get("check_id")
+        if not isinstance(check_id, str):
+            malformed_results.append(f"result {index} is missing string field 'check_id'")
+            continue
+
+        actual.update([check_id])
+
+    if malformed_results:
+        print("Invalid SEMGREP_JSON shape:", file=sys.stderr)
+        for malformed in malformed_results:
+            print(f"  {malformed}", file=sys.stderr)
+        return 1
+
     if actual == expected:
         return 0
 
