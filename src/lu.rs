@@ -17,8 +17,14 @@ pub struct Lu<const D: usize> {
 }
 
 impl<const D: usize> Lu<D> {
+    /// Factor a square matrix into in-place LU storage for [`Matrix::lu`](crate::Matrix::lu).
+    ///
+    /// This is the single validation boundary for LU construction: it rejects
+    /// invalid tolerances, non-finite pivot candidates, and numerically singular
+    /// pivots before callers can observe a [`Lu`] value.
     #[inline]
     pub(crate) fn factor(a: Matrix<D>, tol: f64) -> Result<Self, LaError> {
+        let tol = LaError::validate_tolerance(tol)?;
         let mut lu = a;
 
         let mut piv = [0usize; D];
@@ -451,6 +457,23 @@ mod tests {
         let a = Matrix::<2>::from_rows(black_box([[1e-13, 0.0], [0.0, 1.0]]));
         let err = a.lu(DEFAULT_PIVOT_TOL).unwrap_err();
         assert_eq!(err, LaError::Singular { pivot_col: 0 });
+    }
+
+    #[test]
+    fn invalid_tolerance_rejected() {
+        let a = Matrix::<2>::identity();
+        assert_eq!(a.lu(-1.0), Err(LaError::InvalidTolerance { value: -1.0 }));
+
+        assert!(matches!(
+            a.lu(f64::NAN),
+            Err(LaError::InvalidTolerance { value }) if value.is_nan()
+        ));
+        assert_eq!(
+            a.lu(f64::INFINITY),
+            Err(LaError::InvalidTolerance {
+                value: f64::INFINITY,
+            })
+        );
     }
 
     #[test]

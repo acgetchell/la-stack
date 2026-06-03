@@ -89,6 +89,42 @@ impl<const D: usize> Matrix<D> {
         }
     }
 
+    /// Get an element, preserving index context on failure.
+    ///
+    /// Prefer [`get`](Self::get) for const or hot paths that only need
+    /// `Option`-style absence.  Use this method at public runtime boundaries
+    /// where row, column, and dimension context should survive in a typed error.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// assert_eq!(m.get_checked(1, 0)?, 3.0);
+    /// assert_eq!(
+    ///     m.get_checked(2, 0),
+    ///     Err(LaError::IndexOutOfBounds {
+    ///         row: 2,
+    ///         col: 0,
+    ///         dim: 2,
+    ///     })
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::IndexOutOfBounds`] when either index is not `< D`.
+    #[inline]
+    pub const fn get_checked(&self, row: usize, col: usize) -> Result<f64, LaError> {
+        if row < D && col < D {
+            Ok(self.rows[row][col])
+        } else {
+            Err(LaError::index_out_of_bounds(row, col, D))
+        }
+    }
+
     /// Set an element with bounds checking.
     ///
     /// Returns `true` if the index was in-bounds.
@@ -109,6 +145,46 @@ impl<const D: usize> Matrix<D> {
             true
         } else {
             false
+        }
+    }
+
+    /// Set an element, preserving index context on failure.
+    ///
+    /// The matrix is mutated only when `(row, col)` is in bounds.  Prefer
+    /// [`set`](Self::set) for const or hot paths that only need a boolean;
+    /// use this method at public runtime boundaries where failed mutation
+    /// should return a typed, contextual error.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let mut m = Matrix::<2>::zero();
+    /// m.set_checked(0, 1, 2.5)?;
+    /// assert_eq!(m.get_checked(0, 1)?, 2.5);
+    ///
+    /// assert_eq!(
+    ///     m.set_checked(10, 0, 1.0),
+    ///     Err(LaError::IndexOutOfBounds {
+    ///         row: 10,
+    ///         col: 0,
+    ///         dim: 2,
+    ///     })
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::IndexOutOfBounds`] when either index is not `< D`.
+    #[inline]
+    pub const fn set_checked(&mut self, row: usize, col: usize, value: f64) -> Result<(), LaError> {
+        if row < D && col < D {
+            self.rows[row][col] = value;
+            Ok(())
+        } else {
+            Err(LaError::index_out_of_bounds(row, col, D))
         }
     }
 
@@ -169,44 +245,38 @@ impl<const D: usize> Matrix<D> {
     /// Two entries `self[r][c]` and `self[c][r]` are considered equal (for the
     /// purposes of symmetry) when
     /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, self.inf_norm())`.
-    /// This mirrors the predicate used internally by the debug-build symmetry
-    /// check inside [`ldlt`](Self::ldlt), so callers can pre-validate matrices
-    /// that may come from untrusted sources without relying on a debug-only
-    /// panic.
+    /// This mirrors the predicate used internally by [`ldlt`](Self::ldlt), so
+    /// callers can pre-validate matrices that may come from untrusted sources.
     ///
     /// Use [`first_asymmetry`](Self::first_asymmetry) to locate the first
-    /// offending pair when this returns `false`.
+    /// offending pair when this returns `Ok(false)`.
     ///
     /// # NaN / infinity handling
-    /// Any non-finite `|self[r][c] - self[c][r]|` (NaN or ±∞) causes this
-    /// predicate to return `false`.  This catches both NaN off-diagonals and
-    /// asymmetric pairs where one side is infinite and the other is finite
-    /// (which would otherwise slip through when `inf_norm()` blows `eps` up
-    /// to `+∞` and makes `diff > eps` trivially false).  A matrix whose
-    /// [`inf_norm`](Self::inf_norm) is `+∞` can still tolerate *finite*
-    /// asymmetries under an infinite `eps` — callers who need strict equality
-    /// on large-magnitude finite entries should validate finiteness
-    /// separately.
-    ///
-    /// # Panics
-    /// In debug builds, panics if `rel_tol` is negative or NaN; in release
-    /// builds these are silently treated as garbage-in garbage-out, matching
-    /// the convention of [`lu`](Self::lu) and [`ldlt`](Self::ldlt).
+    /// Stored NaN or ±∞ entries return [`LaError::NonFinite`] with the
+    /// offending matrix coordinates.  If both stored entries are finite but
+    /// their difference overflows to ±∞, the pair is reported as asymmetric.
     ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
-    /// assert!(a.is_symmetric(1e-12));
+    /// assert!(a.is_symmetric(1e-12)?);
     ///
     /// let b = Matrix::<2>::from_rows([[4.0, 2.0], [3.0, 3.0]]);
-    /// assert!(!b.is_symmetric(1e-12));
+    /// assert!(!b.is_symmetric(1e-12)?);
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::InvalidTolerance`] when `rel_tol` is NaN, infinite,
+    /// or negative.
+    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite.
     #[inline]
-    #[must_use]
-    pub fn is_symmetric(&self, rel_tol: f64) -> bool {
-        self.first_asymmetry(rel_tol).is_none()
+    pub fn is_symmetric(&self, rel_tol: f64) -> Result<bool, LaError> {
+        Ok(self.first_asymmetry(rel_tol)?.is_none())
     }
 
     /// Returns the indices `(r, c)` (with `r < c`) of the first off-diagonal
@@ -218,47 +288,80 @@ impl<const D: usize> Matrix<D> {
     /// predicate is the same as [`is_symmetric`](Self::is_symmetric):
     /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, self.inf_norm())`.
     ///
-    /// # Panics
-    /// In debug builds, panics if `rel_tol` is negative or NaN.
-    ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let a = Matrix::<3>::from_rows([
     ///     [1.0, 2.0, 0.0],
     ///     [2.0, 4.0, 5.0],
     ///     [0.0, 6.0, 9.0], // 6.0 breaks symmetry with a[1][2] = 5.0
     /// ]);
-    /// assert_eq!(a.first_asymmetry(1e-12), Some((1, 2)));
-    /// assert_eq!(Matrix::<3>::identity().first_asymmetry(1e-12), None);
+    /// assert_eq!(a.first_asymmetry(1e-12)?, Some((1, 2)));
+    /// assert_eq!(Matrix::<3>::identity().first_asymmetry(1e-12)?, None);
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::InvalidTolerance`] when `rel_tol` is NaN, infinite,
+    /// or negative.
+    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite.
     #[inline]
-    #[must_use]
-    pub fn first_asymmetry(&self, rel_tol: f64) -> Option<(usize, usize)> {
-        debug_assert!(
-            rel_tol >= 0.0,
-            "rel_tol must be non-negative (got {rel_tol})"
-        );
-        let eps = rel_tol * self.inf_norm().max(1.0);
+    pub fn first_asymmetry(&self, rel_tol: f64) -> Result<Option<(usize, usize)>, LaError> {
+        let rel_tol = LaError::validate_tolerance(rel_tol)?;
+        let eps = self.symmetry_epsilon(rel_tol)?;
         for r in 0..D {
             for c in (r + 1)..D {
-                let diff = (self.rows[r][c] - self.rows[c][r]).abs();
-                // Any non-finite `diff` is reported as asymmetric:
-                //  * NaN contaminates one side only, and `diff > eps` would
-                //    silently skip it because ordered comparisons against NaN
-                //    are always `false`.
-                //  * ±∞ arises when exactly one of `self[r][c]` / `self[c][r]`
-                //    is infinite; a naive `diff > eps` misses this when the
-                //    matrix's `inf_norm()` pushes `eps` to `+∞` (because
-                //    `∞ > ∞` is `false`).
+                let upper = self.rows[r][c];
+                let lower = self.rows[c][r];
+
+                let diff = (upper - lower).abs();
+                // Finite stored entries can still produce an infinite
+                // difference when the subtraction overflows.  That is an
+                // asymmetry, not a stored non-finite matrix value.
                 if !diff.is_finite() || diff > eps {
                     cold_path();
-                    return Some((r, c));
+                    return Ok(Some((r, c)));
                 }
             }
         }
-        None
+        Ok(None)
+    }
+
+    /// Compute the symmetry tolerance scale used by [`first_asymmetry`](Self::first_asymmetry).
+    ///
+    /// The result is equivalent to `rel_tol * max(1, inf_norm())`, but the
+    /// accumulation scales each absolute entry before adding it.  That preserves
+    /// strict tolerances even when the unscaled row sum would overflow.
+    ///
+    /// This also validates every stored entry before symmetry comparison.
+    /// Otherwise a non-finite diagonal, or a finite row whose unscaled sum
+    /// overflows, can make the symmetry threshold NaN/∞ and mask real
+    /// off-diagonal mismatches.
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite.
+    fn symmetry_epsilon(&self, rel_tol: f64) -> Result<f64, LaError> {
+        let mut eps = rel_tol;
+
+        for r in 0..D {
+            let mut row_eps = 0.0;
+            for c in 0..D {
+                let entry = self.rows[r][c];
+                if !entry.is_finite() {
+                    cold_path();
+                    return Err(LaError::non_finite_cell(r, c));
+                }
+                row_eps = rel_tol.mul_add(entry.abs(), row_eps);
+            }
+            if row_eps > eps {
+                eps = row_eps;
+            }
+        }
+
+        Ok(eps)
     }
 
     /// Compute an LU decomposition with partial pivoting.
@@ -284,6 +387,7 @@ impl<const D: usize> Matrix<D> {
     /// Returns [`LaError::Singular`] if, for some column `k`, the largest-magnitude candidate pivot
     /// in that column satisfies `|pivot| <= tol` (so no numerically usable pivot exists).
     /// Returns [`LaError::NonFinite`] if NaN/∞ is detected during factorization.
+    /// Returns [`LaError::InvalidTolerance`] if `tol` is NaN, infinite, or negative.
     #[inline]
     pub fn lu(self, tol: f64) -> Result<Lu<D>, LaError> {
         Lu::factor(self, tol)
@@ -294,22 +398,12 @@ impl<const D: usize> Matrix<D> {
     /// This is intended for symmetric positive definite (SPD) and positive semi-definite (PSD)
     /// matrices such as Gram matrices.
     ///
-    /// # Preconditions
-    /// **The input matrix `self` must be symmetric** — that is, `self[i][j] == self[j][i]`
-    /// (within rounding) for all `i`, `j`.  This is a *correctness* precondition, not merely
-    /// a performance hint.
-    ///
-    /// - In **debug builds** a `debug_assert!` verifies symmetry via
-    ///   [`is_symmetric`](Self::is_symmetric) (relative tolerance scaled by the matrix's
-    ///   infinity norm) and panics if it fails.
-    /// - In **release builds** the check is compiled out for performance.  An asymmetric
-    ///   input will be accepted silently and produce a mathematically meaningless
-    ///   factorization — subsequent calls to [`Ldlt::det`] and [`Ldlt::solve_vec`] will
-    ///   return wrong results with no error.
-    ///
-    /// Callers who cannot statically guarantee symmetry should pre-validate with
-    /// [`is_symmetric`](Self::is_symmetric) (or locate the offending pair with
-    /// [`first_asymmetry`](Self::first_asymmetry)) before calling `ldlt`.  If you need a
+    /// # Symmetry validation
+    /// The input matrix `self` must be symmetric — that is,
+    /// `self[i][j] == self[j][i]` within the crate's LDLT symmetry tolerance
+    /// (`1e-12`, scaled like [`is_symmetric`](Self::is_symmetric)).  This is a
+    /// correctness invariant, not merely a performance hint, so asymmetric inputs return
+    /// [`LaError::Asymmetric`] before factorization starts.  If you need a
     /// general-purpose factorization that tolerates non-symmetric inputs, use
     /// [`lu`](Self::lu) instead.
     ///
@@ -339,9 +433,8 @@ impl<const D: usize> Matrix<D> {
     /// is `<= tol` (non-positive or too small). This treats PSD degeneracy (and indefinite inputs)
     /// as singular/degenerate.
     /// Returns [`LaError::NonFinite`] if NaN/∞ is detected during factorization.
-    ///
-    /// Note that an *asymmetric* input is **not** reported as an error in release builds —
-    /// see the [Preconditions](#preconditions) section above.
+    /// Returns [`LaError::InvalidTolerance`] if `tol` is NaN, infinite, or negative.
+    /// Returns [`LaError::Asymmetric`] if the input matrix is not symmetric.
     #[inline]
     pub fn ldlt(self, tol: f64) -> Result<Ldlt<D>, LaError> {
         Ldlt::factor(self, tol)
@@ -586,7 +679,7 @@ impl<const D: usize> Default for Matrix<D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DEFAULT_PIVOT_TOL;
+    use crate::{DEFAULT_PIVOT_TOL, Vector};
 
     use approx::assert_abs_diff_eq;
     use pastey::paste;
@@ -605,16 +698,45 @@ mod tests {
 
                     assert_eq!(m.get(0, 0), Some(1.0));
                     assert_eq!(m.get($d - 1, $d - 1), Some(-2.0));
+                    assert_eq!(m.get_checked(0, 0), Ok(1.0));
+                    assert_eq!(m.get_checked($d - 1, $d - 1), Ok(-2.0));
 
                     // Out-of-bounds is None.
                     assert_eq!(m.get($d, 0), None);
+                    assert_eq!(
+                        m.get_checked($d, 0),
+                        Err(LaError::IndexOutOfBounds {
+                            row: $d,
+                            col: 0,
+                            dim: $d,
+                        })
+                    );
 
                     // Out-of-bounds set fails.
                     assert!(!m.set($d, 0, 3.0));
+                    assert_eq!(
+                        m.set_checked($d, 0, 3.0),
+                        Err(LaError::IndexOutOfBounds {
+                            row: $d,
+                            col: 0,
+                            dim: $d,
+                        })
+                    );
+                    assert_eq!(
+                        m.set_checked(0, $d, 3.0),
+                        Err(LaError::IndexOutOfBounds {
+                            row: 0,
+                            col: $d,
+                            dim: $d,
+                        })
+                    );
+                    assert_eq!(m.get(0, 0), Some(1.0));
 
                     // In-bounds set works.
                     assert!(m.set(0, $d - 1, 3.0));
                     assert_eq!(m.get(0, $d - 1), Some(3.0));
+                    assert_eq!(m.set_checked($d - 1, 0, 4.0), Ok(()));
+                    assert_eq!(m.get_checked($d - 1, 0), Ok(4.0));
                 }
 
                 #[test]
@@ -672,7 +794,7 @@ mod tests {
                         arr
                     };
 
-                    let b = crate::Vector::<$d>::new(b_arr);
+                    let b = Vector::<$d>::new(b_arr);
                     let x = lu.solve_vec(b).unwrap().into_array();
 
                     for (x_i, b_i) in x.iter().zip(b_arr.iter()) {
@@ -1026,15 +1148,15 @@ mod tests {
                 #[test]
                 fn [<is_symmetric_true_for_identity_ $d d>]() {
                     let m = Matrix::<$d>::identity();
-                    assert!(m.is_symmetric(1e-12));
-                    assert_eq!(m.first_asymmetry(1e-12), None);
+                    assert!(m.is_symmetric(1e-12).unwrap());
+                    assert_eq!(m.first_asymmetry(1e-12).unwrap(), None);
                 }
 
                 #[test]
                 fn [<is_symmetric_true_for_zero_ $d d>]() {
                     let m = Matrix::<$d>::zero();
-                    assert!(m.is_symmetric(1e-12));
-                    assert_eq!(m.first_asymmetry(1e-12), None);
+                    assert!(m.is_symmetric(1e-12).unwrap());
+                    assert_eq!(m.first_asymmetry(1e-12).unwrap(), None);
                 }
 
                 #[test]
@@ -1056,8 +1178,8 @@ mod tests {
                         }
                     }
                     let a = Matrix::<$d>::from_rows(sym);
-                    assert!(a.is_symmetric(1e-12));
-                    assert_eq!(a.first_asymmetry(1e-12), None);
+                    assert!(a.is_symmetric(1e-12).unwrap());
+                    assert_eq!(a.first_asymmetry(1e-12).unwrap(), None);
                 }
 
                 #[test]
@@ -1070,13 +1192,14 @@ mod tests {
                     rows[0][$d - 1] = 1.0;
                     rows[$d - 1][0] = -1.0; // breaks symmetry
                     let a = Matrix::<$d>::from_rows(rows);
-                    assert!(!a.is_symmetric(1e-12));
-                    assert_eq!(a.first_asymmetry(1e-12), Some((0, $d - 1)));
+                    assert!(!a.is_symmetric(1e-12).unwrap());
+                    assert_eq!(a.first_asymmetry(1e-12).unwrap(), Some((0, $d - 1)));
                 }
 
                 #[test]
-                fn [<is_symmetric_false_for_nan_offdiagonal_ $d d>]() {
-                    // A NaN off-diagonal must be detected as asymmetric.
+                fn [<is_symmetric_rejects_nan_offdiagonal_ $d d>]() {
+                    // A NaN off-diagonal is a stored non-finite matrix value,
+                    // not merely a symmetry mismatch.
                     let mut rows = [[0.0f64; $d]; $d];
                     for i in 0..$d {
                         rows[i][i] = 1.0;
@@ -1084,9 +1207,20 @@ mod tests {
                     rows[0][1] = f64::NAN;
                     rows[1][0] = f64::NAN;
                     let a = Matrix::<$d>::from_rows(rows);
-                    assert!(!a.is_symmetric(1e-12));
-                    // (0, 1) is the first upper-triangular pair involving the NaN.
-                    assert_eq!(a.first_asymmetry(1e-12), Some((0, 1)));
+                    assert_eq!(
+                        a.is_symmetric(1e-12),
+                        Err(LaError::NonFinite {
+                            row: Some(0),
+                            col: 1,
+                        })
+                    );
+                    assert_eq!(
+                        a.first_asymmetry(1e-12),
+                        Err(LaError::NonFinite {
+                            row: Some(0),
+                            col: 1,
+                        })
+                    );
                 }
             }
         };
@@ -1103,35 +1237,112 @@ mod tests {
         // relative tolerance 1e-12 yields eps ≈ 2e-6, which accepts the gap;
         // a stricter tol of 1e-15 rejects it.
         let a = Matrix::<2>::from_rows([[1.0e6, 1.0e6 + 1.0e-6], [1.0e6, 1.0e6]]);
-        assert!(a.is_symmetric(1e-12));
-        assert!(!a.is_symmetric(1e-15));
+        assert!(a.is_symmetric(1e-12).unwrap());
+        assert!(!a.is_symmetric(1e-15).unwrap());
     }
 
     #[test]
     fn first_asymmetry_returns_lexicographically_first_pair() {
         // Two asymmetric pairs: (0, 2) and (1, 2).  We must get (0, 2) first.
         let a = Matrix::<3>::from_rows([[1.0, 0.0, 2.0], [0.0, 1.0, 3.0], [-2.0, -3.0, 1.0]]);
-        assert_eq!(a.first_asymmetry(1e-12), Some((0, 2)));
+        assert_eq!(a.first_asymmetry(1e-12).unwrap(), Some((0, 2)));
     }
 
-    /// Regression: a single infinite off-diagonal paired with a finite entry
-    /// used to slip through as "symmetric" because `inf_norm()` blew `eps` up
-    /// to `+∞` and `∞ > ∞` evaluates to `false`.  After the fix, any
-    /// non-finite `|a[r][c] - a[c][r]|` is reported as an asymmetry regardless
-    /// of `eps`.
     #[test]
-    fn first_asymmetry_flags_infinite_offdiagonal_against_finite() {
+    fn first_asymmetry_rejects_infinite_offdiagonal() {
         let a = Matrix::<2>::from_rows([[1.0, f64::INFINITY], [0.0, 1.0]]);
-        assert_eq!(a.first_asymmetry(1e-12), Some((0, 1)));
-        assert!(!a.is_symmetric(1e-12));
+        assert_eq!(
+            a.first_asymmetry(1e-12),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 1,
+            })
+        );
+        assert_eq!(
+            a.is_symmetric(1e-12),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 1,
+            })
+        );
     }
 
-    #[cfg(debug_assertions)]
     #[test]
-    #[should_panic(expected = "rel_tol must be non-negative")]
-    fn first_asymmetry_debug_panics_on_negative_tol() {
-        // Mirrors the `debug_assert!(tol >= 0.0)` convention used by
-        // `Matrix::lu` / `Matrix::ldlt`.
-        let _ = Matrix::<2>::identity().first_asymmetry(-1.0);
+    fn first_asymmetry_rejects_nan_diagonal() {
+        let a = Matrix::<2>::from_rows([[f64::NAN, 1.0], [1.0, 1.0]]);
+        assert_eq!(
+            a.first_asymmetry(1e-12),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 0,
+            })
+        );
+        assert_eq!(
+            a.is_symmetric(1e-12),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn first_asymmetry_strict_tol_survives_row_sum_overflow() {
+        let a = Matrix::<3>::from_rows([
+            [f64::MAX, 1.0, f64::MAX],
+            [2.0, f64::MAX, 0.0],
+            [f64::MAX, 0.0, f64::MAX],
+        ]);
+
+        assert!(a.inf_norm().is_infinite());
+        assert_eq!(a.first_asymmetry(0.0).unwrap(), Some((0, 1)));
+        assert!(!a.is_symmetric(0.0).unwrap());
+    }
+
+    #[test]
+    fn first_asymmetry_flags_overflowed_finite_difference() {
+        let a = Matrix::<2>::from_rows([[1.0, f64::MAX], [-f64::MAX, 1.0]]);
+        assert_eq!(a.first_asymmetry(1e-12).unwrap(), Some((0, 1)));
+        assert!(!a.is_symmetric(1e-12).unwrap());
+    }
+
+    #[test]
+    fn is_symmetric_rejects_invalid_tol() {
+        assert_eq!(
+            Matrix::<2>::identity().is_symmetric(-1.0),
+            Err(LaError::InvalidTolerance { value: -1.0 })
+        );
+        assert!(matches!(
+            Matrix::<2>::identity().is_symmetric(f64::NAN),
+            Err(LaError::InvalidTolerance { value }) if value.is_nan()
+        ));
+        assert_eq!(
+            Matrix::<2>::identity().is_symmetric(f64::INFINITY),
+            Err(LaError::InvalidTolerance {
+                value: f64::INFINITY,
+            })
+        );
+    }
+
+    #[test]
+    fn first_asymmetry_rejects_negative_tol() {
+        assert_eq!(
+            Matrix::<2>::identity().first_asymmetry(-1.0),
+            Err(LaError::InvalidTolerance { value: -1.0 })
+        );
+    }
+
+    #[test]
+    fn first_asymmetry_rejects_nonfinite_tol() {
+        assert!(matches!(
+            Matrix::<2>::identity().first_asymmetry(f64::NAN),
+            Err(LaError::InvalidTolerance { value }) if value.is_nan()
+        ));
+        assert_eq!(
+            Matrix::<2>::identity().first_asymmetry(f64::INFINITY),
+            Err(LaError::InvalidTolerance {
+                value: f64::INFINITY,
+            })
+        );
     }
 }

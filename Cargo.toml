@@ -65,5 +65,8 @@ unsafe_code = "forbid"
 missing_docs = "warn"
 dead_code = "warn"
 
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
