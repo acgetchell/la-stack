@@ -751,11 +751,14 @@ impl<const D: usize> Matrix<D> {
     /// speedup (see [`det_direct`](Self::det_direct)).
     ///
     /// Finite inputs return a floating-point determinant estimate in every dimension;
-    /// this method does not surface [`LaError::Singular`]. For D ≥ 5, the LU
-    /// fallback only maps an exactly zero pivot to `Ok(0.0)`. Use [`lu`](Self::lu)
-    /// directly when you need tolerance-aware singularity detection or the pivot
-    /// column, and use the exact determinant APIs when exact singularity
-    /// classification matters.
+    /// this method does not surface [`LaError::Singular`]. Because it mixes
+    /// closed-form paths from [`det_direct`](Self::det_direct) with an LU fallback,
+    /// the returned value has no certified absolute error bound. Use
+    /// [`det_errbound`](Self::det_errbound) for D ≤ 4 bounds, or the exact
+    /// determinant APIs when exact singularity classification or certified values
+    /// matter. For D ≥ 5, the LU fallback only maps an exactly zero pivot to
+    /// `Ok(0.0)`. Use [`lu`](Self::lu) directly when you need tolerance-aware
+    /// singularity detection or the pivot column.
     ///
     /// # Examples
     /// ```
