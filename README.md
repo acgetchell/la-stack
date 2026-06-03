@@ -20,8 +20,8 @@ while keeping the API intentionally small and explicit.
 
 `la-stack` provides a handful of const-generic, stack-backed building blocks:
 
-- `Vector<const D: usize>` for fixed-length vectors (`[f64; D]` today)
-- `Matrix<const D: usize>` for fixed-size square matrices (`[[f64; D]; D]` today)
+- `Vector<const D: usize>` for fixed-length `f64` vectors backed by `[f64; D]`
+- `Matrix<const D: usize>` for fixed-size square `f64` matrices backed by `[[f64; D]; D]`
 - `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
 - `Ldlt<const D: usize>` for LDLT factorization without pivoting (solve + det; symmetric SPD/PSD)
 
@@ -37,19 +37,28 @@ while keeping the API intentionally small and explicit.
 - ✅ Stack storage only (no heap allocation in core types)
 - ✅ `unsafe` forbidden
 
-See [CHANGELOG.md](CHANGELOG.md) for details.
+See [CHANGELOG.md](CHANGELOG.md) for release history and
+[docs/roadmap.md](docs/roadmap.md) for current release planning.
 
 ## 🚫 Anti-goals
 
 - Bare-metal performance: see [`blas-src`](https://crates.io/crates/blas-src), [`lapack-src`](https://crates.io/crates/lapack-src), [`openblas-src`](https://crates.io/crates/openblas-src)
 - Comprehensive: use [`nalgebra`](https://crates.io/crates/nalgebra) if you need a full-featured library
 - Large matrices/dimensions with parallelism: use [`faer`](https://crates.io/crates/faer) if you need this
+- Alternate floating-point scalar families: `la-stack` supports `f64` and optional exact arithmetic, not `f32` / `f16` APIs
 
 ## 🔢 Scalar types
 
-The core types use `f64`. When f64 precision is insufficient (e.g. near-degenerate
-geometric configurations), the optional `"exact"` feature provides arbitrary-precision
+The scalar model is intentionally limited to `f64` for floating-point work and
+exact rationals behind the optional `"exact"` feature. This matches the crate's
+focus on small, robustness-sensitive numerical and computational geometry
+workloads. When `f64` precision is insufficient (e.g. near-degenerate geometric
+configurations), the optional `"exact"` feature provides arbitrary-precision
 arithmetic via `BigRational` (see below).
+
+Lower-precision `f32` / `f16` throughput-oriented workloads are outside the
+crate's scope; they usually indicate large-matrix or accelerator-oriented use
+cases better served by broader linear-algebra libraries.
 
 ## 🚀 Quickstart
 
@@ -240,7 +249,7 @@ exposed for advanced use cases.
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 
-Storage shown above reflects the `f64` implementation.
+Storage shown above reflects the intentional `f64` scalar model.
 
 `Matrix<D>` key methods: `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`,
 `det_exact`¹, `det_exact_f64`¹, `det_sign_exact`¹, `solve_exact`¹, `solve_exact_f64`¹.

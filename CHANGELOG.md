@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are used from the cache, preventing potential version mismatches during
   CI runs.
 
+- Revert "ci: modernize tooling checks and example execution"
+  [`a4b9f64`](https://github.com/acgetchell/la-stack/commit/a4b9f64235f53274270ef9272634a61f653dad87)
+
+- Reapply "ci: modernize tooling checks and example execution"
+  [`758321a`](https://github.com/acgetchell/la-stack/commit/758321acf872b1f17286ff3bb7bee6a807e4b440)
+
 ### Dependencies
 
 - Bump taiki-e/install-action from 2.75.18 to 2.75.22 [`d6c944b`](https://github.com/acgetchell/la-stack/commit/d6c944bb7dd30bb00dfe820bc355c4351cb1f242)
@@ -28,9 +34,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump taiki-e/install-action from 2.78.3 to 2.80.0 [`480e61b`](https://github.com/acgetchell/la-stack/commit/480e61b85638fb044edccd8116eec777f5588f7d)
 - Bump codecov/codecov-action from 6.0.0 to 6.0.1 [`3ca8eed`](https://github.com/acgetchell/la-stack/commit/3ca8eed89997379e6cbad863ecc274bba1651749)
 
+### Documentation
+
+- Document feature requirement for exact APIs [`19b10d5`](https://github.com/acgetchell/la-stack/commit/19b10d552e83b6a7f9e91695b4850b8fab3f4550)
+
 ### Maintenance
 
 - Migrate coverage to cargo-llvm-cov [`66f2117`](https://github.com/acgetchell/la-stack/commit/66f21173344033b3003dd6e46b8400b08e6fdd40)
+- Align shared security and release tooling [`b303509`](https://github.com/acgetchell/la-stack/commit/b3035095964d9491f0a3d5c4fb790ab5c22cd06f)
+
+  - Run CI through pinned uv and cached Cargo tooling across all supported platforms.
+  - Add repository Semgrep rules, action allowlist coverage, CodeQL, zizmor, and SARIF workflows.
+  - Raise the Rust and Python tooling floors to Rust 1.96 and Python 3.12.
+  - Add archive-aware changelog generation, post-processing, and tag-release tooling.
+  - Preserve exact arithmetic overflow reporting without non-finite sentinel defaults.
+- Modernize tooling checks and example execution [`da626bc`](https://github.com/acgetchell/la-stack/commit/da626bcca899aa91d58f728db433a53a46179e92)
+
+  - Run examples from prebuilt binaries instead of invoking cargo run for each example.
+  - Add check/fix recipe aliases and guard documented command ordering with Semgrep.
+  - Document the Rust-native Markdown, YAML, TOML, spelling, and workflow action policy.
+  - Tighten Python/tooling setup by pinning pytest, using .python-version in CI, and hardening setup-tool version checks.
+  - Keep CI running the full just ci workflow across Ubuntu, macOS, and Windows.
 
 ## [0.4.1] - 2026-04-21
 
