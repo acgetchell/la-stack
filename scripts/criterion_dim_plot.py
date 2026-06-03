@@ -20,9 +20,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,26 +149,16 @@ def _discover_dims(criterion_dir: Path) -> list[int]:
     return sorted(dims)
 
 
-def _strip_toml_comment(line: str) -> str:
-    return line.split("#", 1)[0].strip()
-
-
 def _read_cargo_package_version(cargo_toml: Path) -> str | None:
     if not cargo_toml.exists():
         return None
 
-    in_package = False
-    for raw_line in cargo_toml.read_text(encoding="utf-8").splitlines():
-        line = _strip_toml_comment(raw_line)
-        if not line:
-            continue
-        if line.startswith("[") and line.endswith("]"):
-            in_package = line == "[package]"
-            continue
-        if in_package:
-            match = re.match(r'version\s*=\s*"([^"]+)"', line)
-            if match:
-                return match.group(1)
+    data = _read_cargo_toml(cargo_toml)
+    package = data.get("package")
+    if isinstance(package, dict):
+        version = package.get("version")
+        if isinstance(version, str):
+            return version
     return None
 
 
@@ -175,39 +166,26 @@ def _read_cargo_dependency_versions(cargo_toml: Path, names: set[str]) -> dict[s
     if not cargo_toml.exists():
         return {}
 
+    data = _read_cargo_toml(cargo_toml)
     versions: dict[str, str] = {}
-    section: str | None = None
-
-    for raw_line in cargo_toml.read_text(encoding="utf-8").splitlines():
-        line = _strip_toml_comment(raw_line)
-        if not line:
+    for section in ("dependencies", "dev-dependencies", "build-dependencies"):
+        table = data.get(section)
+        if not isinstance(table, dict):
             continue
-        section_match = re.match(r"^\[([^\]]+)\]$", line)
-        if section_match:
-            section = section_match.group(1)
-            continue
-        if section not in {"dependencies", "dev-dependencies", "build-dependencies"}:
-            continue
-
-        dep_match = re.match(r"^([A-Za-z0-9_-]+)\s*=\s*(.+)$", line)
-        if not dep_match:
-            continue
-
-        name = dep_match.group(1)
-        if name not in names:
-            continue
-
-        value = dep_match.group(2).strip()
-        if value.startswith("{"):
-            version_match = re.search(r'version\s*=\s*"([^"]+)"', value)
-            if version_match:
-                versions[name] = version_match.group(1)
-        else:
-            version_match = re.match(r'^"([^"]+)"$', value)
-            if version_match:
-                versions[name] = version_match.group(1)
+        for name in names:
+            value = table.get(name)
+            if isinstance(value, str):
+                versions[name] = value
+            elif isinstance(value, dict):
+                version = value.get("version")
+                if isinstance(version, str):
+                    versions[name] = version
 
     return versions
+
+
+def _read_cargo_toml(cargo_toml: Path) -> dict[str, Any]:
+    return tomllib.loads(cargo_toml.read_text(encoding="utf-8"))
 
 
 def _detect_versions(root: Path) -> dict[str, str]:

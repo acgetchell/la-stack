@@ -313,7 +313,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                         let a = black_box(&fv1);
                         let b = black_box(&fv2);
                         for i in 0..$d {
-                            sum += a[(i, 0)] * b[(i, 0)];
+                            sum = a[(i, 0)].mul_add(b[(i, 0)], sum);
                         }
                         black_box(sum);
                     });
@@ -340,7 +340,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                         let v = black_box(&fv1);
                         for i in 0..$d {
                             let x = v[(i, 0)];
-                            sum += x * x;
+                            sum = x.mul_add(x, sum);
                         }
                         black_box(sum);
                     });

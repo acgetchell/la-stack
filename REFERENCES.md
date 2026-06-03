@@ -42,13 +42,13 @@ See `src/exact.rs` for the full architecture description.
 
 ### Exact linear system solve (hybrid Bareiss / BigRational)
 
-`solve_exact()` and `solve_exact_f64()` share the BigInt core used for determinants.  Matrix
+`solve_exact()` and `solve_exact_f64()` share the BigInt core used for determinants. Matrix
 and RHS entries are decomposed via IEEE 754 bit extraction [9] and scaled to a shared base
 `2^e_min` so the augmented system `(A | b)` becomes a `BigInt` matrix.  Forward elimination
 runs in `BigInt` using Bareiss fraction-free updates [7] — no `BigRational` and no GCD
-normalisation in the `O(D³)` phase.  The upper-triangular result is then lifted into
+normalisation in the `O(D³)` phase. The upper-triangular result is then lifted into
 `BigRational` for back-substitution, where fractions are inherent and the cost is only
-`O(D²)`.  Row swaps from first-non-zero pivoting are applied to both the matrix and the
+`O(D²)`. Row swaps from first-non-zero pivoting are applied to both the matrix and the
 RHS; because power-of-two scaling is applied uniformly to both sides of `A x = b`, the
 solution is unchanged by the scale factor.
 
@@ -58,8 +58,8 @@ Both the determinant and solve paths convert f64 entries via `f64_decompose`, wh
 the IEEE 754 binary64 sign, unbiased exponent, and significand [9] and strips trailing zeros
 from the significand so `|x| = m · 2^e` with `m` odd.  The integer matrix is then assembled
 by shifting each mantissa left by `exp − e_min`, giving a GCD-free, Bareiss-ready starting
-point.  A one-shot wrapper `f64_to_bigrational` (used only in tests) packages the same
-decomposition into a single `BigRational`.  See Goldberg [10] for background on IEEE 754
+point. A one-shot wrapper `f64_to_bigrational` (used only in tests) packages the same
+decomposition into a single `BigRational`. See Goldberg [10] for background on IEEE 754
 representation and exact rational reconstruction.
 
 ### LDL^T factorization (symmetric SPD/PSD)

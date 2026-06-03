@@ -10,9 +10,16 @@ import subprocess_utils
 from subprocess_utils import (
     ExecutableNotFoundError,
     _build_run_kwargs,
+    check_git_history,
+    check_git_repo,
+    find_project_root,
+    get_git_commit_hash,
+    get_git_remote_url,
     get_safe_executable,
+    run_cargo_command,
     run_git_command,
     run_git_command_with_input,
+    run_safe_command,
 )
 
 # ---------------------------------------------------------------------------
@@ -105,3 +112,30 @@ class TestRunGitCommandWithInput:
         mock_run.assert_called_once()
         _args, kwargs = mock_run.call_args
         assert kwargs["input"] == "tag body"
+
+
+class TestAdditionalHelpers:
+    @patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/cargo")
+    @patch("subprocess_utils.subprocess.run")
+    def test_run_cargo_command_uses_safe_executable(self, mock_run: MagicMock, _mock_exe: MagicMock) -> None:
+        run_cargo_command(["--version"])
+        mock_run.assert_called_once()
+        args, _kwargs = mock_run.call_args
+        assert args[0] == ["/usr/bin/cargo", "--version"]
+
+    @patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/gnuplot")
+    @patch("subprocess_utils.subprocess.run")
+    def test_run_safe_command_uses_safe_executable(self, mock_run: MagicMock, _mock_exe: MagicMock) -> None:
+        run_safe_command("gnuplot", ["--version"])
+        mock_run.assert_called_once()
+        args, _kwargs = mock_run.call_args
+        assert args[0] == ["/usr/bin/gnuplot", "--version"]
+
+    def test_git_convenience_helpers(self) -> None:
+        assert get_git_commit_hash()
+        assert get_git_remote_url()
+        assert check_git_repo() is True
+        assert check_git_history() is True
+
+    def test_find_project_root(self) -> None:
+        assert (find_project_root() / "Cargo.toml").is_file()

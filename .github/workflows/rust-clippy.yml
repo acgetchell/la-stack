@@ -4,7 +4,8 @@
 name: "Clippy Security Analysis"
 
 on:
-  # Only run on schedule and manual trigger to avoid duplication with CI
+  pull_request:
+    branches: ["main"]
   schedule:
     - cron: "17 22 * * 0" # Weekly on Sunday
   workflow_dispatch:
@@ -22,43 +23,53 @@ jobs:
   clippy-sarif:
     name: Clippy SARIF Analysis
     runs-on: ubuntu-latest
+    env:
+      CLIPPY_SARIF_VERSION: "0.8.0"
+      SARIF_FMT_VERSION: "0.8.0"
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
         with:
           cache: true # toolchain/components are specified in rust-toolchain.toml
 
-      - name: Cache clippy tools
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Install clippy-sarif
+        uses: taiki-e/cache-cargo-install-action@417450f3c33ee20393705369577571770643d4c7 # v3.0.7
         with:
-          path: |
-            ~/.cargo/bin/clippy-sarif
-            ~/.cargo/bin/sarif-fmt
-          key: clippy-sarif-${{ runner.os }}
+          tool: clippy-sarif@${{ env.CLIPPY_SARIF_VERSION }}
 
-      - name: Install clippy-sarif tools
-        run: |
-          if ! command -v clippy-sarif &> /dev/null; then
-            cargo install clippy-sarif sarif-fmt --locked
-          fi
+      - name: Install sarif-fmt
+        uses: taiki-e/cache-cargo-install-action@417450f3c33ee20393705369577571770643d4c7 # v3.0.7
+        with:
+          tool: sarif-fmt@${{ env.SARIF_FMT_VERSION }}
 
       - name: Run clippy with SARIF output
         run: |
+          set -euo pipefail
           cargo clippy \
+            --workspace \
             --all-targets \
             --all-features \
             --message-format=json \
-            -- -W clippy::pedantic -W clippy::nursery | \
+            -- -W clippy::pedantic -W clippy::nursery -W clippy::cargo | \
             clippy-sarif | \
             tee rust-clippy-results.sarif | \
             sarif-fmt
         continue-on-error: true
 
       - name: Upload SARIF results
-        uses: github/codeql-action/upload-sarif@b36bf259c813715f76eafece573914b94412cd13 # v3
+        if: >-
+          always()
+          && hashFiles('rust-clippy-results.sarif') != ''
+          && (
+            github.event_name != 'pull_request'
+            || github.event.pull_request.head.repo.full_name == github.repository
+          )
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         with:
           sarif_file: rust-clippy-results.sarif
           category: "clippy"

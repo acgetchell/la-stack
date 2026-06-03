@@ -1,0 +1,18 @@
+{
+  "$schema": "https://dprint.dev/schemas/v0.json",
+  "incremental": false,
+  "plugins": [
+    "https://plugins.dprint.dev/g-plane/pretty_yaml-v0.6.0.wasm"
+  ],
+  "includes": [
+    "**/*.yml",
+    "**/*.yaml"
+  ],
+  "excludes": [
+    "**/target",
+    "CHANGELOG.md"
+  ],
+  "yaml": {
+    "printWidth": 160
+  }
+}

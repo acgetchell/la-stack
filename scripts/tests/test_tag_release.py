@@ -10,6 +10,7 @@ import pytest
 import tag_release
 from tag_release import (
     _GITHUB_TAG_ANNOTATION_LIMIT,
+    _get_repo_url,
     _github_anchor,
     extract_changelog_section,
     find_changelog,
@@ -120,9 +121,10 @@ class TestExtractChangelogSection:
         changelog = tmp_path / "CHANGELOG.md"
         changelog.write_text(_SAMPLE_CHANGELOG, encoding="utf-8")
 
-        section = extract_changelog_section(changelog, "0.2.0")
+        section, source = extract_changelog_section(changelog, "0.2.0")
         assert "det_sign_exact" in section
         assert "Bump version" in section
+        assert source == changelog
         # Should not include content from 0.1.3
         assert "Minor doc typo" not in section
 
@@ -130,9 +132,10 @@ class TestExtractChangelogSection:
         changelog = tmp_path / "CHANGELOG.md"
         changelog.write_text(_SAMPLE_CHANGELOG, encoding="utf-8")
 
-        section = extract_changelog_section(changelog, "0.1.3")
+        section, source = extract_changelog_section(changelog, "0.1.3")
         assert "Minor doc typo" in section
         assert "det_sign_exact" not in section
+        assert source == changelog
 
     def test_raises_for_missing_version(self, tmp_path: Path) -> None:
         changelog = tmp_path / "CHANGELOG.md"
@@ -201,7 +204,7 @@ class TestTagSizeLimit:
         changelog = tmp_path / "CHANGELOG.md"
         changelog.write_text(_SAMPLE_CHANGELOG, encoding="utf-8")
 
-        section = extract_changelog_section(changelog, "0.2.0")
+        section, _source = extract_changelog_section(changelog, "0.2.0")
         assert len(section.encode("utf-8")) < _GITHUB_TAG_ANNOTATION_LIMIT
 
     def test_oversized_section_detected(self, tmp_path: Path) -> None:
@@ -214,7 +217,7 @@ class TestTagSizeLimit:
         changelog = tmp_path / "CHANGELOG.md"
         changelog.write_text(changelog_text, encoding="utf-8")
 
-        section = extract_changelog_section(changelog, "1.0.0")
+        section, _source = extract_changelog_section(changelog, "1.0.0")
         assert len(section.encode("utf-8")) > _GITHUB_TAG_ANNOTATION_LIMIT
 
 
@@ -227,7 +230,7 @@ class TestCreateTag:
     @patch("tag_release.run_git_command_with_input")
     @patch("tag_release._tag_exists", return_value=False)
     @patch("tag_release.find_changelog")
-    @patch("tag_release.extract_changelog_section", return_value="### Added\n\n- Something new")
+    @patch("tag_release.extract_changelog_section")
     def test_creates_annotated_tag(
         self,
         _mock_extract: MagicMock,
@@ -239,12 +242,13 @@ class TestCreateTag:
         changelog = tmp_path / "CHANGELOG.md"
         changelog.write_text(_SAMPLE_CHANGELOG, encoding="utf-8")
         mock_find.return_value = changelog
+        _mock_extract.return_value = ("### Added\n\n- Something new", changelog)
 
         tag_release.create_tag("v1.0.0")
 
         mock_git_input.assert_called_once()
         call_args = mock_git_input.call_args
-        assert call_args[0][0] == ["tag", "-a", "v1.0.0", "-F", "-"]
+        assert call_args[0][0] == ["tag", "-a", "v1.0.0", "-F", "-", "--cleanup=verbatim"]
         assert "Something new" in call_args[1]["input_data"]
 
     @patch("tag_release.run_git_command_with_input")
@@ -268,7 +272,7 @@ class TestCreateTag:
         mock_find.return_value = changelog
 
         # Patch extract to return the real oversized content
-        with patch("tag_release.extract_changelog_section", return_value=big_section):
+        with patch("tag_release.extract_changelog_section", return_value=(big_section, changelog)):
             tag_release.create_tag("v1.0.0")
 
         mock_git_input.assert_called_once()
@@ -283,35 +287,34 @@ class TestCreateTag:
             tag_release.create_tag("v1.0.0", force=False)
 
     @patch("tag_release.run_git_command_with_input")
-    @patch("tag_release._delete_tag")
     @patch("tag_release._tag_exists", return_value=True)
     @patch("tag_release.find_changelog")
-    @patch("tag_release.extract_changelog_section", return_value="### Fixed\n\n- Bug fix")
+    @patch("tag_release.extract_changelog_section")
     def test_force_recreates_tag(
         self,
         _mock_extract: MagicMock,
         mock_find: MagicMock,
         _mock_exists: MagicMock,
-        mock_delete: MagicMock,
         mock_git_input: MagicMock,
         tmp_path: Path,
     ) -> None:
         changelog = tmp_path / "CHANGELOG.md"
         changelog.write_text(_SAMPLE_CHANGELOG, encoding="utf-8")
         mock_find.return_value = changelog
+        _mock_extract.return_value = ("### Fixed\n\n- Bug fix", changelog)
 
         tag_release.create_tag("v1.0.0", force=True)
 
-        mock_delete.assert_called_once_with("v1.0.0")
         mock_git_input.assert_called_once()
+        assert mock_git_input.call_args[0][0] == ["tag", "-f", "-a", "v1.0.0", "-F", "-", "--cleanup=verbatim"]
 
     @patch("tag_release._tag_exists", return_value=True)
     @patch("tag_release.find_changelog")
     @patch("tag_release.extract_changelog_section", side_effect=LookupError("not found"))
-    @patch("tag_release._delete_tag")
+    @patch("tag_release.run_git_command_with_input")
     def test_force_does_not_delete_tag_if_changelog_fails(
         self,
-        mock_delete: MagicMock,
+        mock_git_input: MagicMock,
         _mock_extract: MagicMock,
         mock_find: MagicMock,
         _mock_exists: MagicMock,
@@ -325,4 +328,27 @@ class TestCreateTag:
         with pytest.raises(LookupError):
             tag_release.create_tag("v1.0.0", force=True)
 
-        mock_delete.assert_not_called()
+        mock_git_input.assert_not_called()
+
+
+class TestRepoUrl:
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("git@github.com:acgetchell/la-stack.git", "https://github.com/acgetchell/la-stack"),
+            ("https://github.com/acgetchell/la-stack.git", "https://github.com/acgetchell/la-stack"),
+            ("ssh://git@github.com/acgetchell/la-stack.git", "https://github.com/acgetchell/la-stack"),
+        ],
+    )
+    @patch("tag_release.run_git_command")
+    def test_normalizes_github_remotes(self, mock_git: MagicMock, raw: str, expected: str) -> None:
+        mock_git.return_value.stdout = raw
+
+        assert _get_repo_url() == expected
+
+    @patch("tag_release.run_git_command")
+    def test_rejects_remote_urls_with_credentials(self, mock_git: MagicMock) -> None:
+        mock_git.return_value.stdout = "https://user:token@example.com/acgetchell/la-stack.git"
+
+        with pytest.raises(ValueError, match="contain credentials"):
+            _get_repo_url()

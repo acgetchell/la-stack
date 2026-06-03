@@ -12,22 +12,22 @@ When making changes in this repo, prioritize (in order):
 
 ## Design Principles
 
-This is a scientific linear-algebra library.  Design decisions trade off in
+This is a scientific linear-algebra library. Design decisions trade off in
 roughly this priority: mathematical correctness → API stability →
-composability → idiomatic Rust → performance within scope.  The sections
+composability → idiomatic Rust → performance within scope. The sections
 below spell out what each means in practice; when in doubt, favour the
 invariant over the convenient edit.
 
 ### Mathematical correctness as an invariant
 
-- Exact paths (`*_exact`) never silently lose precision.  When f64 output
+- Exact paths (`*_exact`) never silently lose precision. When f64 output
   is required, a separate `*_exact_f64` method returns
   [`LaError::Overflow`] on unrepresentability — not a truncation.
 - Any f64 operation that can accumulate rounding error either documents
   its absolute bound (`det_errbound`, `ERR_COEFF_*`) or explicitly states
   that no bound is provided.
 - Non-finite values (NaN, ±∞) always surface as
-  `LaError::NonFinite { row, col }` with source-location metadata.  No
+  `LaError::NonFinite { row, col }` with source-location metadata. No
   silent NaN propagation, no `unwrap_or(f64::NAN)`.
 - Algorithms cite their source (Shewchuk, Bareiss, Goldberg, …) via
   `REFERENCES.md` and document their conditioning behaviour.
@@ -39,13 +39,13 @@ invariant over the convenient edit.
 - New functionality is additive: use the prelude for ergonomic re-exports;
   never silently rename or remove a public item.
 - Pre-1.0 semver: `0.x.Y` is a patch-level additive bump, `0.X.y` is a
-  minor bump that may include breaking changes.  Conventional-commit
+  minor bump that may include breaking changes. Conventional-commit
   types (`feat`, `fix`, `refactor`, …) mirror this convention.
 
 ### Composability
 
 - Const-generic `D` for every core type (`Matrix<D>`, `Vector<D>`,
-  `Lu<D>`, `Ldlt<D>`).  No runtime dimension.
+  `Lu<D>`, `Ldlt<D>`). No runtime dimension.
 - Stack allocation by default; heap only behind a feature flag or where
   exact arithmetic inherently requires it (`BigInt` / `BigRational`).
 - Feature flags isolate optional dependency weight; default builds stay
@@ -55,12 +55,12 @@ invariant over the convenient edit.
 
 - `const fn` wherever possible — not for micro-optimisation, but because
   compile-time evaluation forces a pure function of inputs.
-- `Result<_, LaError>` for all fallible operations.  Panics are reserved
+- `Result<_, LaError>` for all fallible operations. Panics are reserved
   for debug-only precondition violations (e.g. LDLT symmetry check) and
   documented on the method.
 - Borrow by default (`&T`, `&[T]`); return borrowed views when possible.
 - Type and function names match textbook vocabulary (`Matrix`, `Vector`,
-  `Lu`, `Ldlt`, `solve_vec`, `det`, `inf_norm`).  Avoid Rust-ecosystem
+  `Lu`, `Ldlt`, `solve_vec`, `det`, `inf_norm`). Avoid Rust-ecosystem
   abstractions that obscure the math.
 
 ### Scientific notation in docs
@@ -75,17 +75,17 @@ invariant over the convenient edit.
 ### Performance within scope
 
 - Performance is a design goal, but strictly subordinate to the
-  principles above.  Never trade correctness, stability, or clarity for
+  principles above. Never trade correctness, stability, or clarity for
   speed; if the two conflict, re-scope the problem rather than
   compromise the invariant.
 - The library earns its speed through *deliberate scope restriction*:
   fixed small dimensions via const generics, stack-allocated storage,
   and closed-form algorithms where available (D ≤ 4 for `det_direct` /
-  `det_errbound`).  Problems outside this scope — large or dynamic
+  `det_errbound`). Problems outside this scope — large or dynamic
   dimensions, sparse matrices, parallelism — belong to `nalgebra` or
   `faer` (see anti-goals in `README.md`).
 - Within scope, prefer allocation-free paths, `const fn` wherever the
-  inputs allow, and FMA where applicable.  Validate any performance
+  inputs allow, and FMA where applicable. Validate any performance
   claim against the `bench-vs-linalg` (vs nalgebra / faer) or
   `bench-exact` (exact-arithmetic) suites before relying on it.
 

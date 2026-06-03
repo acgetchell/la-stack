@@ -329,7 +329,6 @@ def test_toml_helpers_read_versions(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    assert criterion_dim_plot._strip_toml_comment('version = "1.0" # c') == 'version = "1.0"'
     assert criterion_dim_plot._read_cargo_package_version(cargo_toml) == "1.2.3"
     deps = criterion_dim_plot._read_cargo_dependency_versions(cargo_toml, {"nalgebra", "faer"})
     assert deps["nalgebra"] == "0.34.0"
