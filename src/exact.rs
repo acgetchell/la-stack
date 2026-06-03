@@ -472,6 +472,8 @@ fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<[BigRatio
 impl<const D: usize> Matrix<D> {
     /// Exact determinant using arbitrary-precision rational arithmetic.
     ///
+    /// Requires the `exact` Cargo feature.
+    ///
     /// Returns the determinant as an exact [`BigRational`] value. Every finite
     /// `f64` is exactly representable as a rational, so the conversion is
     /// lossless and the result is provably correct.
@@ -501,6 +503,8 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Exact determinant converted to `f64`.
+    ///
+    /// Requires the `exact` Cargo feature.
     ///
     /// Computes the exact [`BigRational`] determinant via [`det_exact`](Self::det_exact)
     /// and converts it to the nearest `f64`.  This is useful when you want the
@@ -536,6 +540,8 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Exact linear system solve using hybrid integer/rational arithmetic.
+    ///
+    /// Requires the `exact` Cargo feature.
     ///
     /// Solves `A x = b` where `A` is `self` and `b` is the given vector.
     /// Returns the exact solution as `[BigRational; D]`.  Every finite `f64`
@@ -583,6 +589,8 @@ impl<const D: usize> Matrix<D> {
 
     /// Exact linear system solve converted to `f64`.
     ///
+    /// Requires the `exact` Cargo feature.
+    ///
     /// Computes the exact [`BigRational`] solution via
     /// [`solve_exact`](Self::solve_exact) and converts each component to the
     /// nearest `f64`.  This is useful when you want the most accurate f64
@@ -624,6 +632,8 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Exact determinant sign using adaptive-precision arithmetic.
+    ///
+    /// Requires the `exact` Cargo feature.
     ///
     /// Returns `1` if `det > 0`, `-1` if `det < 0`, and `0` if `det == 0` (singular).
     ///
