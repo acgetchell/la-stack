@@ -306,6 +306,14 @@ just fix          # apply auto-fixes (mutating)
 just ci           # lint + tests + examples + bench compile
 ```
 
+The repository uses Rust-native tooling for documentation and config checks:
+`rumdl` for Markdown, `dprint` with `pretty_yaml` for YAML, `taplo` for TOML,
+and `typos` for spelling. GitHub Actions references are SHA-pinned, restricted
+to an explicit allowlist, and kept with readable version comments for review.
+
+CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
+aligned with the local comprehensive validation path.
+
 For coverage commands and report locations, see [`docs/COVERAGE.md`](docs/COVERAGE.md).
 For the full set of developer commands, see `just --list` and `AGENTS.md`.
 

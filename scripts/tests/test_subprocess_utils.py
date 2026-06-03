@@ -131,11 +131,29 @@ class TestAdditionalHelpers:
         args, _kwargs = mock_run.call_args
         assert args[0] == ["/usr/bin/gnuplot", "--version"]
 
-    def test_git_convenience_helpers(self) -> None:
-        assert get_git_commit_hash()
-        assert get_git_remote_url()
+    @patch("subprocess_utils.run_git_command")
+    def test_git_convenience_helpers(self, mock_run_git: MagicMock) -> None:
+        def fake_run_git(args: list[str], **_kwargs: object) -> subprocess_utils.subprocess.CompletedProcess[str]:
+            stdout_by_args = {
+                ("rev-parse", "HEAD"): "abc123def456\n",
+                ("remote", "get-url", "origin"): "https://github.com/example/repo.git\n",
+                ("rev-parse", "--git-dir"): ".git\n",
+                ("log", "--oneline", "-n", "1"): "abc123d message\n",
+            }
+            return subprocess_utils.subprocess.CompletedProcess(args=["git", *args], returncode=0, stdout=stdout_by_args[tuple(args)])
+
+        mock_run_git.side_effect = fake_run_git
+
+        assert get_git_commit_hash() == "abc123def456"
+        assert get_git_remote_url() == "https://github.com/example/repo.git"
         assert check_git_repo() is True
         assert check_git_history() is True
+        assert [call_args.args[0] for call_args in mock_run_git.call_args_list] == [
+            ["rev-parse", "HEAD"],
+            ["remote", "get-url", "origin"],
+            ["rev-parse", "--git-dir"],
+            ["log", "--oneline", "-n", "1"],
+        ]
 
     def test_find_project_root(self) -> None:
         assert (find_project_root() / "Cargo.toml").is_file()
