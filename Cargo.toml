@@ -28,8 +28,8 @@ proptest = "1.11.0"
 
 [features]
 default = [  ]
-bench = [ "criterion", "faer", "nalgebra" ]
-exact = [ "num-bigint", "num-rational", "num-traits" ]
+bench = [ "dep:criterion", "dep:faer", "dep:nalgebra" ]
+exact = [ "dep:num-bigint", "dep:num-rational", "dep:num-traits" ]
 
 [[example]]
 name = "exact_det_3x3"

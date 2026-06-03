@@ -26,7 +26,12 @@ fn main() {
 
     // f64 LU solve (using zero pivot tolerance since the matrix is nearly singular
     // and would be rejected by DEFAULT_PIVOT_TOL).
-    let lu_x = a.lu(0.0).unwrap().solve_vec(b).unwrap().into_array();
+    let lu_x = a
+        .lu(Tolerance::new(0.0).unwrap())
+        .unwrap()
+        .solve_vec(b)
+        .unwrap()
+        .into_array();
 
     // Exact solve.
     let exact_x = a.solve_exact(b).unwrap();

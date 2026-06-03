@@ -76,25 +76,29 @@ Solve a 5×5 system via LU:
 ```rust
 use la_stack::prelude::*;
 
-// This system requires pivoting (a[0][0] = 0), so it's a good LU demo.
-// A = J - I: zeros on diagonal, ones elsewhere.
-let a = Matrix::<5>::from_rows([
-    [0.0, 1.0, 1.0, 1.0, 1.0],
-    [1.0, 0.0, 1.0, 1.0, 1.0],
-    [1.0, 1.0, 0.0, 1.0, 1.0],
-    [1.0, 1.0, 1.0, 0.0, 1.0],
-    [1.0, 1.0, 1.0, 1.0, 0.0],
-]);
+fn main() -> Result<(), LaError> {
+    // This system requires pivoting (a[0][0] = 0), so it's a good LU demo.
+    // A = J - I: zeros on diagonal, ones elsewhere.
+    let a = Matrix::<5>::from_rows([
+        [0.0, 1.0, 1.0, 1.0, 1.0],
+        [1.0, 0.0, 1.0, 1.0, 1.0],
+        [1.0, 1.0, 0.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0, 1.0, 0.0],
+    ]);
 
-let b = Vector::<5>::new([14.0, 13.0, 12.0, 11.0, 10.0]);
+    let b = Vector::<5>::new([14.0, 13.0, 12.0, 11.0, 10.0]);
 
-let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
-let x = lu.solve_vec(b).unwrap().into_array();
+    let lu = a.lu(DEFAULT_PIVOT_TOL)?;
+    let x = lu.solve_vec(b)?.into_array();
 
-// Floating-point rounding is expected; compare with a tolerance.
-let expected = [1.0, 2.0, 3.0, 4.0, 5.0];
-for (x_i, e_i) in x.iter().zip(expected.iter()) {
-    assert!((*x_i - *e_i).abs() <= 1e-12);
+    // Floating-point rounding is expected; compare with a tolerance.
+    let expected = [1.0, 2.0, 3.0, 4.0, 5.0];
+    for (x_i, e_i) in x.iter().zip(expected.iter()) {
+        assert!((*x_i - *e_i).abs() <= 1e-12);
+    }
+
+    Ok(())
 }
 ```
 
@@ -106,17 +110,21 @@ For symmetric positive-definite matrices, `LDL^T` is essentially a square-root-f
 ```rust
 use la_stack::prelude::*;
 
-// This matrix is symmetric positive-definite (A = L*L^T) so LDLT works without pivoting.
-let a = Matrix::<5>::from_rows([
-    [1.0, 1.0, 0.0, 0.0, 0.0],
-    [1.0, 2.0, 1.0, 0.0, 0.0],
-    [0.0, 1.0, 2.0, 1.0, 0.0],
-    [0.0, 0.0, 1.0, 2.0, 1.0],
-    [0.0, 0.0, 0.0, 1.0, 2.0],
-]);
+fn main() -> Result<(), LaError> {
+    // This matrix is symmetric positive-definite (A = L*L^T) so LDLT works without pivoting.
+    let a = Matrix::<5>::from_rows([
+        [1.0, 1.0, 0.0, 0.0, 0.0],
+        [1.0, 2.0, 1.0, 0.0, 0.0],
+        [0.0, 1.0, 2.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0, 2.0, 1.0],
+        [0.0, 0.0, 0.0, 1.0, 2.0],
+    ]);
 
-let det = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap().det();
-assert!((det - 1.0).abs() <= 1e-12);
+    let det = a.ldlt(DEFAULT_SINGULAR_TOL)?.det()?;
+    assert!((det - 1.0).abs() <= 1e-12);
+
+    Ok(())
+}
 ```
 
 > ⚠️ **LDLT invariant:** The input matrix must be **symmetric**. Asymmetric
@@ -133,7 +141,7 @@ assert!((det - 1.0).abs() <= 1e-12);
 
 `det_direct()` is a `const fn` providing closed-form determinants for D=0–4,
 using fused multiply-add where applicable. `Matrix::<0>::zero().det_direct()`
-returns `Some(1.0)` (the empty-product convention). For D=1–4, cofactor
+returns `Ok(Some(1.0))` (the empty-product convention). For D=1–4, cofactor
 expansion bypasses LU factorization entirely. This enables compile-time
 evaluation when inputs are known:
 
@@ -141,7 +149,7 @@ evaluation when inputs are known:
 use la_stack::prelude::*;
 
 // Evaluated entirely at compile time — no runtime cost.
-const DET: Option<f64> = {
+const DET: Result<Option<f64>, LaError> = {
     let m = Matrix::<3>::from_rows([
         [2.0, 0.0, 0.0],
         [0.0, 3.0, 0.0],
@@ -149,7 +157,7 @@ const DET: Option<f64> = {
     ]);
     m.det_direct()
 };
-assert_eq!(DET, Some(30.0));
+assert_eq!(DET, Ok(Some(30.0)));
 ```
 
 The public `det()` method automatically dispatches through the closed-form path
@@ -181,23 +189,27 @@ la-stack = { version = "0.4.1", features = ["exact"] }
 ```rust,ignore
 use la_stack::prelude::*;
 
-// Exact determinant
-let m = Matrix::<3>::from_rows([
-    [1.0, 2.0, 3.0],
-    [4.0, 5.0, 6.0],
-    [7.0, 8.0, 9.0],
-]);
-assert_eq!(m.det_sign_exact().unwrap(), 0); // exactly singular
+fn main() -> Result<(), LaError> {
+    // Exact determinant
+    let m = Matrix::<3>::from_rows([
+        [1.0, 2.0, 3.0],
+        [4.0, 5.0, 6.0],
+        [7.0, 8.0, 9.0],
+    ]);
+    assert_eq!(m.det_sign_exact()?, 0); // exactly singular
 
-let det = m.det_exact().unwrap();
-assert_eq!(det, BigRational::from_integer(0.into())); // exact zero
+    let det = m.det_exact()?;
+    assert_eq!(det, BigRational::from_integer(0.into())); // exact zero
 
-// Exact linear system solve
-let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-let b = Vector::<2>::new([5.0, 11.0]);
-let x = a.solve_exact_f64(b).unwrap().into_array();
-assert!((x[0] - 1.0).abs() <= f64::EPSILON);
-assert!((x[1] - 2.0).abs() <= f64::EPSILON);
+    // Exact linear system solve
+    let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    let b = Vector::<2>::new([5.0, 11.0]);
+    let x = a.solve_exact_f64(b)?.into_array();
+    assert!((x[0] - 1.0).abs() <= f64::EPSILON);
+    assert!((x[1] - 2.0).abs() <= f64::EPSILON);
+
+    Ok(())
+}
 ```
 
 With the `exact` feature enabled, `BigInt` and `BigRational` are re-exported
@@ -222,19 +234,24 @@ adaptive-precision logic for geometric predicates:
 ```rust,ignore
 use la_stack::prelude::*;
 
-let m = Matrix::<3>::identity();
-if let Some(bound) = m.det_errbound() {
-    let det = m.det_direct().unwrap();
-    if det.abs() > bound {
-        // f64 sign is guaranteed correct
-        let sign = det.signum() as i8;
+fn main() -> Result<(), LaError> {
+    let m = Matrix::<3>::identity();
+    if let Some(bound) = m.det_errbound()? {
+        if let Some(det) = m.det_direct()? {
+            if det.abs() > bound {
+                // f64 sign is guaranteed correct
+                let sign = det.signum() as i8;
+            } else {
+                // Fall back to exact arithmetic (requires `exact` feature)
+                let sign = m.det_sign_exact()?;
+            }
+        }
     } else {
-        // Fall back to exact arithmetic (requires `exact` feature)
-        let sign = m.det_sign_exact().unwrap();
+        // D ≥ 5: no fast filter, use exact directly (requires `exact` feature)
+        let sign = m.det_sign_exact()?;
     }
-} else {
-    // D ≥ 5: no fast filter, use exact directly (requires `exact` feature)
-    let sign = m.det_sign_exact().unwrap();
+
+    Ok(())
 }
 ```
 

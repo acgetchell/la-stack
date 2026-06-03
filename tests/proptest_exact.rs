@@ -300,8 +300,14 @@ macro_rules! gen_det_sign_fast_filter_boundary_proptests {
                     ),
                 ) {
                     let m = Matrix::<$d>::from_rows(entries);
-                    let det = m.det_direct().expect("D<=4 has closed-form det_direct");
-                    let bound = m.det_errbound().expect("D<=4 has a det_errbound");
+                    let det = m
+                        .det_direct()
+                        .unwrap()
+                        .expect("D<=4 has closed-form det_direct");
+                    let bound = m
+                        .det_errbound()
+                        .unwrap()
+                        .expect("D<=4 has a det_errbound");
                     let sign = m.det_sign_exact().unwrap();
 
                     // Only assert when the filter is conclusive.  When

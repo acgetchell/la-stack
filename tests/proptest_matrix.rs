@@ -73,10 +73,42 @@ macro_rules! gen_public_api_matrix_proptests {
                     v in small_f64(),
                 ) {
                     let mut m = Matrix::<$d>::zero();
-                    prop_assert!(m.set(r, c, v));
+                    prop_assert_eq!(m.set(r, c, v), Some(()));
                     assert_abs_diff_eq!(m.get(r, c).unwrap(), v, epsilon = 0.0);
                     prop_assert_eq!(m.set_checked(r, c, -v), Ok(()));
                     assert_abs_diff_eq!(m.get_checked(r, c).unwrap(), -v, epsilon = 0.0);
+                }
+
+                #[test]
+                fn [<matrix_set_out_of_bounds_preserves_matrix_ $d d>](
+                    rows in proptest::array::[<uniform $d>](
+                        proptest::array::[<uniform $d>](small_f64()),
+                    ),
+                    v in small_f64(),
+                ) {
+                    let mut m = Matrix::<$d>::from_rows(rows);
+                    let original = m;
+
+                    prop_assert_eq!(m.set($d, 0, v), None);
+                    prop_assert_eq!(m, original);
+                    prop_assert_eq!(
+                        m.set_checked($d, 0, v),
+                        Err(LaError::IndexOutOfBounds {
+                            row: $d,
+                            col: 0,
+                            dim: $d,
+                        })
+                    );
+                    prop_assert_eq!(m, original);
+                    prop_assert_eq!(
+                        m.set_checked(0, $d, v),
+                        Err(LaError::IndexOutOfBounds {
+                            row: 0,
+                            col: $d,
+                            dim: $d,
+                        })
+                    );
+                    prop_assert_eq!(m, original);
                 }
 
                 #[test]
@@ -92,8 +124,8 @@ macro_rules! gen_public_api_matrix_proptests {
                         .map(|row| row.iter().map(|&x| x.abs()).sum::<f64>())
                         .fold(0.0f64, f64::max);
 
-                    assert_abs_diff_eq!(m.inf_norm(), expected, epsilon = 0.0);
-                    prop_assert!(m.inf_norm() >= 0.0);
+                    assert_abs_diff_eq!(m.inf_norm().unwrap(), expected, epsilon = 0.0);
+                    prop_assert!(m.inf_norm().unwrap() >= 0.0);
                 }
 
                 #[test]
@@ -179,7 +211,7 @@ macro_rules! gen_public_api_matrix_proptests {
                     let a = Matrix::<$d>::from_rows(a_rows);
                     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
-                    let det_ldlt = ldlt.det();
+                    let det_ldlt = ldlt.det().unwrap();
                     let det_lu = a.det(DEFAULT_PIVOT_TOL).unwrap();
                     assert_abs_diff_eq!(det_ldlt, det_lu, epsilon = 1e-8);
 

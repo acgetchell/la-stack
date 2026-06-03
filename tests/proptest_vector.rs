@@ -40,19 +40,19 @@ macro_rules! gen_public_api_vector_proptests {
                     let a = Vector::<$d>::new(a_arr);
                     let b = Vector::<$d>::new(b_arr);
 
-                    let dot_ab = a.dot(b);
-                    let dot_ba = b.dot(a);
-                    assert_abs_diff_eq!(dot_ab, dot_ba, epsilon = 1e-14);
+                    let dot_ab = a.dot(b).unwrap();
+                    let dot_reversed = b.dot(a).unwrap();
+                    assert_abs_diff_eq!(dot_ab, dot_reversed, epsilon = 1e-14);
 
-                    let dot_aa = a.dot(a);
-                    assert_abs_diff_eq!(a.norm2_sq(), dot_aa, epsilon = 0.0);
+                    let dot_aa = a.dot(a).unwrap();
+                    assert_abs_diff_eq!(a.norm2_sq().unwrap(), dot_aa, epsilon = 0.0);
 
                     // Squared norm is always non-negative for finite inputs.
-                    prop_assert!(a.norm2_sq() >= 0.0);
+                    prop_assert!(a.norm2_sq().unwrap() >= 0.0);
 
                     // Dot with zero vector is zero.
                     let z = Vector::<$d>::zero();
-                    assert_abs_diff_eq!(a.dot(z), 0.0, epsilon = 1e-14);
+                    assert_abs_diff_eq!(a.dot(z).unwrap(), 0.0, epsilon = 1e-14);
                 }
             }
         }

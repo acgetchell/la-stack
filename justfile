@@ -320,7 +320,6 @@ doc-check:
 examples:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo build --examples
     cargo build --features exact --examples
 
     exe_suffix=""
@@ -328,7 +327,11 @@ examples:
         exe_suffix=".exe"
     fi
 
-    for example in det_5x5 solve_5x5 ldlt_solve_3x3 const_det_4x4 exact_det_3x3 exact_sign_3x3 exact_solve_3x3; do
+    shopt -s nullglob
+    for example_path in examples/*.rs; do
+        [[ -f "${example_path}" ]] || continue
+        example="${example_path##*/}"
+        example="${example%.rs}"
         "target/debug/examples/${example}${exe_suffix}"
     done
 

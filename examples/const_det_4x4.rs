@@ -15,8 +15,9 @@ const MAT: Matrix<4> = Matrix::<4>::from_rows([
 
 /// Determinant computed at compile time.
 const DET: f64 = match MAT.det_direct() {
-    Some(d) => d,
-    None => panic!("det_direct only supports D <= 4"),
+    Ok(Some(d)) => d,
+    Ok(None) => panic!("det_direct only supports D <= 4"),
+    Err(_) => panic!("matrix entries must be finite"),
 };
 
 fn main() {

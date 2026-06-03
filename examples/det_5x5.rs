@@ -15,7 +15,7 @@ fn main() -> Result<(), LaError> {
 
     // Compute via explicit LU factorization.
     let lu = a.lu(DEFAULT_PIVOT_TOL)?;
-    let det = lu.det();
+    let det = lu.det()?;
 
     println!("det = {det}");
     Ok(())

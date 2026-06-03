@@ -489,10 +489,13 @@ impl<const D: usize> Matrix<D> {
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-    /// let det = m.det_exact().unwrap();
+    /// let det = m.det_exact()?;
     /// // det = 1*4 - 2*3 = -2  (exact)
     /// assert_eq!(det, BigRational::from_integer((-2).into()));
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -515,9 +518,12 @@ impl<const D: usize> Matrix<D> {
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-    /// let det = m.det_exact_f64().unwrap();
+    /// let det = m.det_exact_f64()?;
     /// assert!((det - (-2.0)).abs() <= f64::EPSILON);
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -570,12 +576,15 @@ impl<const D: usize> Matrix<D> {
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// // A x = b  where A = [[1,2],[3,4]], b = [5, 11]  →  x = [1, 2]
     /// let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
     /// let b = Vector::<2>::new([5.0, 11.0]);
-    /// let x = a.solve_exact(b).unwrap();
+    /// let x = a.solve_exact(b)?;
     /// assert_eq!(x[0], BigRational::from_integer(1.into()));
     /// assert_eq!(x[1], BigRational::from_integer(2.into()));
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -600,11 +609,14 @@ impl<const D: usize> Matrix<D> {
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
     /// let b = Vector::<2>::new([5.0, 11.0]);
-    /// let x = a.solve_exact_f64(b).unwrap().into_array();
+    /// let x = a.solve_exact_f64(b)?.into_array();
     /// assert!((x[0] - 1.0).abs() <= f64::EPSILON);
     /// assert!((x[1] - 2.0).abs() <= f64::EPSILON);
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Errors
@@ -661,9 +673,10 @@ impl<const D: usize> Matrix<D> {
     ///     [7.0, 8.0, 9.0],
     /// ]);
     /// // This matrix is singular (row 3 = row 1 + row 2 in exact arithmetic).
-    /// assert_eq!(m.det_sign_exact().unwrap(), 0);
+    /// assert_eq!(m.det_sign_exact()?, 0);
     ///
-    /// assert_eq!(Matrix::<3>::identity().det_sign_exact().unwrap(), 1);
+    /// assert_eq!(Matrix::<3>::identity().det_sign_exact()?, 1);
+    /// # Ok::<(), LaError>(())
     /// ```
     ///
     /// # Errors
@@ -672,18 +685,13 @@ impl<const D: usize> Matrix<D> {
     pub fn det_sign_exact(&self) -> Result<i8, LaError> {
         // Stage 1: f64 fast filter for D ≤ 4.
         //
-        // When entries are large (e.g. near f64::MAX) the determinant can
-        // overflow to infinity even though every individual entry is finite.
-        // In that case the fast filter is inconclusive; fall through to the
-        // exact Bareiss path.  For NaN/±∞ entries IEEE 754 propagates
-        // non-finite through `det_direct()`, the `det_f64.is_finite()`
-        // guard fails, and we also fall through — validation then happens
-        // inside `bareiss_det_int` via `decompose_matrix`.
-        match self.det_direct() {
-            Some(det_f64)
-                if let Some(err) = self.det_errbound()
-                    && det_f64.is_finite() =>
-            {
+        // When entries are large (e.g. near f64::MAX), the f64 determinant or
+        // its error bound can overflow even though every individual entry is
+        // finite. In that case the fast filter is inconclusive; fall through to
+        // the exact Bareiss path. Stored NaN/±∞ entries are still rejected
+        // immediately with their source coordinates.
+        match (self.det_direct(), self.det_errbound()) {
+            (Ok(Some(det_f64)), Ok(Some(err))) => {
                 if det_f64 > err {
                     return Ok(1);
                 }
@@ -691,6 +699,11 @@ impl<const D: usize> Matrix<D> {
                     return Ok(-1);
                 }
             }
+            (Err(err @ LaError::NonFinite { row: Some(_), .. }), _)
+            | (_, Err(err @ LaError::NonFinite { row: Some(_), .. })) => return Err(err),
+            (Err(LaError::NonFinite { row: None, .. }), _)
+            | (_, Err(LaError::NonFinite { row: None, .. })) => {}
+            (Err(err), _) | (_, Err(err)) => return Err(err),
             _ => {}
         }
 
@@ -715,6 +728,7 @@ mod tests {
     use super::*;
     use crate::DEFAULT_PIVOT_TOL;
 
+    use core::assert_matches;
     use num_traits::Signed;
     use pastey::paste;
     use std::array::from_fn;
@@ -772,14 +786,14 @@ mod tests {
                 #[test]
                 fn [<det_exact_err_on_nan_ $d d>]() {
                     let mut m = Matrix::<$d>::identity();
-                    m.set(0, 0, f64::NAN);
+                    assert_eq!(m.set(0, 0, f64::NAN), Some(()));
                     assert_eq!(m.det_exact(), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
 
                 #[test]
                 fn [<det_exact_err_on_inf_ $d d>]() {
                     let mut m = Matrix::<$d>::identity();
-                    m.set(0, 0, f64::INFINITY);
+                    assert_eq!(m.set(0, 0, f64::INFINITY), Some(()));
                     assert_eq!(m.det_exact(), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
             }
@@ -803,7 +817,7 @@ mod tests {
                 #[test]
                 fn [<det_exact_f64_err_on_nan_ $d d>]() {
                     let mut m = Matrix::<$d>::identity();
-                    m.set(0, 0, f64::NAN);
+                    assert_eq!(m.set(0, 0, f64::NAN), Some(()));
                     assert_eq!(m.det_exact_f64(), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
             }
@@ -836,7 +850,7 @@ mod tests {
                     }
                     let m = Matrix::<$d>::from_rows(rows);
                     let exact = m.det_exact_f64().unwrap();
-                    let direct = m.det_direct().unwrap();
+                    let direct = m.det_direct().unwrap().unwrap();
                     let eps = direct.abs().mul_add(1e-12, 1e-12);
                     assert!((exact - direct).abs() <= eps);
                 }
@@ -1014,7 +1028,7 @@ mod tests {
     fn det_sign_exact_returns_err_on_nan_5x5() {
         // D ≥ 5 bypasses the fast filter, exercising the bareiss_det path.
         let mut m = Matrix::<5>::identity();
-        m.set(2, 3, f64::NAN);
+        assert_eq!(m.set(2, 3, f64::NAN), Some(()));
         assert_eq!(
             m.det_sign_exact(),
             Err(LaError::NonFinite {
@@ -1027,7 +1041,7 @@ mod tests {
     #[test]
     fn det_sign_exact_returns_err_on_infinity_5x5() {
         let mut m = Matrix::<5>::identity();
-        m.set(0, 0, f64::INFINITY);
+        assert_eq!(m.set(0, 0, f64::INFINITY), Some(()));
         assert_eq!(
             m.det_sign_exact(),
             Err(LaError::NonFinite {
@@ -1071,18 +1085,21 @@ mod tests {
 
     #[test]
     fn det_errbound_d0_is_zero() {
-        assert_eq!(Matrix::<0>::zero().det_errbound(), Some(0.0));
+        assert_eq!(Matrix::<0>::zero().det_errbound(), Ok(Some(0.0)));
     }
 
     #[test]
     fn det_errbound_d1_is_zero() {
-        assert_eq!(Matrix::<1>::from_rows([[42.0]]).det_errbound(), Some(0.0));
+        assert_eq!(
+            Matrix::<1>::from_rows([[42.0]]).det_errbound(),
+            Ok(Some(0.0))
+        );
     }
 
     #[test]
     fn det_errbound_d2_positive() {
         let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-        let bound = m.det_errbound().unwrap();
+        let bound = m.det_errbound().unwrap().unwrap();
         assert!(bound > 0.0);
         // bound = ERR_COEFF_2 * (|1*4| + |2*3|) = ERR_COEFF_2 * 10
         assert!(crate::ERR_COEFF_2.mul_add(-10.0, bound).abs() < 1e-30);
@@ -1091,7 +1108,7 @@ mod tests {
     #[test]
     fn det_errbound_d3_positive() {
         let m = Matrix::<3>::identity();
-        let bound = m.det_errbound().unwrap();
+        let bound = m.det_errbound().unwrap().unwrap();
         assert!(bound > 0.0);
     }
 
@@ -1099,14 +1116,14 @@ mod tests {
     fn det_errbound_d3_non_identity() {
         // Non-identity matrix to exercise all code paths in D=3 case
         let m = Matrix::<3>::from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 10.0]]);
-        let bound = m.det_errbound().unwrap();
+        let bound = m.det_errbound().unwrap().unwrap();
         assert!(bound > 0.0);
     }
 
     #[test]
     fn det_errbound_d4_positive() {
         let m = Matrix::<4>::identity();
-        let bound = m.det_errbound().unwrap();
+        let bound = m.det_errbound().unwrap().unwrap();
         assert!(bound > 0.0);
     }
 
@@ -1119,13 +1136,13 @@ mod tests {
             [0.0, 0.0, 3.0, 0.0],
             [0.0, 0.0, 0.0, 4.0],
         ]);
-        let bound = m.det_errbound().unwrap();
+        let bound = m.det_errbound().unwrap().unwrap();
         assert!(bound > 0.0);
     }
 
     #[test]
     fn det_errbound_d5_is_none() {
-        assert_eq!(Matrix::<5>::identity().det_errbound(), None);
+        assert_eq!(Matrix::<5>::identity().det_errbound(), Ok(None));
     }
 
     // -----------------------------------------------------------------------
@@ -1263,7 +1280,7 @@ mod tests {
     #[test]
     fn bareiss_det_int_errs_on_nan() {
         let mut m = Matrix::<3>::identity();
-        m.set(1, 2, f64::NAN);
+        assert_eq!(m.set(1, 2, f64::NAN), Some(()));
         assert_eq!(
             bareiss_det_int(&m),
             Err(LaError::NonFinite {
@@ -1276,7 +1293,7 @@ mod tests {
     #[test]
     fn bareiss_det_int_errs_on_inf() {
         let mut m = Matrix::<2>::identity();
-        m.set(0, 0, f64::INFINITY);
+        assert_eq!(m.set(0, 0, f64::INFINITY), Some(()));
         assert_eq!(
             bareiss_det_int(&m),
             Err(LaError::NonFinite {
@@ -1504,7 +1521,7 @@ mod tests {
                 #[test]
                 fn [<solve_exact_err_on_nan_matrix_ $d d>]() {
                     let mut a = Matrix::<$d>::identity();
-                    a.set(0, 0, f64::NAN);
+                    assert_eq!(a.set(0, 0, f64::NAN), Some(()));
                     let b = arbitrary_rhs::<$d>();
                     assert_eq!(a.solve_exact(b), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
@@ -1512,7 +1529,7 @@ mod tests {
                 #[test]
                 fn [<solve_exact_err_on_inf_matrix_ $d d>]() {
                     let mut a = Matrix::<$d>::identity();
-                    a.set(0, 0, f64::INFINITY);
+                    assert_eq!(a.set(0, 0, f64::INFINITY), Some(()));
                     let b = arbitrary_rhs::<$d>();
                     assert_eq!(a.solve_exact(b), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
@@ -1567,7 +1584,7 @@ mod tests {
                 #[test]
                 fn [<solve_exact_f64_err_on_nan_ $d d>]() {
                     let mut a = Matrix::<$d>::identity();
-                    a.set(0, 0, f64::NAN);
+                    assert_eq!(a.set(0, 0, f64::NAN), Some(()));
                     let b = arbitrary_rhs::<$d>();
                     assert_eq!(a.solve_exact_f64(b), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
@@ -1723,7 +1740,7 @@ mod tests {
     fn solve_exact_singular_duplicate_rows() {
         let a = Matrix::<3>::from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.0, 2.0, 3.0]]);
         let b = Vector::<3>::new([1.0, 2.0, 3.0]);
-        assert!(matches!(a.solve_exact(b), Err(LaError::Singular { .. })));
+        assert_matches!(a.solve_exact(b), Err(LaError::Singular { .. }));
     }
 
     #[test]
@@ -2090,17 +2107,17 @@ mod tests {
     }
 
     /// Determinant of the large-entry 3×3 is roughly `big^3`, which
-    /// overflows `f64`.  `det_direct()` therefore returns `±∞`, the fast
-    /// filter inside `det_sign_exact` falls through on the `is_finite()`
-    /// guard, and the Bareiss fallback resolves the positive sign
-    /// correctly.  `det_exact_f64` must report `Overflow`.
+    /// overflows `f64`. `det_direct()` therefore reports a computed
+    /// [`LaError::NonFinite`], the fast filter inside `det_sign_exact`
+    /// treats that as inconclusive, and the Bareiss fallback resolves the
+    /// positive sign correctly. `det_exact_f64` must report `Overflow`.
     #[test]
     fn det_sign_exact_large_entries_3x3_positive() {
         let big = f64::MAX / 2.0;
         let a = Matrix::<3>::from_rows([[big, 1.0, 1.0], [1.0, big, 1.0], [1.0, 1.0, big]]);
         // Fast filter is inconclusive (big^3 overflows f64 to +∞), so
         // this exercises the Bareiss cold path.
-        assert!(!a.det_direct().is_some_and(f64::is_finite));
+        assert_matches!(a.det_direct(), Err(LaError::NonFinite { row: None, .. }));
         assert_eq!(a.det_sign_exact().unwrap(), 1);
         // Cross-validate: the exact `BigRational` determinant must agree
         // on sign with `det_sign_exact`, and `det_exact_f64` must overflow

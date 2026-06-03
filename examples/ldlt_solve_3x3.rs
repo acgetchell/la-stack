@@ -17,7 +17,7 @@ fn main() -> Result<(), LaError> {
 
     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL)?;
     let x = ldlt.solve_vec(b)?.into_array();
-    let det = ldlt.det();
+    let det = ldlt.det()?;
 
     println!("A (3×3 SPD tridiagonal):");
     for r in 0..3 {
