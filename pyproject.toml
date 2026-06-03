@@ -45,7 +45,7 @@ tag-release = "tag_release:main"
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-py-modules = [ "archive_changelog", "bench_compare", "criterion_dim_plot", "postprocess_changelog", "subprocess_utils", "tag_release" ]
+py-modules = [ "archive_changelog", "bench_compare", "check_semgrep_fixtures", "criterion_dim_plot", "postprocess_changelog", "subprocess_utils", "tag_release" ]
 
 [tool.ruff]
 line-length = 160
@@ -89,6 +89,7 @@ ignore = [
 known-first-party = [
     "archive_changelog",
     "bench_compare",
+    "check_semgrep_fixtures",
     "criterion_dim_plot",
     "postprocess_changelog",
     "subprocess_utils",

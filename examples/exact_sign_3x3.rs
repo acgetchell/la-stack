@@ -8,7 +8,7 @@
 
 use la_stack::prelude::*;
 
-fn main() {
+fn main() -> Result<(), LaError> {
     // Base matrix: rows in arithmetic progression → exactly singular (det = 0).
     //   [[1, 2, 3],
     //    [4, 5, 6],
@@ -23,8 +23,8 @@ fn main() {
         [7.0, 8.0, 9.0],
     ]);
 
-    let sign = m.det_sign_exact().unwrap();
-    let det_f64 = m.det().unwrap();
+    let sign = m.det_sign_exact()?;
+    let det_f64 = m.det()?;
 
     println!("Near-singular 3×3 matrix (perturbation = 2^-50 ≈ {perturbation:.2e}):");
     for r in 0..3 {
@@ -33,7 +33,7 @@ fn main() {
             if c > 0 {
                 print!(", ");
             }
-            print!("{:22.18}", m.get(r, c).unwrap());
+            print!("{:22.18}", m.get_checked(r, c)?);
         }
         println!("]");
     }
@@ -42,4 +42,6 @@ fn main() {
     println!("det_sign_exact()   = {sign}");
     println!();
     println!("The exact sign is −1 (negative), matching the analytical result.");
+
+    Ok(())
 }

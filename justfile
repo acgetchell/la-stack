@@ -389,7 +389,7 @@ help-workflows:
 # Lint groups (delaunay-style)
 lint: lint-code lint-docs lint-config
 
-lint-code: fmt-check clippy doc-check python-check shell-check semgrep
+lint-code: fmt-check clippy doc-check python-check shell-check semgrep semgrep-test
 
 lint-config: validate-json toml-lint toml-fmt-check yaml-check action-lint zizmor
 
@@ -461,11 +461,26 @@ python-sync: _ensure-uv
 
 python-typecheck: python-sync
     uv run ty check scripts/
-    uv run mypy scripts/archive_changelog.py scripts/bench_compare.py scripts/criterion_dim_plot.py scripts/tag_release.py scripts/postprocess_changelog.py scripts/subprocess_utils.py
+    uv run mypy scripts/archive_changelog.py scripts/bench_compare.py scripts/check_semgrep_fixtures.py scripts/criterion_dim_plot.py scripts/tag_release.py scripts/postprocess_changelog.py scripts/subprocess_utils.py
 
 # Repository-owned Semgrep rules for project-specific diagnostics.
 semgrep: _ensure-uv
     uv run semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .
+
+# Fixture tests for repository-owned Semgrep rules.
+semgrep-test: _ensure-uv
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    check_semgrep_fixture() {
+        target="$1"
+        json="$(uv run semgrep scan --metrics off --json --quiet --strict --config semgrep.yaml "$target")"
+        SEMGREP_JSON="$json" uv run scripts/check_semgrep_fixtures.py "$target"
+    }
+
+    while IFS= read -r -d '' fixture; do
+        check_semgrep_fixture "$fixture"
+    done < <(find tests/semgrep -type f ! -name '*.fixed' -print0)
 
 # Setup
 setup: setup-tools

@@ -26,7 +26,7 @@ fn main() -> Result<(), LaError> {
             if c > 0 {
                 print!(", ");
             }
-            print!("{:5.1}", a.get(r, c).unwrap());
+            print!("{:5.1}", a.get_checked(r, c)?);
         }
         println!("]");
     }

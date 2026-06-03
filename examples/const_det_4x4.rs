@@ -20,7 +20,7 @@ const DET: f64 = match MAT.det_direct() {
     Err(_) => panic!("matrix entries must be finite"),
 };
 
-fn main() {
+fn main() -> Result<(), LaError> {
     println!("4×4 matrix:");
     for r in 0..4 {
         print!("  [");
@@ -28,10 +28,12 @@ fn main() {
             if c > 0 {
                 print!(", ");
             }
-            print!("{:5.1}", MAT.get(r, c).unwrap());
+            print!("{:5.1}", MAT.get_checked(r, c)?);
         }
         println!("]");
     }
     println!();
     println!("det (computed at compile time) = {DET}");
+
+    Ok(())
 }

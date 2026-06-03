@@ -12,7 +12,21 @@ use faer::linalg::solvers::{PartialPivLu, Solve};
 use faer::perm::PermRef;
 use la_stack::{DEFAULT_PIVOT_TOL, Matrix, Vector};
 use pastey::paste;
+use std::fmt::Display;
 use std::hint::black_box;
+
+/// Return a successful benchmark operation result or panic with the named operation.
+fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(err) => panic!("{operation} failed: {err}"),
+    }
+}
+
+/// Return a present third-party benchmark result or panic with the named operation.
+fn require_some<T>(value: Option<T>, operation: &str) -> T {
+    value.unwrap_or_else(|| panic!("{operation} returned no result"))
+}
 
 fn faer_perm_sign(p: PermRef<'_, usize>) -> f64 {
     // Sign(det(P)) for a permutation matrix P is +1 for even permutations, -1 for odd.
@@ -145,9 +159,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 let fv2 = faer::Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 1.0));
 
                 // Precompute LU once for solve-only / det-only benchmarks.
-                let a_lu = a
-                    .lu(DEFAULT_PIVOT_TOL)
-                    .expect("matrix should be non-singular");
+                let a_lu = require_ok(a.lu(DEFAULT_PIVOT_TOL), "precomputed la_stack LU");
                 let na_lu = na.clone().lu();
                 let fa_lu = fa.partial_piv_lu();
 
@@ -156,13 +168,11 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Determinant via LU (factor + det) ===
                 [<group_d $d>].bench_function("la_stack_det_via_lu", |bencher| {
                     bencher.iter(|| {
-                        let lu = black_box(a)
-                            .lu(DEFAULT_PIVOT_TOL)
-                            .expect("matrix should be non-singular");
-                        let det = match lu.det() {
-                            Ok(det) => det,
-                            Err(err) => panic!("finite benchmark matrix determinant failed: {err}"),
-                        };
+                        let lu = require_ok(
+                            black_box(a).lu(DEFAULT_PIVOT_TOL),
+                            "la_stack LU factorization",
+                        );
+                        let det = require_ok(lu.det(), "la_stack LU determinant");
                         black_box(det);
                     });
                 });
@@ -186,7 +196,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Determinant via det() (closed-form for D≤4, LU for D≥5) ===
                 [<group_d $d>].bench_function("la_stack_det", |bencher| {
                     bencher.iter(|| {
-                        let det = black_box(a).det().expect("matrix should be non-singular");
+                        let det = require_ok(black_box(a).det(), "la_stack determinant");
                         black_box(det);
                     });
                 });
@@ -194,9 +204,10 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === LU factorization ===
                 [<group_d $d>].bench_function("la_stack_lu", |bencher| {
                     bencher.iter(|| {
-                        let lu = black_box(a)
-                            .lu(DEFAULT_PIVOT_TOL)
-                            .expect("matrix should be non-singular");
+                        let lu = require_ok(
+                            black_box(a).lu(DEFAULT_PIVOT_TOL),
+                            "la_stack LU factorization",
+                        );
                         let _ = black_box(lu);
                     });
                 });
@@ -218,12 +229,14 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === LU solve (factor + solve) ===
                 [<group_d $d>].bench_function("la_stack_lu_solve", |bencher| {
                     bencher.iter(|| {
-                        let lu = black_box(a)
-                            .lu(DEFAULT_PIVOT_TOL)
-                            .expect("matrix should be non-singular");
-                        let x = lu
-                            .solve_vec(black_box(rhs))
-                            .expect("solve should succeed");
+                        let lu = require_ok(
+                            black_box(a).lu(DEFAULT_PIVOT_TOL),
+                            "la_stack LU factorization",
+                        );
+                        let x = require_ok(
+                            lu.solve_vec(black_box(rhs)),
+                            "la_stack LU solve",
+                        );
                         let _ = black_box(x);
                     });
                 });
@@ -231,9 +244,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("nalgebra_lu_solve", |bencher| {
                     bencher.iter(|| {
                         let lu = black_box(na.clone()).lu();
-                        let x = lu
-                            .solve(black_box(&nrhs))
-                            .expect("solve should succeed");
+                        let x = require_some(lu.solve(black_box(&nrhs)), "nalgebra LU solve");
                         black_box(x);
                     });
                 });
@@ -249,18 +260,20 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Solve using a precomputed LU ===
                 [<group_d $d>].bench_function("la_stack_solve_from_lu", |bencher| {
                     bencher.iter(|| {
-                        let x = a_lu
-                            .solve_vec(black_box(rhs))
-                            .expect("solve should succeed");
+                        let x = require_ok(
+                            a_lu.solve_vec(black_box(rhs)),
+                            "precomputed la_stack LU solve",
+                        );
                         let _ = black_box(x);
                     });
                 });
 
                 [<group_d $d>].bench_function("nalgebra_solve_from_lu", |bencher| {
                     bencher.iter(|| {
-                        let x = na_lu
-                            .solve(black_box(&nrhs))
-                            .expect("solve should succeed");
+                        let x = require_some(
+                            na_lu.solve(black_box(&nrhs)),
+                            "precomputed nalgebra LU solve",
+                        );
                         black_box(x);
                     });
                 });
@@ -275,10 +288,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Determinant from a precomputed LU ===
                 [<group_d $d>].bench_function("la_stack_det_from_lu", |bencher| {
                     bencher.iter(|| {
-                        let det = match a_lu.det() {
-                            Ok(det) => det,
-                            Err(err) => panic!("finite benchmark matrix determinant failed: {err}"),
-                        };
+                        let det = require_ok(a_lu.det(), "precomputed la_stack LU determinant");
                         black_box(det);
                     });
                 });
@@ -300,7 +310,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Vector dot product ===
                 [<group_d $d>].bench_function("la_stack_dot", |bencher| {
                     bencher.iter(|| {
-                        let result = black_box(v1).dot(black_box(v2)).unwrap();
+                        let result = require_ok(black_box(v1).dot(black_box(v2)), "la_stack dot");
                         black_box(result);
                     });
                 });
@@ -327,7 +337,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Vector norm squared ===
                 [<group_d $d>].bench_function("la_stack_norm2_sq", |bencher| {
                     bencher.iter(|| {
-                        let result = black_box(v1).norm2_sq().unwrap();
+                        let result = require_ok(black_box(v1).norm2_sq(), "la_stack norm2_sq");
                         black_box(result);
                     });
                 });
@@ -354,7 +364,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Matrix infinity norm (max absolute row sum) ===
                 [<group_d $d>].bench_function("la_stack_inf_norm", |bencher| {
                     bencher.iter(|| {
-                        let result = black_box(a).inf_norm().unwrap();
+                        let result = require_ok(black_box(a).inf_norm(), "la_stack inf_norm");
                         black_box(result);
                     });
                 });
