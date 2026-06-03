@@ -523,7 +523,10 @@ impl<const D: usize> Matrix<D> {
     #[inline]
     pub fn det_exact_f64(&self) -> Result<f64, LaError> {
         let exact = self.det_exact()?;
-        let val = exact.to_f64().unwrap_or(f64::INFINITY);
+        let Some(val) = exact.to_f64() else {
+            cold_path();
+            return Err(LaError::Overflow { index: None });
+        };
         if val.is_finite() {
             Ok(val)
         } else {
@@ -607,7 +610,10 @@ impl<const D: usize> Matrix<D> {
         let exact = self.solve_exact(b)?;
         let mut result = [0.0f64; D];
         for (i, val) in exact.iter().enumerate() {
-            let f = val.to_f64().unwrap_or(f64::INFINITY);
+            let Some(f) = val.to_f64() else {
+                cold_path();
+                return Err(LaError::Overflow { index: Some(i) });
+            };
             if !f.is_finite() {
                 cold_path();
                 return Err(LaError::Overflow { index: Some(i) });
@@ -1639,7 +1645,7 @@ mod tests {
                     for r in 0..$d {
                         let mut sum = 0.0_f64;
                         for c in 0..$d {
-                            sum += rows[r][c] * x0[c];
+                            sum = rows[r][c].mul_add(x0[c], sum);
                         }
                         b_arr[r] = sum;
                     }

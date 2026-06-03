@@ -91,14 +91,20 @@ def find_changelog(start: Path | None = None) -> Path:
     raise FileNotFoundError(msg)
 
 
-def extract_changelog_section(changelog: Path, version: str) -> str:
-    """Extract the changelog body for *version* (without ``v`` prefix).
+def _archive_path_for_version(changelog: Path, version: str) -> Path | None:
+    """Return the archive file path for *version* if it exists."""
+    parts = version.split(".")
+    if len(parts) < 2:
+        return None
+    minor = f"{parts[0]}.{parts[1]}"
+    candidate = changelog.parent / "docs" / "archive" / "changelog" / f"{minor}.md"
+    return candidate if candidate.is_file() else None
 
-    Raises:
-        LookupError: If the version section is not found or empty.
-    """
-    content = changelog.read_text(encoding="utf-8")
+
+def _extract_section_from_file(path: Path, version: str) -> str | None:
+    """Try to extract the changelog section for *version* from *path*."""
     header_re = _version_header_re(version)
+    content = path.read_text(encoding="utf-8")
 
     lines = content.split("\n")
     section: list[str] = []
@@ -115,23 +121,45 @@ def extract_changelog_section(changelog: Path, version: str) -> str:
             section.append(line)
 
     if not collecting:
-        msg = f"No changelog section found for version {version}. Expected a heading like: ## [{version}] - YYYY-MM-DD"
-        raise LookupError(msg)
+        return None
 
-    # Trim leading/trailing blank lines (O(n) index scan + slice)
     start = 0
     while start < len(section) and not section[start].strip():
         start += 1
     end = len(section)
     while end > start and not section[end - 1].strip():
         end -= 1
-    section = section[start:end]
 
-    body = "\n".join(section)
-    if not body.strip():
-        msg = f"Changelog section for version {version} is empty."
-        raise LookupError(msg)
-    return body
+    return "\n".join(section[start:end])
+
+
+def extract_changelog_section(changelog: Path, version: str) -> tuple[str, Path]:
+    """Extract the changelog body for *version* (without ``v`` prefix).
+
+    Searches the root changelog first, then falls back to the per-minor
+    archive file under ``docs/archive/changelog``.
+
+    Raises:
+        LookupError: If the version section is not found or empty.
+    """
+    body = _extract_section_from_file(changelog, version)
+    if body is not None:
+        if not body.strip():
+            msg = f"Changelog section for version {version} is empty."
+            raise LookupError(msg)
+        return body, changelog
+
+    archive = _archive_path_for_version(changelog, version)
+    if archive:
+        body = _extract_section_from_file(archive, version)
+        if body is not None:
+            if not body.strip():
+                msg = f"Changelog section for version {version} is empty."
+                raise LookupError(msg)
+            return body, archive
+
+    msg = f"No changelog section found for version {version}. Expected a heading like: ## [{version}] - YYYY-MM-DD"
+    raise LookupError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +194,9 @@ def _get_repo_url() -> str:
         m = re.match(pat, raw)
         if m:
             return f"https://github.com/{m.group('slug')}"
+    if re.search(r"://[^/@]+:[^/@]+@", raw) or re.search(r"://[^/@]+@", raw) or re.match(r"[^@]+@", raw):
+        msg = f"Remote URL appears to contain credentials; cannot use as a public URL: {raw[:20]}..."
+        raise ValueError(msg)
     return raw  # best-effort fallback
 
 
@@ -174,24 +205,40 @@ def _version_header_re(version: str) -> re.Pattern[str]:
     return re.compile(rf"^##\s*\[?v?{re.escape(version)}\]?(?:$|\s|\()")
 
 
-def _github_anchor(changelog: Path, version: str) -> str:
-    """Build a GitHub-compatible heading anchor (matches ``github-slugger``)."""
+def _heading_to_anchor(heading_line: str) -> str:
+    """Convert a markdown heading line to a GitHub-compatible anchor slug."""
+    heading = heading_line.removeprefix("## ").strip()
+    heading = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", heading)
+    heading = re.sub(r"\[([^\]]+)\]", r"\1", heading)
+    heading = heading.lower()
+    heading = re.sub(r"[^a-z0-9\s-]", "", heading)
+    return re.sub(r"\s+", "-", heading)
+
+
+def _find_anchor_in_file(path: Path, version: str) -> str | None:
+    """Search *path* for a version heading and return its GitHub anchor."""
     header_re = _version_header_re(version)
     try:
-        for line in changelog.read_text(encoding="utf-8").splitlines():
+        for line in path.read_text(encoding="utf-8").splitlines():
             if header_re.match(line):
-                heading = line.removeprefix("## ").strip()
-                # Strip inline-link markup [text](url) → text
-                heading = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", heading)
-                # Strip reference-style brackets [text] → text
-                heading = re.sub(r"\[([^\]]+)\]", r"\1", heading)
-                heading = heading.lower()
-                # Remove everything except letters, digits, spaces, hyphens
-                heading = re.sub(r"[^a-z0-9\s-]", "", heading)
-                # Replace whitespace runs with a single hyphen
-                return re.sub(r"\s+", "-", heading)
+                return _heading_to_anchor(line)
     except OSError:
         pass
+    return None
+
+
+def _github_anchor(changelog: Path, version: str) -> str:
+    """Build a GitHub-compatible heading anchor (matches ``github-slugger``)."""
+    anchor = _find_anchor_in_file(changelog, version)
+    if anchor:
+        return anchor
+
+    archive = _archive_path_for_version(changelog, version)
+    if archive:
+        anchor = _find_anchor_in_file(archive, version)
+        if anchor:
+            return anchor
+
     return re.sub(r"[^a-z0-9-]", "", f"v{version}".lower())
 
 
@@ -218,7 +265,7 @@ def create_tag(tag_version: str, *, force: bool = False) -> None:
 
     # Extract changelog section (before any mutation)
     changelog = find_changelog()
-    section = extract_changelog_section(changelog, version)
+    section, source = extract_changelog_section(changelog, version)
     section_bytes = len(section.encode("utf-8"))
 
     # Check size limit
@@ -226,11 +273,16 @@ def create_tag(tag_version: str, *, force: bool = False) -> None:
         print(f"{_YELLOW}⚠ Changelog section ({section_bytes:,} bytes) exceeds GitHub's tag limit ({_GITHUB_TAG_ANNOTATION_LIMIT:,} bytes){_RESET}")
         anchor = _github_anchor(changelog, version)
         repo_url = _get_repo_url()
+        try:
+            source_rel = source.relative_to(changelog.parent)
+        except ValueError:
+            source_rel = source
+        source_rel_posix = source_rel.as_posix()
         tag_message = (
             f"Version {version}\n\n"
             f"This release contains extensive changes. See full changelog:\n"
-            f"<{repo_url}/blob/{tag_version}/CHANGELOG.md#{anchor}>\n\n"
-            f"For detailed release notes, refer to CHANGELOG.md in the repository.\n"
+            f"<{repo_url}/blob/{tag_version}/{source_rel_posix}#{anchor}>\n\n"
+            f"For detailed release notes, refer to {source_rel_posix} in the repository.\n"
         )
         is_truncated = True
         print(f"{_BLUE}→ Creating annotated tag with CHANGELOG.md reference{_RESET}")
@@ -245,15 +297,16 @@ def create_tag(tag_version: str, *, force: bool = False) -> None:
             print("... (truncated for preview)")
         print("----------------------------------------")
 
-    # Delete existing tag only after all validation succeeds
-    if tag_existed and force:
-        print(f"{_BLUE}Deleting existing tag '{tag_version}'...{_RESET}")
-        _delete_tag(tag_version)
-
-    # Create annotated tag
+    # Create annotated tag. Let git replace the ref transactionally instead of
+    # deleting the existing tag before the replacement object exists.
     label = "reference" if is_truncated else "full changelog"
+    tag_command = ["tag", "-a", tag_version, "-F", "-", "--cleanup=verbatim"]
+    if tag_existed and force:
+        print(f"{_BLUE}Replacing existing tag '{tag_version}'...{_RESET}")
+        tag_command.insert(1, "-f")
+
     print(f"{_BLUE}Creating annotated tag '{tag_version}' with {label} content...{_RESET}")
-    run_git_command_with_input(["tag", "-a", tag_version, "-F", "-"], input_data=tag_message)
+    run_git_command_with_input(tag_command, input_data=tag_message)
 
     # Success
     print(f"{_GREEN}✓ Successfully created tag '{tag_version}'{_RESET}")
@@ -297,6 +350,7 @@ def main() -> None:
         LookupError,
         ExecutableNotFoundError,
         subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
     ) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)

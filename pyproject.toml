@@ -7,7 +7,7 @@ name = "la-stack-scripts"
 version = "0.1.0"
 description = "Python utility scripts for the la-stack Rust library"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "BSD-3-Clause" }
 authors = [
     { name = "Adam Getchell", email = "adam@adamgetchell.org" },
@@ -20,7 +20,6 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Mathematics",
@@ -37,6 +36,7 @@ dependencies = [  ]
 "Bug Tracker" = "https://github.com/acgetchell/la-stack/issues"
 
 [project.scripts]
+archive-changelog = "archive_changelog:main"
 bench-compare = "bench_compare:main"
 criterion-dim-plot = "criterion_dim_plot:main"
 postprocess-changelog = "postprocess_changelog:main"
@@ -45,11 +45,11 @@ tag-release = "tag_release:main"
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-py-modules = [ "bench_compare", "criterion_dim_plot", "postprocess_changelog", "subprocess_utils", "tag_release" ]
+py-modules = [ "archive_changelog", "bench_compare", "criterion_dim_plot", "postprocess_changelog", "subprocess_utils", "tag_release" ]
 
 [tool.ruff]
-line-length = 150
-target-version = "py311"
+line-length = 160
+target-version = "py312"
 src = [ "scripts" ]
 
 [tool.ruff.lint]
@@ -85,6 +85,27 @@ ignore = [
     "PLC0415", # test helpers may import inside functions
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = [
+    "archive_changelog",
+    "bench_compare",
+    "criterion_dim_plot",
+    "postprocess_changelog",
+    "subprocess_utils",
+    "tag_release",
+]
+force-single-line = false
+split-on-trailing-comma = true
+combine-as-imports = true
+order-by-type = true
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
@@ -92,7 +113,7 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.pytest.ini_options]
-minversion = "8.0"
+minversion = "9.0"
 addopts = [ "-ra", "--strict-markers", "--strict-config", "--color=yes" ]
 testpaths = [ "scripts/tests" ]
 python_files = [ "test_*.py", "*_test.py" ]
@@ -100,7 +121,7 @@ python_classes = [ "Test*" ]
 python_functions = [ "test_*" ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 mypy_path = "scripts"
 warn_unused_configs = true
 no_implicit_optional = true
@@ -113,10 +134,15 @@ pretty = true
 allow_untyped_calls = true
 allow_incomplete_defs = true
 
+[tool.uv]
+package = true
+
 [dependency-groups]
 dev = [
+    "actionlint-py==1.7.12.24",
     "mypy>=1.19.0",
-    "pytest>=8.0.0",
-    "ruff>=0.12.11",
-    "ty>=0.0.8",
+    "pytest>=9.0.3",
+    "ruff>=0.15.14",
+    "semgrep==1.164.0",
+    "ty>=0.0.40",
 ]

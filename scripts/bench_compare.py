@@ -24,14 +24,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
-import shutil
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypeVar
+from typing import Protocol
+
+from subprocess_utils import ExecutableNotFoundError, run_git_command
 
 # ---------------------------------------------------------------------------
 # Benchmark group / bench discovery
@@ -194,12 +195,14 @@ def _format_pct(pct: float) -> str:
     return f"{pct:+.1f}%"
 
 
-_T = TypeVar("_T", BenchResult, Comparison)
+class _GroupedItem(Protocol):
+    @property
+    def group(self) -> str: ...
 
 
-def _group_by_group(items: list[_T]) -> dict[str, list[_T]]:
+def _group_by_group[T: _GroupedItem](items: list[T]) -> dict[str, list[T]]:
     """Group results or comparisons by their Criterion group name."""
-    groups: dict[str, list[_T]] = {}
+    groups: dict[str, list[T]] = {}
     for item in items:
         groups.setdefault(item.group, []).append(item)
     return groups
@@ -252,9 +255,7 @@ def _comparison_tables(comparisons: list[Comparison], baseline_name: str) -> str
             "|-----------|-------:|--------:|-------:|--------:|",
         ]
         for c in items:
-            lines.append(
-                f"| {c.bench} | {_format_time(c.baseline_ns)} | {_format_time(c.current_ns)} | {_format_pct(c.pct_change)} | {c.speedup:.2f}x |"
-            )
+            lines.append(f"| {c.bench} | {_format_time(c.baseline_ns)} | {_format_time(c.current_ns)} | {_format_pct(c.pct_change)} | {c.speedup:.2f}x |")
         sections.append("\n".join(lines))
 
     return "\n\n".join(sections)
@@ -264,42 +265,28 @@ def _read_cargo_version(root: Path) -> str:
     cargo_toml = root / "Cargo.toml"
     if not cargo_toml.exists():
         return "unknown"
-    for line in cargo_toml.read_text(encoding="utf-8").splitlines():
-        m = re.match(r'^\s*version\s*=\s*"([^"]+)"', line)
-        if m:
-            return m.group(1)
+    data = tomllib.loads(cargo_toml.read_text(encoding="utf-8"))
+    package = data.get("package")
+    if isinstance(package, dict):
+        version = package.get("version")
+        if isinstance(version, str):
+            return version
     return "unknown"
 
 
 def _get_git_info(root: Path) -> tuple[str, str]:
     """Return (short_hash, branch_or_tag)."""
-    git_path = shutil.which("git")
-    if git_path is None:
-        return ("unknown", "unknown")
-
     short_hash = "unknown"
     branch = "unknown"
     try:
-        result = subprocess.run(  # noqa: S603
-            [git_path, "--no-pager", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=root,
-        )
+        result = run_git_command(["--no-pager", "rev-parse", "--short", "HEAD"], cwd=root)
         short_hash = result.stdout.strip()
-    except subprocess.CalledProcessError:
+    except (ExecutableNotFoundError, subprocess.CalledProcessError):
         pass
     try:
-        result = subprocess.run(  # noqa: S603
-            [git_path, "--no-pager", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=root,
-        )
+        result = run_git_command(["--no-pager", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
         branch = result.stdout.strip()
-    except subprocess.CalledProcessError:
+    except (ExecutableNotFoundError, subprocess.CalledProcessError):
         pass
     return short_hash, branch
 

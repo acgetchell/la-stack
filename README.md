@@ -108,14 +108,14 @@ let det = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap().det();
 assert!((det - 1.0).abs() <= 1e-12);
 ```
 
-> ⚠️ **LDLT precondition:** The input matrix must be **symmetric**.  Symmetry is
+> ⚠️ **LDLT precondition:** The input matrix must be **symmetric**. Symmetry is
 > verified by a `debug_assert!` in debug builds only; release builds silently accept
-> asymmetric inputs and produce a meaningless factorization.  Pre-validate with
+> asymmetric inputs and produce a meaningless factorization. Pre-validate with
 > [`Matrix::is_symmetric`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.is_symmetric)
 > (or locate the offending pair with
 > [`Matrix::first_asymmetry`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.first_asymmetry))
 > when you cannot statically guarantee symmetry, or fall back to `lu()` if your
-> matrices may not be symmetric at all.  See
+> matrices may not be symmetric at all. See
 > [`Matrix::ldlt`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.ldlt)
 > for details.
 
@@ -147,7 +147,7 @@ for D ≤ 4 and falls back to LU for D ≥ 5 — no API change needed.
 
 ## 🔬 Exact arithmetic (`"exact"` feature)
 
-The default build has **zero runtime dependencies**.  Enable the optional
+The default build has **zero runtime dependencies**. Enable the optional
 `exact` Cargo feature to add exact arithmetic methods using arbitrary-precision
 rationals (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
 `BigRational`):
@@ -192,14 +192,14 @@ assert!((x[1] - 2.0).abs() <= f64::EPSILON);
 
 With the `exact` feature enabled, `BigInt` and `BigRational` are re-exported
 from the crate root and prelude, alongside the most commonly needed
-`num-traits` items (`FromPrimitive`, `ToPrimitive`, `Signed`).  This lets
+`num-traits` items (`FromPrimitive`, `ToPrimitive`, `Signed`). This lets
 consumers construct exact values (`BigRational::from_f64`, `from_i64`), query
 sign (`is_positive` / `is_negative`), and convert back to `f64` (`to_f64`)
 with a single `use la_stack::prelude::*;` — no need to add `num-bigint`,
 `num-rational`, or `num-traits` to their own `Cargo.toml`.
 
 For `det_sign_exact()`, D ≤ 4 matrices use a fast f64 filter (error-bounded
-`det_direct()`) that resolves the sign without allocating.  Only near-degenerate
+`det_direct()`) that resolves the sign without allocating. Only near-degenerate
 or large (D ≥ 5) matrices fall through to the exact Bareiss algorithm.
 
 ### Adaptive precision with `det_errbound()`
@@ -256,6 +256,7 @@ Raw data: [docs/assets/bench/vs_linalg_lu_solve_median.csv](docs/assets/bench/vs
 Summary (median time; lower is better). The “la-stack vs nalgebra/faer” columns show the % time reduction relative to each baseline (positive = la-stack faster):
 
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
+
 | D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | la-stack vs nalgebra | la-stack vs faer |
 |---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|
 | 2 | 2.173 | 4.448 | 139.923 | +51.2% | +98.4% |
@@ -266,6 +267,7 @@ Summary (median time; lower is better). The “la-stack vs nalgebra/faer” colu
 | 16 | 635.775 | 576.171 | 846.189 | -10.3% | +24.9% |
 | 32 | 2,704.570 | 2,731.740 | 2,589.494 | +1.0% | -4.4% |
 | 64 | 17,381.460 | 13,744.505 | 11,276.642 | -26.5% | -54.1% |
+
 <!-- BENCH_TABLE:lu_solve:median:new:END -->
 
 ## 📋 Examples

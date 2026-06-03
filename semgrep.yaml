@@ -1,0 +1,117 @@
+---
+# Repository-owned Semgrep/OpenGrep rules.
+#
+# Keep this file small and project-specific. Broad default/community rules tend
+# to duplicate Clippy, cargo-audit, and CodeQL. These rules encode local Rust
+# and workflow policies that are easier to express structurally than with Clippy.
+
+rules:
+  - id: la-stack.rust.no-stdio-diagnostics-in-src
+    languages:
+      - rust
+    severity: WARNING
+    message: "Avoid stdout/stderr diagnostics in library src/ code."
+    metadata:
+      category: maintainability
+      rationale: "Library code should return data or typed errors rather than printing diagnostics."
+    paths:
+      include:
+        - "/src/**/*.rs"
+    patterns:
+      - pattern-either:
+          - pattern: println!(...)
+          - pattern: eprintln!(...)
+      - pattern-not-inside: |
+          mod tests {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(test)]
+          mod $MOD {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(test)]
+          fn $FUNC(...) {
+              ...
+          }
+
+  - id: la-stack.rust.no-nonfinite-unwrap-defaults
+    languages:
+      - rust
+    severity: WARNING
+    message: "Do not hide failed floating-point conversion with NaN or infinity defaults."
+    metadata:
+      category: correctness
+      rationale: "Non-finite values must surface as typed errors with source-location metadata."
+    paths:
+      include:
+        - "/src/**/*.rs"
+    pattern-either:
+      - pattern: $VALUE.unwrap_or(f64::NAN)
+      - pattern: $VALUE.unwrap_or(f64::INFINITY)
+      - pattern: $VALUE.unwrap_or(f64::NEG_INFINITY)
+      - pattern: $VALUE.unwrap_or(std::f64::NAN)
+      - pattern: $VALUE.unwrap_or(std::f64::INFINITY)
+      - pattern: $VALUE.unwrap_or(std::f64::NEG_INFINITY)
+      - pattern: $VALUE.unwrap_or_else(|| f64::NAN)
+      - pattern: $VALUE.unwrap_or_else(|| f64::INFINITY)
+      - pattern: $VALUE.unwrap_or_else(|| f64::NEG_INFINITY)
+
+  - id: la-stack.rust.public-error-enums-non-exhaustive
+    languages:
+      - rust
+    severity: WARNING
+    message: "Public error enums must be #[non_exhaustive] so adding variants remains API-safe."
+    metadata:
+      category: maintainability
+      rationale: "Error enums grow as diagnostics become more precise; non-exhaustive public enums keep that growth additive for downstream callers."
+    paths:
+      include:
+        - "/src/**/*.rs"
+    pattern-regex: '(?m)(?<!#\[non_exhaustive\]\n)^\s*pub\s+enum\s+[A-Za-z_][A-Za-z0-9_]*Error(?:<[^>{}]*)?\s*\{'
+
+  - id: la-stack.github-actions.external-action-sha-pinned
+    languages:
+      - regex
+    severity: WARNING
+    message: "Pin external GitHub Actions to a full 40-character commit SHA."
+    metadata:
+      category: security
+      rationale: "Moving tags can change workflow behavior without review."
+    paths:
+      include:
+        - "/.github/workflows/**/*.yml"
+        - "/.github/workflows/**/*.yaml"
+    patterns:
+      - pattern-regex: '(?m)^\s*uses:\s*(?!\./)(?!docker://)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?@(?![a-fA-F0-9]{40}(?:\s+#|$))[^\s#]+'
+
+  - id: la-stack.github-actions.external-action-approved-allowlist
+    languages:
+      - regex
+    severity: WARNING
+    message: "Use only approved external GitHub Actions, or update the repository allowlist deliberately."
+    metadata:
+      category: security
+      rationale: "A small allowlist keeps workflow supply-chain review explicit."
+    paths:
+      include:
+        - "/.github/workflows/**/*.yml"
+        - "/.github/workflows/**/*.yaml"
+    patterns:
+      - pattern-regex: '(?m)^\s*uses:\s*(?!\./)(?!docker://)(?!(?:actions/checkout|actions/cache|actions/download-artifact|actions/github-script|actions/setup-python|actions/upload-artifact|actions-rust-lang/setup-rust-toolchain|astral-sh/setup-uv|codacy/codacy-analysis-cli-action|codecov/codecov-action|github/codeql-action/(?:upload-sarif|init|analyze)|taiki-e/cache-cargo-install-action|zizmorcore/zizmor-action)@)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?@'
+
+  - id: la-stack.github-actions.external-action-version-comment
+    languages:
+      - regex
+    severity: WARNING
+    message: "Keep a readable version comment next to external GitHub Action SHA pins."
+    metadata:
+      category: maintainability
+      rationale: "Version comments make Dependabot updates and human review manageable."
+    paths:
+      include:
+        - "/.github/workflows/**/*.yml"
+        - "/.github/workflows/**/*.yaml"
+    patterns:
+      - pattern-regex: '(?m)^\s*uses:\s*(?!\./)(?!docker://)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?@[a-fA-F0-9]{40}\s*$'

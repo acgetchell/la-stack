@@ -172,7 +172,7 @@ macro_rules! gen_solve_exact_roundtrip_proptests {
                     for i in 0..$d {
                         let mut sum = 0.0f64;
                         for j in 0..$d {
-                            sum += rows[i][j] * x0[j];
+                            sum = rows[i][j].mul_add(x0[j], sum);
                         }
                         b_arr[i] = sum;
                     }
