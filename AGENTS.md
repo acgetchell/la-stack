@@ -41,6 +41,11 @@ invariant over the convenient edit.
 - Pre-1.0 semver: `0.x.Y` is a patch-level additive bump, `0.X.y` is a
   minor bump that may include breaking changes. Conventional-commit
   types (`feat`, `fix`, `refactor`, …) mirror this convention.
+- Do **not** automatically update the library version in `Cargo.toml`,
+  `Cargo.lock`, README dependency snippets, or related docs during ordinary
+  feature, fix, review, or hygiene work. Version bumps are maintainer-driven
+  release work performed manually as part of `docs/RELEASING.md`; only change
+  them when the user explicitly asks for release/version-bump work.
 
 ### Composability
 

@@ -121,7 +121,7 @@ macro_rules! gen_det_sign_exact_proptests {
                     let m = Matrix::<$d>::from_rows(rows);
 
                     let exact_sign = m.det_sign_exact().unwrap();
-                    let fp_det = m.det(DEFAULT_PIVOT_TOL).unwrap();
+                    let fp_det = m.det().unwrap();
                     let fp_sign: i8 = if fp_det > 0.0 {
                         1
                     } else if fp_det < 0.0 {

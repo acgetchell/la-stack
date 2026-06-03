@@ -129,13 +129,14 @@ fn main() -> Result<(), LaError> {
 
 > ⚠️ **LDLT invariant:** The input matrix must be **symmetric**. Asymmetric
 > inputs return a typed `LaError::Asymmetric` before factorization starts.
-> You can pre-check with
-> [`Matrix::is_symmetric`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.is_symmetric)
-> (or locate the offending pair with
-> [`Matrix::first_asymmetry`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.first_asymmetry)),
-> or fall back to `lu()` if your matrices may not be symmetric at all. See
+> Use
+> [`SymmetricMatrix`](https://docs.rs/la-stack/latest/la_stack/struct.SymmetricMatrix.html)
+> when you want to validate symmetry once and carry that proof into LDLT. Use
+> [`Matrix::first_asymmetry`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.first_asymmetry)
+> to locate the offending pair, or fall back to `lu()` if your matrices may not
+> be symmetric at all. See
 > [`Matrix::ldlt`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.ldlt)
-> for details.
+> for the raw convenience path.
 
 ## ⚡ Compile-time determinants (D ≤ 4)
 
@@ -161,7 +162,12 @@ assert_eq!(DET, Ok(Some(30.0)));
 ```
 
 The public `det()` method automatically dispatches through the closed-form path
-for D ≤ 4 and falls back to LU for D ≥ 5 — no API change needed.
+for D ≤ 4 and falls back to LU for D ≥ 5. Finite inputs return a floating-point
+determinant estimate in every dimension; `det()` does not surface
+`LaError::Singular`. Tiny nonzero determinants are not flattened by a pivot
+tolerance. Use `lu()` directly when you need tolerance-aware singularity
+detection or the pivot-column diagnostic from the factorization, and use the
+exact determinant APIs when exact singularity classification matters.
 
 ## 🔬 Exact arithmetic (`"exact"` feature)
 

@@ -15,10 +15,7 @@ use core::hint::cold_path;
 
 use crate::matrix::Matrix;
 use crate::vector::Vector;
-use crate::{LaError, Tolerance};
-
-/// Relative tolerance used by LDLT's mandatory symmetry validation.
-const LDLT_SYMMETRY_REL_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
+use crate::{LDLT_SYMMETRY_REL_TOL, LaError, Tolerance};
 
 /// LDLT factorization (`A = L D Lᵀ`) for symmetric positive (semi)definite matrices.
 ///
@@ -52,7 +49,12 @@ impl<const D: usize> Ldlt<D> {
     #[inline]
     pub(crate) fn factor(a: Matrix<D>, tol: Tolerance) -> Result<Self, LaError> {
         reject_asymmetric(&a)?;
+        Self::factor_symmetric(a, tol)
+    }
 
+    /// Factor a matrix that has already passed LDLT symmetry validation.
+    #[inline]
+    pub(crate) fn factor_symmetric(a: Matrix<D>, tol: Tolerance) -> Result<Self, LaError> {
         let mut f = a;
 
         // LDLT via symmetric rank-1 updates, using only the lower triangle.
