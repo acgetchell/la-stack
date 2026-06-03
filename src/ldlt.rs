@@ -264,7 +264,7 @@ impl<const D: usize> Ldlt<D> {
             ii += 1;
         }
 
-        Ok(FiniteVector::new_unchecked(Vector::new_unchecked(x)))
+        Ok(FiniteVector::new(Vector::new_unchecked(x)))
     }
 }
 

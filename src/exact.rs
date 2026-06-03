@@ -536,7 +536,7 @@ impl<const D: usize> FiniteMatrix<D> {
             }
             result[i] = f;
         }
-        Ok(FiniteVector::new_unchecked(Vector::new_unchecked(result)))
+        Ok(FiniteVector::new(Vector::new_unchecked(result)))
     }
 
     /// Exact determinant sign for an already finite matrix.
@@ -870,18 +870,6 @@ mod tests {
                     let det = Matrix::<$d>::identity().det_exact().unwrap();
                     assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
                 }
-
-                #[test]
-                fn [<det_exact_err_on_nan_ $d d>]() {
-                    let mut m = Matrix::<$d>::identity();
-                    assert_eq!(m.set(0, 0, f64::NAN), Err(LaError::NonFinite { row: Some(0), col: 0 }));
-                }
-
-                #[test]
-                fn [<det_exact_err_on_inf_ $d d>]() {
-                    let mut m = Matrix::<$d>::identity();
-                    assert_eq!(m.set(0, 0, f64::INFINITY), Err(LaError::NonFinite { row: Some(0), col: 0 }));
-                }
             }
         };
     }
@@ -898,12 +886,6 @@ mod tests {
                 fn [<det_exact_f64_identity_ $d d>]() {
                     let det = Matrix::<$d>::identity().det_exact_f64().unwrap();
                     assert!((det - 1.0).abs() <= f64::EPSILON);
-                }
-
-                #[test]
-                fn [<det_exact_f64_err_on_nan_ $d d>]() {
-                    let mut m = Matrix::<$d>::identity();
-                    assert_eq!(m.set(0, 0, f64::NAN), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
             }
         };
@@ -1391,32 +1373,6 @@ mod tests {
         assert_eq!(det, BigRational::from_integer(BigInt::from(-1)));
     }
 
-    /// Non-finite matrix entries surface as `LaError::NonFinite` with the
-    /// row/col of the first offending entry.
-    #[test]
-    fn bareiss_det_int_errs_on_nan() {
-        let mut m = Matrix::<3>::identity();
-        assert_eq!(
-            m.set(1, 2, f64::NAN),
-            Err(LaError::NonFinite {
-                row: Some(1),
-                col: 2
-            })
-        );
-    }
-
-    #[test]
-    fn bareiss_det_int_errs_on_inf() {
-        let mut m = Matrix::<2>::identity();
-        assert_eq!(
-            m.set(0, 0, f64::INFINITY),
-            Err(LaError::NonFinite {
-                row: Some(0),
-                col: 0
-            })
-        );
-    }
-
     /// Per AGENTS.md: dimension-generic tests must cover D=2–5.
     macro_rules! gen_bareiss_det_int_identity_tests {
         ($d:literal) => {
@@ -1640,32 +1596,6 @@ mod tests {
                 }
 
                 #[test]
-                fn [<solve_exact_err_on_nan_matrix_ $d d>]() {
-                    let mut a = Matrix::<$d>::identity();
-                    assert_eq!(a.set(0, 0, f64::NAN), Err(LaError::NonFinite { row: Some(0), col: 0 }));
-                }
-
-                #[test]
-                fn [<solve_exact_err_on_inf_matrix_ $d d>]() {
-                    let mut a = Matrix::<$d>::identity();
-                    assert_eq!(a.set(0, 0, f64::INFINITY), Err(LaError::NonFinite { row: Some(0), col: 0 }));
-                }
-
-                #[test]
-                fn [<solve_exact_err_on_nan_vector_ $d d>]() {
-                    let mut b_arr = [1.0f64; $d];
-                    b_arr[0] = f64::NAN;
-                    assert_eq!(Vector::<$d>::try_new(b_arr), Err(LaError::NonFinite { row: None, col: 0 }));
-                }
-
-                #[test]
-                fn [<solve_exact_err_on_inf_vector_ $d d>]() {
-                    let mut b_arr = [1.0f64; $d];
-                    b_arr[$d - 1] = f64::INFINITY;
-                    assert_eq!(Vector::<$d>::try_new(b_arr), Err(LaError::NonFinite { row: None, col: $d - 1 }));
-                }
-
-                #[test]
                 fn [<solve_exact_singular_ $d d>]() {
                     // Zero matrix is singular.
                     let a = Matrix::<$d>::zero();
@@ -1692,12 +1622,6 @@ mod tests {
                     for i in 0..$d {
                         assert!((x[i] - b.data[i]).abs() <= f64::EPSILON);
                     }
-                }
-
-                #[test]
-                fn [<solve_exact_f64_err_on_nan_ $d d>]() {
-                    let mut a = Matrix::<$d>::identity();
-                    assert_eq!(a.set(0, 0, f64::NAN), Err(LaError::NonFinite { row: Some(0), col: 0 }));
                 }
             }
         };

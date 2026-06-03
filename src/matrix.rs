@@ -26,21 +26,11 @@ pub(crate) struct FiniteMatrix<const D: usize> {
 }
 
 impl<const D: usize> FiniteMatrix<D> {
-    /// Construct a finite matrix without checking the invariant.
-    ///
-    /// This is crate-internal so raw storage still goes through
-    /// [`Matrix::try_from_rows`], which preserves diagnostics for rejected
-    /// entries.
-    #[inline]
-    pub(crate) const fn new_unchecked(matrix: Matrix<D>) -> Self {
-        Self { matrix }
-    }
-
     /// Wrap an already-finite matrix for algorithms that carry the invariant
     /// explicitly.
     #[inline]
     pub const fn new(matrix: Matrix<D>) -> Self {
-        Self::new_unchecked(matrix)
+        Self { matrix }
     }
 
     /// Validate raw row-major storage and construct a finite matrix.
@@ -50,7 +40,7 @@ impl<const D: usize> FiniteMatrix<D> {
     #[inline]
     pub const fn from_rows(rows: [[f64; D]; D]) -> Result<Self, LaError> {
         match Matrix::try_from_rows(rows) {
-            Ok(matrix) => Ok(Self::new_unchecked(matrix)),
+            Ok(matrix) => Ok(Self::new(matrix)),
             Err(err) => Err(err),
         }
     }
@@ -58,7 +48,7 @@ impl<const D: usize> FiniteMatrix<D> {
     /// All-zeros finite matrix.
     #[inline]
     pub const fn zero() -> Self {
-        Self::new_unchecked(Matrix::zero())
+        Self::new(Matrix::zero())
     }
 
     /// Consume the wrapper and return the underlying raw matrix.

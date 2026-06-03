@@ -217,7 +217,7 @@ impl<const D: usize> Lu<D> {
             ii += 1;
         }
 
-        Ok(FiniteVector::new_unchecked(Vector::new_unchecked(x)))
+        Ok(FiniteVector::new(Vector::new_unchecked(x)))
     }
 
     /// Determinant of the original matrix.

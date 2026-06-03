@@ -22,20 +22,11 @@ pub(crate) struct FiniteVector<const D: usize> {
 }
 
 impl<const D: usize> FiniteVector<D> {
-    /// Construct a finite vector without checking the invariant.
-    ///
-    /// This is crate-internal so raw storage still goes through
-    /// [`Vector::try_new`], which preserves diagnostics for rejected entries.
-    #[inline]
-    pub(crate) const fn new_unchecked(vector: Vector<D>) -> Self {
-        Self { vector }
-    }
-
     /// Wrap an already-finite vector for algorithms that carry the invariant
     /// explicitly.
     #[inline]
     pub const fn new(vector: Vector<D>) -> Self {
-        Self::new_unchecked(vector)
+        Self { vector }
     }
 
     /// Validate raw vector storage and construct a finite vector.
@@ -45,7 +36,7 @@ impl<const D: usize> FiniteVector<D> {
     #[inline]
     pub const fn from_array(data: [f64; D]) -> Result<Self, LaError> {
         match Vector::try_new(data) {
-            Ok(vector) => Ok(Self::new_unchecked(vector)),
+            Ok(vector) => Ok(Self::new(vector)),
             Err(err) => Err(err),
         }
     }
@@ -53,7 +44,7 @@ impl<const D: usize> FiniteVector<D> {
     /// All-zeros finite vector.
     #[inline]
     pub const fn zero() -> Self {
-        Self::new_unchecked(Vector::zero())
+        Self::new(Vector::zero())
     }
 
     /// Consume the wrapper and return the underlying raw vector.

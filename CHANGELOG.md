@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Feat!(matrix): enforce fallible matrix invariants [`e26c283`](https://github.com/acgetchell/la-stack/commit/e26c28358b2358100353b2895441b68892e92cd7)
 - Feat!(api): enforce fallible numeric invariants [`adfc33b`](https://github.com/acgetchell/la-stack/commit/adfc33b945b259721bd1067e797ed2e7d4ec0e6e)
+- Feat!(matrix): make determinant API tolerance-free [`11a355c`](https://github.com/acgetchell/la-stack/commit/11a355c099eaf366daec8c95af61b6934f914960)
+- Feat!(api): hide finite and symmetry proofs behind matrix APIs
+  [`7219336`](https://github.com/acgetchell/la-stack/commit/721933671c28eb71953f1386a201622d6171caf7)
+- Guard public Rust examples against unwrap [`df1130a`](https://github.com/acgetchell/la-stack/commit/df1130a7ad0ba69a1072ef231e14f3efb7e4b8de)
+
+  - Add repository-owned Semgrep rules for unwrap and expect usage in public doctests, examples, and benchmarks.
+  - Add fixture-based Semgrep rule tests and include them in the lint workflow.
+  - Update examples and benchmarks to model typed fallible flow or operation-labeled benchmark failures.
+- Feat!(api): enforce finite Matrix and Vector construction [`92ba403`](https://github.com/acgetchell/la-stack/commit/92ba4034b194875c62a27f24dfbf6d43f380f54e)
 
 ### Changed
 
@@ -25,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reapply "ci: modernize tooling checks and example execution"
   [`758321a`](https://github.com/acgetchell/la-stack/commit/758321acf872b1f17286ff3bb7bee6a807e4b440)
+
+- Encode nonzero mantissas in exact decomposition [`7a664ed`](https://github.com/acgetchell/la-stack/commit/7a664ede2f4add168c5813f8d24e16732fa03b30)
+
+  - Replace the exact-arithmetic zero mantissa sentinel with `Option&lt;NonZeroU64&gt;`.
+  - Carry nonzero mantissa proof through matrix/vector decomposition and BigInt scaling.
+  - Clarify determinant documentation around uncertified `det()` bounds.
+  - Keep SPD determinant proptests on the tolerance-aware LU path.
 
 ### Dependencies
 
@@ -47,6 +63,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Clarify that la-stack intentionally supports f64 floating-point APIs plus optional exact rationals, not alternate scalar families.
   - Add a roadmap covering the v0.4.x stable-Rust issue sequence and the v0.5.0 generic_const_exprs anchor.
   - Refresh generated changelog entries and archived changelog grouping.
+- Document finite RHS solve validation [`075aed7`](https://github.com/acgetchell/la-stack/commit/075aed78cf8264fc920258f1f1d977ddd589ffd7)
+
+  - Document that LU and LDLT solve_vec reject non-finite RHS entries with LaError::NonFinite metadata.
+  - Cite the Bareiss reference in the exact solve helper docs and describe exact-arithmetic growth and complexity.
+  - Cover finite proof defaults and non-finite RHS solve boundaries in unit tests.
+
+### Fixed
+
+- Reject overflowed symmetry tolerance scaling [`a7b052a`](https://github.com/acgetchell/la-stack/commit/a7b052af5dc6361198bbfe1e17d6b1f0ba225ed7)
+
+  - Enforce the tolerance contract around symmetry checks by surfacing scaled
+    tolerance overflow as a typed non-finite intermediate error.
+
+  - Document finite, non-negative tolerance requirements across tolerance-taking
+    matrix APIs.
+
+  - Add regression coverage for invalid tolerance construction and symmetry
+    tolerance overflow.
+
+  - Update exact examples to propagate typed crate errors instead of unwrapping.
+- Harden Semgrep fixture parsing [`ac44c07`](https://github.com/acgetchell/la-stack/commit/ac44c078cc4435d5beca27f1890fbb4046cf5952)
+
+  - Ignore non-canonical todoruleid annotations when counting expected rule hits.
+  - Reject malformed Semgrep JSON results with clear stderr diagnostics instead of propagating KeyError.
+- Revalidate finite proof conversions [`419a90f`](https://github.com/acgetchell/la-stack/commit/419a90f7267608051736498154ac5e6faf0909c5)
+
+  Ensure internal finite proof conversions cannot accept raw Matrix or Vector storage without checking the invariant.
+
+  - Revalidate TryFrom&lt;Matrix&lt;D&gt;&gt; and TryFrom&lt;Vector&lt;D&gt;&gt; before constructing finite wrappers.
+  - Measure exact random percentile benchmarks over repeated corpus timings and cumulative input sets.
+  - Tighten Codecov status thresholds and extend benchmark workflow timeout.
+  - Keep Semgrep constructor fixtures aligned with public API guardrails.
 
 ### Maintenance
 
