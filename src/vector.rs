@@ -96,6 +96,13 @@ impl<const D: usize> TryFrom<Vector<D>> for FiniteVector<D> {
 
     #[inline]
     fn try_from(value: Vector<D>) -> Result<Self, Self::Error> {
+        let mut i = 0;
+        while i < D {
+            if !value.data[i].is_finite() {
+                return Err(LaError::non_finite_at(i));
+            }
+            i += 1;
+        }
         Ok(Self::new(value))
     }
 }
@@ -485,6 +492,21 @@ mod tests {
 
                     assert_eq!(
                         FiniteVector::<$d>::from_array(arr),
+                        Err(LaError::NonFinite {
+                            row: None,
+                            col: $d - 1,
+                        })
+                    );
+                }
+
+                #[test]
+                fn [<finite_vector_try_from_raw_vector_revalidates_entries_ $d d>]() {
+                    let mut arr = [1.0f64; $d];
+                    arr[$d - 1] = f64::NAN;
+                    let raw = Vector::<$d>::new_unchecked(arr);
+
+                    assert_eq!(
+                        FiniteVector::<$d>::try_from(raw),
                         Err(LaError::NonFinite {
                             row: None,
                             col: $d - 1,

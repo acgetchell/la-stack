@@ -1463,6 +1463,13 @@ mod tests {
     }
 
     #[test]
+    fn bigint_exp_to_bigrational_negative_exp_reduces_to_integer() {
+        // 8 × 2^(-3) = 1 after stripping every denominator factor.
+        let r = bigint_exp_to_bigrational(BigInt::from(8), -3);
+        assert_eq!(r, BigRational::from_integer(BigInt::from(1)));
+    }
+
+    #[test]
     fn bigint_exp_to_bigrational_negative_exp_already_odd() {
         // 3 × 2^(-2) = 3/4 (already in lowest terms since 3 is odd)
         let r = bigint_exp_to_bigrational(BigInt::from(3), -2);

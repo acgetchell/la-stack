@@ -18,9 +18,10 @@
 //! 3. **Random percentile benches** (`exact_random_percentile_d{2..5}`) —
 //!    a fixed-seed corpus of diagonally-dominant random matrices per
 //!    dimension.  Each operation is pre-timed across the corpus to select
-//!    p50/p95/p99 representative inputs, then measured with Criterion.
+//!    p50/p95/p99 cumulative input subsets, then measured with Criterion.
 
 use std::array;
+use std::cell::Cell;
 use std::fmt::{self, Display};
 use std::hint::black_box;
 use std::num::NonZeroUsize;
@@ -33,6 +34,7 @@ use la_stack::{Matrix, Vector};
 
 const RANDOM_INPUTS_PER_DIM: SampleCount = SampleCount::new_unchecked(50);
 const RANDOM_INPUT_ARRAY_LEN: usize = RANDOM_INPUTS_PER_DIM.get();
+const RANDOM_TIMING_PASSES: SampleCount = SampleCount::new_unchecked(5);
 const RANDOM_SEED: [u8; 32] = [0; 32];
 const RANDOM_PERCENTILES: [RandomPercentile; 3] = [
     RandomPercentile::P50,
@@ -341,44 +343,71 @@ fn time_random_operation<const D: usize>(
     start.elapsed().as_nanos()
 }
 
+/// Time one exact operation repeatedly on one random input.
+fn time_random_operation_repeated<const D: usize>(
+    operation: ExactRandomOperation,
+    input: ExactRandomInput<D>,
+) -> u128 {
+    let mut elapsed = 0;
+    for _ in 0..RANDOM_TIMING_PASSES.get() {
+        elapsed += time_random_operation(operation, input);
+    }
+    elapsed
+}
+
 /// Convert a percentile request into an index in a sorted timing corpus.
 const fn percentile_index(count: SampleCount, percentile: RandomPercentile) -> usize {
     ((count.get() - 1) * percentile.value() + 50) / 100
 }
 
-/// Select representative corpus indices by pre-timing every input for one operation.
+/// Select cumulative corpus index sets by pre-timing every input for one operation.
 fn percentile_input_indices<const D: usize>(
     corpus: &[ExactRandomInput<D>; RANDOM_INPUT_ARRAY_LEN],
     operation: ExactRandomOperation,
-) -> [usize; RANDOM_PERCENTILES.len()] {
+) -> [Vec<usize>; RANDOM_PERCENTILES.len()] {
     let input_count = require_ok(SampleCount::new(corpus.len()), "random input corpus size");
     let mut timings = [(0_u128, 0_usize); RANDOM_INPUT_ARRAY_LEN];
     for (i, input) in corpus.iter().copied().enumerate() {
-        timings[i] = (time_random_operation(operation, input), i);
+        timings[i] = (time_random_operation_repeated(operation, input), i);
     }
     timings.sort_unstable();
 
     RANDOM_PERCENTILES.map(|percentile| {
         let timing_idx = percentile_index(input_count, percentile);
-        timings[timing_idx].1
+        let threshold = timings[timing_idx].0;
+        let mut indices = Vec::new();
+        for &(elapsed, input_idx) in &timings {
+            if elapsed <= threshold {
+                indices.push(input_idx);
+            }
+        }
+        indices
     })
 }
 
-/// Add p50/p95/p99 Criterion benches for one exact operation and dimension.
+/// Add p50/p95/p99 Criterion benches over percentile input sets.
 fn bench_random_percentile_operation<const D: usize>(
     group: &mut BenchmarkGroup<'_, WallTime>,
     corpus: &[ExactRandomInput<D>; RANDOM_INPUT_ARRAY_LEN],
     operation: ExactRandomOperation,
 ) {
-    let indices = percentile_input_indices(corpus, operation);
+    let index_sets = percentile_input_indices(corpus, operation);
 
-    for (percentile, input_idx) in RANDOM_PERCENTILES.into_iter().zip(indices) {
-        let input = corpus[input_idx];
+    for (percentile, input_indices) in RANDOM_PERCENTILES.into_iter().zip(index_sets) {
+        let input_count = require_ok(
+            SampleCount::new(input_indices.len()),
+            "percentile input set size",
+        );
+        let cursor = Cell::new(0);
         group.bench_function(
             format!("{}_{}", operation.name(), percentile.name()),
-            |bencher| {
+            move |bencher| {
                 bencher.iter_batched(
-                    || input,
+                    || {
+                        let cursor_pos = cursor.get();
+                        cursor.set((cursor_pos + 1) % input_count.get());
+                        corpus[input_indices[cursor_pos]]
+                    },
                     |sample| run_random_operation(operation, sample),
                     BatchSize::SmallInput,
                 );
@@ -636,8 +665,8 @@ fn main() {
     //
     // Each dimension uses a fixed-seed corpus of strictly
     // diagonally-dominant integer matrices.  For each operation, the corpus
-    // is pre-timed once to select representative p50/p95/p99 inputs, then
-    // Criterion measures those inputs with normal sampling.
+    // is pre-timed repeatedly to select cumulative p50/p95/p99 input sets,
+    // then Criterion cycles through each set with normal sampling.
     #[allow(unused_must_use)]
     {
         gen_random_percentile_benches_for_dim!(&mut c, 2);

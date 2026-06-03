@@ -1,14 +1,17 @@
 #![forbid(unsafe_code)]
 #![allow(dead_code)]
 
+#[must_use]
 pub struct Matrix<const D: usize> {
     rows: [[f64; D]; D],
 }
 
+#[must_use]
 pub struct Vector<const D: usize> {
     data: [f64; D],
 }
 
+#[non_exhaustive]
 pub enum LaError {
     NonFinite,
 }

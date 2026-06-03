@@ -348,7 +348,11 @@ impl<const D: usize> TryFrom<Matrix<D>> for FiniteMatrix<D> {
 
     #[inline]
     fn try_from(value: Matrix<D>) -> Result<Self, Self::Error> {
-        Ok(Self::new(value))
+        if let Some((row, col)) = Matrix::<D>::first_non_finite_cell_in(&value.rows) {
+            Err(LaError::non_finite_cell(row, col))
+        } else {
+            Ok(Self::new(value))
+        }
     }
 }
 
@@ -1209,6 +1213,21 @@ mod tests {
                         Err(LaError::NonFinite {
                             row: Some($d - 1),
                             col: 0,
+                        })
+                    );
+                }
+
+                #[test]
+                fn [<finite_matrix_try_from_raw_matrix_revalidates_entries_ $d d>]() {
+                    let mut rows = [[1.0f64; $d]; $d];
+                    rows[$d - 1][$d - 1] = f64::INFINITY;
+                    let raw = Matrix::<$d>::from_rows_unchecked(rows);
+
+                    assert_eq!(
+                        FiniteMatrix::<$d>::try_from(raw),
+                        Err(LaError::NonFinite {
+                            row: Some($d - 1),
+                            col: $d - 1,
                         })
                     );
                 }
