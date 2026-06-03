@@ -113,14 +113,18 @@ impl<const D: usize> Lu<D> {
     /// Returns [`LaError::Singular`] if a diagonal entry of `U` satisfies `|u_ii| <= tol`, where
     /// `tol` is the tolerance that was used during factorization.
     ///
-    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected. The `row`/`col` coordinates
-    /// follow the convention documented on [`LaError::NonFinite`]:
+    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected. If
+    /// `FiniteVector::try_new(b)` rejects a non-finite RHS entry, the error uses
+    /// `row: None` and `col: i`, where `i` is the offending vector index. The
+    /// `row`/`col` coordinates follow the convention documented on
+    /// [`LaError::NonFinite`]:
     ///
     /// - `row: Some(i), col: i` — the stored `U` diagonal at `(i, i)` is non-finite
     ///   (only reachable via direct `Lu` construction; [`Matrix::lu`](crate::Matrix::lu)
     ///   rejects such factorizations).
-    /// - `row: None, col: i` — a computed intermediate (forward/back-substitution
-    ///   accumulator or the quotient `sum / diag`) overflowed to NaN/∞ at step `i`.
+    /// - `row: None, col: i` — either RHS entry `b[i]` is non-finite, or a
+    ///   computed intermediate (forward/back-substitution accumulator or the
+    ///   quotient `sum / diag`) overflowed to NaN/∞ at step `i`.
     #[inline]
     pub const fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
         match FiniteVector::try_new(b) {
@@ -676,6 +680,24 @@ mod tests {
                         err,
                         LaError::NonFinite {
                             row: Some($d - 1),
+                            col: $d - 1,
+                        }
+                    );
+                }
+
+                /// `solve_vec` rejects raw non-finite right-hand sides before
+                /// entering the finite-RHS solve path.
+                #[test]
+                fn [<solve_vec_rejects_non_finite_rhs_ $d d>]() {
+                    let lu = Matrix::<$d>::identity().lu(DEFAULT_PIVOT_TOL).unwrap();
+                    let mut rhs = [1.0; $d];
+                    rhs[$d - 1] = f64::NAN;
+
+                    let err = lu.solve_vec(Vector::<$d>::new(rhs)).unwrap_err();
+                    assert_eq!(
+                        err,
+                        LaError::NonFinite {
+                            row: None,
                             col: $d - 1,
                         }
                     );

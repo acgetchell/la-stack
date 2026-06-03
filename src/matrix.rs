@@ -1142,6 +1142,8 @@ mod tests {
                     let finite = FiniteMatrix::<$d>::from_rows(rows).unwrap();
 
                     assert_matrix_abs_eq(&finite.into_matrix(), &Matrix::<$d>::from_rows(rows));
+                    assert_matrix_abs_eq(&FiniteMatrix::<$d>::zero().into_matrix(), &Matrix::<$d>::zero());
+                    assert_matrix_abs_eq(&FiniteMatrix::<$d>::default().into_matrix(), &Matrix::<$d>::zero());
                     assert_eq!(finite.into_matrix().get(0, 0), Some(1.0));
                     assert_eq!(finite.into_matrix().get($d, 0), None);
                     assert_eq!(

@@ -405,9 +405,15 @@ fn gauss_solve_finite<const D: usize>(
 
 /// Solve an exact integer-scaled augmented system from decomposed components.
 ///
-/// Forward elimination runs in [`BigInt`] using fraction-free Bareiss updates.
-/// The resulting upper-triangular system is then lifted into [`BigRational`] for
-/// back-substitution, limiting rational arithmetic to the `O(D²)` phase.
+/// Forward elimination runs in [`BigInt`] using fraction-free Bareiss updates
+/// [7]. This is exact arithmetic, so there is no floating-point conditioning or
+/// roundoff error in the elimination itself; ill-conditioned inputs can still
+/// produce large exact numerators and denominators in the final solution. The
+/// elimination phase performs `O(D³)` integer operations and Bareiss exact
+/// division controls intermediate integer growth compared with naive fraction
+/// arithmetic. The resulting upper-triangular system is then lifted into
+/// [`BigRational`] for back-substitution, limiting rational arithmetic to the
+/// `O(D²)` phase.
 ///
 /// # Errors
 /// Returns [`LaError::Singular`] if the matrix component table represents an

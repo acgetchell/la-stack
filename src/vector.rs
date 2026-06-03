@@ -450,6 +450,7 @@ mod tests {
                     assert_array_abs_eq(&finite.into_array(), &arr);
                     assert_array_abs_eq(&finite.into_vector().into_array(), &arr);
                     assert_array_abs_eq(&FiniteVector::<$d>::zero().into_array(), &[0.0; $d]);
+                    assert_array_abs_eq(&FiniteVector::<$d>::default().into_array(), &[0.0; $d]);
                     assert_array_abs_eq(Vector::from(finite).as_array(), &arr);
                     assert_array_abs_eq(
                         &FiniteVector::<$d>::try_from(Vector::<$d>::new(arr)).unwrap().into_array(),
