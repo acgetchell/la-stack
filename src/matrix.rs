@@ -639,8 +639,10 @@ impl<const D: usize> Matrix<D> {
     /// Infinity norm (maximum absolute row sum).
     ///
     /// # Non-finite handling
-    /// Raw non-finite entries are rejected by [`try_from_rows`](Self::try_from_rows)
-    /// and [`set`](Self::set) before they can be stored.
+    /// Public constructors and setters reject raw non-finite entries, but
+    /// crate-internal unchecked storage can still contain NaN or infinity.
+    /// `inf_norm` returns [`LaError::NonFinite`] if it encounters stored NaN/∞
+    /// or if a row sum overflows to a non-finite value.
     ///
     /// Row sums are accumulated in `f64` with ordinary addition.  This method
     /// checks for overflowed accumulators, but it does not provide a certified

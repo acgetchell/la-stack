@@ -121,6 +121,12 @@ impl<const D: usize> Lu<D> {
 
     /// Solve `A x = b` using this LU factorization.
     ///
+    /// `solve_vec` performs floating-point forward/back substitution and does
+    /// not provide a certified absolute rounding-error bound for the returned
+    /// solution. Callers should not expect an absolute error bound like
+    /// [`Matrix::det_errbound`](crate::Matrix::det_errbound) or the
+    /// `ERR_COEFF_*` determinant constants provide.
+    ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;

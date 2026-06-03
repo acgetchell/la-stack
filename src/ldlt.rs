@@ -169,6 +169,9 @@ impl<const D: usize> Ldlt<D> {
 
     /// Solve `A x = b` using this LDLT factorization.
     ///
+    /// `solve_vec` performs floating-point substitution and does not provide a
+    /// certified absolute rounding-error bound for the returned solution.
+    ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;

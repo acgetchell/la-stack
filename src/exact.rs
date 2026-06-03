@@ -843,8 +843,8 @@ mod tests {
             paste! {
                 #[test]
                 fn [<internal_finite_exact_paths_reuse_validation_ $d d>]() {
-                    let a = FiniteMatrix::<$d>::new(Matrix::<$d>::identity()).unwrap();
-                    let b = FiniteVector::<$d>::new(Vector::<$d>::new([1.0; $d])).unwrap();
+                    let a = FiniteMatrix::<$d>::new_unchecked(Matrix::<$d>::identity());
+                    let b = FiniteVector::<$d>::new_unchecked(Vector::<$d>::new([1.0; $d]));
 
                     assert_eq!(
                         a.det_exact().unwrap(),
