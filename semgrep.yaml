@@ -115,3 +115,22 @@ rules:
         - "/.github/workflows/**/*.yaml"
     patterns:
       - pattern-regex: '(?m)^\s*uses:\s*(?!\./)(?!docker://)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?@[a-fA-F0-9]{40}\s*$'
+
+  - id: la-stack.docs.check-before-fix-command-order
+    languages:
+      - regex
+    severity: WARNING
+    message: "Document non-mutating just check commands before mutating just fix commands."
+    metadata:
+      category: maintainability
+      rationale: "User-facing workflow docs should encourage validation before mutation."
+    paths:
+      include:
+        - "/AGENTS.md"
+        - "/README.md"
+        - "/docs/**/*.md"
+        - "/justfile"
+      exclude:
+        - "/docs/archive/**"
+    patterns:
+      - pattern-regex: '(?ms)\bjust\s+fix\b.{0,400}\bjust\s+check\b|\bjust\s+python-fix\b.{0,400}\bjust\s+python-check\b'
