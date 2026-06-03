@@ -111,6 +111,9 @@ invariant over the convenient edit.
   `git --no-pager log`, `git --no-pager show`, `git --no-pager blame`) to inspect changes/history
 - **ALWAYS** use `git --no-pager` when reading git output
 - Suggest git commands that modify version control state for the user to run manually
+- When suggesting branch names, prefer `{type}/{issue}-descriptor-or-two`, e.g. `fix/307-topology-validation`,
+  `perf/315-bench-profile`, or `doc/329-branch-guidance`. If an environment requires an owner/tool prefix,
+  keep this structure after the prefix, e.g. `codex/fix/307-topology-validation`.
 
 ### Commit Messages
 
@@ -240,6 +243,9 @@ just examples         # Run all examples
 - Python setup: `uv sync --group dev` (or `just python-sync`)
 - Python tests: `just test-python`
 - Run a single test (by name filter): `cargo test solve_2x2_basic` (or the full path: `cargo test lu::tests::solve_2x2_basic`)
+  Cargo accepts only one positional test filter. To run multiple focused
+  filters, run separate `cargo test <filter>` commands rather than passing
+  multiple filter arguments.
 - Run exact-feature tests: `cargo test --features exact --verbose` (or `just test-exact`)
 - Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5` /
   `cargo run --example ldlt_solve_3x3` / `cargo run --example const_det_4x4` /

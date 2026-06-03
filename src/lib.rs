@@ -8,6 +8,7 @@ mod readme_doctests {
     /// ```rust
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// // This system requires pivoting (a[0][0] = 0), so it's a good LU demo.
     /// let a = Matrix::<5>::from_rows([
     ///     [0.0, 1.0, 1.0, 1.0, 1.0],
@@ -19,20 +20,23 @@ mod readme_doctests {
     ///
     /// let b = Vector::<5>::new([14.0, 13.0, 12.0, 11.0, 10.0]);
     ///
-    /// let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
-    /// let x = lu.solve_vec(b).unwrap().into_array();
+    /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
+    /// let x = lu.solve_vec(b)?.into_array();
     ///
     /// // Floating-point rounding is expected; compare with a tolerance.
     /// let expected = [1.0, 2.0, 3.0, 4.0, 5.0];
     /// for (x_i, e_i) in x.iter().zip(expected.iter()) {
     ///     assert!((*x_i - *e_i).abs() <= 1e-12);
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     fn solve_5x5_example() {}
 
     /// ```rust
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// // This matrix is symmetric positive-definite (A = L*L^T) so LDLT works without pivoting.
     /// let a = Matrix::<5>::from_rows([
     ///     [1.0, 1.0, 0.0, 0.0, 0.0],
@@ -42,8 +46,10 @@ mod readme_doctests {
     ///     [0.0, 0.0, 0.0, 1.0, 2.0],
     /// ]);
     ///
-    /// let det = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap().det();
+    /// let det = a.ldlt(DEFAULT_SINGULAR_TOL)?.det()?;
     /// assert!((det - 1.0).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
     /// ```
     fn det_5x5_ldlt_example() {}
 }
@@ -124,15 +130,21 @@ const EPS: f64 = f64::EPSILON; // 2^-52
 /// ```
 /// use la_stack::prelude::*;
 ///
+/// # fn main() -> Result<(), LaError> {
 /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-/// let det = m.det_direct().unwrap();
+/// let Some(det) = m.det_direct()? else {
+///     return Ok(());
+/// };
+/// assert_eq!(det, -2.0);
 /// // Compute the bound from the raw constant for illustration; most
-/// // callers would just use `m.det_errbound().unwrap()` instead.
+/// // callers would match on `m.det_errbound()?` instead.
 /// let p = (1.0_f64 * 4.0).abs() + (2.0_f64 * 3.0).abs();
 /// let bound = ERR_COEFF_2 * p;
 /// if det.abs() > bound {
 ///     // The f64 sign is provably correct without exact arithmetic.
 /// }
+/// # Ok(())
+/// # }
 /// ```
 pub const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
 
@@ -172,20 +184,6 @@ pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
 /// constant for typical use; see [`ERR_COEFF_2`] for a worked example.
 pub const ERR_COEFF_4: f64 = 12.0 * EPS + 128.0 * EPS * EPS;
 
-/// Default absolute threshold used for singularity/degeneracy detection.
-///
-/// This is intentionally conservative for geometric predicates and small systems.
-///
-/// Conceptually, this is an absolute bound for deciding when a scalar should be treated
-/// as "numerically zero" (e.g. LU pivots, LDLT diagonal entries).
-pub const DEFAULT_SINGULAR_TOL: f64 = 1e-12;
-
-/// Default absolute pivot magnitude threshold used for LU pivot selection / singularity detection.
-///
-/// This name is kept for backwards compatibility; prefer [`DEFAULT_SINGULAR_TOL`] when the
-/// tolerance is not specifically about pivot selection.
-pub const DEFAULT_PIVOT_TOL: f64 = DEFAULT_SINGULAR_TOL;
-
 /// Largest dimension supported by [`try_with_stack_matrix!`].
 ///
 /// The crate can represent `Matrix<D>` for any compile-time `D`, but runtime
@@ -193,6 +191,86 @@ pub const DEFAULT_PIVOT_TOL: f64 = DEFAULT_SINGULAR_TOL;
 /// `0..=7` cover downstream geometric predicate matrices while keeping the
 /// dispatch surface explicit.
 pub const MAX_STACK_MATRIX_DISPATCH_DIM: usize = 7;
+
+/// Finite, non-negative tolerance used by numerical predicates and factorizations.
+///
+/// Construct with [`Tolerance::new`] when accepting raw caller input. Once
+/// constructed, the stored value is guaranteed to be finite and `>= 0`, so
+/// downstream algorithms do not need to revalidate the tolerance.
+#[must_use]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Tolerance {
+    value: f64,
+}
+
+impl Tolerance {
+    /// Construct a tolerance without checking the raw value.
+    ///
+    /// This crate-internal escape hatch is only for constants whose finite,
+    /// non-negative value is visible at the call site. Public callers should
+    /// use [`Tolerance::new`] so the returned value carries the validation
+    /// proof.
+    pub(crate) const fn new_unchecked(value: f64) -> Self {
+        Self { value }
+    }
+
+    /// Construct a finite, non-negative tolerance.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let tol = Tolerance::new(1e-12)?;
+    /// assert_eq!(tol.get(), 1e-12);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::InvalidTolerance`] when `value` is NaN, infinite, or
+    /// negative.
+    #[inline]
+    pub const fn new(value: f64) -> Result<Self, LaError> {
+        if value >= 0.0 && value.is_finite() {
+            Ok(Self::new_unchecked(value))
+        } else {
+            Err(LaError::invalid_tolerance(value))
+        }
+    }
+
+    /// Return the raw finite, non-negative tolerance value.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let tol = Tolerance::new(0.0)?;
+    /// assert_eq!(tol.get(), 0.0);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn get(self) -> f64 {
+        self.value
+    }
+}
+
+/// Default absolute threshold used for singularity/degeneracy detection.
+///
+/// This is intentionally conservative for geometric predicates and small systems.
+///
+/// Conceptually, this is an absolute bound for deciding when a scalar should be treated
+/// as "numerically zero" (e.g. LU pivots, LDLT diagonal entries).
+pub const DEFAULT_SINGULAR_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
+
+/// Default absolute pivot magnitude threshold used for LU pivot selection / singularity detection.
+///
+/// This name is kept for backwards compatibility; prefer [`DEFAULT_SINGULAR_TOL`] when the
+/// tolerance is not specifically about pivot selection.
+pub const DEFAULT_PIVOT_TOL: Tolerance = DEFAULT_SINGULAR_TOL;
 
 /// Linear algebra errors.
 ///
@@ -216,8 +294,9 @@ pub enum LaError {
     ///   paths when they detect a corrupt stored factor (only reachable via
     ///   direct struct construction; `factor` itself rejects such inputs).
     /// - `row: None, col: c` — the non-finite value is either a *vector input*
-    ///   entry at index `c`, or a *computed intermediate* at step `c`
-    ///   (e.g. an accumulator that overflowed during forward/back substitution).
+    ///   entry at index `c`, or a *computed scalar/intermediate* at slot or
+    ///   step `c` (e.g. an accumulator that overflowed during determinant
+    ///   evaluation or forward/back substitution).
     NonFinite {
         /// Row of the non-finite entry for a stored matrix cell, or `None` for
         /// a vector-input entry or a computed intermediate. See the variant
@@ -277,6 +356,19 @@ impl LaError {
     /// matching the stored-cell convention documented on
     /// [`NonFinite`](Self::NonFinite).  For vector-input entries or computed
     /// intermediates, use [`non_finite_at`](Self::non_finite_at).
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// assert_eq!(
+    ///     LaError::non_finite_cell(1, 2),
+    ///     LaError::NonFinite {
+    ///         row: Some(1),
+    ///         col: 2,
+    ///     }
+    /// );
+    /// ```
     #[inline]
     #[must_use]
     pub const fn non_finite_cell(row: usize, col: usize) -> Self {
@@ -287,13 +379,23 @@ impl LaError {
     }
 
     /// Construct a [`LaError::NonFinite`] pinpointing a vector-input entry or
-    /// computed-intermediate step at index `col`.
+    /// computed scalar/intermediate at index `col`.
     ///
-    /// Use this for non-finite values in a `Vector` input or an accumulator
-    /// that overflowed during forward/back substitution.  The resulting error
-    /// has `row: None, col`, matching the vector/intermediate convention
-    /// documented on [`NonFinite`](Self::NonFinite).  For stored matrix cells,
-    /// use [`non_finite_cell`](Self::non_finite_cell).
+    /// Use this for non-finite values in a `Vector` input, determinant scalar,
+    /// or accumulator that overflowed during forward/back substitution.  The
+    /// resulting error has `row: None, col`, matching the vector/intermediate
+    /// convention documented on [`NonFinite`](Self::NonFinite).  For stored
+    /// matrix cells, use [`non_finite_cell`](Self::non_finite_cell).
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// assert_eq!(
+    ///     LaError::non_finite_at(2),
+    ///     LaError::NonFinite { row: None, col: 2 }
+    /// );
+    /// ```
     #[inline]
     #[must_use]
     pub const fn non_finite_at(col: usize) -> Self {
@@ -379,13 +481,13 @@ impl LaError {
         Self::Asymmetric { row, col, dim }
     }
 
-    /// Validate that a tolerance is finite and non-negative.
+    /// Parse a raw tolerance into a finite, non-negative [`Tolerance`].
     ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
-    /// assert_eq!(LaError::validate_tolerance(1e-12)?, 1e-12);
+    /// assert_eq!(LaError::validate_tolerance(1e-12)?.get(), 1e-12);
     /// assert_eq!(
     ///     LaError::validate_tolerance(-1.0),
     ///     Err(LaError::InvalidTolerance { value: -1.0 })
@@ -397,12 +499,8 @@ impl LaError {
     /// Returns [`LaError::InvalidTolerance`] when `value` is NaN, infinite, or
     /// negative.
     #[inline]
-    pub const fn validate_tolerance(value: f64) -> Result<f64, Self> {
-        if value >= 0.0 && value.is_finite() {
-            Ok(value)
-        } else {
-            Err(Self::invalid_tolerance(value))
-        }
+    pub const fn validate_tolerance(value: f64) -> Result<Tolerance, Self> {
+        Tolerance::new(value)
     }
 }
 
@@ -543,9 +641,10 @@ macro_rules! try_with_stack_matrix {
 /// Common imports for ergonomic usage.
 ///
 /// This prelude re-exports the primary types and constants: [`Matrix`], [`Vector`], [`Lu`],
-/// [`Ldlt`], [`LaError`], [`DEFAULT_PIVOT_TOL`], [`DEFAULT_SINGULAR_TOL`], and the determinant
-/// error bound coefficients [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`].
-/// It also re-exports [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
+/// [`Ldlt`], [`Tolerance`], [`LaError`], [`DEFAULT_PIVOT_TOL`],
+/// [`DEFAULT_SINGULAR_TOL`], and the determinant error bound coefficients
+/// [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`]. It also re-exports
+/// [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
 /// [`try_with_stack_matrix!`] for runtime-to-const matrix dispatch.
 ///
 /// When the `exact` feature is enabled, [`BigInt`] and [`BigRational`]
@@ -559,7 +658,7 @@ macro_rules! try_with_stack_matrix {
 pub mod prelude {
     pub use crate::{
         DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError,
-        Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, Vector, try_with_stack_matrix,
+        Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, Tolerance, Vector, try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]
@@ -574,8 +673,12 @@ mod tests {
 
     #[test]
     fn default_singular_tol_is_expected() {
-        assert_abs_diff_eq!(DEFAULT_SINGULAR_TOL, 1e-12, epsilon = 0.0);
-        assert_abs_diff_eq!(DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, epsilon = 0.0);
+        assert_abs_diff_eq!(DEFAULT_SINGULAR_TOL.get(), 1e-12, epsilon = 0.0);
+        assert_abs_diff_eq!(
+            DEFAULT_PIVOT_TOL.get(),
+            DEFAULT_SINGULAR_TOL.get(),
+            epsilon = 0.0
+        );
     }
 
     #[test]
@@ -711,12 +814,13 @@ mod tests {
     gen_stack_matrix_dispatch_tests!(3);
     gen_stack_matrix_dispatch_tests!(4);
     gen_stack_matrix_dispatch_tests!(5);
+    gen_stack_matrix_dispatch_tests!(6);
     gen_stack_matrix_dispatch_tests!(7);
 
     #[test]
     fn try_with_stack_matrix_supports_zero_dimension() {
         let got = try_with_stack_matrix!(0usize, |m| -> Result<Option<f64>, LaError> {
-            Ok(m.det_direct())
+            m.det_direct()
         });
 
         assert_eq!(got, Ok(Some(1.0)));
@@ -749,7 +853,7 @@ mod tests {
     #[test]
     fn try_with_stack_matrix_converts_unsupported_dimension_error() {
         let got = try_with_stack_matrix!(9usize, |m| -> Result<usize, DownstreamError> {
-            assert_abs_diff_eq!(m.inf_norm(), 0.0, epsilon = 0.0);
+            assert_abs_diff_eq!(m.inf_norm().unwrap(), 0.0, epsilon = 0.0);
             Ok(0)
         });
 

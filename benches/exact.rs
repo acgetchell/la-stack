@@ -17,7 +17,7 @@
 //!    empirical evidence for `docs/PERFORMANCE.md`.
 
 use criterion::{BenchmarkGroup, Criterion, measurement::WallTime};
-use la_stack::{Matrix, Vector};
+use la_stack::{DEFAULT_PIVOT_TOL, Matrix, Vector};
 use pastey::paste;
 use std::hint::black_box;
 
@@ -179,7 +179,7 @@ macro_rules! gen_exact_benches_for_dim {
             [<group_d $d>].bench_function("det", |bencher| {
                 bencher.iter(|| {
                     let det = black_box(a)
-                        .det(la_stack::DEFAULT_PIVOT_TOL)
+                        .det(DEFAULT_PIVOT_TOL)
                         .expect("diagonally dominant matrix is non-singular");
                     black_box(det);
                 });

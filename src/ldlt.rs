@@ -13,12 +13,12 @@
 
 use core::hint::cold_path;
 
-use crate::LaError;
 use crate::matrix::Matrix;
 use crate::vector::Vector;
+use crate::{LaError, Tolerance};
 
 /// Relative tolerance used by LDLT's mandatory symmetry validation.
-const LDLT_SYMMETRY_REL_TOL: f64 = 1e-12;
+const LDLT_SYMMETRY_REL_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
 
 /// LDLT factorization (`A = L D Lᵀ`) for symmetric positive (semi)definite matrices.
 ///
@@ -40,7 +40,7 @@ const LDLT_SYMMETRY_REL_TOL: f64 = 1e-12;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Ldlt<const D: usize> {
     factors: Matrix<D>,
-    tol: f64,
+    tol: Tolerance,
 }
 
 impl<const D: usize> Ldlt<D> {
@@ -50,8 +50,7 @@ impl<const D: usize> Ldlt<D> {
     /// invalid tolerances, asymmetric inputs, non-finite values, and degenerate
     /// diagonals before callers can observe an [`Ldlt`] value.
     #[inline]
-    pub(crate) fn factor(a: Matrix<D>, tol: f64) -> Result<Self, LaError> {
-        let tol = LaError::validate_tolerance(tol)?;
+    pub(crate) fn factor(a: Matrix<D>, tol: Tolerance) -> Result<Self, LaError> {
         reject_asymmetric(&a)?;
 
         let mut f = a;
@@ -63,7 +62,7 @@ impl<const D: usize> Ldlt<D> {
                 cold_path();
                 return Err(LaError::non_finite_cell(j, j));
             }
-            if d <= tol {
+            if d <= tol.get() {
                 cold_path();
                 return Err(LaError::Singular { pivot_col: j });
             }
@@ -106,22 +105,32 @@ impl<const D: usize> Ldlt<D> {
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// // Symmetric SPD matrix.
     /// let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
-    /// let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
+    /// let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL)?;
     ///
-    /// assert!((ldlt.det() - 8.0).abs() <= 1e-12);
+    /// assert!((ldlt.det()? - 8.0).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] if the determinant product overflows to
+    /// NaN or infinity.
     #[inline]
-    #[must_use]
-    pub const fn det(&self) -> f64 {
+    pub const fn det(&self) -> Result<f64, LaError> {
         let mut det = 1.0;
         let mut i = 0;
         while i < D {
             det *= self.factors.rows[i][i];
+            if !det.is_finite() {
+                cold_path();
+                return Err(LaError::non_finite_at(i));
+            }
             i += 1;
         }
-        det
+        Ok(det)
     }
 
     /// Solve `A x = b` using this LDLT factorization.
@@ -189,7 +198,7 @@ impl<const D: usize> Ldlt<D> {
                 cold_path();
                 return Err(LaError::non_finite_cell(i, i));
             }
-            if diag <= self.tol {
+            if diag <= self.tol.get() {
                 cold_path();
                 return Err(LaError::Singular { pivot_col: i });
             }
@@ -245,6 +254,7 @@ mod tests {
 
     use crate::DEFAULT_SINGULAR_TOL;
 
+    use core::assert_matches;
     use core::hint::black_box;
 
     use approx::assert_abs_diff_eq;
@@ -258,7 +268,7 @@ mod tests {
                     let a = Matrix::<$d>::identity();
                     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
-                    assert_abs_diff_eq!(ldlt.det(), 1.0, epsilon = 1e-12);
+                    assert_abs_diff_eq!(ldlt.det().unwrap(), 1.0, epsilon = 1e-12);
 
                     let b_arr = {
                         let mut arr = [0.0f64; $d];
@@ -313,7 +323,7 @@ mod tests {
                         }
                         acc
                     };
-                    assert_abs_diff_eq!(ldlt.det(), expected_det, epsilon = 1e-12);
+                    assert_abs_diff_eq!(ldlt.det().unwrap(), expected_det, epsilon = 1e-12);
 
                     let b_arr = {
                         let mut arr = [0.0f64; $d];
@@ -350,7 +360,7 @@ mod tests {
 
         assert_abs_diff_eq!(x[0], -0.125, epsilon = 1e-12);
         assert_abs_diff_eq!(x[1], 0.75, epsilon = 1e-12);
-        assert_abs_diff_eq!(ldlt.det(), 8.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(ldlt.det().unwrap(), 8.0, epsilon = 1e-12);
     }
 
     #[test]
@@ -480,6 +490,19 @@ mod tests {
     }
 
     #[test]
+    fn det_rejects_product_overflow() {
+        let a = Matrix::<5>::from_rows([
+            [1.0e100, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0e100, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0e100, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0e100, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0e100],
+        ]);
+        let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
+        assert_eq!(ldlt.det(), Err(LaError::NonFinite { row: None, col: 3 }));
+    }
+
+    #[test]
     fn asymmetric_input_returns_typed_error() {
         // a[0][1] = 2.0 but a[1][0] = -2.0 → clearly asymmetric.
         let a = Matrix::<3>::from_rows([[4.0, 2.0, 0.0], [-2.0, 5.0, 1.0], [0.0, 1.0, 3.0]]);
@@ -495,15 +518,17 @@ mod tests {
 
     #[test]
     fn invalid_tolerance_rejected() {
-        let a = Matrix::<2>::identity();
-        assert_eq!(a.ldlt(-1.0), Err(LaError::InvalidTolerance { value: -1.0 }));
-
-        assert!(matches!(
-            a.ldlt(f64::NAN),
-            Err(LaError::InvalidTolerance { value }) if value.is_nan()
-        ));
         assert_eq!(
-            a.ldlt(f64::INFINITY),
+            Tolerance::new(-1.0),
+            Err(LaError::InvalidTolerance { value: -1.0 })
+        );
+
+        assert_matches!(
+            Tolerance::new(f64::NAN),
+            Err(LaError::InvalidTolerance { value }) if value.is_nan()
+        );
+        assert_eq!(
+            Tolerance::new(f64::INFINITY),
             Err(LaError::InvalidTolerance {
                 value: f64::INFINITY,
             })
@@ -593,7 +618,7 @@ mod tests {
                 /// exercising the multiply-accumulate loop at each dimension.
                 #[test]
                 fn [<ldlt_det_const_eval_ $d d>]() {
-                    const DET: f64 = {
+                    const DET: Result<f64, LaError> = {
                         let mut factors = Matrix::<$d>::identity();
                         factors.rows[0][0] = 2.0;
                         let ldlt = Ldlt::<$d> {
@@ -602,7 +627,7 @@ mod tests {
                         };
                         ldlt.det()
                     };
-                    assert!((DET - 2.0).abs() <= 1e-12);
+                    assert_eq!(DET, Ok(2.0));
                 }
 
                 /// `Ldlt::solve_vec` must be fully const-evaluable. Identity

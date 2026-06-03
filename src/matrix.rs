@@ -2,10 +2,10 @@
 
 use core::hint::cold_path;
 
-use crate::LaError;
 use crate::ldlt::Ldlt;
 use crate::lu::Lu;
 use crate::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};
+use crate::{LaError, Tolerance};
 
 /// Fixed-size square matrix `D×D`, stored inline.
 #[must_use]
@@ -127,31 +127,32 @@ impl<const D: usize> Matrix<D> {
 
     /// Set an element with bounds checking.
     ///
-    /// Returns `true` if the index was in-bounds.
+    /// Returns `Some(())` if the index was in bounds, or `None` otherwise.
     ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
     /// let mut m = Matrix::<2>::zero();
-    /// assert!(m.set(0, 1, 2.5));
+    /// assert_eq!(m.set(0, 1, 2.5), Some(()));
     /// assert_eq!(m.get(0, 1), Some(2.5));
-    /// assert!(!m.set(10, 0, 1.0));
+    /// assert_eq!(m.set(10, 0, 1.0), None);
     /// ```
     #[inline]
-    pub const fn set(&mut self, r: usize, c: usize, value: f64) -> bool {
+    #[must_use]
+    pub const fn set(&mut self, r: usize, c: usize, value: f64) -> Option<()> {
         if r < D && c < D {
             self.rows[r][c] = value;
-            true
+            Some(())
         } else {
-            false
+            None
         }
     }
 
     /// Set an element, preserving index context on failure.
     ///
     /// The matrix is mutated only when `(row, col)` is in bounds.  Prefer
-    /// [`set`](Self::set) for const or hot paths that only need a boolean;
+    /// [`set`](Self::set) for const or hot paths that only need `Option`-style absence;
     /// use this method at public runtime boundaries where failed mutation
     /// should return a typed, contextual error.
     ///
@@ -191,25 +192,35 @@ impl<const D: usize> Matrix<D> {
     /// Infinity norm (maximum absolute row sum).
     ///
     /// # Non-finite handling
-    /// If any entry is NaN, the result is NaN.  NaN is detected explicitly
-    /// because a naive `row_sum > max_row_sum` comparison silently skips NaN
-    /// rows (every ordered comparison against NaN is `false`).  If any entry
-    /// is infinite (and no entry is NaN), the result is `+∞`.
+    /// Non-finite entries are rejected with source coordinates instead of
+    /// silently propagating NaN or infinity through the norm.
     ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let m = Matrix::<2>::from_rows([[1.0, -2.0], [3.0, 4.0]]);
-    /// assert!((m.inf_norm() - 7.0).abs() <= 1e-12);
+    /// assert!((m.inf_norm()? - 7.0).abs() <= 1e-12);
     ///
-    /// // NaN entries propagate to the norm.
+    /// // NaN entries are rejected with coordinates.
     /// let nan = Matrix::<2>::from_rows([[f64::NAN, 1.0], [2.0, 3.0]]);
-    /// assert!(nan.inf_norm().is_nan());
+    /// assert_eq!(
+    ///     nan.inf_norm(),
+    ///     Err(LaError::NonFinite {
+    ///         row: Some(0),
+    ///         col: 0,
+    ///     })
+    /// );
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] when any entry is NaN or infinity, or when
+    /// a row sum overflows to NaN or infinity.
     #[inline]
-    #[must_use]
-    pub const fn inf_norm(&self) -> f64 {
+    pub const fn inf_norm(&self) -> Result<f64, LaError> {
         let mut max_row_sum: f64 = 0.0;
 
         let mut r = 0;
@@ -221,15 +232,16 @@ impl<const D: usize> Matrix<D> {
             let mut row_sum: f64 = 0.0;
             let mut c = 0;
             while c < D {
+                if !row[c].is_finite() {
+                    cold_path();
+                    return Err(LaError::non_finite_cell(r, c));
+                }
                 row_sum += row[c].abs();
                 c += 1;
             }
-            // Propagate NaN explicitly: `f64::max` drops NaN (IEEE 754 `maxNum`)
-            // and `f64::maximum` (IEEE 754-2019 `maximum`) is still unstable,
-            // so we short-circuit on NaN instead.
-            if row_sum.is_nan() {
+            if !row_sum.is_finite() {
                 cold_path();
-                return f64::NAN;
+                return Err(LaError::non_finite_at(r));
             }
             if row_sum > max_row_sum {
                 max_row_sum = row_sum;
@@ -237,14 +249,14 @@ impl<const D: usize> Matrix<D> {
             r += 1;
         }
 
-        max_row_sum
+        Ok(max_row_sum)
     }
 
     /// Returns `true` if the matrix is symmetric within a relative tolerance.
     ///
     /// Two entries `self[r][c]` and `self[c][r]` are considered equal (for the
     /// purposes of symmetry) when
-    /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, self.inf_norm())`.
+    /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, inf_norm(self))`.
     /// This mirrors the predicate used internally by [`ldlt`](Self::ldlt), so
     /// callers can pre-validate matrices that may come from untrusted sources.
     ///
@@ -262,20 +274,19 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # fn main() -> Result<(), LaError> {
     /// let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
-    /// assert!(a.is_symmetric(1e-12)?);
+    /// let tol = Tolerance::new(1e-12)?;
+    /// assert!(a.is_symmetric(tol)?);
     ///
     /// let b = Matrix::<2>::from_rows([[4.0, 2.0], [3.0, 3.0]]);
-    /// assert!(!b.is_symmetric(1e-12)?);
+    /// assert!(!b.is_symmetric(tol)?);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::InvalidTolerance`] when `rel_tol` is NaN, infinite,
-    /// or negative.
     /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite.
     #[inline]
-    pub fn is_symmetric(&self, rel_tol: f64) -> Result<bool, LaError> {
+    pub fn is_symmetric(&self, rel_tol: Tolerance) -> Result<bool, LaError> {
         Ok(self.first_asymmetry(rel_tol)?.is_none())
     }
 
@@ -286,7 +297,7 @@ impl<const D: usize> Matrix<D> {
     /// Iteration order is row-major over the strict upper triangle, so the
     /// returned indices are the lexicographically smallest such pair.  The
     /// predicate is the same as [`is_symmetric`](Self::is_symmetric):
-    /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, self.inf_norm())`.
+    /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, inf_norm(self))`.
     ///
     /// # Examples
     /// ```
@@ -298,19 +309,17 @@ impl<const D: usize> Matrix<D> {
     ///     [2.0, 4.0, 5.0],
     ///     [0.0, 6.0, 9.0], // 6.0 breaks symmetry with a[1][2] = 5.0
     /// ]);
-    /// assert_eq!(a.first_asymmetry(1e-12)?, Some((1, 2)));
-    /// assert_eq!(Matrix::<3>::identity().first_asymmetry(1e-12)?, None);
+    /// let tol = Tolerance::new(1e-12)?;
+    /// assert_eq!(a.first_asymmetry(tol)?, Some((1, 2)));
+    /// assert_eq!(Matrix::<3>::identity().first_asymmetry(tol)?, None);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::InvalidTolerance`] when `rel_tol` is NaN, infinite,
-    /// or negative.
     /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite.
     #[inline]
-    pub fn first_asymmetry(&self, rel_tol: f64) -> Result<Option<(usize, usize)>, LaError> {
-        let rel_tol = LaError::validate_tolerance(rel_tol)?;
+    pub fn first_asymmetry(&self, rel_tol: Tolerance) -> Result<Option<(usize, usize)>, LaError> {
         let eps = self.symmetry_epsilon(rel_tol)?;
         for r in 0..D {
             for c in (r + 1)..D {
@@ -343,7 +352,8 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Errors
     /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite.
-    fn symmetry_epsilon(&self, rel_tol: f64) -> Result<f64, LaError> {
+    fn symmetry_epsilon(&self, rel_tol: Tolerance) -> Result<f64, LaError> {
+        let rel_tol = rel_tol.get();
         let mut eps = rel_tol;
 
         for r in 0..D {
@@ -387,9 +397,8 @@ impl<const D: usize> Matrix<D> {
     /// Returns [`LaError::Singular`] if, for some column `k`, the largest-magnitude candidate pivot
     /// in that column satisfies `|pivot| <= tol` (so no numerically usable pivot exists).
     /// Returns [`LaError::NonFinite`] if NaN/∞ is detected during factorization.
-    /// Returns [`LaError::InvalidTolerance`] if `tol` is NaN, infinite, or negative.
     #[inline]
-    pub fn lu(self, tol: f64) -> Result<Lu<D>, LaError> {
+    pub fn lu(self, tol: Tolerance) -> Result<Lu<D>, LaError> {
         Lu::factor(self, tol)
     }
 
@@ -417,7 +426,7 @@ impl<const D: usize> Matrix<D> {
     /// let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL)?;
     ///
     /// // det(A) = 8
-    /// assert!((ldlt.det() - 8.0).abs() <= 1e-12);
+    /// assert!((ldlt.det()? - 8.0).abs() <= 1e-12);
     ///
     /// // Solve A x = b
     /// let b = Vector::<2>::new([1.0, 2.0]);
@@ -433,17 +442,45 @@ impl<const D: usize> Matrix<D> {
     /// is `<= tol` (non-positive or too small). This treats PSD degeneracy (and indefinite inputs)
     /// as singular/degenerate.
     /// Returns [`LaError::NonFinite`] if NaN/∞ is detected during factorization.
-    /// Returns [`LaError::InvalidTolerance`] if `tol` is NaN, infinite, or negative.
     /// Returns [`LaError::Asymmetric`] if the input matrix is not symmetric.
     #[inline]
-    pub fn ldlt(self, tol: f64) -> Result<Ldlt<D>, LaError> {
+    pub fn ldlt(self, tol: Tolerance) -> Result<Ldlt<D>, LaError> {
         Ldlt::factor(self, tol)
+    }
+
+    /// Return the first non-finite stored cell in row-major order.
+    const fn first_non_finite_cell(&self) -> Option<(usize, usize)> {
+        let mut r = 0;
+        while r < D {
+            let mut c = 0;
+            while c < D {
+                if !self.rows[r][c].is_finite() {
+                    return Some((r, c));
+                }
+                c += 1;
+            }
+            r += 1;
+        }
+        None
+    }
+
+    /// Return a computed scalar result, preserving non-finite diagnostics.
+    const fn computed_scalar_result(&self, value: Option<f64>) -> Result<Option<f64>, LaError> {
+        if let Some((row, col)) = self.first_non_finite_cell() {
+            Err(LaError::non_finite_cell(row, col))
+        } else {
+            match value {
+                Some(value) if value.is_finite() => Ok(Some(value)),
+                Some(_) => Err(LaError::non_finite_at(0)),
+                None => Ok(None),
+            }
+        }
     }
 
     /// Closed-form determinant for dimensions 0–4, bypassing LU factorization.
     ///
-    /// Returns `Some(det)` for `D` ∈ {0, 1, 2, 3, 4}, `None` for D ≥ 5.
-    /// `D = 0` returns `Some(1.0)` (empty product).
+    /// Returns `Ok(Some(det))` for `D` ∈ {0, 1, 2, 3, 4}, `Ok(None)` for D ≥ 5.
+    /// `D = 0` returns `Ok(Some(1.0))` (empty product).
     /// This is a `const fn` (Rust 1.94+) and uses fused multiply-add (`mul_add`)
     /// for improved accuracy and performance.
     ///
@@ -454,24 +491,32 @@ impl<const D: usize> Matrix<D> {
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-    /// assert!((m.det_direct().unwrap() - (-2.0)).abs() <= 1e-12);
+    /// assert_eq!(m.det_direct()?, Some(-2.0));
     ///
     /// // D = 0 is the empty product.
-    /// assert_eq!(Matrix::<0>::zero().det_direct(), Some(1.0));
+    /// assert_eq!(Matrix::<0>::zero().det_direct()?, Some(1.0));
     ///
     /// // D ≥ 5 returns None.
-    /// assert!(Matrix::<5>::identity().det_direct().is_none());
+    /// assert!(Matrix::<5>::identity().det_direct()?.is_none());
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] when any entry is NaN or infinity, or when
+    /// the closed-form determinant overflows to NaN or infinity.
     #[inline]
-    #[must_use]
-    pub const fn det_direct(&self) -> Option<f64> {
+    pub const fn det_direct(&self) -> Result<Option<f64>, LaError> {
         match D {
-            0 => Some(1.0),
-            1 => Some(self.rows[0][0]),
+            0 => Ok(Some(1.0)),
+            1 => self.computed_scalar_result(Some(self.rows[0][0])),
             2 => {
                 // ad - bc
-                Some(self.rows[0][0].mul_add(self.rows[1][1], -(self.rows[0][1] * self.rows[1][0])))
+                self.computed_scalar_result(Some(
+                    self.rows[0][0].mul_add(self.rows[1][1], -(self.rows[0][1] * self.rows[1][0])),
+                ))
             }
             3 => {
                 // Cofactor expansion on first row.
@@ -481,10 +526,10 @@ impl<const D: usize> Matrix<D> {
                     self.rows[1][0].mul_add(self.rows[2][2], -(self.rows[1][2] * self.rows[2][0]));
                 let m02 =
                     self.rows[1][0].mul_add(self.rows[2][1], -(self.rows[1][1] * self.rows[2][0]));
-                Some(
+                self.computed_scalar_result(Some(
                     self.rows[0][0]
                         .mul_add(m00, (-self.rows[0][1]).mul_add(m01, self.rows[0][2] * m02)),
-                )
+                ))
             }
             4 => {
                 // Cofactor expansion on first row → four 3×3 sub-determinants.
@@ -505,15 +550,15 @@ impl<const D: usize> Matrix<D> {
                 let c02 = r[1][0].mul_add(s13, (-r[1][1]).mul_add(s03, r[1][3] * s01));
                 let c03 = r[1][0].mul_add(s12, (-r[1][1]).mul_add(s02, r[1][2] * s01));
 
-                Some(r[0][0].mul_add(
+                self.computed_scalar_result(Some(r[0][0].mul_add(
                     c00,
                     (-r[0][1]).mul_add(c01, r[0][2].mul_add(c02, -(r[0][3] * c03))),
-                ))
+                )))
             }
             _ => {
                 // Cold in the common D ≤ 4 case; callers fall back to LU for D ≥ 5.
                 cold_path();
-                None
+                self.computed_scalar_result(None)
             }
         }
     }
@@ -539,31 +584,17 @@ impl<const D: usize> Matrix<D> {
     /// Returns [`LaError::NonFinite`] if the result contains NaN or infinity.
     /// For D ≥ 5, propagates LU factorization errors (e.g. [`LaError::Singular`]).
     #[inline]
-    pub fn det(self, tol: f64) -> Result<f64, LaError> {
-        if let Some(d) = self.det_direct() {
-            return if d.is_finite() {
-                Ok(d)
-            } else {
-                cold_path();
-                // Scan for the first non-finite entry to preserve coordinates.
-                for r in 0..D {
-                    for c in 0..D {
-                        if !self.rows[r][c].is_finite() {
-                            return Err(LaError::non_finite_cell(r, c));
-                        }
-                    }
-                }
-                // All entries are finite but the determinant overflowed.
-                Err(LaError::non_finite_at(0))
-            };
+    pub fn det(self, tol: Tolerance) -> Result<f64, LaError> {
+        if let Some(d) = self.det_direct()? {
+            return Ok(d);
         }
-        self.lu(tol).map(|lu| lu.det())
+        self.lu(tol)?.det()
     }
 
     /// Conservative absolute error bound for `det_direct()`.
     ///
-    /// Returns `Some(bound)` such that `|det_direct() - det_exact| ≤ bound`,
-    /// or `None` for D ≥ 5 where no fast bound is available.
+    /// Returns `Ok(Some(bound))` such that `|det_direct() - det_exact| ≤ bound`,
+    /// or `Ok(None)` for D ≥ 5 where no fast bound is available.
     ///
     /// For D ≤ 4, the bound is derived from the absolute Leibniz sum using
     /// Shewchuk-style error analysis (see `REFERENCES.md` \[8\] and the
@@ -585,14 +616,19 @@ impl<const D: usize> Matrix<D> {
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let m = Matrix::<3>::from_rows([
     ///     [1.0, 2.0, 3.0],
     ///     [4.0, 5.0, 6.0],
     ///     [7.0, 8.0, 9.0],
     /// ]);
-    /// let bound = m.det_errbound().unwrap();
-    /// let det_approx = m.det_direct().unwrap();
-    /// // If |det_approx| > bound, the sign is guaranteed correct.
+    /// if let (Some(bound), Some(det_approx)) = (m.det_errbound()?, m.det_direct()?) {
+    ///     // If |det_approx| > bound, the sign is guaranteed correct.
+    ///     let sign_is_certified = det_approx.abs() > bound;
+    ///     assert!(!sign_is_certified);
+    /// }
+    /// # Ok(())
+    /// # }
     /// ```
     ///
     /// # Adaptive precision pattern (requires `exact` feature)
@@ -600,29 +636,33 @@ impl<const D: usize> Matrix<D> {
     /// use la_stack::prelude::*;
     ///
     /// let m = Matrix::<3>::identity();
-    /// if let Some(bound) = m.det_errbound() {
-    ///     let det = m.det_direct().unwrap();
-    ///     if det.abs() > bound {
-    ///         // f64 sign is guaranteed correct
-    ///         let sign = det.signum() as i8;
-    ///     } else {
-    ///         // Fall back to exact arithmetic (requires `exact` feature)
-    ///         let sign = m.det_sign_exact().unwrap();
+    /// if let Some(bound) = m.det_errbound()? {
+    ///     if let Some(det) = m.det_direct()? {
+    ///         if det.abs() > bound {
+    ///             // f64 sign is guaranteed correct
+    ///             let sign = det.signum() as i8;
+    ///         } else {
+    ///             // Fall back to exact arithmetic (requires `exact` feature)
+    ///             let sign = m.det_sign_exact()?;
+    ///         }
     ///     }
     /// } else {
     ///     // D ≥ 5: no fast filter, use exact directly
-    ///     let sign = m.det_sign_exact().unwrap();
+    ///     let sign = m.det_sign_exact()?;
     /// }
     /// ```
-    #[must_use]
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] when any entry is NaN or infinity, or when
+    /// the bound computation overflows to NaN or infinity.
     #[inline]
-    pub const fn det_errbound(&self) -> Option<f64> {
+    pub const fn det_errbound(&self) -> Result<Option<f64>, LaError> {
         match D {
-            0 | 1 => Some(0.0), // No arithmetic — result is exact.
+            0 | 1 => self.computed_scalar_result(Some(0.0)), // No arithmetic — result is exact.
             2 => {
                 let r = &self.rows;
                 let permanent = (r[0][0] * r[1][1]).abs() + (r[0][1] * r[1][0]).abs();
-                Some(ERR_COEFF_2 * permanent)
+                self.computed_scalar_result(Some(ERR_COEFF_2 * permanent))
             }
             3 => {
                 let r = &self.rows;
@@ -632,7 +672,7 @@ impl<const D: usize> Matrix<D> {
                 let permanent = r[0][2]
                     .abs()
                     .mul_add(pm02, r[0][1].abs().mul_add(pm01, r[0][0].abs() * pm00));
-                Some(ERR_COEFF_3 * permanent)
+                self.computed_scalar_result(Some(ERR_COEFF_3 * permanent))
             }
             4 => {
                 let r = &self.rows;
@@ -662,9 +702,12 @@ impl<const D: usize> Matrix<D> {
                         .abs()
                         .mul_add(pc2, r[0][1].abs().mul_add(pc1, r[0][0].abs() * pc0)),
                 );
-                Some(ERR_COEFF_4 * permanent)
+                self.computed_scalar_result(Some(ERR_COEFF_4 * permanent))
             }
-            _ => None,
+            _ => {
+                cold_path();
+                self.computed_scalar_result(None)
+            }
         }
     }
 }
@@ -682,6 +725,7 @@ mod tests {
     use crate::{DEFAULT_PIVOT_TOL, Vector};
 
     use approx::assert_abs_diff_eq;
+    use core::assert_matches;
     use pastey::paste;
     use std::hint::black_box;
 
@@ -713,7 +757,9 @@ mod tests {
                     );
 
                     // Out-of-bounds set fails.
-                    assert!(!m.set($d, 0, 3.0));
+                    let before_failed_set = m;
+                    assert_eq!(m.set($d, 0, 3.0), None);
+                    assert_eq!(m, before_failed_set);
                     assert_eq!(
                         m.set_checked($d, 0, 3.0),
                         Err(LaError::IndexOutOfBounds {
@@ -722,6 +768,7 @@ mod tests {
                             dim: $d,
                         })
                     );
+                    assert_eq!(m, before_failed_set);
                     assert_eq!(
                         m.set_checked(0, $d, 3.0),
                         Err(LaError::IndexOutOfBounds {
@@ -730,10 +777,11 @@ mod tests {
                             dim: $d,
                         })
                     );
+                    assert_eq!(m, before_failed_set);
                     assert_eq!(m.get(0, 0), Some(1.0));
 
                     // In-bounds set works.
-                    assert!(m.set(0, $d - 1, 3.0));
+                    assert_eq!(m.set(0, $d - 1, 3.0), Some(()));
                     assert_eq!(m.get(0, $d - 1), Some(3.0));
                     assert_eq!(m.set_checked($d - 1, 0, 4.0), Ok(()));
                     assert_eq!(m.get_checked($d - 1, 0), Ok(4.0));
@@ -742,10 +790,10 @@ mod tests {
                 #[test]
                 fn [<public_api_matrix_zero_and_default_are_zero_ $d d>]() {
                     let z = Matrix::<$d>::zero();
-                    assert_abs_diff_eq!(z.inf_norm(), 0.0, epsilon = 0.0);
+                    assert_abs_diff_eq!(z.inf_norm().unwrap(), 0.0, epsilon = 0.0);
 
                     let d = Matrix::<$d>::default();
-                    assert_abs_diff_eq!(d.inf_norm(), 0.0, epsilon = 0.0);
+                    assert_abs_diff_eq!(d.inf_norm().unwrap(), 0.0, epsilon = 0.0);
                 }
 
                 #[test]
@@ -763,7 +811,7 @@ mod tests {
                     }
 
                     let m = Matrix::<$d>::from_rows(rows);
-                    assert_abs_diff_eq!(m.inf_norm(), f64::from($d), epsilon = 0.0);
+                    assert_abs_diff_eq!(m.inf_norm().unwrap(), f64::from($d), epsilon = 0.0);
                 }
 
                 #[test]
@@ -815,13 +863,13 @@ mod tests {
 
     #[test]
     fn det_direct_d0_is_one() {
-        assert_eq!(Matrix::<0>::zero().det_direct(), Some(1.0));
+        assert_eq!(Matrix::<0>::zero().det_direct(), Ok(Some(1.0)));
     }
 
     #[test]
     fn det_direct_d1_returns_element() {
         let m = Matrix::<1>::from_rows([[42.0]]);
-        assert_eq!(m.det_direct(), Some(42.0));
+        assert_eq!(m.det_direct(), Ok(Some(42.0)));
     }
 
     #[test]
@@ -829,7 +877,7 @@ mod tests {
         // [[1,2],[3,4]] → det = 1*4 - 2*3 = -2
         // black_box prevents compile-time constant folding of the const fn.
         let m = black_box(Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]));
-        assert_abs_diff_eq!(m.det_direct().unwrap(), -2.0, epsilon = 1e-15);
+        assert_abs_diff_eq!(m.det_direct().unwrap().unwrap(), -2.0, epsilon = 1e-15);
     }
 
     #[test]
@@ -840,7 +888,7 @@ mod tests {
             [4.0, 5.0, 6.0],
             [7.0, 8.0, 9.0],
         ]));
-        assert_abs_diff_eq!(m.det_direct().unwrap(), 0.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(m.det_direct().unwrap().unwrap(), 0.0, epsilon = 1e-12);
     }
 
     #[test]
@@ -851,13 +899,13 @@ mod tests {
             [0.0, 3.0, 1.0],
             [1.0, 0.0, 2.0],
         ]));
-        assert_abs_diff_eq!(m.det_direct().unwrap(), 13.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(m.det_direct().unwrap().unwrap(), 13.0, epsilon = 1e-12);
     }
 
     #[test]
     fn det_direct_d4_identity() {
         let m = black_box(Matrix::<4>::identity());
-        assert_abs_diff_eq!(m.det_direct().unwrap(), 1.0, epsilon = 1e-15);
+        assert_abs_diff_eq!(m.det_direct().unwrap().unwrap(), 1.0, epsilon = 1e-15);
     }
 
     #[test]
@@ -869,17 +917,66 @@ mod tests {
         rows[2][2] = 5.0;
         rows[3][3] = 7.0;
         let m = black_box(Matrix::<4>::from_rows(rows));
-        assert_abs_diff_eq!(m.det_direct().unwrap(), 210.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(m.det_direct().unwrap().unwrap(), 210.0, epsilon = 1e-12);
     }
 
     #[test]
     fn det_direct_d5_returns_none() {
-        assert_eq!(Matrix::<5>::identity().det_direct(), None);
+        assert_eq!(Matrix::<5>::identity().det_direct(), Ok(None));
+    }
+
+    #[test]
+    fn det_direct_d5_rejects_nonfinite_before_returning_none() {
+        let mut m = Matrix::<5>::identity();
+        assert_eq!(m.set(3, 4, f64::NAN), Some(()));
+        assert_eq!(
+            m.det_direct(),
+            Err(LaError::NonFinite {
+                row: Some(3),
+                col: 4,
+            })
+        );
     }
 
     #[test]
     fn det_direct_d8_returns_none() {
-        assert_eq!(Matrix::<8>::zero().det_direct(), None);
+        assert_eq!(Matrix::<8>::zero().det_direct(), Ok(None));
+    }
+
+    #[test]
+    fn det_direct_rejects_nonfinite_entry_with_coordinates() {
+        let m = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, f64::NAN, 0.0], [0.0, 0.0, 1.0]]);
+        assert_eq!(
+            m.det_direct(),
+            Err(LaError::NonFinite {
+                row: Some(1),
+                col: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn det_direct_rejects_computed_overflow() {
+        let m = Matrix::<2>::from_rows([[1e300, 0.0], [0.0, 1e300]]);
+        assert_eq!(
+            m.det_direct(),
+            Err(LaError::NonFinite { row: None, col: 0 })
+        );
+    }
+
+    #[test]
+    fn det_d5_rejects_lu_product_overflow() {
+        let m = Matrix::<5>::from_rows([
+            [1.0e100, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0e100, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0e100, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0e100, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0e100],
+        ]);
+        assert_eq!(
+            m.det(DEFAULT_PIVOT_TOL),
+            Err(LaError::NonFinite { row: None, col: 3 })
+        );
     }
 
     macro_rules! gen_det_direct_agrees_with_lu {
@@ -900,8 +997,8 @@ mod tests {
                         }
                     }
                     let m = Matrix::<$d>::from_rows(rows);
-                    let direct = m.det_direct().unwrap();
-                    let lu_det = m.lu(DEFAULT_PIVOT_TOL).unwrap().det();
+                    let direct = m.det_direct().unwrap().unwrap();
+                    let lu_det = m.lu(DEFAULT_PIVOT_TOL).unwrap().det().unwrap();
                     let eps = lu_det.abs().mul_add(1e-12, 1e-12);
                     assert_abs_diff_eq!(direct, lu_det, epsilon = eps);
                 }
@@ -917,22 +1014,22 @@ mod tests {
     #[test]
     fn det_direct_identity_all_dims() {
         assert_abs_diff_eq!(
-            Matrix::<1>::identity().det_direct().unwrap(),
+            Matrix::<1>::identity().det_direct().unwrap().unwrap(),
             1.0,
             epsilon = 0.0
         );
         assert_abs_diff_eq!(
-            Matrix::<2>::identity().det_direct().unwrap(),
+            Matrix::<2>::identity().det_direct().unwrap().unwrap(),
             1.0,
             epsilon = 0.0
         );
         assert_abs_diff_eq!(
-            Matrix::<3>::identity().det_direct().unwrap(),
+            Matrix::<3>::identity().det_direct().unwrap().unwrap(),
             1.0,
             epsilon = 0.0
         );
         assert_abs_diff_eq!(
-            Matrix::<4>::identity().det_direct().unwrap(),
+            Matrix::<4>::identity().det_direct().unwrap().unwrap(),
             1.0,
             epsilon = 0.0
         );
@@ -941,17 +1038,17 @@ mod tests {
     #[test]
     fn det_direct_zero_matrix() {
         assert_abs_diff_eq!(
-            Matrix::<2>::zero().det_direct().unwrap(),
+            Matrix::<2>::zero().det_direct().unwrap().unwrap(),
             0.0,
             epsilon = 0.0
         );
         assert_abs_diff_eq!(
-            Matrix::<3>::zero().det_direct().unwrap(),
+            Matrix::<3>::zero().det_direct().unwrap().unwrap(),
             0.0,
             epsilon = 0.0
         );
         assert_abs_diff_eq!(
-            Matrix::<4>::zero().det_direct().unwrap(),
+            Matrix::<4>::zero().det_direct().unwrap().unwrap(),
             0.0,
             epsilon = 0.0
         );
@@ -1005,11 +1102,11 @@ mod tests {
         ($d:literal) => {
             paste! {
                 /// `Matrix::<D>::det_direct()` on the identity must const-evaluate
-                /// to `Some(1.0)` for every closed-form dimension `D ∈ {1, 2, 3, 4}`.
+                /// to `Ok(Some(1.0))` for every closed-form dimension `D ∈ {1, 2, 3, 4}`.
                 #[test]
                 fn [<det_direct_const_eval_ $d d>]() {
-                    const DET: Option<f64> = Matrix::<$d>::identity().det_direct();
-                    assert_eq!(DET, Some(1.0));
+                    const DET: Result<Option<f64>, LaError> = Matrix::<$d>::identity().det_direct();
+                    assert_eq!(DET, Ok(Some(1.0)));
                 }
             }
         };
@@ -1021,10 +1118,10 @@ mod tests {
 
     #[test]
     fn det_direct_const_eval_d5_is_none() {
-        // D ≥ 5 has no closed-form arm; `det_direct` returns `None`.  Verify
+        // D ≥ 5 has no closed-form arm; `det_direct` returns `Ok(None)`.  Verify
         // that the wildcard arm is reachable in a `const { … }` context.
-        const DET: Option<f64> = Matrix::<5>::identity().det_direct();
-        assert_eq!(DET, None);
+        const DET: Result<Option<f64>, LaError> = Matrix::<5>::identity().det_direct();
+        assert_eq!(DET, Ok(None));
     }
 
     // === det_errbound tests (no `exact` feature required) ===
@@ -1033,7 +1130,7 @@ mod tests {
     fn det_errbound_available_without_exact_feature() {
         // Verify det_errbound is accessible without exact feature
         let m = Matrix::<3>::identity();
-        let bound = m.det_errbound();
+        let bound = m.det_errbound().unwrap();
         assert!(bound.is_some());
         assert!(bound.unwrap() > 0.0);
     }
@@ -1041,7 +1138,53 @@ mod tests {
     #[test]
     fn det_errbound_d5_returns_none() {
         // D=5 has no fast filter
-        assert_eq!(Matrix::<5>::identity().det_errbound(), None);
+        assert_eq!(Matrix::<5>::identity().det_errbound(), Ok(None));
+    }
+
+    #[test]
+    fn det_errbound_d1_rejects_nonfinite_even_with_zero_bound() {
+        let m = Matrix::<1>::from_rows([[f64::INFINITY]]);
+        assert_eq!(
+            m.det_errbound(),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn det_errbound_d5_rejects_nonfinite_before_returning_none() {
+        let mut m = Matrix::<5>::identity();
+        assert_eq!(m.set(4, 1, f64::NAN), Some(()));
+        assert_eq!(
+            m.det_errbound(),
+            Err(LaError::NonFinite {
+                row: Some(4),
+                col: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn det_errbound_rejects_nonfinite_entry_with_coordinates() {
+        let m = Matrix::<2>::from_rows([[1.0, f64::INFINITY], [0.0, 1.0]]);
+        assert_eq!(
+            m.det_errbound(),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn det_errbound_rejects_computed_overflow() {
+        let m = Matrix::<2>::from_rows([[1e300, 0.0], [0.0, 1e300]]);
+        assert_eq!(
+            m.det_errbound(),
+            Err(LaError::NonFinite { row: None, col: 0 })
+        );
     }
 
     // === det_errbound const-evaluability tests (D = 2..=5) ===
@@ -1050,14 +1193,13 @@ mod tests {
         ($d:literal) => {
             paste! {
                 /// `Matrix::<D>::det_errbound()` on the identity must const-evaluate
-                /// to `Some(bound)` with `bound > 0` for every closed-form dimension
+                /// to `Ok(Some(bound))` with `bound > 0` for every closed-form dimension
                 /// `D ∈ {2, 3, 4}`.  Each dimension hits a distinct arm of
                 /// `det_errbound` with a dimension-specific permanent computation.
                 #[test]
                 fn [<det_errbound_const_eval_ $d d>]() {
-                    const BOUND: Option<f64> = Matrix::<$d>::identity().det_errbound();
-                    assert!(BOUND.is_some());
-                    assert!(BOUND.unwrap() > 0.0);
+                    const BOUND: Result<Option<f64>, LaError> = Matrix::<$d>::identity().det_errbound();
+                    assert!(BOUND.unwrap().unwrap() > 0.0);
                 }
             }
         };
@@ -1069,9 +1211,9 @@ mod tests {
 
     #[test]
     fn det_errbound_const_eval_d5_is_none() {
-        // D ≥ 5 has no fast-filter bound; `det_errbound` returns `None`.
-        const BOUND: Option<f64> = Matrix::<5>::identity().det_errbound();
-        assert_eq!(BOUND, None);
+        // D ≥ 5 has no fast-filter bound; `det_errbound` returns `Ok(None)`.
+        const BOUND: Result<Option<f64>, LaError> = Matrix::<5>::identity().det_errbound();
+        assert_eq!(BOUND, Ok(None));
     }
 
     // === inf_norm const-evaluability tests (D = 2..=5) ===
@@ -1084,8 +1226,8 @@ mod tests {
                 /// entry, so the max absolute row sum is exactly `1.0`.
                 #[test]
                 fn [<inf_norm_const_eval_ $d d>]() {
-                    const NORM: f64 = Matrix::<$d>::identity().inf_norm();
-                    assert!((NORM - 1.0).abs() <= 1e-12);
+                    const NORM: Result<f64, LaError> = Matrix::<$d>::identity().inf_norm();
+                    assert!((NORM.unwrap() - 1.0).abs() <= 1e-12);
                 }
             }
         };
@@ -1096,40 +1238,54 @@ mod tests {
     gen_inf_norm_const_eval_tests!(4);
     gen_inf_norm_const_eval_tests!(5);
 
-    // === inf_norm NaN / Inf propagation (regression tests for #85) ===
+    // === inf_norm NaN / Inf rejection (regression tests for #85) ===
 
     macro_rules! gen_inf_norm_nonfinite_tests {
         ($d:literal) => {
             paste! {
                 #[test]
-                fn [<inf_norm_all_nan_returns_nan_ $d d>]() {
+                fn [<inf_norm_all_nan_returns_nonfinite_error_ $d d>]() {
                     // Before the fix, `NaN > max_row_sum` was always false, so a
                     // matrix full of NaN silently produced inf_norm == 0.0.
                     let m = Matrix::<$d>::from_rows([[f64::NAN; $d]; $d]);
-                    assert!(m.inf_norm().is_nan());
+                    assert_eq!(
+                        m.inf_norm(),
+                        Err(LaError::NonFinite {
+                            row: Some(0),
+                            col: 0,
+                        })
+                    );
                 }
 
                 #[test]
-                fn [<inf_norm_single_nan_entry_returns_nan_ $d d>]() {
-                    // A single NaN entry must contaminate its row sum and
-                    // propagate through `f64::maximum` to the final result.
+                fn [<inf_norm_single_nan_entry_returns_nonfinite_error_ $d d>]() {
+                    // A single NaN entry must surface with its source coordinates.
                     let mut rows = [[0.0f64; $d]; $d];
                     rows[0][0] = f64::NAN;
                     rows[$d - 1][$d - 1] = 1.0;
                     let m = Matrix::<$d>::from_rows(rows);
-                    assert!(m.inf_norm().is_nan());
+                    assert_eq!(
+                        m.inf_norm(),
+                        Err(LaError::NonFinite {
+                            row: Some(0),
+                            col: 0,
+                        })
+                    );
                 }
 
                 #[test]
-                fn [<inf_norm_infinity_entry_propagates_ $d d>]() {
-                    // Infinity entries should propagate to +∞ via the row sum,
-                    // not be silently dropped.  The norm is a sum of absolute
-                    // values, so any infinite result is necessarily +∞.
+                fn [<inf_norm_infinity_entry_returns_nonfinite_error_ $d d>]() {
+                    // Infinity entries should be rejected with their source coordinates.
                     let mut rows = [[0.0f64; $d]; $d];
                     rows[0][0] = f64::INFINITY;
                     let m = Matrix::<$d>::from_rows(rows);
-                    let norm = m.inf_norm();
-                    assert!(norm.is_infinite() && norm.is_sign_positive());
+                    assert_eq!(
+                        m.inf_norm(),
+                        Err(LaError::NonFinite {
+                            row: Some(0),
+                            col: 0,
+                        })
+                    );
                 }
             }
         };
@@ -1148,15 +1304,15 @@ mod tests {
                 #[test]
                 fn [<is_symmetric_true_for_identity_ $d d>]() {
                     let m = Matrix::<$d>::identity();
-                    assert!(m.is_symmetric(1e-12).unwrap());
-                    assert_eq!(m.first_asymmetry(1e-12).unwrap(), None);
+                    assert!(m.is_symmetric(Tolerance::new(1e-12).unwrap()).unwrap());
+                    assert_eq!(m.first_asymmetry(Tolerance::new(1e-12).unwrap()).unwrap(), None);
                 }
 
                 #[test]
                 fn [<is_symmetric_true_for_zero_ $d d>]() {
                     let m = Matrix::<$d>::zero();
-                    assert!(m.is_symmetric(1e-12).unwrap());
-                    assert_eq!(m.first_asymmetry(1e-12).unwrap(), None);
+                    assert!(m.is_symmetric(Tolerance::new(1e-12).unwrap()).unwrap());
+                    assert_eq!(m.first_asymmetry(Tolerance::new(1e-12).unwrap()).unwrap(), None);
                 }
 
                 #[test]
@@ -1178,8 +1334,8 @@ mod tests {
                         }
                     }
                     let a = Matrix::<$d>::from_rows(sym);
-                    assert!(a.is_symmetric(1e-12).unwrap());
-                    assert_eq!(a.first_asymmetry(1e-12).unwrap(), None);
+                    assert!(a.is_symmetric(Tolerance::new(1e-12).unwrap()).unwrap());
+                    assert_eq!(a.first_asymmetry(Tolerance::new(1e-12).unwrap()).unwrap(), None);
                 }
 
                 #[test]
@@ -1192,8 +1348,11 @@ mod tests {
                     rows[0][$d - 1] = 1.0;
                     rows[$d - 1][0] = -1.0; // breaks symmetry
                     let a = Matrix::<$d>::from_rows(rows);
-                    assert!(!a.is_symmetric(1e-12).unwrap());
-                    assert_eq!(a.first_asymmetry(1e-12).unwrap(), Some((0, $d - 1)));
+                    assert!(!a.is_symmetric(Tolerance::new(1e-12).unwrap()).unwrap());
+                    assert_eq!(
+                        a.first_asymmetry(Tolerance::new(1e-12).unwrap()).unwrap(),
+                        Some((0, $d - 1))
+                    );
                 }
 
                 #[test]
@@ -1208,14 +1367,14 @@ mod tests {
                     rows[1][0] = f64::NAN;
                     let a = Matrix::<$d>::from_rows(rows);
                     assert_eq!(
-                        a.is_symmetric(1e-12),
+                        a.is_symmetric(Tolerance::new(1e-12).unwrap()),
                         Err(LaError::NonFinite {
                             row: Some(0),
                             col: 1,
                         })
                     );
                     assert_eq!(
-                        a.first_asymmetry(1e-12),
+                        a.first_asymmetry(Tolerance::new(1e-12).unwrap()),
                         Err(LaError::NonFinite {
                             row: Some(0),
                             col: 1,
@@ -1237,29 +1396,32 @@ mod tests {
         // relative tolerance 1e-12 yields eps ≈ 2e-6, which accepts the gap;
         // a stricter tol of 1e-15 rejects it.
         let a = Matrix::<2>::from_rows([[1.0e6, 1.0e6 + 1.0e-6], [1.0e6, 1.0e6]]);
-        assert!(a.is_symmetric(1e-12).unwrap());
-        assert!(!a.is_symmetric(1e-15).unwrap());
+        assert!(a.is_symmetric(Tolerance::new(1e-12).unwrap()).unwrap());
+        assert!(!a.is_symmetric(Tolerance::new(1e-15).unwrap()).unwrap());
     }
 
     #[test]
     fn first_asymmetry_returns_lexicographically_first_pair() {
         // Two asymmetric pairs: (0, 2) and (1, 2).  We must get (0, 2) first.
         let a = Matrix::<3>::from_rows([[1.0, 0.0, 2.0], [0.0, 1.0, 3.0], [-2.0, -3.0, 1.0]]);
-        assert_eq!(a.first_asymmetry(1e-12).unwrap(), Some((0, 2)));
+        assert_eq!(
+            a.first_asymmetry(Tolerance::new(1e-12).unwrap()).unwrap(),
+            Some((0, 2))
+        );
     }
 
     #[test]
     fn first_asymmetry_rejects_infinite_offdiagonal() {
         let a = Matrix::<2>::from_rows([[1.0, f64::INFINITY], [0.0, 1.0]]);
         assert_eq!(
-            a.first_asymmetry(1e-12),
+            a.first_asymmetry(Tolerance::new(1e-12).unwrap()),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 1,
             })
         );
         assert_eq!(
-            a.is_symmetric(1e-12),
+            a.is_symmetric(Tolerance::new(1e-12).unwrap()),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 1,
@@ -1271,14 +1433,14 @@ mod tests {
     fn first_asymmetry_rejects_nan_diagonal() {
         let a = Matrix::<2>::from_rows([[f64::NAN, 1.0], [1.0, 1.0]]);
         assert_eq!(
-            a.first_asymmetry(1e-12),
+            a.first_asymmetry(Tolerance::new(1e-12).unwrap()),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 0,
             })
         );
         assert_eq!(
-            a.is_symmetric(1e-12),
+            a.is_symmetric(Tolerance::new(1e-12).unwrap()),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 0,
@@ -1294,30 +1456,36 @@ mod tests {
             [f64::MAX, 0.0, f64::MAX],
         ]);
 
-        assert!(a.inf_norm().is_infinite());
-        assert_eq!(a.first_asymmetry(0.0).unwrap(), Some((0, 1)));
-        assert!(!a.is_symmetric(0.0).unwrap());
+        assert_eq!(a.inf_norm(), Err(LaError::NonFinite { row: None, col: 0 }));
+        assert_eq!(
+            a.first_asymmetry(Tolerance::new(0.0).unwrap()).unwrap(),
+            Some((0, 1))
+        );
+        assert!(!a.is_symmetric(Tolerance::new(0.0).unwrap()).unwrap());
     }
 
     #[test]
     fn first_asymmetry_flags_overflowed_finite_difference() {
         let a = Matrix::<2>::from_rows([[1.0, f64::MAX], [-f64::MAX, 1.0]]);
-        assert_eq!(a.first_asymmetry(1e-12).unwrap(), Some((0, 1)));
-        assert!(!a.is_symmetric(1e-12).unwrap());
+        assert_eq!(
+            a.first_asymmetry(Tolerance::new(1e-12).unwrap()).unwrap(),
+            Some((0, 1))
+        );
+        assert!(!a.is_symmetric(Tolerance::new(1e-12).unwrap()).unwrap());
     }
 
     #[test]
     fn is_symmetric_rejects_invalid_tol() {
         assert_eq!(
-            Matrix::<2>::identity().is_symmetric(-1.0),
+            Tolerance::new(-1.0),
             Err(LaError::InvalidTolerance { value: -1.0 })
         );
-        assert!(matches!(
-            Matrix::<2>::identity().is_symmetric(f64::NAN),
+        assert_matches!(
+            Tolerance::new(f64::NAN),
             Err(LaError::InvalidTolerance { value }) if value.is_nan()
-        ));
+        );
         assert_eq!(
-            Matrix::<2>::identity().is_symmetric(f64::INFINITY),
+            Tolerance::new(f64::INFINITY),
             Err(LaError::InvalidTolerance {
                 value: f64::INFINITY,
             })
@@ -1327,19 +1495,19 @@ mod tests {
     #[test]
     fn first_asymmetry_rejects_negative_tol() {
         assert_eq!(
-            Matrix::<2>::identity().first_asymmetry(-1.0),
+            Tolerance::new(-1.0),
             Err(LaError::InvalidTolerance { value: -1.0 })
         );
     }
 
     #[test]
     fn first_asymmetry_rejects_nonfinite_tol() {
-        assert!(matches!(
-            Matrix::<2>::identity().first_asymmetry(f64::NAN),
+        assert_matches!(
+            Tolerance::new(f64::NAN),
             Err(LaError::InvalidTolerance { value }) if value.is_nan()
-        ));
+        );
         assert_eq!(
-            Matrix::<2>::identity().first_asymmetry(f64::INFINITY),
+            Tolerance::new(f64::INFINITY),
             Err(LaError::InvalidTolerance {
                 value: f64::INFINITY,
             })

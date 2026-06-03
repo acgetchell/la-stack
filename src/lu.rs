@@ -2,9 +2,9 @@
 
 use core::hint::cold_path;
 
-use crate::LaError;
 use crate::matrix::Matrix;
 use crate::vector::Vector;
+use crate::{LaError, Tolerance};
 
 /// LU decomposition (PA = LU) with partial pivoting.
 #[must_use]
@@ -13,7 +13,7 @@ pub struct Lu<const D: usize> {
     factors: Matrix<D>,
     piv: [usize; D],
     piv_sign: f64,
-    tol: f64,
+    tol: Tolerance,
 }
 
 impl<const D: usize> Lu<D> {
@@ -23,8 +23,7 @@ impl<const D: usize> Lu<D> {
     /// invalid tolerances, non-finite pivot candidates, and numerically singular
     /// pivots before callers can observe a [`Lu`] value.
     #[inline]
-    pub(crate) fn factor(a: Matrix<D>, tol: f64) -> Result<Self, LaError> {
-        let tol = LaError::validate_tolerance(tol)?;
+    pub(crate) fn factor(a: Matrix<D>, tol: Tolerance) -> Result<Self, LaError> {
         let mut lu = a;
 
         let mut piv = [0usize; D];
@@ -55,7 +54,7 @@ impl<const D: usize> Lu<D> {
                 }
             }
 
-            if pivot_abs <= tol {
+            if pivot_abs <= tol.get() {
                 cold_path();
                 return Err(LaError::Singular { pivot_col: k });
             }
@@ -177,7 +176,7 @@ impl<const D: usize> Lu<D> {
                 cold_path();
                 return Err(LaError::non_finite_at(i));
             }
-            if diag.abs() <= self.tol {
+            if diag.abs() <= self.tol.get() {
                 cold_path();
                 return Err(LaError::Singular { pivot_col: i });
             }
@@ -204,21 +203,28 @@ impl<const D: usize> Lu<D> {
     /// let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
     /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
     ///
-    /// let det = lu.det();
+    /// let det = lu.det()?;
     /// assert!((det - (-2.0)).abs() <= 1e-12);
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] if the determinant product overflows to
+    /// NaN or infinity.
     #[inline]
-    #[must_use]
-    pub const fn det(&self) -> f64 {
+    pub const fn det(&self) -> Result<f64, LaError> {
         let mut det = self.piv_sign;
         let mut i = 0;
         while i < D {
             det *= self.factors.rows[i][i];
+            if !det.is_finite() {
+                cold_path();
+                return Err(LaError::non_finite_at(i));
+            }
             i += 1;
         }
-        det
+        Ok(det)
     }
 }
 
@@ -227,6 +233,7 @@ mod tests {
     use super::*;
     use crate::DEFAULT_PIVOT_TOL;
 
+    use core::assert_matches;
     use core::hint::black_box;
 
     use approx::assert_abs_diff_eq;
@@ -249,7 +256,7 @@ mod tests {
                     rows.swap(0, 1);
 
                     let a = Matrix::<$d>::from_rows(black_box(rows));
-                    let lu_fn: fn(Matrix<$d>, f64) -> Result<Lu<$d>, LaError> =
+                    let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
                     let lu = lu_fn(a, DEFAULT_PIVOT_TOL).unwrap();
 
@@ -289,13 +296,14 @@ mod tests {
                     rows.swap(0, 1);
 
                     let a = Matrix::<$d>::from_rows(black_box(rows));
-                    let lu_fn: fn(Matrix<$d>, f64) -> Result<Lu<$d>, LaError> =
+                    let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
                     let lu = lu_fn(a, DEFAULT_PIVOT_TOL).unwrap();
 
                     // Row swap ⇒ determinant sign flip.
-                    let det_fn: fn(&Lu<$d>) -> f64 = black_box(Lu::<$d>::det);
-                    assert_abs_diff_eq!(det_fn(&lu), -1.0, epsilon = 1e-12);
+                    let det_fn: fn(&Lu<$d>) -> Result<f64, LaError> =
+                        black_box(Lu::<$d>::det);
+                    assert_abs_diff_eq!(det_fn(&lu).unwrap(), -1.0, epsilon = 1e-12);
                 }
             }
         };
@@ -328,7 +336,7 @@ mod tests {
                     }
 
                     let a = Matrix::<$d>::from_rows(black_box(rows));
-                    let lu_fn: fn(Matrix<$d>, f64) -> Result<Lu<$d>, LaError> =
+                    let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
                     let lu = lu_fn(a, DEFAULT_PIVOT_TOL).unwrap();
 
@@ -367,12 +375,13 @@ mod tests {
                     }
 
                     let a = Matrix::<$d>::from_rows(black_box(rows));
-                    let lu_fn: fn(Matrix<$d>, f64) -> Result<Lu<$d>, LaError> =
+                    let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
                     let lu = lu_fn(a, DEFAULT_PIVOT_TOL).unwrap();
 
-                    let det_fn: fn(&Lu<$d>) -> f64 = black_box(Lu::<$d>::det);
-                    assert_abs_diff_eq!(det_fn(&lu), f64::from($d) + 1.0, epsilon = 1e-8);
+                    let det_fn: fn(&Lu<$d>) -> Result<f64, LaError> =
+                        black_box(Lu::<$d>::det);
+                    assert_abs_diff_eq!(det_fn(&lu).unwrap(), f64::from($d) + 1.0, epsilon = 1e-8);
                 }
             }
         };
@@ -393,8 +402,8 @@ mod tests {
         let x = solve_fn(&lu, b).unwrap().into_array();
         assert_abs_diff_eq!(x[0], 3.0, epsilon = 1e-12);
 
-        let det_fn: fn(&Lu<1>) -> f64 = black_box(Lu::<1>::det);
-        assert_abs_diff_eq!(det_fn(&lu), 2.0, epsilon = 0.0);
+        let det_fn: fn(&Lu<1>) -> Result<f64, LaError> = black_box(Lu::<1>::det);
+        assert_abs_diff_eq!(det_fn(&lu).unwrap(), 2.0, epsilon = 0.0);
     }
 
     #[test]
@@ -416,8 +425,8 @@ mod tests {
         let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [3.0, 4.0]]));
         let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
 
-        let det_fn: fn(&Lu<2>) -> f64 = black_box(Lu::<2>::det);
-        assert_abs_diff_eq!(det_fn(&lu), -2.0, epsilon = 1e-12);
+        let det_fn: fn(&Lu<2>) -> Result<f64, LaError> = black_box(Lu::<2>::det);
+        assert_abs_diff_eq!(det_fn(&lu).unwrap(), -2.0, epsilon = 1e-12);
     }
 
     #[test]
@@ -426,8 +435,8 @@ mod tests {
         let a = Matrix::<2>::from_rows(black_box([[0.0, 1.0], [1.0, 0.0]]));
         let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
 
-        let det_fn: fn(&Lu<2>) -> f64 = black_box(Lu::<2>::det);
-        assert_abs_diff_eq!(det_fn(&lu), -1.0, epsilon = 0.0);
+        let det_fn: fn(&Lu<2>) -> Result<f64, LaError> = black_box(Lu::<2>::det);
+        assert_abs_diff_eq!(det_fn(&lu).unwrap(), -1.0, epsilon = 0.0);
     }
 
     #[test]
@@ -461,15 +470,17 @@ mod tests {
 
     #[test]
     fn invalid_tolerance_rejected() {
-        let a = Matrix::<2>::identity();
-        assert_eq!(a.lu(-1.0), Err(LaError::InvalidTolerance { value: -1.0 }));
-
-        assert!(matches!(
-            a.lu(f64::NAN),
-            Err(LaError::InvalidTolerance { value }) if value.is_nan()
-        ));
         assert_eq!(
-            a.lu(f64::INFINITY),
+            Tolerance::new(-1.0),
+            Err(LaError::InvalidTolerance { value: -1.0 })
+        );
+
+        assert_matches!(
+            Tolerance::new(f64::NAN),
+            Err(LaError::InvalidTolerance { value }) if value.is_nan()
+        );
+        assert_eq!(
+            Tolerance::new(f64::INFINITY),
             Err(LaError::InvalidTolerance {
                 value: f64::INFINITY,
             })
@@ -538,6 +549,19 @@ mod tests {
         let b = Vector::<3>::new([0.0, 0.0, 1.0e200]);
         let err = lu.solve_vec(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
+    }
+
+    #[test]
+    fn det_rejects_product_overflow() {
+        let a = Matrix::<5>::from_rows([
+            [1.0e100, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0e100, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0e100, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0e100, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0e100],
+        ]);
+        let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+        assert_eq!(lu.det(), Err(LaError::NonFinite { row: None, col: 3 }));
     }
 
     // -----------------------------------------------------------------------
@@ -631,7 +655,7 @@ mod tests {
 
     #[test]
     fn lu_det_const_eval_d2() {
-        const DET: f64 = {
+        const DET: Result<f64, LaError> = {
             // Triangular factors with diag [2.0, 3.0] and no row swaps.
             let mut factors = Matrix::<2>::identity();
             factors.rows[0][0] = 2.0;
@@ -644,12 +668,12 @@ mod tests {
             };
             lu.det()
         };
-        assert!((DET - 6.0).abs() <= 1e-12);
+        assert_eq!(DET, Ok(6.0));
     }
 
     #[test]
     fn lu_det_const_eval_d3_row_swap() {
-        const DET: f64 = {
+        const DET: Result<f64, LaError> = {
             // Identity factors but `piv_sign = -1.0` encoding a single row swap;
             // the determinant magnitude is 1 but the sign flips.
             let lu = Lu::<3> {
@@ -660,7 +684,7 @@ mod tests {
             };
             lu.det()
         };
-        assert!((DET - (-1.0)).abs() <= 1e-12);
+        assert_eq!(DET, Ok(-1.0));
     }
 
     #[test]

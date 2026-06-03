@@ -24,7 +24,7 @@ fn main() {
         [7.0, 8.0, 9.0],
     ]);
 
-    let det_f64_approx = m.det_direct().unwrap();
+    let det_f64_approx = m.det_direct().unwrap().unwrap();
     let det_exact = m.det_exact().unwrap();
     let det_exact_as_f64 = m.det_exact_f64().unwrap();
 

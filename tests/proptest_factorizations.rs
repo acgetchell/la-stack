@@ -89,7 +89,7 @@ macro_rules! gen_factorization_proptests {
                     let a = Matrix::<$d>::from_rows(a_rows);
                     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
-                    assert_abs_diff_eq!(ldlt.det(), expected_det, epsilon = 1e-8);
+                    assert_abs_diff_eq!(ldlt.det().unwrap(), expected_det, epsilon = 1e-8);
 
                     let b = Vector::<$d>::new(b_arr);
                     let x = ldlt.solve_vec(b).unwrap().into_array();
@@ -169,7 +169,7 @@ macro_rules! gen_factorization_proptests {
                     let a = Matrix::<$d>::from_rows(a_rows);
                     let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
 
-                    assert_abs_diff_eq!(lu.det(), expected_det, epsilon = 1e-8);
+                    assert_abs_diff_eq!(lu.det().unwrap(), expected_det, epsilon = 1e-8);
 
                     let b = Vector::<$d>::new(b_arr);
                     let x = lu.solve_vec(b).unwrap().into_array();
@@ -255,7 +255,7 @@ macro_rules! gen_factorization_proptests {
                     let a = Matrix::<$d>::from_rows(a_rows);
                     let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
 
-                    assert_abs_diff_eq!(lu.det(), expected_det, epsilon = 1e-8);
+                    assert_abs_diff_eq!(lu.det().unwrap(), expected_det, epsilon = 1e-8);
 
                     let b = Vector::<$d>::new(b_arr);
                     let x = lu.solve_vec(b).unwrap().into_array();

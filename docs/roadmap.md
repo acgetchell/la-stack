@@ -47,12 +47,17 @@ native Blocking / Is blocked by graph mirrors this order:
   error behavior across all dimensions as far as stable Rust allows.
 - [#120](https://github.com/acgetchell/la-stack/issues/120) - Run the
   parse-don't-validate `NonZero*` audit.
+- [#126](https://github.com/acgetchell/la-stack/issues/126) - Add finite
+  `Matrix` and `Vector` proof types.
+- [#125](https://github.com/acgetchell/la-stack/issues/125) - Add a Semgrep
+  guardrail against `unwrap` / `expect` in examples, benches, and doctests.
 - [#98](https://github.com/acgetchell/la-stack/issues/98) - Add random-input
   percentile benchmarks to the exact arithmetic suite.
 
 The broad shape is: document scope first, add downstream dispatch ergonomics,
-clean up small API contracts, tighten validation, then finish with broader
-invariant and benchmark work.
+clean up small API contracts, tighten validation, make reusable invariants
+explicit in proof-carrying types, lock the public examples and benchmarks into
+proper error handling, then finish with broader benchmark work.
 
 ### v0.5.0 Generic Const Expressions
 

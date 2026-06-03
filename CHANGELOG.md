@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Feat!(matrix): enforce fallible matrix invariants [`e26c283`](https://github.com/acgetchell/la-stack/commit/e26c28358b2358100353b2895441b68892e92cd7)
+
 ### Changed
 
 - Remove redundant cache restore keys for cargo-llvm-cov [`f75a01c`](https://github.com/acgetchell/la-stack/commit/f75a01c99c8dbcc8b6ffc36ae9f94ba968a2f111)
@@ -37,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 
 - Document feature requirement for exact APIs [`19b10d5`](https://github.com/acgetchell/la-stack/commit/19b10d552e83b6a7f9e91695b4850b8fab3f4550)
+- Document scalar scope and release roadmap [`bfb0393`](https://github.com/acgetchell/la-stack/commit/bfb039386588f94b95561c610181ca6d486acd6e)
+
+  - Clarify that la-stack intentionally supports f64 floating-point APIs plus optional exact rationals, not alternate scalar families.
+  - Add a roadmap covering the v0.4.x stable-Rust issue sequence and the v0.5.0 generic_const_exprs anchor.
+  - Refresh generated changelog entries and archived changelog grouping.
 
 ### Maintenance
 

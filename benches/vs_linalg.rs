@@ -8,8 +8,9 @@
 //! - Matrix infinity norm is the maximum absolute row sum on all sides.
 
 use criterion::Criterion;
-use faer::linalg::solvers::Solve;
+use faer::linalg::solvers::{PartialPivLu, Solve};
 use faer::perm::PermRef;
+use la_stack::{DEFAULT_PIVOT_TOL, Matrix, Vector};
 use pastey::paste;
 use std::hint::black_box;
 
@@ -43,7 +44,7 @@ fn faer_perm_sign(p: PermRef<'_, usize>) -> f64 {
     }
 }
 
-fn faer_det_from_partial_piv_lu(lu: &faer::linalg::solvers::PartialPivLu<f64>) -> f64 {
+fn faer_det_from_partial_piv_lu(lu: &PartialPivLu<f64>) -> f64 {
     // For PA = LU with unit-lower L, det(A) = det(P) * det(U).
     let u = lu.U();
     let mut det = 1.0;
@@ -128,10 +129,10 @@ macro_rules! gen_vs_linalg_benches_for_dim {
         paste! {{
             // Isolate each dimension's inputs to keep types and captures clean.
             {
-                let a = la_stack::Matrix::<$d>::from_rows(make_matrix_rows::<$d>());
-                let rhs = la_stack::Vector::<$d>::new(make_vector_array::<$d>(0.0));
-                let v1 = la_stack::Vector::<$d>::new(make_vector_array::<$d>(0.0));
-                let v2 = la_stack::Vector::<$d>::new(make_vector_array::<$d>(1.0));
+                let a = Matrix::<$d>::from_rows(make_matrix_rows::<$d>());
+                let rhs = Vector::<$d>::new(make_vector_array::<$d>(0.0));
+                let v1 = Vector::<$d>::new(make_vector_array::<$d>(0.0));
+                let v2 = Vector::<$d>::new(make_vector_array::<$d>(1.0));
 
                 let na = nalgebra::SMatrix::<f64, $d, $d>::from_fn(|r, c| matrix_entry::<$d>(r, c));
                 let nrhs = nalgebra::SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 0.0));
@@ -145,7 +146,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
 
                 // Precompute LU once for solve-only / det-only benchmarks.
                 let a_lu = a
-                    .lu(la_stack::DEFAULT_PIVOT_TOL)
+                    .lu(DEFAULT_PIVOT_TOL)
                     .expect("matrix should be non-singular");
                 let na_lu = na.clone().lu();
                 let fa_lu = fa.partial_piv_lu();
@@ -156,9 +157,12 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("la_stack_det_via_lu", |bencher| {
                     bencher.iter(|| {
                         let lu = black_box(a)
-                            .lu(la_stack::DEFAULT_PIVOT_TOL)
+                            .lu(DEFAULT_PIVOT_TOL)
                             .expect("matrix should be non-singular");
-                        let det = lu.det();
+                        let det = match lu.det() {
+                            Ok(det) => det,
+                            Err(err) => panic!("finite benchmark matrix determinant failed: {err}"),
+                        };
                         black_box(det);
                     });
                 });
@@ -183,7 +187,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("la_stack_det", |bencher| {
                     bencher.iter(|| {
                         let det = black_box(a)
-                            .det(la_stack::DEFAULT_PIVOT_TOL)
+                            .det(DEFAULT_PIVOT_TOL)
                             .expect("matrix should be non-singular");
                         black_box(det);
                     });
@@ -193,7 +197,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("la_stack_lu", |bencher| {
                     bencher.iter(|| {
                         let lu = black_box(a)
-                            .lu(la_stack::DEFAULT_PIVOT_TOL)
+                            .lu(DEFAULT_PIVOT_TOL)
                             .expect("matrix should be non-singular");
                         let _ = black_box(lu);
                     });
@@ -217,7 +221,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("la_stack_lu_solve", |bencher| {
                     bencher.iter(|| {
                         let lu = black_box(a)
-                            .lu(la_stack::DEFAULT_PIVOT_TOL)
+                            .lu(DEFAULT_PIVOT_TOL)
                             .expect("matrix should be non-singular");
                         let x = lu
                             .solve_vec(black_box(rhs))
@@ -273,7 +277,10 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Determinant from a precomputed LU ===
                 [<group_d $d>].bench_function("la_stack_det_from_lu", |bencher| {
                     bencher.iter(|| {
-                        let det = a_lu.det();
+                        let det = match a_lu.det() {
+                            Ok(det) => det,
+                            Err(err) => panic!("finite benchmark matrix determinant failed: {err}"),
+                        };
                         black_box(det);
                     });
                 });
@@ -295,7 +302,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Vector dot product ===
                 [<group_d $d>].bench_function("la_stack_dot", |bencher| {
                     bencher.iter(|| {
-                        let result = black_box(v1).dot(black_box(v2));
+                        let result = black_box(v1).dot(black_box(v2)).unwrap();
                         black_box(result);
                     });
                 });
@@ -322,7 +329,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Vector norm squared ===
                 [<group_d $d>].bench_function("la_stack_norm2_sq", |bencher| {
                     bencher.iter(|| {
-                        let result = black_box(v1).norm2_sq();
+                        let result = black_box(v1).norm2_sq().unwrap();
                         black_box(result);
                     });
                 });
@@ -349,7 +356,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Matrix infinity norm (max absolute row sum) ===
                 [<group_d $d>].bench_function("la_stack_inf_norm", |bencher| {
                     bencher.iter(|| {
-                        let result = black_box(a).inf_norm();
+                        let result = black_box(a).inf_norm().unwrap();
                         black_box(result);
                     });
                 });

@@ -1,5 +1,7 @@
 //! Fixed-size, stack-allocated vectors.
 
+use crate::LaError;
+
 /// Fixed-size vector of length `D`, stored inline.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -73,20 +75,35 @@ impl<const D: usize> Vector<D> {
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let a = Vector::<3>::new([1.0, 2.0, 3.0]);
     /// let b = Vector::<3>::new([-2.0, 0.5, 4.0]);
-    /// assert!((a.dot(b) - 11.0).abs() <= 1e-12);
+    /// assert!((a.dot(b)? - 11.0).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] when either input contains NaN or infinity,
+    /// or when the accumulated dot product overflows to NaN or infinity.
     #[inline]
-    #[must_use]
-    pub const fn dot(self, other: Self) -> f64 {
+    pub const fn dot(self, other: Self) -> Result<f64, LaError> {
         let mut acc = 0.0;
         let mut i = 0;
         while i < D {
+            if !self.data[i].is_finite() {
+                return Err(LaError::non_finite_at(i));
+            }
+            if !other.data[i].is_finite() {
+                return Err(LaError::non_finite_at(i));
+            }
             acc = self.data[i].mul_add(other.data[i], acc);
+            if !acc.is_finite() {
+                return Err(LaError::non_finite_at(i));
+            }
             i += 1;
         }
-        acc
+        Ok(acc)
     }
 
     /// Squared Euclidean norm.
@@ -95,12 +112,18 @@ impl<const D: usize> Vector<D> {
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let v = Vector::<3>::new([1.0, 2.0, 3.0]);
-    /// assert!((v.norm2_sq() - 14.0).abs() <= 1e-12);
+    /// assert!((v.norm2_sq()? - 14.0).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] when the input contains NaN or infinity,
+    /// or when the accumulated norm overflows to NaN or infinity.
     #[inline]
-    #[must_use]
-    pub const fn norm2_sq(self) -> f64 {
+    pub const fn norm2_sq(self) -> Result<f64, LaError> {
         self.dot(self)
     }
 }
@@ -209,11 +232,44 @@ mod tests {
 
                     // Call via (black_boxed) fn pointers to discourage inlining, improving line-level coverage
                     // attribution for the loop body.
-                    let dot_fn: fn(Vector<$d>, Vector<$d>) -> f64 = black_box(Vector::<$d>::dot);
-                    let norm2_sq_fn: fn(Vector<$d>) -> f64 = black_box(Vector::<$d>::norm2_sq);
+                    let dot_fn: fn(Vector<$d>, Vector<$d>) -> Result<f64, LaError> =
+                        black_box(Vector::<$d>::dot);
+                    let norm2_sq_fn: fn(Vector<$d>) -> Result<f64, LaError> =
+                        black_box(Vector::<$d>::norm2_sq);
 
-                    assert_abs_diff_eq!(dot_fn(black_box(a), black_box(b)), expected_dot, epsilon = 1e-14);
-                    assert_abs_diff_eq!(norm2_sq_fn(black_box(a)), expected_norm2_sq, epsilon = 1e-14);
+                    assert_abs_diff_eq!(
+                        dot_fn(black_box(a), black_box(b)).unwrap(),
+                        expected_dot,
+                        epsilon = 1e-14
+                    );
+                    assert_abs_diff_eq!(
+                        norm2_sq_fn(black_box(a)).unwrap(),
+                        expected_norm2_sq,
+                        epsilon = 1e-14
+                    );
+                }
+
+                #[test]
+                fn [<public_api_vector_dot_and_norm2_sq_reject_nonfinite_ $d d>]() {
+                    let mut a_arr = [1.0f64; $d];
+                    a_arr[$d - 1] = f64::NAN;
+                    let a = Vector::<$d>::new(a_arr);
+                    let b = Vector::<$d>::new([1.0; $d]);
+
+                    assert_eq!(
+                        a.dot(b),
+                        Err(LaError::NonFinite {
+                            row: None,
+                            col: $d - 1,
+                        })
+                    );
+                    assert_eq!(
+                        a.norm2_sq(),
+                        Err(LaError::NonFinite {
+                            row: None,
+                            col: $d - 1,
+                        })
+                    );
                 }
             }
         };
