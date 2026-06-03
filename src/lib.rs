@@ -197,6 +197,9 @@ pub const MAX_STACK_MATRIX_DISPATCH_DIM: usize = 7;
 /// Construct with [`Tolerance::new`] when accepting raw caller input. Once
 /// constructed, the stored value is guaranteed to be finite and `>= 0`, so
 /// downstream algorithms do not need to revalidate the tolerance.
+///
+/// This is the crate-wide tolerance contract: raw negative, NaN, and infinite
+/// values are rejected with [`LaError::InvalidTolerance`] at construction time.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Tolerance {
@@ -488,6 +491,11 @@ impl LaError {
     /// use la_stack::prelude::*;
     ///
     /// assert_eq!(LaError::validate_tolerance(1e-12)?.get(), 1e-12);
+    ///
+    /// let raw = 0.0;
+    /// let tol = LaError::validate_tolerance(raw)?;
+    /// let _lu = Matrix::<2>::identity().lu(tol)?;
+    ///
     /// assert_eq!(
     ///     LaError::validate_tolerance(-1.0),
     ///     Err(LaError::InvalidTolerance { value: -1.0 })
@@ -667,6 +675,8 @@ pub mod prelude {
 
 #[cfg(test)]
 mod tests {
+    use core::assert_matches;
+
     use super::*;
 
     use approx::assert_abs_diff_eq;
@@ -678,6 +688,74 @@ mod tests {
             DEFAULT_PIVOT_TOL.get(),
             DEFAULT_SINGULAR_TOL.get(),
             epsilon = 0.0
+        );
+    }
+
+    #[test]
+    fn tolerance_new_accepts_finite_non_negative_values() {
+        assert_eq!(
+            Tolerance::new(0.0).unwrap().get().to_bits(),
+            0.0f64.to_bits()
+        );
+        assert_eq!(
+            Tolerance::new(1e-12).unwrap().get().to_bits(),
+            1e-12f64.to_bits()
+        );
+        assert_eq!(
+            Tolerance::new(f64::MAX).unwrap().get().to_bits(),
+            f64::MAX.to_bits()
+        );
+    }
+
+    #[test]
+    fn tolerance_new_rejects_negative_nan_and_infinity() {
+        assert_eq!(
+            Tolerance::new(-1.0),
+            Err(LaError::InvalidTolerance { value: -1.0 })
+        );
+        assert_matches!(
+            Tolerance::new(f64::NAN),
+            Err(LaError::InvalidTolerance { value }) if value.is_nan()
+        );
+        assert_eq!(
+            Tolerance::new(f64::INFINITY),
+            Err(LaError::InvalidTolerance {
+                value: f64::INFINITY,
+            })
+        );
+        assert_eq!(
+            Tolerance::new(f64::NEG_INFINITY),
+            Err(LaError::InvalidTolerance {
+                value: f64::NEG_INFINITY,
+            })
+        );
+    }
+
+    #[test]
+    fn validate_tolerance_matches_tolerance_new() {
+        for value in [0.0, 1e-12, f64::MAX] {
+            assert_eq!(LaError::validate_tolerance(value), Tolerance::new(value));
+        }
+
+        assert_eq!(
+            LaError::validate_tolerance(-1.0),
+            Err(LaError::InvalidTolerance { value: -1.0 })
+        );
+        assert_matches!(
+            LaError::validate_tolerance(f64::NAN),
+            Err(LaError::InvalidTolerance { value }) if value.is_nan()
+        );
+        assert_eq!(
+            LaError::validate_tolerance(f64::INFINITY),
+            Err(LaError::InvalidTolerance {
+                value: f64::INFINITY,
+            })
+        );
+        assert_eq!(
+            LaError::validate_tolerance(f64::NEG_INFINITY),
+            Err(LaError::InvalidTolerance {
+                value: f64::NEG_INFINITY,
+            })
         );
     }
 

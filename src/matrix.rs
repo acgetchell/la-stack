@@ -195,6 +195,10 @@ impl<const D: usize> Matrix<D> {
     /// Non-finite entries are rejected with source coordinates instead of
     /// silently propagating NaN or infinity through the norm.
     ///
+    /// Row sums are accumulated in `f64` with ordinary addition.  This method
+    /// checks for non-finite inputs and overflowed accumulators, but it does not
+    /// provide a certified absolute rounding bound for the returned norm.
+    ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
@@ -263,9 +267,17 @@ impl<const D: usize> Matrix<D> {
     /// Use [`first_asymmetry`](Self::first_asymmetry) to locate the first
     /// offending pair when this returns `Ok(false)`.
     ///
+    /// The `rel_tol` argument is a [`Tolerance`], so raw caller input must be
+    /// finite and non-negative before it can reach this predicate. Use
+    /// [`Tolerance::new`] or [`LaError::validate_tolerance`] when accepting a
+    /// raw `f64`; negative, NaN, and infinite tolerances return
+    /// [`LaError::InvalidTolerance`].
+    ///
     /// # NaN / infinity handling
     /// Stored NaN or ±∞ entries return [`LaError::NonFinite`] with the
-    /// offending matrix coordinates.  If both stored entries are finite but
+    /// offending matrix coordinates.  A finite matrix can still return
+    /// [`LaError::NonFinite`] if computing the scaled symmetry tolerance
+    /// overflows to NaN or infinity.  If both stored entries are finite but
     /// their difference overflows to ±∞, the pair is reported as asymmetric.
     ///
     /// # Examples
@@ -284,7 +296,9 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite.
+    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite,
+    /// or when computing the scaled symmetry tolerance overflows to NaN or
+    /// infinity.
     #[inline]
     pub fn is_symmetric(&self, rel_tol: Tolerance) -> Result<bool, LaError> {
         Ok(self.first_asymmetry(rel_tol)?.is_none())
@@ -298,6 +312,18 @@ impl<const D: usize> Matrix<D> {
     /// returned indices are the lexicographically smallest such pair.  The
     /// predicate is the same as [`is_symmetric`](Self::is_symmetric):
     /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, inf_norm(self))`.
+    ///
+    /// Stored NaN or ±∞ entries return [`LaError::NonFinite`] with the
+    /// offending matrix coordinates. A finite matrix can still return
+    /// [`LaError::NonFinite`] if computing the scaled symmetry tolerance
+    /// overflows to NaN or infinity. If both stored entries are finite but
+    /// their difference overflows to ±∞, the pair is reported as asymmetric.
+    ///
+    /// The `rel_tol` argument is a [`Tolerance`], so raw caller input must be
+    /// finite and non-negative before it can reach this predicate. Use
+    /// [`Tolerance::new`] or [`LaError::validate_tolerance`] when accepting a
+    /// raw `f64`; negative, NaN, and infinite tolerances return
+    /// [`LaError::InvalidTolerance`].
     ///
     /// # Examples
     /// ```
@@ -317,7 +343,9 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite.
+    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite,
+    /// or when computing the scaled symmetry tolerance overflows to NaN or
+    /// infinity.
     #[inline]
     pub fn first_asymmetry(&self, rel_tol: Tolerance) -> Result<Option<(usize, usize)>, LaError> {
         let eps = self.symmetry_epsilon(rel_tol)?;
@@ -351,7 +379,9 @@ impl<const D: usize> Matrix<D> {
     /// off-diagonal mismatches.
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite.
+    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite,
+    /// or when computing the scaled symmetry tolerance overflows to NaN or
+    /// infinity.
     fn symmetry_epsilon(&self, rel_tol: Tolerance) -> Result<f64, LaError> {
         let rel_tol = rel_tol.get();
         let mut eps = rel_tol;
@@ -365,6 +395,10 @@ impl<const D: usize> Matrix<D> {
                     return Err(LaError::non_finite_cell(r, c));
                 }
                 row_eps = rel_tol.mul_add(entry.abs(), row_eps);
+                if !row_eps.is_finite() {
+                    cold_path();
+                    return Err(LaError::non_finite_at(c));
+                }
             }
             if row_eps > eps {
                 eps = row_eps;
@@ -393,6 +427,12 @@ impl<const D: usize> Matrix<D> {
     /// # }
     /// ```
     ///
+    /// The `tol` argument is a [`Tolerance`], so raw caller input must be
+    /// finite and non-negative before it can reach factorization. Use
+    /// [`Tolerance::new`] or [`LaError::validate_tolerance`] when accepting a
+    /// raw `f64`; negative, NaN, and infinite tolerances return
+    /// [`LaError::InvalidTolerance`].
+    ///
     /// # Errors
     /// Returns [`LaError::Singular`] if, for some column `k`, the largest-magnitude candidate pivot
     /// in that column satisfies `|pivot| <= tol` (so no numerically usable pivot exists).
@@ -415,6 +455,12 @@ impl<const D: usize> Matrix<D> {
     /// [`LaError::Asymmetric`] before factorization starts.  If you need a
     /// general-purpose factorization that tolerates non-symmetric inputs, use
     /// [`lu`](Self::lu) instead.
+    ///
+    /// The `tol` argument is a [`Tolerance`], so raw caller input must be
+    /// finite and non-negative before it can reach factorization. Use
+    /// [`Tolerance::new`] or [`LaError::validate_tolerance`] when accepting a
+    /// raw `f64`; negative, NaN, and infinite tolerances return
+    /// [`LaError::InvalidTolerance`].
     ///
     /// # Examples
     /// ```
@@ -568,6 +614,12 @@ impl<const D: usize> Matrix<D> {
     /// For D ∈ {1, 2, 3, 4}, this bypasses LU factorization entirely for a significant
     /// speedup (see [`det_direct`](Self::det_direct)). The `tol` parameter is only used
     /// by the LU fallback path for D ≥ 5.
+    ///
+    /// The `tol` argument is a [`Tolerance`], so raw caller input must be
+    /// finite and non-negative before it can reach the determinant path. Use
+    /// [`Tolerance::new`] or [`LaError::validate_tolerance`] when accepting a
+    /// raw `f64`; negative, NaN, and infinite tolerances return
+    /// [`LaError::InvalidTolerance`].
     ///
     /// # Examples
     /// ```
@@ -1462,6 +1514,21 @@ mod tests {
             Some((0, 1))
         );
         assert!(!a.is_symmetric(Tolerance::new(0.0).unwrap()).unwrap());
+    }
+
+    #[test]
+    fn first_asymmetry_rejects_scaled_epsilon_overflow() {
+        let a = Matrix::<2>::from_rows([[2.0, 0.0], [0.0, 1.0]]);
+        let tol = Tolerance::new(f64::MAX).unwrap();
+
+        assert_eq!(
+            a.first_asymmetry(tol),
+            Err(LaError::NonFinite { row: None, col: 0 })
+        );
+        assert_eq!(
+            a.is_symmetric(tol),
+            Err(LaError::NonFinite { row: None, col: 0 })
+        );
     }
 
     #[test]

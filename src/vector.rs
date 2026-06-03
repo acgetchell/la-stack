@@ -71,6 +71,12 @@ impl<const D: usize> Vector<D> {
 
     /// Dot product.
     ///
+    /// Terms are accumulated in `f64` using [`f64::mul_add`] at each index.
+    /// Intermediate rounding occurs, and this method does not provide a
+    /// certified absolute rounding bound for the returned dot product.  The
+    /// returned [`Result`] is still checked for non-finite inputs and for
+    /// non-finite accumulation.
+    ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
@@ -107,6 +113,13 @@ impl<const D: usize> Vector<D> {
     }
 
     /// Squared Euclidean norm.
+    ///
+    /// This is computed as `dot(self, self)`, so `norm2_sq` has the same
+    /// `f64` [`mul_add`](f64::mul_add) accumulation behavior as [`dot`](Self::dot).
+    /// Intermediate rounding occurs, and this method does not provide a
+    /// certified absolute rounding bound for the returned squared norm.  The
+    /// returned [`Result`] is still checked for non-finite inputs and for
+    /// non-finite accumulation.
     ///
     /// # Examples
     /// ```
@@ -270,6 +283,30 @@ mod tests {
                             col: $d - 1,
                         })
                     );
+                }
+
+                #[test]
+                fn [<public_api_vector_dot_rejects_nonfinite_rhs_ $d d>]() {
+                    let a = Vector::<$d>::new([1.0; $d]);
+                    let mut b_arr = [1.0f64; $d];
+                    b_arr[0] = f64::INFINITY;
+                    let b = Vector::<$d>::new(b_arr);
+
+                    assert_eq!(a.dot(b), Err(LaError::NonFinite { row: None, col: 0 }));
+                }
+
+                #[test]
+                fn [<public_api_vector_dot_and_norm2_sq_reject_overflow_ $d d>]() {
+                    let mut a_arr = [1.0f64; $d];
+                    a_arr[0] = f64::MAX;
+                    let a = Vector::<$d>::new(a_arr);
+
+                    let mut b_arr = [1.0f64; $d];
+                    b_arr[0] = 2.0;
+                    let b = Vector::<$d>::new(b_arr);
+
+                    assert_eq!(a.dot(b), Err(LaError::NonFinite { row: None, col: 0 }));
+                    assert_eq!(a.norm2_sq(), Err(LaError::NonFinite { row: None, col: 0 }));
                 }
             }
         };
