@@ -70,6 +70,7 @@
 
 use core::hint::cold_path;
 use core::mem::take;
+use core::num::NonZeroU64;
 use std::array::from_fn;
 
 use num_bigint::{BigInt, Sign};
@@ -82,13 +83,14 @@ use crate::vector::Vector;
 
 /// Decompose a finite `f64` into its IEEE 754 components.
 ///
-/// Returns `None` for ±0.0, or `Some((mantissa, exponent, is_negative))` where
-/// the value is exactly `(-1)^is_negative × mantissa × 2^exponent` and
-/// `mantissa` is odd (trailing zeros stripped).  See `REFERENCES.md` \[9-10\].
+/// Returns `None` for ±0.0, or `Some((mantissa, exponent, is_negative))` with a
+/// non-zero mantissa where the value is exactly
+/// `(-1)^is_negative × mantissa × 2^exponent` and `mantissa` is odd (trailing
+/// zeros stripped).  See `REFERENCES.md` \[9-10\].
 ///
 /// # Panics
 /// Panics if `x` is NaN or infinite.
-fn f64_decompose(x: f64) -> Option<(u64, i32, bool)> {
+fn f64_decompose(x: f64) -> Option<(NonZeroU64, i32, bool)> {
     let bits = x.to_bits();
     let biased_exp = ((bits >> 52) & 0x7FF) as i32;
     let fraction = bits & 0x000F_FFFF_FFFF_FFFF;
@@ -114,6 +116,7 @@ fn f64_decompose(x: f64) -> Option<(u64, i32, bool)> {
     // Strip trailing zeros so the mantissa is odd.
     let tz = mantissa.trailing_zeros();
     let mantissa = mantissa >> tz;
+    let mantissa = NonZeroU64::new(mantissa)?;
     let exponent = raw_exp + tz.cast_signed();
     let is_negative = bits >> 63 != 0;
 
@@ -161,13 +164,15 @@ fn bigint_exp_to_bigrational(mut value: BigInt, mut exp: i32) -> BigRational {
 
 /// Decomposed finite f64 in the form `(-1)^is_negative · mantissa · 2^exponent`.
 ///
-/// Zero entries have `mantissa == 0`; the other fields are unused in that
-/// case.  `Default` yields such a zero component, which is what the
+/// Zero entries have `mantissa == None`; the other fields are unused in that
+/// case. `Default` yields such a zero component, which is what the
 /// per-entry initialiser in `decompose_matrix` / `decompose_vec` produces
-/// for ±0.0 cells.
+/// for ±0.0 cells. Non-zero entries carry a [`NonZeroU64`] mantissa, so the
+/// exact-arithmetic paths cannot accidentally store a raw zero sentinel after
+/// decomposition.
 #[derive(Clone, Copy, Default)]
 struct Component {
-    mantissa: u64,
+    mantissa: Option<NonZeroU64>,
     exponent: i32,
     is_negative: bool,
 }
@@ -191,7 +196,7 @@ fn decompose_matrix<const D: usize>(m: &Matrix<D>) -> Result<([[Component; D]; D
             }
             if let Some((mantissa, exponent, is_negative)) = f64_decompose(entry) {
                 components[r][c] = Component {
-                    mantissa,
+                    mantissa: Some(mantissa),
                     exponent,
                     is_negative,
                 };
@@ -220,7 +225,7 @@ fn decompose_vec<const D: usize>(v: &Vector<D>) -> Result<([Component; D], i32),
         }
         if let Some((mantissa, exponent, is_negative)) = f64_decompose(entry) {
             components[i] = Component {
-                mantissa,
+                mantissa: Some(mantissa),
                 exponent,
                 is_negative,
             };
@@ -232,15 +237,17 @@ fn decompose_vec<const D: usize>(v: &Vector<D>) -> Result<([Component; D], i32),
 
 /// Convert a single decomposed component to its scaled `BigInt`
 /// representation: `(±mantissa) << (exp − e_min)`.  Zero components map
-/// to `BigInt::from(0)`.
+/// to `BigInt::from(0)` through the `None` case; non-zero components reuse
+/// their carried [`NonZeroU64`] proof without revalidating the mantissa.
 #[inline]
 fn component_to_bigint(c: Component, e_min: i32) -> BigInt {
-    if c.mantissa == 0 {
-        BigInt::from(0)
-    } else {
-        let v = BigInt::from(c.mantissa) << (c.exponent - e_min).cast_unsigned();
-        if c.is_negative { -v } else { v }
-    }
+    c.mantissa.map_or_else(
+        || BigInt::from(0),
+        |mantissa| {
+            let v = BigInt::from(mantissa.get()) << (c.exponent - e_min).cast_unsigned();
+            if c.is_negative { -v } else { v }
+        },
+    )
 }
 
 /// Build a `D×D` integer matrix from a component table, scaled to the
@@ -758,9 +765,9 @@ mod tests {
         };
 
         let numer = if is_negative {
-            -BigInt::from(mantissa)
+            -BigInt::from(mantissa.get())
         } else {
-            BigInt::from(mantissa)
+            BigInt::from(mantissa.get())
         };
 
         if exponent >= 0 {
@@ -1158,7 +1165,7 @@ mod tests {
     #[test]
     fn f64_decompose_one() {
         let (mant, exp, neg) = f64_decompose(1.0).unwrap();
-        assert_eq!(mant, 1);
+        assert_eq!(mant.get(), 1);
         assert_eq!(exp, 0);
         assert!(!neg);
     }
@@ -1167,7 +1174,7 @@ mod tests {
     fn f64_decompose_negative() {
         let (mant, exp, neg) = f64_decompose(-3.5).unwrap();
         // -3.5 = -7 × 2^(-1), mantissa is 7 (odd after stripping)
-        assert_eq!(mant, 7);
+        assert_eq!(mant.get(), 7);
         assert_eq!(exp, -1);
         assert!(neg);
     }
@@ -1177,7 +1184,7 @@ mod tests {
         let tiny = 5e-324_f64;
         assert!(tiny.is_subnormal());
         let (mant, exp, neg) = f64_decompose(tiny).unwrap();
-        assert_eq!(mant, 1);
+        assert_eq!(mant.get(), 1);
         assert_eq!(exp, -1074);
         assert!(!neg);
     }
@@ -1185,7 +1192,7 @@ mod tests {
     #[test]
     fn f64_decompose_power_of_two() {
         let (mant, exp, neg) = f64_decompose(1024.0).unwrap();
-        assert_eq!(mant, 1);
+        assert_eq!(mant.get(), 1);
         assert_eq!(exp, 10); // 1024 = 2^10
         assert!(!neg);
     }
@@ -1194,6 +1201,28 @@ mod tests {
     #[should_panic(expected = "non-finite f64 in exact conversion")]
     fn f64_decompose_panics_on_nan() {
         f64_decompose(f64::NAN);
+    }
+
+    #[test]
+    fn component_to_bigint_distinguishes_zero_from_nonzero_mantissa() {
+        assert_eq!(
+            component_to_bigint(Component::default(), -10),
+            BigInt::from(0)
+        );
+
+        let positive = Component {
+            mantissa: NonZeroU64::new(3),
+            exponent: 4,
+            is_negative: false,
+        };
+        assert_eq!(component_to_bigint(positive, 1), BigInt::from(24));
+
+        let negative = Component {
+            mantissa: NonZeroU64::new(5),
+            exponent: 3,
+            is_negative: true,
+        };
+        assert_eq!(component_to_bigint(negative, 1), BigInt::from(-20));
     }
 
     // -----------------------------------------------------------------------

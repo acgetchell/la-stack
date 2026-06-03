@@ -212,7 +212,7 @@ macro_rules! gen_public_api_matrix_proptests {
                     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
                     let det_ldlt = ldlt.det().unwrap();
-                    let det_lu = a.det().unwrap();
+                    let det_lu = a.lu(DEFAULT_PIVOT_TOL).unwrap().det().unwrap();
                     assert_abs_diff_eq!(det_ldlt, det_lu, epsilon = 1e-8);
 
                     let b = Vector::<$d>::new(b_arr);
