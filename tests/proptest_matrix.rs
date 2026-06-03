@@ -31,12 +31,12 @@ macro_rules! gen_public_api_matrix_proptests {
                 #![proptest_config(ProptestConfig::with_cases(64))]
 
                 #[test]
-                fn [<matrix_from_rows_get_roundtrip_ $d d>](
+                fn [<matrix_try_from_rows_get_roundtrip_ $d d>](
                     rows in proptest::array::[<uniform $d>](
                         proptest::array::[<uniform $d>](small_f64()),
                     ),
                 ) {
-                    let m = Matrix::<$d>::from_rows(rows);
+                    let m = Matrix::<$d>::try_from_rows(rows).unwrap();
 
                     for r in 0..$d {
                         for c in 0..$d {
@@ -73,7 +73,7 @@ macro_rules! gen_public_api_matrix_proptests {
                     v in small_f64(),
                 ) {
                     let mut m = Matrix::<$d>::zero();
-                    prop_assert_eq!(m.set(r, c, v), Some(()));
+                    prop_assert_eq!(m.set(r, c, v), Ok(()));
                     assert_abs_diff_eq!(m.get(r, c).unwrap(), v, epsilon = 0.0);
                     prop_assert_eq!(m.set_checked(r, c, -v), Ok(()));
                     assert_abs_diff_eq!(m.get_checked(r, c).unwrap(), -v, epsilon = 0.0);
@@ -86,10 +86,17 @@ macro_rules! gen_public_api_matrix_proptests {
                     ),
                     v in small_f64(),
                 ) {
-                    let mut m = Matrix::<$d>::from_rows(rows);
+                    let mut m = Matrix::<$d>::try_from_rows(rows).unwrap();
                     let original = m;
 
-                    prop_assert_eq!(m.set($d, 0, v), None);
+                    prop_assert_eq!(
+                        m.set($d, 0, v),
+                        Err(LaError::IndexOutOfBounds {
+                            row: $d,
+                            col: 0,
+                            dim: $d,
+                        })
+                    );
                     prop_assert_eq!(m, original);
                     prop_assert_eq!(
                         m.set_checked($d, 0, v),
@@ -117,7 +124,7 @@ macro_rules! gen_public_api_matrix_proptests {
                         proptest::array::[<uniform $d>](small_f64()),
                     ),
                 ) {
-                    let m = Matrix::<$d>::from_rows(rows);
+                    let m = Matrix::<$d>::try_from_rows(rows).unwrap();
 
                     let expected = rows
                         .iter()
@@ -138,7 +145,7 @@ macro_rules! gen_public_api_matrix_proptests {
                     for i in 0..$d {
                         rows[i][i] = diag[i];
                     }
-                    let a = Matrix::<$d>::from_rows(rows);
+                    let a = Matrix::<$d>::try_from_rows(rows).unwrap();
 
                     let det = a.det().unwrap();
                     let expected_det = {
@@ -155,7 +162,7 @@ macro_rules! gen_public_api_matrix_proptests {
                     assert_abs_diff_eq!(det, expected_det, epsilon = eps);
 
                     let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
-                    let b = Vector::<$d>::new(b_arr);
+                    let b = Vector::<$d>::try_new(b_arr).unwrap();
                     let x = lu.solve_vec(b).unwrap().into_array();
 
                     for i in 0..$d {
@@ -208,14 +215,14 @@ macro_rules! gen_public_api_matrix_proptests {
                         b_arr[i] = sum;
                     }
 
-                    let a = Matrix::<$d>::from_rows(a_rows);
+                    let a = Matrix::<$d>::try_from_rows(a_rows).unwrap();
                     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
                     let det_ldlt = ldlt.det().unwrap();
                     let det_lu = a.lu(DEFAULT_PIVOT_TOL).unwrap().det().unwrap();
                     assert_abs_diff_eq!(det_ldlt, det_lu, epsilon = 1e-8);
 
-                    let b = Vector::<$d>::new(b_arr);
+                    let b = Vector::<$d>::try_new(b_arr).unwrap();
                     let x = ldlt.solve_vec(b).unwrap().into_array();
 
                     for i in 0..$d {

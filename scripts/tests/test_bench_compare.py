@@ -37,6 +37,9 @@ def _build_criterion_tree(criterion_dir: Path, stat: str = "median") -> None:
     ns_group = criterion_dir / "exact_near_singular_3x3"
     _write_estimates(ns_group / "det_sign_exact" / "new" / "estimates.json", stat, 12000.0)
 
+    random_group = criterion_dir / "exact_random_percentile_d3"
+    _write_estimates(random_group / "det_exact_p95" / "new" / "estimates.json", stat, 33000.0)
+
 
 # ---------------------------------------------------------------------------
 # Unit tests for formatting helpers
@@ -76,6 +79,9 @@ class TestGroupHeading:
 
     def test_near_singular(self) -> None:
         assert bench_compare._group_heading("exact_near_singular_3x3") == "Near-singular 3x3"
+
+    def test_random_percentile(self) -> None:
+        assert bench_compare._group_heading("exact_random_percentile_d4") == "Random percentile D=4"
 
     def test_large_entries(self) -> None:
         assert bench_compare._group_heading("exact_large_entries_3x3") == "Large entries 3x3"
@@ -133,10 +139,11 @@ def test_read_estimate_missing_stat(tmp_path: Path) -> None:
 def test_collect_results(tmp_path: Path) -> None:
     _build_criterion_tree(tmp_path)
     results = bench_compare._collect_results(tmp_path, "new", "median")
-    assert len(results) == 5  # 2 benches x 2 dims + 1 near-singular
+    assert len(results) == 6  # 2 benches x 2 dims + 1 near-singular + 1 random percentile
     groups = {r.group for r in results}
     assert "exact_d2" in groups
     assert "exact_d3" in groups
+    assert "exact_random_percentile_d3" in groups
     assert "exact_near_singular_3x3" in groups
 
 
@@ -191,6 +198,7 @@ def test_snapshot_tables_per_dimension(tmp_path: Path) -> None:
     tables = bench_compare._snapshot_tables(results, "median")
     assert "### D=2" in tables
     assert "### D=3" in tables
+    assert "### Random percentile D=3" in tables
     assert "### Near-singular 3x3" in tables
     assert "| Benchmark | Median | 95% CI |" in tables
 
@@ -233,6 +241,7 @@ def test_main_snapshot_writes_output(tmp_path: Path) -> None:
 
     text = output.read_text(encoding="utf-8")
     assert "### D=2" in text
+    assert "### Random percentile D=3" in text
     assert "### Near-singular 3x3" in text
     assert "just bench-compare" in text
 

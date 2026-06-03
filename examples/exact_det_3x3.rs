@@ -18,11 +18,11 @@ fn main() -> Result<(), LaError> {
     // Perturb entry (0,0) by 2^-50 ≈ 8.9e-16.
     // Exact det = 2^-50 × cofactor(0,0) = 2^-50 × (5×9 − 6×8) = −3 × 2^-50.
     let perturbation = f64::from_bits(0x3CD0_0000_0000_0000); // 2^-50
-    let m = Matrix::<3>::from_rows([
+    let m = Matrix::<3>::try_from_rows([
         [1.0 + perturbation, 2.0, 3.0],
         [4.0, 5.0, 6.0],
         [7.0, 8.0, 9.0],
-    ]);
+    ])?;
 
     let Some(det_f64_approx) = m.det_direct()? else {
         unreachable!("D=3 is supported by det_direct");

@@ -17,10 +17,10 @@ macro_rules! gen_public_api_vector_proptests {
                 #![proptest_config(ProptestConfig::with_cases(64))]
 
                 #[test]
-                fn [<vector_new_as_array_into_array_roundtrip_ $d d>](
+                fn [<vector_try_new_as_array_into_array_roundtrip_ $d d>](
                     arr in proptest::array::[<uniform $d>](small_f64()),
                 ) {
-                    let v = Vector::<$d>::new(arr);
+                    let v = Vector::<$d>::try_new(arr).unwrap();
 
                     for i in 0..$d {
                         assert_abs_diff_eq!(v.as_array()[i], arr[i], epsilon = 0.0);
@@ -37,8 +37,8 @@ macro_rules! gen_public_api_vector_proptests {
                     a_arr in proptest::array::[<uniform $d>](small_f64()),
                     b_arr in proptest::array::[<uniform $d>](small_f64()),
                 ) {
-                    let a = Vector::<$d>::new(a_arr);
-                    let b = Vector::<$d>::new(b_arr);
+                    let a = Vector::<$d>::try_new(a_arr).unwrap();
+                    let b = Vector::<$d>::try_new(b_arr).unwrap();
 
                     let dot_ab = a.dot(b).unwrap();
                     let dot_reversed = b.dot(a).unwrap();

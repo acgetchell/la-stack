@@ -79,15 +79,15 @@ use la_stack::prelude::*;
 fn main() -> Result<(), LaError> {
     // This system requires pivoting (a[0][0] = 0), so it's a good LU demo.
     // A = J - I: zeros on diagonal, ones elsewhere.
-    let a = Matrix::<5>::from_rows([
+    let a = Matrix::<5>::try_from_rows([
         [0.0, 1.0, 1.0, 1.0, 1.0],
         [1.0, 0.0, 1.0, 1.0, 1.0],
         [1.0, 1.0, 0.0, 1.0, 1.0],
         [1.0, 1.0, 1.0, 0.0, 1.0],
         [1.0, 1.0, 1.0, 1.0, 0.0],
-    ]);
+    ])?;
 
-    let b = Vector::<5>::new([14.0, 13.0, 12.0, 11.0, 10.0]);
+    let b = Vector::<5>::try_new([14.0, 13.0, 12.0, 11.0, 10.0])?;
 
     let lu = a.lu(DEFAULT_PIVOT_TOL)?;
     let x = lu.solve_vec(b)?.into_array();
@@ -112,13 +112,13 @@ use la_stack::prelude::*;
 
 fn main() -> Result<(), LaError> {
     // This matrix is symmetric positive-definite (A = L*L^T) so LDLT works without pivoting.
-    let a = Matrix::<5>::from_rows([
+    let a = Matrix::<5>::try_from_rows([
         [1.0, 1.0, 0.0, 0.0, 0.0],
         [1.0, 2.0, 1.0, 0.0, 0.0],
         [0.0, 1.0, 2.0, 1.0, 0.0],
         [0.0, 0.0, 1.0, 2.0, 1.0],
         [0.0, 0.0, 0.0, 1.0, 2.0],
-    ]);
+    ])?;
 
     let det = a.ldlt(DEFAULT_SINGULAR_TOL)?.det()?;
     assert!((det - 1.0).abs() <= 1e-12);
@@ -150,11 +150,14 @@ use la_stack::prelude::*;
 
 // Evaluated entirely at compile time — no runtime cost.
 const DET: Result<Option<f64>, LaError> = {
-    let m = Matrix::<3>::from_rows([
+    let m = match Matrix::<3>::try_from_rows([
         [2.0, 0.0, 0.0],
         [0.0, 3.0, 0.0],
         [0.0, 0.0, 5.0],
-    ]);
+    ]) {
+        Ok(matrix) => matrix,
+        Err(_) => panic!("matrix entries must be finite"),
+    };
     m.det_direct()
 };
 assert_eq!(DET, Ok(Some(30.0)));
@@ -196,19 +199,19 @@ use la_stack::prelude::*;
 
 fn main() -> Result<(), LaError> {
     // Exact determinant
-    let m = Matrix::<3>::from_rows([
+    let m = Matrix::<3>::try_from_rows([
         [1.0, 2.0, 3.0],
         [4.0, 5.0, 6.0],
         [7.0, 8.0, 9.0],
-    ]);
+    ])?;
     assert_eq!(m.det_sign_exact()?, 0); // exactly singular
 
     let det = m.det_exact()?;
     assert_eq!(det, BigRational::from_integer(0.into())); // exact zero
 
     // Exact linear system solve
-    let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-    let b = Vector::<2>::new([5.0, 11.0]);
+    let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
+    let b = Vector::<2>::try_new([5.0, 11.0])?;
     let x = a.solve_exact_f64(b)?.into_array();
     assert!((x[0] - 1.0).abs() <= f64::EPSILON);
     assert!((x[1] - 2.0).abs() <= f64::EPSILON);

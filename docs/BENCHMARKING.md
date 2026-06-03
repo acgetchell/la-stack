@@ -14,9 +14,14 @@ la-stack has two Criterion benchmark suites:
   (`det_exact`, `solve_exact`, `det_sign_exact`, etc.) alongside f64
   baselines (`det`, `det_direct`) across D=2–5. Use this to understand
   the cost of exact arithmetic and track optimization progress.
-  In addition to the per-dimension groups (`exact_d{2..5}`), the suite
-  includes four adversarial-input groups designed to stress specific
-  corners of the pipeline:
+  In addition to the fixed per-dimension groups (`exact_d{2..5}`), the
+  suite includes random percentile and adversarial-input groups designed
+  to capture variance and stress specific corners of the pipeline:
+
+  - `exact_random_percentile_d{2..5}` — fixed-seed corpora of 50
+    strictly diagonally-dominant random matrices per dimension. Each
+    operation is pre-timed across the corpus to select representative
+    p50/p95/p99 inputs, then Criterion measures those inputs normally.
   - `exact_near_singular_3x3` — a 2^-50 perturbation of a singular base
     matrix; forces the Bareiss fallback in `det_sign_exact` and
     exercises the largest intermediate `BigInt` values in `solve_exact`.
@@ -25,9 +30,11 @@ la-stack has two Criterion benchmark suites:
   - `exact_hilbert_4x4` / `exact_hilbert_5x5` — classically
     ill-conditioned matrices whose non-terminating-in-binary entries
     stress the `f64_decompose → BigInt` scaling path.
-  Each adversarial group runs the same four benches (`det_sign_exact`,
-  `det_exact`, `solve_exact`, `solve_exact_f64`) so the resulting tables
-  are directly comparable across input classes.
+
+  Each random percentile and adversarial group runs the same four
+  exact-arithmetic benches (`det_sign_exact`, `det_exact`, `solve_exact`,
+  `solve_exact_f64`) so the resulting tables are directly comparable
+  across input classes.
 
 ## Quick reference
 

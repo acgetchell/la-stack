@@ -97,7 +97,7 @@ macro_rules! gen_det_sign_exact_proptests {
                     for i in 0..$d {
                         rows[i][i] = diag[i];
                     }
-                    let m = Matrix::<$d>::from_rows(rows);
+                    let m = Matrix::<$d>::try_from_rows(rows).unwrap();
 
                     let exact_sign = m.det_sign_exact().unwrap();
 
@@ -118,7 +118,7 @@ macro_rules! gen_det_sign_exact_proptests {
                     for i in 0..$d {
                         rows[i][i] = diag[i];
                     }
-                    let m = Matrix::<$d>::from_rows(rows);
+                    let m = Matrix::<$d>::try_from_rows(rows).unwrap();
 
                     let exact_sign = m.det_sign_exact().unwrap();
                     let fp_det = m.det().unwrap();
@@ -164,7 +164,7 @@ macro_rules! gen_solve_exact_roundtrip_proptests {
                     x0 in proptest::array::[<uniform $d>](small_int_f64()),
                 ) {
                     let rows = make_diagonally_dominant::<$d>(offdiag, diag);
-                    let a = Matrix::<$d>::from_rows(rows);
+                    let a = Matrix::<$d>::try_from_rows(rows).unwrap();
 
                     // b = A · x0, computed in f64.  Small integers keep
                     // every partial sum exact.
@@ -176,7 +176,7 @@ macro_rules! gen_solve_exact_roundtrip_proptests {
                         }
                         b_arr[i] = sum;
                     }
-                    let b = Vector::<$d>::new(b_arr);
+                    let b = Vector::<$d>::try_new(b_arr).unwrap();
                     let x = a.solve_exact(b).expect("diagonally-dominant A is non-singular");
 
                     let expected: [BigRational; $d] = from_fn(|i| {
@@ -217,8 +217,8 @@ macro_rules! gen_solve_exact_residual_proptests {
                     b_arr in proptest::array::[<uniform $d>](small_int_f64()),
                 ) {
                     let rows = make_diagonally_dominant::<$d>(offdiag, diag);
-                    let a = Matrix::<$d>::from_rows(rows);
-                    let b = Vector::<$d>::new(b_arr);
+                    let a = Matrix::<$d>::try_from_rows(rows).unwrap();
+                    let b = Vector::<$d>::try_new(b_arr).unwrap();
                     let x = a.solve_exact(b).expect("diagonally-dominant A is non-singular");
 
                     let ax = bigrational_matvec::<$d>(&rows, &x);
@@ -256,7 +256,7 @@ macro_rules! gen_det_sign_agrees_with_det_exact_proptests {
                         proptest::array::[<uniform $d>](small_int_f64()),
                     ),
                 ) {
-                    let m = Matrix::<$d>::from_rows(entries);
+                    let m = Matrix::<$d>::try_from_rows(entries).unwrap();
                     let sign = m.det_sign_exact().unwrap();
                     let det = m.det_exact().unwrap();
                     let expected: i8 = if det.is_positive() {
@@ -299,7 +299,7 @@ macro_rules! gen_det_sign_fast_filter_boundary_proptests {
                         proptest::array::[<uniform $d>](small_int_f64()),
                     ),
                 ) {
-                    let m = Matrix::<$d>::from_rows(entries);
+                    let m = Matrix::<$d>::try_from_rows(entries).unwrap();
                     let det = m
                         .det_direct()
                         .unwrap()

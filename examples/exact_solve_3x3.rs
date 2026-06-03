@@ -16,13 +16,13 @@ fn main() -> Result<(), LaError> {
     // arithmetic progression).  Perturbing entry (0,0) by 2^-50 ≈ 8.9e-16
     // makes it invertible but extremely ill-conditioned.
     let perturbation = f64::from_bits(0x3CD0_0000_0000_0000); // 2^-50
-    let a = Matrix::<3>::from_rows([
+    let a = Matrix::<3>::try_from_rows([
         [1.0 + perturbation, 2.0, 3.0],
         [4.0, 5.0, 6.0],
         [7.0, 8.0, 9.0],
-    ]);
+    ])?;
 
-    let b = Vector::<3>::new([1.0, 2.0, 3.0]);
+    let b = Vector::<3>::try_new([1.0, 2.0, 3.0])?;
 
     // f64 LU solve (using zero pivot tolerance since the matrix is nearly singular
     // and would be rejected by DEFAULT_PIVOT_TOL).

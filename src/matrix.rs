@@ -15,9 +15,9 @@ pub struct Matrix<const D: usize> {
 
 /// Fixed-size square matrix whose stored entries are all finite.
 ///
-/// This proof-carrying wrapper lets callers validate raw [`Matrix`] values once
-/// at an input boundary, then pass the finite invariant into numerical
-/// algorithms without repeatedly checking stored entries for NaN or infinity.
+/// This proof-carrying wrapper makes the finite invariant explicit for internal
+/// algorithms that should not repeatedly check stored entries for NaN or
+/// infinity.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[allow(clippy::redundant_pub_crate)]
@@ -28,25 +28,19 @@ pub(crate) struct FiniteMatrix<const D: usize> {
 impl<const D: usize> FiniteMatrix<D> {
     /// Construct a finite matrix without checking the invariant.
     ///
-    /// This is crate-internal so public callers must use [`try_new`](Self::try_new)
-    /// or [`from_rows`](Self::from_rows), which preserve diagnostics for rejected
-    /// raw entries.
+    /// This is crate-internal so raw storage still goes through
+    /// [`Matrix::try_from_rows`], which preserves diagnostics for rejected
+    /// entries.
     #[inline]
     pub(crate) const fn new_unchecked(matrix: Matrix<D>) -> Self {
         Self { matrix }
     }
 
-    /// Validate that every stored matrix entry is finite.
-    /// # Errors
-    /// Returns [`LaError::NonFinite`] with matrix coordinates for the first
-    /// offending entry in row-major order when `matrix` contains NaN or infinity.
+    /// Wrap an already-finite matrix for algorithms that carry the invariant
+    /// explicitly.
     #[inline]
-    pub const fn try_new(matrix: Matrix<D>) -> Result<Self, LaError> {
-        if let Some((row, col)) = matrix.first_non_finite_cell() {
-            Err(LaError::non_finite_cell(row, col))
-        } else {
-            Ok(Self::new_unchecked(matrix))
-        }
+    pub const fn new(matrix: Matrix<D>) -> Self {
+        Self::new_unchecked(matrix)
     }
 
     /// Validate raw row-major storage and construct a finite matrix.
@@ -55,7 +49,10 @@ impl<const D: usize> FiniteMatrix<D> {
     /// offending entry in row-major order when `rows` contains NaN or infinity.
     #[inline]
     pub const fn from_rows(rows: [[f64; D]; D]) -> Result<Self, LaError> {
-        Self::try_new(Matrix::from_rows(rows))
+        match Matrix::try_from_rows(rows) {
+            Ok(matrix) => Ok(Self::new_unchecked(matrix)),
+            Err(err) => Err(err),
+        }
     }
 
     /// All-zeros finite matrix.
@@ -351,7 +348,11 @@ impl<const D: usize> TryFrom<Matrix<D>> for FiniteMatrix<D> {
 
     #[inline]
     fn try_from(value: Matrix<D>) -> Result<Self, Self::Error> {
-        Self::try_new(value)
+        if let Some((row, col)) = Matrix::<D>::first_non_finite_cell_in(&value.rows) {
+            Err(LaError::non_finite_cell(row, col))
+        } else {
+            Ok(Self::new(value))
+        }
     }
 }
 
@@ -413,17 +414,51 @@ impl<const D: usize> SymmetricMatrix<D> {
 }
 
 impl<const D: usize> Matrix<D> {
-    /// Construct from row-major storage.
+    /// Test-only infallible constructor for finite literal fixtures.
+    #[cfg(test)]
+    #[inline]
+    pub(crate) const fn from_rows(rows: [[f64; D]; D]) -> Self {
+        match Self::try_from_rows(rows) {
+            Ok(matrix) => matrix,
+            Err(_) => panic!("Matrix::from_rows requires finite entries"),
+        }
+    }
+
+    /// Try to create a finite matrix from row-major storage.
+    ///
+    /// This is the public raw-storage boundary for matrices. Once construction
+    /// succeeds, methods such as [`lu`](Self::lu), [`ldlt`](Self::ldlt), and
+    /// [`det`](Self::det) can rely on finite stored entries.
     ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
-    /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// # fn main() -> Result<(), LaError> {
+    /// let m = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
     /// assert_eq!(m.get(0, 1), Some(2.0));
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] with matrix coordinates for the first
+    /// offending entry in row-major order when `rows` contains NaN or infinity.
     #[inline]
-    pub const fn from_rows(rows: [[f64; D]; D]) -> Self {
+    pub const fn try_from_rows(rows: [[f64; D]; D]) -> Result<Self, LaError> {
+        if let Some((row, col)) = Self::first_non_finite_cell_in(&rows) {
+            Err(LaError::non_finite_cell(row, col))
+        } else {
+            Ok(Self::from_rows_unchecked(rows))
+        }
+    }
+
+    /// Construct a matrix without checking that entries are finite.
+    ///
+    /// This crate-internal escape hatch is reserved for literals and algorithm
+    /// outputs whose finite invariant is visible at the call site.
+    #[inline]
+    pub(crate) const fn from_rows_unchecked(rows: [[f64; D]; D]) -> Self {
         Self { rows }
     }
 
@@ -438,9 +473,7 @@ impl<const D: usize> Matrix<D> {
     /// ```
     #[inline]
     pub const fn zero() -> Self {
-        Self {
-            rows: [[0.0; D]; D],
-        }
+        Self::from_rows_unchecked([[0.0; D]; D])
     }
 
     /// Identity matrix.
@@ -473,9 +506,12 @@ impl<const D: usize> Matrix<D> {
     /// ```
     /// use la_stack::prelude::*;
     ///
-    /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// # fn main() -> Result<(), LaError> {
+    /// let m = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
     /// assert_eq!(m.get(1, 0), Some(3.0));
     /// assert_eq!(m.get(2, 0), None);
+    /// # Ok(())
+    /// # }
     /// ```
     #[inline]
     #[must_use]
@@ -498,7 +534,7 @@ impl<const D: usize> Matrix<D> {
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
-    /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// let m = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
     /// assert_eq!(m.get_checked(1, 0)?, 3.0);
     /// assert_eq!(
     ///     m.get_checked(2, 0),
@@ -523,36 +559,40 @@ impl<const D: usize> Matrix<D> {
         }
     }
 
-    /// Set an element with bounds checking.
-    ///
-    /// Returns `Some(())` if the index was in bounds, or `None` otherwise.
+    /// Set a finite element with bounds checking.
     ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
     /// let mut m = Matrix::<2>::zero();
-    /// assert_eq!(m.set(0, 1, 2.5), Some(()));
+    /// assert_eq!(m.set(0, 1, 2.5), Ok(()));
     /// assert_eq!(m.get(0, 1), Some(2.5));
-    /// assert_eq!(m.set(10, 0, 1.0), None);
+    /// assert_eq!(
+    ///     m.set(10, 0, 1.0),
+    ///     Err(LaError::IndexOutOfBounds {
+    ///         row: 10,
+    ///         col: 0,
+    ///         dim: 2,
+    ///     })
+    /// );
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::IndexOutOfBounds`] when either index is not `< D`.
+    /// Returns [`LaError::NonFinite`] when `value` is NaN or infinity.
     #[inline]
-    #[must_use]
-    pub const fn set(&mut self, r: usize, c: usize, value: f64) -> Option<()> {
-        if r < D && c < D {
-            self.rows[r][c] = value;
-            Some(())
-        } else {
-            None
-        }
+    pub const fn set(&mut self, row: usize, col: usize, value: f64) -> Result<(), LaError> {
+        self.set_checked(row, col, value)
     }
 
     /// Set an element, preserving index context on failure.
     ///
-    /// The matrix is mutated only when `(row, col)` is in bounds.  Prefer
-    /// [`set`](Self::set) for const or hot paths that only need `Option`-style absence;
-    /// use this method at public runtime boundaries where failed mutation
-    /// should return a typed, contextual error.
+    /// The matrix is mutated only when `(row, col)` is in bounds and `value` is
+    /// finite.
     ///
     /// # Examples
     /// ```
@@ -577,38 +617,40 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Errors
     /// Returns [`LaError::IndexOutOfBounds`] when either index is not `< D`.
+    /// Returns [`LaError::NonFinite`] when `value` is NaN or infinity.
     #[inline]
     pub const fn set_checked(&mut self, row: usize, col: usize, value: f64) -> Result<(), LaError> {
-        if row < D && col < D {
-            self.rows[row][col] = value;
-            Ok(())
-        } else {
-            Err(LaError::index_out_of_bounds(row, col, D))
+        if row >= D || col >= D {
+            return Err(LaError::index_out_of_bounds(row, col, D));
         }
+        if !value.is_finite() {
+            return Err(LaError::non_finite_cell(row, col));
+        }
+        self.rows[row][col] = value;
+        Ok(())
     }
 
     /// Infinity norm (maximum absolute row sum).
     ///
     /// # Non-finite handling
-    /// Non-finite entries are rejected with source coordinates instead of
-    /// silently propagating NaN or infinity through the norm.
+    /// Raw non-finite entries are rejected by [`try_from_rows`](Self::try_from_rows)
+    /// and [`set`](Self::set) before they can be stored.
     ///
     /// Row sums are accumulated in `f64` with ordinary addition.  This method
-    /// checks for non-finite inputs and overflowed accumulators, but it does not
-    /// provide a certified absolute rounding bound for the returned norm.
+    /// checks for overflowed accumulators, but it does not provide a certified
+    /// absolute rounding bound for the returned norm.
     ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
-    /// let m = Matrix::<2>::from_rows([[1.0, -2.0], [3.0, 4.0]]);
+    /// let m = Matrix::<2>::try_from_rows([[1.0, -2.0], [3.0, 4.0]])?;
     /// assert!((m.inf_norm()? - 7.0).abs() <= 1e-12);
     ///
-    /// // NaN entries are rejected with coordinates.
-    /// let nan = Matrix::<2>::from_rows([[f64::NAN, 1.0], [2.0, 3.0]]);
+    /// // Raw NaN entries are rejected with coordinates.
     /// assert_eq!(
-    ///     nan.inf_norm(),
+    ///     Matrix::<2>::try_from_rows([[f64::NAN, 1.0], [2.0, 3.0]]),
     ///     Err(LaError::NonFinite {
     ///         row: Some(0),
     ///         col: 0,
@@ -619,14 +661,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when any entry is NaN or infinity, or when
-    /// a row sum overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] when a row sum overflows to NaN or
+    /// infinity.
     #[inline]
     pub const fn inf_norm(&self) -> Result<f64, LaError> {
-        match FiniteMatrix::try_new(*self) {
-            Ok(finite) => finite.inf_norm(),
-            Err(err) => Err(err),
-        }
+        FiniteMatrix::new(*self).inf_norm()
     }
 
     /// Returns `true` if the matrix is symmetric within a relative tolerance.
@@ -646,35 +685,33 @@ impl<const D: usize> Matrix<D> {
     /// raw `f64`; negative, NaN, and infinite tolerances return
     /// [`LaError::InvalidTolerance`].
     ///
-    /// # NaN / infinity handling
-    /// Stored NaN or ±∞ entries return [`LaError::NonFinite`] with the
-    /// offending matrix coordinates.  A finite matrix can still return
-    /// [`LaError::NonFinite`] if computing the scaled symmetry tolerance
-    /// overflows to NaN or infinity.  If both stored entries are finite but
-    /// their difference overflows to ±∞, the pair is reported as asymmetric.
+    /// # Overflow handling
+    /// A finite matrix can return [`LaError::NonFinite`] if computing the scaled
+    /// symmetry tolerance overflows to NaN or infinity.  If both stored entries
+    /// are finite but their difference overflows to ±∞, the pair is reported as
+    /// asymmetric.
     ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
-    /// let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
+    /// let a = Matrix::<2>::try_from_rows([[4.0, 2.0], [2.0, 3.0]])?;
     /// let tol = Tolerance::new(1e-12)?;
     /// assert!(a.is_symmetric(tol)?);
     ///
-    /// let b = Matrix::<2>::from_rows([[4.0, 2.0], [3.0, 3.0]]);
+    /// let b = Matrix::<2>::try_from_rows([[4.0, 2.0], [3.0, 3.0]])?;
     /// assert!(!b.is_symmetric(tol)?);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite,
-    /// or when computing the scaled symmetry tolerance overflows to NaN or
-    /// infinity.
+    /// Returns [`LaError::NonFinite`] when computing the scaled symmetry
+    /// tolerance overflows to NaN or infinity.
     #[inline]
     pub fn is_symmetric(&self, rel_tol: Tolerance) -> Result<bool, LaError> {
-        FiniteMatrix::try_new(*self)?.is_symmetric(rel_tol)
+        FiniteMatrix::new(*self).is_symmetric(rel_tol)
     }
 
     /// Returns the indices `(r, c)` (with `r < c`) of the first off-diagonal
@@ -686,11 +723,10 @@ impl<const D: usize> Matrix<D> {
     /// predicate is the same as [`is_symmetric`](Self::is_symmetric):
     /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, inf_norm(self))`.
     ///
-    /// Stored NaN or ±∞ entries return [`LaError::NonFinite`] with the
-    /// offending matrix coordinates. A finite matrix can still return
-    /// [`LaError::NonFinite`] if computing the scaled symmetry tolerance
-    /// overflows to NaN or infinity. If both stored entries are finite but
-    /// their difference overflows to ±∞, the pair is reported as asymmetric.
+    /// A finite matrix can return [`LaError::NonFinite`] if computing the scaled
+    /// symmetry tolerance overflows to NaN or infinity. If both stored entries
+    /// are finite but their difference overflows to ±∞, the pair is reported as
+    /// asymmetric.
     ///
     /// The `rel_tol` argument is a [`Tolerance`], so raw caller input must be
     /// finite and non-negative before it can reach this predicate. Use
@@ -703,11 +739,11 @@ impl<const D: usize> Matrix<D> {
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
-    /// let a = Matrix::<3>::from_rows([
+    /// let a = Matrix::<3>::try_from_rows([
     ///     [1.0, 2.0, 0.0],
     ///     [2.0, 4.0, 5.0],
     ///     [0.0, 6.0, 9.0], // 6.0 breaks symmetry with a[1][2] = 5.0
-    /// ]);
+    /// ])?;
     /// let tol = Tolerance::new(1e-12)?;
     /// assert_eq!(a.first_asymmetry(tol)?, Some((1, 2)));
     /// assert_eq!(Matrix::<3>::identity().first_asymmetry(tol)?, None);
@@ -716,12 +752,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite,
-    /// or when computing the scaled symmetry tolerance overflows to NaN or
-    /// infinity.
+    /// Returns [`LaError::NonFinite`] when computing the scaled symmetry
+    /// tolerance overflows to NaN or infinity.
     #[inline]
     pub fn first_asymmetry(&self, rel_tol: Tolerance) -> Result<Option<(usize, usize)>, LaError> {
-        FiniteMatrix::try_new(*self)?.first_asymmetry(rel_tol)
+        FiniteMatrix::new(*self).first_asymmetry(rel_tol)
     }
 
     /// Compute an LU decomposition with partial pivoting.
@@ -731,10 +766,10 @@ impl<const D: usize> Matrix<D> {
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
-    /// let a = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
     /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
     ///
-    /// let b = Vector::<2>::new([5.0, 11.0]);
+    /// let b = Vector::<2>::try_new([5.0, 11.0])?;
     /// let x = lu.solve_vec(b)?.into_array();
     ///
     /// assert!((x[0] - 1.0).abs() <= 1e-12);
@@ -752,12 +787,11 @@ impl<const D: usize> Matrix<D> {
     /// # Errors
     /// Returns [`LaError::Singular`] if, for some column `k`, the largest-magnitude candidate pivot
     /// in that column satisfies `|pivot| <= tol` (so no numerically usable pivot exists).
-    /// Returns [`LaError::NonFinite`] if a stored matrix entry is NaN/∞, or if
-    /// an elimination intermediate overflows to NaN/∞ before it can be stored in
-    /// the returned [`Lu`].
+    /// Returns [`LaError::NonFinite`] if an elimination intermediate overflows
+    /// to NaN/∞ before it can be stored in the returned [`Lu`].
     #[inline]
     pub fn lu(self, tol: Tolerance) -> Result<Lu<D>, LaError> {
-        FiniteMatrix::try_new(self)?.lu(tol)
+        FiniteMatrix::new(self).lu(tol)
     }
 
     /// Compute an LDLT factorization (`A = L D Lᵀ`) without pivoting.
@@ -786,14 +820,14 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # fn main() -> Result<(), LaError> {
     /// // Note the symmetric layout: a[0][1] == a[1][0] == 2.0.
-    /// let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
+    /// let a = Matrix::<2>::try_from_rows([[4.0, 2.0], [2.0, 3.0]])?;
     /// let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL)?;
     ///
     /// // det(A) = 8
     /// assert!((ldlt.det()? - 8.0).abs() <= 1e-12);
     ///
     /// // Solve A x = b
-    /// let b = Vector::<2>::new([1.0, 2.0]);
+    /// let b = Vector::<2>::try_new([1.0, 2.0])?;
     /// let x = ldlt.solve_vec(b)?.into_array();
     /// assert!((x[0] - (-0.125)).abs() <= 1e-12);
     /// assert!((x[1] - 0.75).abs() <= 1e-12);
@@ -806,20 +840,21 @@ impl<const D: usize> Matrix<D> {
     /// diagonal entry `d = D[k,k]` is negative.
     /// Returns [`LaError::Singular`] if `0 <= d <= tol`, treating PSD degeneracy
     /// as singular/degenerate.
-    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected during factorization.
+    /// Returns [`LaError::NonFinite`] if factorization computes a non-finite
+    /// intermediate.
     /// Returns [`LaError::Asymmetric`] if the input matrix is not symmetric.
     #[inline]
     pub fn ldlt(self, tol: Tolerance) -> Result<Ldlt<D>, LaError> {
-        FiniteMatrix::try_new(self)?.ldlt(tol)
+        FiniteMatrix::new(self).ldlt(tol)
     }
 
     /// Return the first non-finite stored cell in row-major order.
-    const fn first_non_finite_cell(&self) -> Option<(usize, usize)> {
+    const fn first_non_finite_cell_in(rows: &[[f64; D]; D]) -> Option<(usize, usize)> {
         let mut r = 0;
         while r < D {
             let mut c = 0;
             while c < D {
-                if !self.rows[r][c].is_finite() {
+                if !rows[r][c].is_finite() {
                     return Some((r, c));
                 }
                 c += 1;
@@ -844,7 +879,7 @@ impl<const D: usize> Matrix<D> {
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
-    /// let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
+    /// let m = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
     /// assert_eq!(m.det_direct()?, Some(-2.0));
     ///
     /// // D = 0 is the empty product.
@@ -857,14 +892,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when any entry is NaN or infinity, or when
-    /// the closed-form determinant overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] when the closed-form determinant overflows
+    /// to NaN or infinity.
     #[inline]
     pub const fn det_direct(&self) -> Result<Option<f64>, LaError> {
-        match FiniteMatrix::try_new(*self) {
-            Ok(finite) => finite.det_direct(),
-            Err(err) => Err(err),
-        }
+        FiniteMatrix::new(*self).det_direct()
     }
 
     /// Floating-point determinant, using closed-form formulas for D ≤ 4 and
@@ -895,12 +927,12 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if an entry is non-finite, if the LU
-    /// fallback computes a non-finite factorization cell, or if the determinant
-    /// product overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] if the LU fallback computes a non-finite
+    /// factorization cell, or if the determinant product overflows to NaN or
+    /// infinity.
     #[inline]
     pub fn det(self) -> Result<f64, LaError> {
-        FiniteMatrix::try_new(self)?.det()
+        FiniteMatrix::new(self).det()
     }
 
     /// Conservative absolute error bound for `det_direct()`.
@@ -928,11 +960,11 @@ impl<const D: usize> Matrix<D> {
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
-    /// let m = Matrix::<3>::from_rows([
+    /// let m = Matrix::<3>::try_from_rows([
     ///     [1.0, 2.0, 3.0],
     ///     [4.0, 5.0, 6.0],
     ///     [7.0, 8.0, 9.0],
-    /// ]);
+    /// ])?;
     /// if let (Some(bound), Some(det_approx)) = (m.det_errbound()?, m.det_direct()?) {
     ///     // If |det_approx| > bound, the sign is guaranteed correct.
     ///     let sign_is_certified = det_approx.abs() > bound;
@@ -964,14 +996,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when any entry is NaN or infinity, or when
-    /// the bound computation overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] when the bound computation overflows to
+    /// NaN or infinity.
     #[inline]
     pub const fn det_errbound(&self) -> Result<Option<f64>, LaError> {
-        match FiniteMatrix::try_new(*self) {
-            Ok(finite) => finite.det_errbound(),
-            Err(err) => Err(err),
-        }
+        FiniteMatrix::new(*self).det_errbound()
     }
 }
 
@@ -1040,7 +1069,14 @@ mod tests {
 
                     // Out-of-bounds set fails.
                     let before_failed_set = m;
-                    assert_eq!(m.set($d, 0, 3.0), None);
+                    assert_eq!(
+                        m.set($d, 0, 3.0),
+                        Err(LaError::IndexOutOfBounds {
+                            row: $d,
+                            col: 0,
+                            dim: $d,
+                        })
+                    );
                     assert_eq!(m, before_failed_set);
                     assert_eq!(
                         m.set_checked($d, 0, 3.0),
@@ -1063,7 +1099,7 @@ mod tests {
                     assert_eq!(m.get(0, 0), Some(1.0));
 
                     // In-bounds set works.
-                    assert_eq!(m.set(0, $d - 1, 3.0), Some(()));
+                    assert_eq!(m.set(0, $d - 1, 3.0), Ok(()));
                     assert_eq!(m.get(0, $d - 1), Some(3.0));
                     assert_eq!(m.set_checked($d - 1, 0, 4.0), Ok(()));
                     assert_eq!(m.get_checked($d - 1, 0), Ok(4.0));
@@ -1182,6 +1218,21 @@ mod tests {
                 }
 
                 #[test]
+                fn [<finite_matrix_try_from_raw_matrix_revalidates_entries_ $d d>]() {
+                    let mut rows = [[1.0f64; $d]; $d];
+                    rows[$d - 1][$d - 1] = f64::INFINITY;
+                    let raw = Matrix::<$d>::from_rows_unchecked(rows);
+
+                    assert_eq!(
+                        FiniteMatrix::<$d>::try_from(raw),
+                        Err(LaError::NonFinite {
+                            row: Some($d - 1),
+                            col: $d - 1,
+                        })
+                    );
+                }
+
+                #[test]
                 fn [<finite_matrix_algorithms_match_raw_boundary_ $d d>]() {
                     let mut rows = [[0.0f64; $d]; $d];
                     let diag_values = [2.0f64, 3.0, 5.0, 7.0, 11.0];
@@ -1208,7 +1259,7 @@ mod tests {
 
                 #[test]
                 fn [<finite_matrix_lu_and_ldlt_accept_finite_rhs_ $d d>]() {
-                    let finite = FiniteMatrix::<$d>::try_new(Matrix::<$d>::identity()).unwrap();
+                    let finite = FiniteMatrix::<$d>::new(Matrix::<$d>::identity());
                     let rhs = {
                         let mut arr = [0.0f64; $d];
                         let values = [1.0f64, 2.0, 3.0, 4.0, 5.0];
@@ -1309,9 +1360,8 @@ mod tests {
     #[test]
     fn det_direct_d5_rejects_nonfinite_before_returning_none() {
         let mut m = Matrix::<5>::identity();
-        assert_eq!(m.set(3, 4, f64::NAN), Some(()));
         assert_eq!(
-            m.det_direct(),
+            m.set(3, 4, f64::NAN),
             Err(LaError::NonFinite {
                 row: Some(3),
                 col: 4,
@@ -1326,9 +1376,8 @@ mod tests {
 
     #[test]
     fn det_direct_rejects_nonfinite_entry_with_coordinates() {
-        let m = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, f64::NAN, 0.0], [0.0, 0.0, 1.0]]);
         assert_eq!(
-            m.det_direct(),
+            Matrix::<3>::try_from_rows([[1.0, 0.0, 0.0], [0.0, f64::NAN, 0.0], [0.0, 0.0, 1.0]]),
             Err(LaError::NonFinite {
                 row: Some(1),
                 col: 1,
@@ -1493,9 +1542,8 @@ mod tests {
 
     #[test]
     fn det_returns_nonfinite_error_for_nan_d2() {
-        let m = Matrix::<2>::from_rows([[f64::NAN, 1.0], [1.0, 1.0]]);
         assert_eq!(
-            m.det(),
+            Matrix::<2>::try_from_rows([[f64::NAN, 1.0], [1.0, 1.0]]),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 0
@@ -1505,10 +1553,12 @@ mod tests {
 
     #[test]
     fn det_returns_nonfinite_error_for_inf_d3() {
-        let m =
-            Matrix::<3>::from_rows([[f64::INFINITY, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
         assert_eq!(
-            m.det(),
+            Matrix::<3>::try_from_rows([
+                [f64::INFINITY, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0]
+            ]),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 0
@@ -1599,9 +1649,8 @@ mod tests {
 
     #[test]
     fn det_errbound_d1_rejects_nonfinite_even_with_zero_bound() {
-        let m = Matrix::<1>::from_rows([[f64::INFINITY]]);
         assert_eq!(
-            m.det_errbound(),
+            Matrix::<1>::try_from_rows([[f64::INFINITY]]),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 0,
@@ -1612,9 +1661,8 @@ mod tests {
     #[test]
     fn det_errbound_d5_rejects_nonfinite_before_returning_none() {
         let mut m = Matrix::<5>::identity();
-        assert_eq!(m.set(4, 1, f64::NAN), Some(()));
         assert_eq!(
-            m.det_errbound(),
+            m.set(4, 1, f64::NAN),
             Err(LaError::NonFinite {
                 row: Some(4),
                 col: 1,
@@ -1624,9 +1672,8 @@ mod tests {
 
     #[test]
     fn det_errbound_rejects_nonfinite_entry_with_coordinates() {
-        let m = Matrix::<2>::from_rows([[1.0, f64::INFINITY], [0.0, 1.0]]);
         assert_eq!(
-            m.det_errbound(),
+            Matrix::<2>::try_from_rows([[1.0, f64::INFINITY], [0.0, 1.0]]),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 1,
@@ -1703,9 +1750,8 @@ mod tests {
                 fn [<inf_norm_all_nan_returns_nonfinite_error_ $d d>]() {
                     // Before the fix, `NaN > max_row_sum` was always false, so a
                     // matrix full of NaN silently produced inf_norm == 0.0.
-                    let m = Matrix::<$d>::from_rows([[f64::NAN; $d]; $d]);
                     assert_eq!(
-                        m.inf_norm(),
+                        Matrix::<$d>::try_from_rows([[f64::NAN; $d]; $d]),
                         Err(LaError::NonFinite {
                             row: Some(0),
                             col: 0,
@@ -1719,9 +1765,8 @@ mod tests {
                     let mut rows = [[0.0f64; $d]; $d];
                     rows[0][0] = f64::NAN;
                     rows[$d - 1][$d - 1] = 1.0;
-                    let m = Matrix::<$d>::from_rows(rows);
                     assert_eq!(
-                        m.inf_norm(),
+                        Matrix::<$d>::try_from_rows(rows),
                         Err(LaError::NonFinite {
                             row: Some(0),
                             col: 0,
@@ -1734,9 +1779,8 @@ mod tests {
                     // Infinity entries should be rejected with their source coordinates.
                     let mut rows = [[0.0f64; $d]; $d];
                     rows[0][0] = f64::INFINITY;
-                    let m = Matrix::<$d>::from_rows(rows);
                     assert_eq!(
-                        m.inf_norm(),
+                        Matrix::<$d>::try_from_rows(rows),
                         Err(LaError::NonFinite {
                             row: Some(0),
                             col: 0,
@@ -1821,16 +1865,8 @@ mod tests {
                     }
                     rows[0][1] = f64::NAN;
                     rows[1][0] = f64::NAN;
-                    let a = Matrix::<$d>::from_rows(rows);
                     assert_eq!(
-                        a.is_symmetric(Tolerance::new(1e-12).unwrap()),
-                        Err(LaError::NonFinite {
-                            row: Some(0),
-                            col: 1,
-                        })
-                    );
-                    assert_eq!(
-                        a.first_asymmetry(Tolerance::new(1e-12).unwrap()),
+                        Matrix::<$d>::try_from_rows(rows),
                         Err(LaError::NonFinite {
                             row: Some(0),
                             col: 1,
@@ -1865,7 +1901,9 @@ mod tests {
                     rows[$d - 1][0] = -1.0;
 
                     assert_eq!(
-                        FiniteMatrix::from_rows(rows).and_then(SymmetricMatrix::try_new),
+                        Matrix::<$d>::try_from_rows(rows)
+                            .map(FiniteMatrix::new)
+                            .and_then(SymmetricMatrix::try_new),
                         Err(LaError::Asymmetric {
                             row: 0,
                             col: $d - 1,
@@ -1884,10 +1922,8 @@ mod tests {
 
     #[test]
     fn matrix_ldlt_rejects_nonfinite_before_asymmetry() {
-        let a = Matrix::<2>::from_rows([[1.0, f64::NAN], [0.0, 1.0]]);
-
         assert_eq!(
-            a.ldlt(DEFAULT_PIVOT_TOL),
+            Matrix::<2>::try_from_rows([[1.0, f64::NAN], [0.0, 1.0]]),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 1,
@@ -1898,9 +1934,7 @@ mod tests {
     #[test]
     fn symmetric_matrix_into_matrix_roundtrips_storage_internally() {
         let a = Matrix::<2>::from_rows([[2.0, 1.0], [1.0, 3.0]]);
-        let symmetric = FiniteMatrix::try_new(a)
-            .and_then(SymmetricMatrix::try_new)
-            .unwrap();
+        let symmetric = SymmetricMatrix::try_new(FiniteMatrix::new(a)).unwrap();
 
         assert_eq!(symmetric.into_matrix(), a);
     }
@@ -1927,16 +1961,8 @@ mod tests {
 
     #[test]
     fn first_asymmetry_rejects_infinite_offdiagonal() {
-        let a = Matrix::<2>::from_rows([[1.0, f64::INFINITY], [0.0, 1.0]]);
         assert_eq!(
-            a.first_asymmetry(Tolerance::new(1e-12).unwrap()),
-            Err(LaError::NonFinite {
-                row: Some(0),
-                col: 1,
-            })
-        );
-        assert_eq!(
-            a.is_symmetric(Tolerance::new(1e-12).unwrap()),
+            Matrix::<2>::try_from_rows([[1.0, f64::INFINITY], [0.0, 1.0]]),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 1,
@@ -1946,16 +1972,8 @@ mod tests {
 
     #[test]
     fn first_asymmetry_rejects_nan_diagonal() {
-        let a = Matrix::<2>::from_rows([[f64::NAN, 1.0], [1.0, 1.0]]);
         assert_eq!(
-            a.first_asymmetry(Tolerance::new(1e-12).unwrap()),
-            Err(LaError::NonFinite {
-                row: Some(0),
-                col: 0,
-            })
-        );
-        assert_eq!(
-            a.is_symmetric(Tolerance::new(1e-12).unwrap()),
+            Matrix::<2>::try_from_rows([[f64::NAN, 1.0], [1.0, 1.0]]),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 0,

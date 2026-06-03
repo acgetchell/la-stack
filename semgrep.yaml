@@ -58,6 +58,42 @@ rules:
       - pattern: $VALUE.unwrap_or_else(|| f64::INFINITY)
       - pattern: $VALUE.unwrap_or_else(|| f64::NEG_INFINITY)
 
+  - id: la-stack.rust.no-public-infallible-raw-f64-constructors
+    languages:
+      - rust
+    severity: WARNING
+    message: "Raw f64 Matrix/Vector constructors must be fallible public APIs; keep infallible literal helpers crate-private."
+    metadata:
+      category: correctness
+      rationale: >-
+        Matrix and Vector store only finite values. Public raw constructors must
+        return Result so callers receive LaError::NonFinite instead of a panic;
+        infallible construction is reserved for crate-private validated/literal
+        paths.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/raw_f64_constructors.rs"
+    pattern-regex: '(?m)^\s*pub\s+(?:const\s+)?fn\s+(?:new|from_rows)\s*\([^)]*(?:\[\s*f64\s*;\s*D\s*\]|\[\s*\[\s*f64\s*;\s*D\s*\]\s*;\s*D\s*\])[^)]*\)\s*->\s*(?:Self|(?:Matrix|Vector)\s*<)'
+
+  - id: la-stack.rust.no-public-api-panic-paths
+    languages:
+      - regex
+    severity: WARNING
+    message: "Public APIs should expose fallibility with Result/Option instead of panic/assert/unwrap paths."
+    metadata:
+      category: correctness
+      rationale: >-
+        Public functions returning plain values should be genuinely infallible
+        for all representable inputs. Caller-visible failure belongs in
+        Result/Option; panic-only paths make recoverable conditions look
+        infallible.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/public_api_panic_paths.rs"
+    pattern-regex: '(?ms)^\s*pub\s+(?:const\s+|async\s+|unsafe\s+)*fn\s+[A-Za-z_][A-Za-z0-9_]*[^;{]*\{(?:(?!^\s*\}).|\n){0,1000}(?:panic!|assert!|debug_assert!|unreachable!|\.unwrap\s*\(|\.expect\s*\()'
+
   - id: la-stack.rust.public-error-enums-non-exhaustive
     languages:
       - rust

@@ -3,12 +3,13 @@ coverage:
   status:
     project:
       default:
-        target: 60%
+        target: 98%
         removed_code_behavior: removals_only
-        threshold: 5%
+        threshold: 1%
     patch:
       default:
-        target: 50%
+        target: 90%
+        threshold: 2%
 
 ignore:
   - "src/lib.rs"
