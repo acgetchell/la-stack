@@ -83,7 +83,7 @@ jobs:
       - name: Run Codacy Analysis CLI
         if: ${{ env.CODACY_PROJECT_TOKEN != '' }}
         id: codacy_analysis
-        uses: codacy/codacy-analysis-cli-action@562ee3e92b8e92df8b67e0a5ff8aa8e261919c08 # v4.4.7
+        uses: codacy/codacy-analysis-cli-action@562ee3e92b8e92df8b67e0a5ff8aa8e261919c08 # pinned
         with:
           # Check https://github.com/codacy/codacy-analysis-cli#project-token
           # to get your project token from your Codacy repository.

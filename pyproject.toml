@@ -141,7 +141,7 @@ package = true
 dev = [
     "actionlint-py==1.7.12.24",
     "mypy>=1.19.0",
-    "pytest==9.0.3",
+    "pytest>=9.0.3",
     "ruff>=0.15.14",
     "semgrep==1.164.0",
     "ty>=0.0.40",

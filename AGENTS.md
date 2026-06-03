@@ -125,7 +125,7 @@ When user requests commit message generation:
 ### Code Quality
 
 - **ALLOWED**: Run formatters/linters: `cargo fmt`, `cargo clippy`, `cargo doc`, `taplo fmt`, `taplo lint`,
-  `uv run ruff check --fix`, `uv run ruff format`, `shfmt -w`, `shellcheck -x`, `rumdl`, `dprint`,
+  `uv run ruff check --fix`, `uv run ruff format`, `shfmt -w`, `shellcheck -x`, `npx markdownlint --fix`,
   `typos`, `actionlint`
 - **NEVER**: Use `sed`, `awk`, `perl` for code edits
 - **ALWAYS**: Use `edit_files` tool for edits (and `create_file` for new files)
@@ -205,8 +205,8 @@ macro-ification.
 ## Common Commands
 
 ```bash
-just check            # Lint/validators (non-mutating)
 just fix              # Apply formatters/auto-fixes (mutating)
+just check            # Lint/validators (non-mutating)
 just ci               # Full CI simulation (checks + tests + examples + bench compile)
 just test             # Lib + doc tests (fast)
 just test-all         # All tests (Rust + Python)
