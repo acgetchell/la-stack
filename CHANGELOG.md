@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Clarify determinant documentation around uncertified `det()` bounds.
   - Keep SPD determinant proptests on the tolerance-aware LU path.
 
+- Simplify finite proof wrappers [`54b603c`](https://github.com/acgetchell/la-stack/commit/54b603c21f0eb5b4d63ff334fac7f8cc325ebc2e)
+
+  - Use the checked proof-wrapper constructors as the single internal path for finite matrices and vectors.
+  - Remove exact-arithmetic tests that duplicated the matrix and vector non-finite boundary checks.
+
 ### Dependencies
 
 - Bump taiki-e/install-action from 2.75.18 to 2.75.22 [`d6c944b`](https://github.com/acgetchell/la-stack/commit/d6c944bb7dd30bb00dfe820bc355c4351cb1f242)

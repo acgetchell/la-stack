@@ -289,7 +289,7 @@ compose the same bound themselves.
 
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
-| `Vector<D>` | `[f64; D]` | Fixed-length vector for input and computation | `new`, `zero`, `dot`, `norm2_sq` |
+| `Vector<D>` | `[f64; D]` | Fixed-length vector for input and computation | `try_new`, `zero`, `dot`, `norm2_sq` |
 | `Matrix<D>` | `[[f64; D]; D]` | Square matrix for input and computation | See below |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
@@ -299,8 +299,8 @@ Storage shown above reflects the intentional `f64` scalar model.
 `Matrix<D>` key methods: `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`,
 `det_exact`¹, `det_exact_f64`¹, `det_sign_exact`¹, `solve_exact`¹, `solve_exact_f64`¹.
 Matrix and vector methods validate non-finite inputs at public API boundaries and
-carry internal proof types through computation so successful factors do not store
-NaN or infinity.
+carry private proof-bearing types through computation so successful factors do
+not store NaN or infinity.
 
 ¹ Requires `features = ["exact"]`.
 
