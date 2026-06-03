@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Feat!(matrix): enforce fallible matrix invariants [`e26c283`](https://github.com/acgetchell/la-stack/commit/e26c28358b2358100353b2895441b68892e92cd7)
+- Feat!(api): enforce fallible numeric invariants [`adfc33b`](https://github.com/acgetchell/la-stack/commit/adfc33b945b259721bd1067e797ed2e7d4ec0e6e)
 
 ### Changed
 

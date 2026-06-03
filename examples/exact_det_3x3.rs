@@ -9,7 +9,7 @@
 
 use la_stack::prelude::*;
 
-fn main() {
+fn main() -> Result<(), LaError> {
     // Base matrix: rows in arithmetic progression → exactly singular (det = 0).
     //   [[1, 2, 3],
     //    [4, 5, 6],
@@ -24,9 +24,11 @@ fn main() {
         [7.0, 8.0, 9.0],
     ]);
 
-    let det_f64_approx = m.det_direct().unwrap().unwrap();
-    let det_exact = m.det_exact().unwrap();
-    let det_exact_as_f64 = m.det_exact_f64().unwrap();
+    let Some(det_f64_approx) = m.det_direct()? else {
+        unreachable!("D=3 is supported by det_direct");
+    };
+    let det_exact = m.det_exact()?;
+    let det_exact_as_f64 = m.det_exact_f64()?;
 
     println!("Near-singular 3×3 matrix (perturbation = 2^-50 ≈ {perturbation:.2e}):");
     for r in 0..3 {
@@ -35,7 +37,7 @@ fn main() {
             if c > 0 {
                 print!(", ");
             }
-            print!("{:22.18}", m.get(r, c).unwrap());
+            print!("{:22.18}", m.get_checked(r, c)?);
         }
         println!("]");
     }
@@ -45,4 +47,5 @@ fn main() {
     println!("det_exact_f64()    = {det_exact_as_f64:+.6e}");
     println!();
     println!("The exact determinant is −3/2^50 ≈ −2.66e-15.");
+    Ok(())
 }

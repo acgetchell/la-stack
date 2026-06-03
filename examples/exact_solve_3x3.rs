@@ -9,7 +9,7 @@
 
 use la_stack::prelude::*;
 
-fn main() {
+fn main() -> Result<(), LaError> {
     // Near-singular 3×3 system.
     //
     // The base matrix [[1,2,3],[4,5,6],[7,8,9]] is exactly singular (rows in
@@ -26,16 +26,11 @@ fn main() {
 
     // f64 LU solve (using zero pivot tolerance since the matrix is nearly singular
     // and would be rejected by DEFAULT_PIVOT_TOL).
-    let lu_x = a
-        .lu(Tolerance::new(0.0).unwrap())
-        .unwrap()
-        .solve_vec(b)
-        .unwrap()
-        .into_array();
+    let lu_x = a.lu(Tolerance::new(0.0)?)?.solve_vec(b)?.into_array();
 
     // Exact solve.
-    let exact_x = a.solve_exact(b).unwrap();
-    let exact_x_f64 = a.solve_exact_f64(b).unwrap().into_array();
+    let exact_x = a.solve_exact(b)?;
+    let exact_x_f64 = a.solve_exact_f64(b)?.into_array();
 
     println!("Near-singular 3×3 system (perturbation = 2^-50 ≈ {perturbation:.2e}):");
     for r in 0..3 {
@@ -44,7 +39,7 @@ fn main() {
             if c > 0 {
                 print!(", ");
             }
-            print!("{:22.18}", a.get(r, c).unwrap());
+            print!("{:22.18}", a.get_checked(r, c)?);
         }
         println!("]");
     }
@@ -67,4 +62,5 @@ fn main() {
         "solve_exact_f64():  x = [{:+.6e}, {:+.6e}, {:+.6e}]",
         exact_x_f64[0], exact_x_f64[1], exact_x_f64[2]
     );
+    Ok(())
 }
