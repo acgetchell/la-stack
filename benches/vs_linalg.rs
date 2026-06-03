@@ -186,9 +186,7 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 // === Determinant via det() (closed-form for D≤4, LU for D≥5) ===
                 [<group_d $d>].bench_function("la_stack_det", |bencher| {
                     bencher.iter(|| {
-                        let det = black_box(a)
-                            .det(DEFAULT_PIVOT_TOL)
-                            .expect("matrix should be non-singular");
+                        let det = black_box(a).det().expect("matrix should be non-singular");
                         black_box(det);
                     });
                 });

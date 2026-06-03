@@ -24,7 +24,7 @@ fn main() {
     ]);
 
     let sign = m.det_sign_exact().unwrap();
-    let det_f64 = m.det(DEFAULT_PIVOT_TOL).unwrap();
+    let det_f64 = m.det().unwrap();
 
     println!("Near-singular 3×3 matrix (perturbation = 2^-50 ≈ {perturbation:.2e}):");
     for r in 0..3 {

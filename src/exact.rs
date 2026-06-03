@@ -941,7 +941,7 @@ mod tests {
         // SPD matrix → positive determinant.
         let m = Matrix::<3>::from_rows([[4.0, 2.0, 0.0], [2.0, 5.0, 1.0], [0.0, 1.0, 3.0]]);
         assert_eq!(m.det_sign_exact().unwrap(), 1);
-        assert!(m.det(DEFAULT_PIVOT_TOL).unwrap() > 0.0);
+        assert!(m.det().unwrap() > 0.0);
     }
 
     /// Near-singular matrix with an exact perturbation.

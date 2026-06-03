@@ -4,14 +4,147 @@ use core::hint::cold_path;
 
 use crate::ldlt::Ldlt;
 use crate::lu::Lu;
-use crate::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};
-use crate::{LaError, Tolerance};
+use crate::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LDLT_SYMMETRY_REL_TOL, LaError, Tolerance};
 
 /// Fixed-size square matrix `D×D`, stored inline.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Matrix<const D: usize> {
     pub(crate) rows: [[f64; D]; D],
+}
+
+/// Matrix proven symmetric under the crate's LDLT symmetry tolerance.
+///
+/// This wrapper carries the result of LDLT symmetry validation so callers can
+/// validate a raw [`Matrix`] once and then factor it without rediscovering that
+/// particular invariant.  It does not prove positive definiteness, finite
+/// arithmetic throughout factorization, or non-singularity; [`ldlt`](Self::ldlt)
+/// still validates those properties and returns the corresponding [`LaError`].
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+///
+/// # fn main() -> Result<(), LaError> {
+/// let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
+/// let symmetric = SymmetricMatrix::try_new(a)?;
+/// let ldlt = symmetric.ldlt(DEFAULT_SINGULAR_TOL)?;
+///
+/// assert!((ldlt.det()? - 8.0).abs() <= 1e-12);
+/// # Ok(())
+/// # }
+/// ```
+#[must_use]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SymmetricMatrix<const D: usize> {
+    matrix: Matrix<D>,
+}
+
+impl<const D: usize> SymmetricMatrix<D> {
+    /// Validate that `matrix` is symmetric under the LDLT symmetry tolerance.
+    ///
+    /// The predicate is the same one used by [`Matrix::ldlt`]:
+    /// `|A[i][j] - A[j][i]| <= 1e-12 * max(1, inf_norm(A))`, with scaling that
+    /// preserves strict tolerances when an unscaled row sum would overflow.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
+    /// let symmetric = SymmetricMatrix::try_new(a)?;
+    /// assert_eq!(symmetric.as_matrix().get(0, 1), Some(2.0));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::Asymmetric`] when the first off-diagonal pair violates
+    /// the LDLT symmetry predicate.
+    ///
+    /// Returns [`LaError::NonFinite`] when any matrix entry is NaN or infinite,
+    /// or when computing the scaled symmetry tolerance overflows to NaN or
+    /// infinity.
+    #[inline]
+    pub fn try_new(matrix: Matrix<D>) -> Result<Self, LaError> {
+        if let Some((row, col)) = matrix.first_asymmetry(LDLT_SYMMETRY_REL_TOL)? {
+            cold_path();
+            Err(LaError::asymmetric(row, col, D))
+        } else {
+            Ok(Self { matrix })
+        }
+    }
+
+    /// Borrow the proven-symmetric matrix.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let symmetric = SymmetricMatrix::try_new(Matrix::<2>::identity())?;
+    /// assert_eq!(symmetric.as_matrix().get(1, 1), Some(1.0));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub const fn as_matrix(&self) -> &Matrix<D> {
+        &self.matrix
+    }
+
+    /// Consume the wrapper and return the underlying matrix.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let symmetric = SymmetricMatrix::try_new(Matrix::<2>::identity())?;
+    /// let matrix = symmetric.into_matrix();
+    /// assert_eq!(matrix.get(0, 0), Some(1.0));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub const fn into_matrix(self) -> Matrix<D> {
+        self.matrix
+    }
+
+    /// Compute an LDLT factorization from a matrix with a carried symmetry proof.
+    ///
+    /// This skips the symmetry check already performed by [`try_new`](Self::try_new),
+    /// but still validates finite factorization intermediates and diagonal
+    /// singularity under `tol`.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let a = Matrix::<2>::from_rows([[4.0, 2.0], [2.0, 3.0]]);
+    /// let ldlt = SymmetricMatrix::try_new(a)?.ldlt(DEFAULT_SINGULAR_TOL)?;
+    /// assert!((ldlt.det()? - 8.0).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::Singular`] if, for some step `k`, the required
+    /// diagonal entry `d = D[k,k]` is `<= tol` (non-positive or too small).
+    ///
+    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected during factorization.
+    #[inline]
+    pub fn ldlt(self, tol: Tolerance) -> Result<Ldlt<D>, LaError> {
+        Ldlt::factor_symmetric(self.matrix, tol)
+    }
+}
+
+impl<const D: usize> From<SymmetricMatrix<D>> for Matrix<D> {
+    #[inline]
+    fn from(value: SymmetricMatrix<D>) -> Self {
+        value.into_matrix()
+    }
 }
 
 impl<const D: usize> Matrix<D> {
@@ -436,7 +569,9 @@ impl<const D: usize> Matrix<D> {
     /// # Errors
     /// Returns [`LaError::Singular`] if, for some column `k`, the largest-magnitude candidate pivot
     /// in that column satisfies `|pivot| <= tol` (so no numerically usable pivot exists).
-    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected during factorization.
+    /// Returns [`LaError::NonFinite`] if a stored matrix entry is NaN/∞, or if
+    /// an elimination intermediate overflows to NaN/∞ before it can be stored in
+    /// the returned [`Lu`].
     #[inline]
     pub fn lu(self, tol: Tolerance) -> Result<Lu<D>, LaError> {
         Lu::factor(self, tol)
@@ -609,38 +744,44 @@ impl<const D: usize> Matrix<D> {
         }
     }
 
-    /// Determinant, using closed-form formulas for D ≤ 4 and LU decomposition for D ≥ 5.
+    /// Floating-point determinant, using closed-form formulas for D ≤ 4 and
+    /// LU decomposition for D ≥ 5.
     ///
     /// For D ∈ {1, 2, 3, 4}, this bypasses LU factorization entirely for a significant
-    /// speedup (see [`det_direct`](Self::det_direct)). The `tol` parameter is only used
-    /// by the LU fallback path for D ≥ 5.
+    /// speedup (see [`det_direct`](Self::det_direct)).
     ///
-    /// The `tol` argument is a [`Tolerance`], so raw caller input must be
-    /// finite and non-negative before it can reach the determinant path. Use
-    /// [`Tolerance::new`] or [`LaError::validate_tolerance`] when accepting a
-    /// raw `f64`; negative, NaN, and infinite tolerances return
-    /// [`LaError::InvalidTolerance`].
+    /// Finite inputs return a floating-point determinant estimate in every dimension;
+    /// this method does not surface [`LaError::Singular`]. For D ≥ 5, the LU
+    /// fallback only maps an exactly zero pivot to `Ok(0.0)`. Use [`lu`](Self::lu)
+    /// directly when you need tolerance-aware singularity detection or the pivot
+    /// column, and use the exact determinant APIs when exact singularity
+    /// classification matters.
     ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
-    /// let det = Matrix::<3>::identity().det(DEFAULT_PIVOT_TOL)?;
+    /// let det = Matrix::<3>::identity().det()?;
     /// assert!((det - 1.0).abs() <= 1e-12);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if the result contains NaN or infinity.
-    /// For D ≥ 5, propagates LU factorization errors (e.g. [`LaError::Singular`]).
+    /// Returns [`LaError::NonFinite`] if an entry is non-finite, if the LU
+    /// fallback computes a non-finite factorization cell, or if the determinant
+    /// product overflows to NaN or infinity.
     #[inline]
-    pub fn det(self, tol: Tolerance) -> Result<f64, LaError> {
+    pub fn det(self) -> Result<f64, LaError> {
         if let Some(d) = self.det_direct()? {
             return Ok(d);
         }
-        self.lu(tol)?.det()
+        match self.lu(Tolerance::new_unchecked(0.0)) {
+            Ok(lu) => lu.det(),
+            Err(LaError::Singular { .. }) => Ok(0.0),
+            Err(err) => Err(err),
+        }
     }
 
     /// Conservative absolute error bound for `det_direct()`.
@@ -879,7 +1020,7 @@ mod tests {
                     }
 
                     // Determinant is 1.
-                    let det = m.det(DEFAULT_PIVOT_TOL).unwrap();
+                    let det = m.det().unwrap();
                     assert_abs_diff_eq!(det, 1.0, epsilon = 1e-12);
 
                     // LU solve on identity returns the RHS.
@@ -1025,9 +1166,25 @@ mod tests {
             [0.0, 0.0, 0.0, 1.0e100, 0.0],
             [0.0, 0.0, 0.0, 0.0, 1.0e100],
         ]);
+        assert_eq!(m.det(), Err(LaError::NonFinite { row: None, col: 3 }));
+    }
+
+    #[test]
+    fn det_d5_rejects_lu_trailing_update_overflow() {
+        let m = Matrix::<5>::from_rows([
+            [1.0, f64::MAX, 0.0, 0.0, 0.0],
+            [-1.0, f64::MAX, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0],
+        ]);
+
         assert_eq!(
-            m.det(DEFAULT_PIVOT_TOL),
-            Err(LaError::NonFinite { row: None, col: 3 })
+            m.det(),
+            Err(LaError::NonFinite {
+                row: Some(1),
+                col: 1,
+            })
         );
     }
 
@@ -1106,11 +1263,51 @@ mod tests {
         );
     }
 
+    macro_rules! gen_det_singular_zero_matrix_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<det_singular_zero_matrix_returns_zero_ $d d>]() {
+                    assert_abs_diff_eq!(
+                        Matrix::<$d>::zero().det().unwrap(),
+                        0.0,
+                        epsilon = 0.0
+                    );
+                }
+            }
+        };
+    }
+
+    gen_det_singular_zero_matrix_tests!(2);
+    gen_det_singular_zero_matrix_tests!(3);
+    gen_det_singular_zero_matrix_tests!(4);
+    gen_det_singular_zero_matrix_tests!(5);
+
+    #[test]
+    fn det_d5_ignores_pivot_tolerance_for_tiny_nonsingular_matrix() {
+        // A small nonzero determinant is still a determinant. `det` must not
+        // flatten the value to zero merely because the default LU tolerance
+        // would reject a pivot this small.
+        let m = Matrix::<5>::from_rows([
+            [1e-13, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0],
+        ]);
+
+        assert_abs_diff_eq!(m.det().unwrap(), 1e-13, epsilon = 0.0);
+        assert_eq!(
+            m.lu(DEFAULT_PIVOT_TOL),
+            Err(LaError::Singular { pivot_col: 0 })
+        );
+    }
+
     #[test]
     fn det_returns_nonfinite_error_for_nan_d2() {
         let m = Matrix::<2>::from_rows([[f64::NAN, 1.0], [1.0, 1.0]]);
         assert_eq!(
-            m.det(DEFAULT_PIVOT_TOL),
+            m.det(),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 0
@@ -1123,7 +1320,7 @@ mod tests {
         let m =
             Matrix::<3>::from_rows([[f64::INFINITY, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
         assert_eq!(
-            m.det(DEFAULT_PIVOT_TOL),
+            m.det(),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 0
@@ -1138,10 +1335,7 @@ mod tests {
         // falls through and returns NonFinite { row: None, col: 0 } to signal
         // a computed overflow rather than a NaN/∞ input.
         let m = Matrix::<2>::from_rows([[1e300, 0.0], [0.0, 1e300]]);
-        assert_eq!(
-            m.det(DEFAULT_PIVOT_TOL),
-            Err(LaError::NonFinite { row: None, col: 0 })
-        );
+        assert_eq!(m.det(), Err(LaError::NonFinite { row: None, col: 0 }));
     }
 
     // === det_direct const-evaluability tests (D = 2..=5) ===
@@ -1441,6 +1635,65 @@ mod tests {
     gen_is_symmetric_tests!(3);
     gen_is_symmetric_tests!(4);
     gen_is_symmetric_tests!(5);
+
+    macro_rules! gen_symmetric_matrix_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<symmetric_matrix_try_new_accepts_identity_and_ldlt_ $d d>]() {
+                    let symmetric = SymmetricMatrix::try_new(Matrix::<$d>::identity()).unwrap();
+                    let ldlt = symmetric.ldlt(DEFAULT_PIVOT_TOL).unwrap();
+                    assert_abs_diff_eq!(ldlt.det().unwrap(), 1.0, epsilon = 0.0);
+                }
+
+                #[test]
+                fn [<symmetric_matrix_try_new_rejects_asymmetric_ $d d>]() {
+                    let mut rows = [[0.0f64; $d]; $d];
+                    for (i, row) in rows.iter_mut().enumerate() {
+                        row[i] = 1.0;
+                    }
+                    rows[0][$d - 1] = 1.0;
+                    rows[$d - 1][0] = -1.0;
+
+                    assert_eq!(
+                        SymmetricMatrix::try_new(Matrix::<$d>::from_rows(rows)),
+                        Err(LaError::Asymmetric {
+                            row: 0,
+                            col: $d - 1,
+                            dim: $d,
+                        })
+                    );
+                }
+            }
+        };
+    }
+
+    gen_symmetric_matrix_tests!(2);
+    gen_symmetric_matrix_tests!(3);
+    gen_symmetric_matrix_tests!(4);
+    gen_symmetric_matrix_tests!(5);
+
+    #[test]
+    fn symmetric_matrix_try_new_rejects_nonfinite_before_asymmetry() {
+        let a = Matrix::<2>::from_rows([[1.0, f64::NAN], [0.0, 1.0]]);
+
+        assert_eq!(
+            SymmetricMatrix::try_new(a),
+            Err(LaError::NonFinite {
+                row: Some(0),
+                col: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn symmetric_matrix_into_matrix_roundtrips_storage() {
+        let a = Matrix::<2>::from_rows([[2.0, 1.0], [1.0, 3.0]]);
+        let symmetric = SymmetricMatrix::try_new(a).unwrap();
+
+        assert_eq!(symmetric.as_matrix(), &a);
+        assert_eq!(Matrix::from(symmetric), a);
+    }
 
     #[test]
     fn is_symmetric_tolerance_scales_with_inf_norm() {

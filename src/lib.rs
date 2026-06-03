@@ -275,6 +275,9 @@ pub const DEFAULT_SINGULAR_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
 /// tolerance is not specifically about pivot selection.
 pub const DEFAULT_PIVOT_TOL: Tolerance = DEFAULT_SINGULAR_TOL;
 
+/// Relative tolerance used to validate matrices for LDLT factorization.
+pub(crate) const LDLT_SYMMETRY_REL_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
+
 /// Linear algebra errors.
 ///
 /// This enum is `#[non_exhaustive]` — downstream `match` arms must include a
@@ -292,14 +295,13 @@ pub enum LaError {
     ///
     /// The `(row, col)` coordinate follows a consistent convention across the crate:
     ///
-    /// - `row: Some(r), col: c` — a *stored* matrix cell at `(r, c)` is non-finite.
-    ///   Used by `Matrix::det`, `Lu::factor`, `Ldlt::factor`, and the `solve_vec`
-    ///   paths when they detect a corrupt stored factor (only reachable via
-    ///   direct struct construction; `factor` itself rejects such inputs).
-    /// - `row: None, col: c` — the non-finite value is either a *vector input*
-    ///   entry at index `c`, or a *computed scalar/intermediate* at slot or
-    ///   step `c` (e.g. an accumulator that overflowed during determinant
-    ///   evaluation or forward/back substitution).
+    /// - `row: Some(r), col: c` — the non-finite value is tied to a matrix/factor
+    ///   cell at `(r, c)`, either because a stored input/factor cell is already
+    ///   non-finite or because factorization computed a non-finite value for
+    ///   that cell before storing it.
+    /// - `row: None, col: c` — the non-finite value is tied to a vector entry,
+    ///   determinant product, tolerance-scale accumulator, solve accumulator, or
+    ///   other scalar/intermediate that has no matrix row coordinate.
     NonFinite {
         /// Row of the non-finite entry for a stored matrix cell, or `None` for
         /// a vector-input entry or a computed intermediate. See the variant
@@ -355,10 +357,12 @@ impl LaError {
     /// Construct a [`LaError::NonFinite`] pinpointing a stored matrix cell at `(row, col)`.
     ///
     /// Use this for non-finite values read from a stored `Matrix` entry or
-    /// factorization cell.  The resulting error has `row: Some(row), col`,
-    /// matching the stored-cell convention documented on
-    /// [`NonFinite`](Self::NonFinite).  For vector-input entries or computed
-    /// intermediates, use [`non_finite_at`](Self::non_finite_at).
+    /// factorization cell, and for non-finite factorization updates that would
+    /// be stored at `(row, col)` if accepted.  The resulting error has
+    /// `row: Some(row), col`, matching the matrix/factor-cell convention
+    /// documented on [`NonFinite`](Self::NonFinite).  For vector-input entries
+    /// or scalar intermediates without a matrix row coordinate, use
+    /// [`non_finite_at`](Self::non_finite_at).
     ///
     /// # Examples
     /// ```
@@ -385,10 +389,12 @@ impl LaError {
     /// computed scalar/intermediate at index `col`.
     ///
     /// Use this for non-finite values in a `Vector` input, determinant scalar,
-    /// or accumulator that overflowed during forward/back substitution.  The
-    /// resulting error has `row: None, col`, matching the vector/intermediate
-    /// convention documented on [`NonFinite`](Self::NonFinite).  For stored
-    /// matrix cells, use [`non_finite_cell`](Self::non_finite_cell).
+    /// tolerance-scale accumulator, or solve accumulator that overflowed during
+    /// forward/back substitution.  The resulting error has `row: None, col`,
+    /// matching the vector/scalar-intermediate convention documented on
+    /// [`NonFinite`](Self::NonFinite).  For stored matrix cells or computed
+    /// factorization updates tied to a matrix cell, use
+    /// [`non_finite_cell`](Self::non_finite_cell).
     ///
     /// # Examples
     /// ```
@@ -562,7 +568,7 @@ impl std::error::Error for LaError {}
 
 pub use ldlt::Ldlt;
 pub use lu::Lu;
-pub use matrix::Matrix;
+pub use matrix::{Matrix, SymmetricMatrix};
 pub use vector::Vector;
 
 /// Fallibly dispatch a runtime dimension to a concrete stack-allocated matrix.
@@ -589,7 +595,7 @@ pub use vector::Vector;
 /// let det = try_with_stack_matrix!(requested, |mut m| -> Result<f64, LaError> {
 ///     m.set_checked(0, 0, 1.0)?;
 ///     m.set_checked(1, 1, 1.0)?;
-///     m.det(DEFAULT_PIVOT_TOL)
+///     m.det()
 /// })?;
 ///
 /// assert_eq!(det, 1.0);
@@ -648,8 +654,8 @@ macro_rules! try_with_stack_matrix {
 
 /// Common imports for ergonomic usage.
 ///
-/// This prelude re-exports the primary types and constants: [`Matrix`], [`Vector`], [`Lu`],
-/// [`Ldlt`], [`Tolerance`], [`LaError`], [`DEFAULT_PIVOT_TOL`],
+/// This prelude re-exports the primary types and constants: [`Matrix`], [`SymmetricMatrix`],
+/// [`Vector`], [`Lu`], [`Ldlt`], [`Tolerance`], [`LaError`], [`DEFAULT_PIVOT_TOL`],
 /// [`DEFAULT_SINGULAR_TOL`], and the determinant error bound coefficients
 /// [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`]. It also re-exports
 /// [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
@@ -666,7 +672,8 @@ macro_rules! try_with_stack_matrix {
 pub mod prelude {
     pub use crate::{
         DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError,
-        Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, Tolerance, Vector, try_with_stack_matrix,
+        Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, SymmetricMatrix, Tolerance, Vector,
+        try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]
@@ -860,7 +867,12 @@ mod tests {
         let m = Matrix::<2>::identity();
         let v = Vector::<2>::new([1.0, 2.0]);
         let _ = m.lu(DEFAULT_PIVOT_TOL).unwrap().solve_vec(v).unwrap();
-        let _ = m.ldlt(DEFAULT_SINGULAR_TOL).unwrap().solve_vec(v).unwrap();
+        let symmetric = SymmetricMatrix::try_new(m).unwrap();
+        let _ = symmetric
+            .ldlt(DEFAULT_SINGULAR_TOL)
+            .unwrap()
+            .solve_vec(v)
+            .unwrap();
         assert_eq!(MAX_STACK_MATRIX_DISPATCH_DIM, 7);
     }
 
@@ -906,9 +918,7 @@ mod tests {
 
     #[test]
     fn try_with_stack_matrix_reports_unsupported_dimension() {
-        let got = try_with_stack_matrix!(8usize, |m| -> Result<f64, LaError> {
-            m.det(DEFAULT_PIVOT_TOL)
-        });
+        let got = try_with_stack_matrix!(8usize, |m| -> Result<f64, LaError> { m.det() });
 
         assert_eq!(
             got,

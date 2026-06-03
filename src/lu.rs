@@ -20,8 +20,11 @@ impl<const D: usize> Lu<D> {
     /// Factor a square matrix into in-place LU storage for [`Matrix::lu`](crate::Matrix::lu).
     ///
     /// This is the single validation boundary for LU construction: it rejects
-    /// invalid tolerances, non-finite pivot candidates, and numerically singular
-    /// pivots before callers can observe a [`Lu`] value.
+    /// invalid tolerances, non-finite pivot candidates, non-finite elimination
+    /// intermediates, and numerically singular pivots before callers can observe
+    /// a [`Lu`] value.  Computed trailing updates are checked before storage so
+    /// successful factors do not contain a non-finite value produced during
+    /// elimination.
     #[inline]
     pub(crate) fn factor(a: Matrix<D>, tol: Tolerance) -> Result<Self, LaError> {
         let mut lu = a;
@@ -81,7 +84,12 @@ impl<const D: usize> Lu<D> {
                 lu.rows[r][k] = mult;
 
                 for c in (k + 1)..D {
-                    lu.rows[r][c] = (-mult).mul_add(lu.rows[k][c], lu.rows[r][c]);
+                    let updated = (-mult).mul_add(lu.rows[k][c], lu.rows[r][c]);
+                    if !updated.is_finite() {
+                        cold_path();
+                        return Err(LaError::non_finite_cell(r, c));
+                    }
+                    lu.rows[r][c] = updated;
                 }
             }
         }
@@ -509,6 +517,21 @@ mod tests {
             LaError::NonFinite {
                 row: Some(1),
                 col: 0
+            }
+        );
+    }
+
+    #[test]
+    fn nonfinite_detected_in_trailing_update() {
+        let a =
+            Matrix::<3>::from_rows([[1.0, f64::MAX, 0.0], [-1.0, f64::MAX, 0.0], [0.0, 0.0, 1.0]]);
+
+        let err = a.lu(DEFAULT_PIVOT_TOL).unwrap_err();
+        assert_eq!(
+            err,
+            LaError::NonFinite {
+                row: Some(1),
+                col: 1,
             }
         );
     }
