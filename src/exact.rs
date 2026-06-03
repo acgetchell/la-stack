@@ -59,14 +59,11 @@
 //!
 //! ## Validation
 //!
-//! `decompose_matrix` / `decompose_vec` fold an `is_finite()` check
-//! into the same pass that decomposes each entry, returning
-//! `Err(LaError::NonFinite { row, col })` on the first NaN or ±∞
-//! encountered.  This error is propagated through `bareiss_det_int`,
-//! `bareiss_det`, and `gauss_solve` via the `?` operator, so every
-//! public entry point that reaches the integer-Bareiss core is
-//! automatically validated — `f64_decompose` itself is therefore
-//! never called with non-finite input from the public API.
+//! Public exact methods parse raw `Matrix` / `Vector` values into internal finite
+//! proof types before reaching the integer-Bareiss core.  The decomposition
+//! helpers for those proof types can then call `f64_decompose` without repeating
+//! stored-entry validation; `f64_decompose` itself is therefore never called with
+//! non-finite input from the public API.
 
 use core::hint::cold_path;
 use core::mem::take;
@@ -78,8 +75,8 @@ use num_rational::BigRational;
 use num_traits::ToPrimitive;
 
 use crate::LaError;
-use crate::matrix::Matrix;
-use crate::vector::Vector;
+use crate::matrix::{FiniteMatrix, Matrix};
+use crate::vector::{FiniteVector, Vector};
 
 /// Decompose a finite `f64` into its IEEE 754 components.
 ///
@@ -165,8 +162,8 @@ fn bigint_exp_to_bigrational(mut value: BigInt, mut exp: i32) -> BigRational {
 /// Decomposed finite f64 in the form `(-1)^is_negative · mantissa · 2^exponent`.
 ///
 /// Zero entries have `mantissa == None`; the other fields are unused in that
-/// case. `Default` yields such a zero component, which is what the
-/// per-entry initialiser in `decompose_matrix` / `decompose_vec` produces
+/// case. `Default` yields such a zero component, which is what the per-entry
+/// initialiser in `decompose_finite_matrix` / `decompose_finite_vec` produces
 /// for ±0.0 cells. Non-zero entries carry a [`NonZeroU64`] mantissa, so the
 /// exact-arithmetic paths cannot accidentally store a raw zero sentinel after
 /// decomposition.
@@ -177,23 +174,16 @@ struct Component {
     is_negative: bool,
 }
 
-/// Decompose every entry of a `D×D` matrix via `f64_decompose`,
-/// validating finiteness in the same pass.  Returns the per-entry
-/// components and the minimum exponent across non-zero entries.  If
-/// every entry is zero, the exponent is `i32::MAX`.
+/// Decompose every entry of a finite `D×D` matrix via `f64_decompose`.
 ///
-/// # Errors
-/// Returns [`LaError::NonFinite`] with `row: Some(r), col: c` pointing
-/// at the first non-finite entry encountered (row-major order).
-fn decompose_matrix<const D: usize>(m: &Matrix<D>) -> Result<([[Component; D]; D], i32), LaError> {
+/// Returns the per-entry components and the minimum exponent across non-zero
+/// entries. If every entry is zero, the exponent is `i32::MAX`.
+fn decompose_finite_matrix<const D: usize>(m: &FiniteMatrix<D>) -> ([[Component; D]; D], i32) {
     let mut components = [[Component::default(); D]; D];
     let mut e_min = i32::MAX;
-    for (r, row) in m.rows.iter().enumerate() {
+    let matrix = m.as_matrix();
+    for (r, row) in matrix.rows.iter().enumerate() {
         for (c, &entry) in row.iter().enumerate() {
-            if !entry.is_finite() {
-                cold_path();
-                return Err(LaError::non_finite_cell(r, c));
-            }
             if let Some((mantissa, exponent, is_negative)) = f64_decompose(entry) {
                 components[r][c] = Component {
                     mantissa: Some(mantissa),
@@ -204,25 +194,18 @@ fn decompose_matrix<const D: usize>(m: &Matrix<D>) -> Result<([[Component; D]; D
             }
         }
     }
-    Ok((components, e_min))
+    (components, e_min)
 }
 
-/// Decompose every entry of a length-`D` vector via `f64_decompose`,
-/// validating finiteness in the same pass.  Returns the per-entry
-/// components and the minimum exponent across non-zero entries.  If
-/// every entry is zero, the exponent is `i32::MAX`.
+/// Decompose every entry of a finite length-`D` vector via `f64_decompose`.
 ///
-/// # Errors
-/// Returns [`LaError::NonFinite`] with `row: None, col: i` pointing at
-/// the first non-finite entry encountered.
-fn decompose_vec<const D: usize>(v: &Vector<D>) -> Result<([Component; D], i32), LaError> {
+/// Returns the per-entry components and the minimum exponent across non-zero
+/// entries. If every entry is zero, the exponent is `i32::MAX`.
+fn decompose_finite_vec<const D: usize>(v: &FiniteVector<D>) -> ([Component; D], i32) {
     let mut components = [Component::default(); D];
     let mut e_min = i32::MAX;
-    for (i, &entry) in v.data.iter().enumerate() {
-        if !entry.is_finite() {
-            cold_path();
-            return Err(LaError::non_finite_at(i));
-        }
+    let data = v.as_array();
+    for (i, &entry) in data.iter().enumerate() {
         if let Some((mantissa, exponent, is_negative)) = f64_decompose(entry) {
             components[i] = Component {
                 mantissa: Some(mantissa),
@@ -232,7 +215,7 @@ fn decompose_vec<const D: usize>(v: &Vector<D>) -> Result<([Component; D], i32),
             e_min = e_min.min(exponent);
         }
     }
-    Ok((components, e_min))
+    (components, e_min)
 }
 
 /// Convert a single decomposed component to its scaled `BigInt`
@@ -358,21 +341,18 @@ fn bareiss_forward_eliminate<const D: usize>(
 /// scaled to a common base `2^e_min` so every entry becomes an integer.
 /// The Bareiss inner-loop division is exact (guaranteed by the algorithm).
 ///
-/// # Errors
-/// Returns [`LaError::NonFinite`] (propagated from `decompose_matrix`) if
-/// any matrix entry is NaN or infinite.
-fn bareiss_det_int<const D: usize>(m: &Matrix<D>) -> Result<(BigInt, i32), LaError> {
+fn bareiss_det_int_finite<const D: usize>(m: &FiniteMatrix<D>) -> (BigInt, i32) {
     // D == 0 has no `a[D-1][D-1]` to read; shortcut to the empty-product
     // determinant.
     if D == 0 {
-        return Ok((BigInt::from(1), 0));
+        return (BigInt::from(1), 0);
     }
 
-    let (components, e_min) = decompose_matrix(m)?;
+    let (components, e_min) = decompose_finite_matrix(m);
 
     // All entries are zero → singular (det = 0).
     if e_min == i32::MAX {
-        return Ok((BigInt::from(0), 0));
+        return (BigInt::from(0), 0);
     }
 
     let mut a = build_bigint_matrix(&components, e_min);
@@ -380,7 +360,7 @@ fn bareiss_det_int<const D: usize>(m: &Matrix<D>) -> Result<(BigInt, i32), LaErr
         BareissResult::Upper { sign } => sign,
         BareissResult::Singular { .. } => {
             cold_path();
-            return Ok((BigInt::from(0), 0));
+            return (BigInt::from(0), 0);
         }
     };
 
@@ -396,55 +376,49 @@ fn bareiss_det_int<const D: usize>(m: &Matrix<D>) -> Result<(BigInt, i32), LaErr
         .checked_mul(d_i32)
         .expect("exponent overflow in bareiss_det_int");
 
-    Ok((det_int, total_exp))
+    (det_int, total_exp)
 }
 
 /// Compute the exact determinant of a `D×D` matrix using integer-only Bareiss
 /// elimination and return the result as a `BigRational`.
-///
-/// # Errors
-/// Returns [`LaError::NonFinite`] if any matrix entry is NaN or infinite.
-fn bareiss_det<const D: usize>(m: &Matrix<D>) -> Result<BigRational, LaError> {
-    let (det_int, total_exp) = bareiss_det_int(m)?;
-    Ok(bigint_exp_to_bigrational(det_int, total_exp))
+fn bareiss_det_finite<const D: usize>(m: &FiniteMatrix<D>) -> BigRational {
+    let (det_int, total_exp) = bareiss_det_int_finite(m);
+    bigint_exp_to_bigrational(det_int, total_exp)
 }
 
-/// Solve `A x = b` using a hybrid BigInt/BigRational algorithm.
+/// Solve `A x = b` exactly after matrix and RHS finiteness has been proven.
 ///
-/// Forward elimination runs entirely in `BigInt` using fraction-free
-/// Bareiss updates on the augmented system `(A | b)`: every f64 entry
-/// is decomposed into `mantissa × 2^exponent` and scaled to a shared
-/// base `2^e_min` so both the matrix and the RHS become integer.
-/// Because the same power-of-two scaling is applied to both sides of
-/// `A x = b`, the solution is unchanged.  Row swaps also swap the RHS
-/// row; no sign tracking is needed (pivot permutations do not affect
-/// the solution of a linear system).
-///
-/// After forward elimination, the upper-triangular `BigInt` system and
-/// its RHS are lifted into `BigRational` for back-substitution, where
-/// fractions are inherent.  This keeps the expensive `O(D³)` phase
-/// GCD-free and limits `BigRational` work to the cheaper `O(D²)` phase.
-///
-/// Returns the exact solution as `[BigRational; D]`.
+/// Public solve APIs parse raw [`Matrix`] / [`Vector`] values before reaching
+/// this helper, so decomposition can proceed without rediscovering stored
+/// NaN/∞ entries.
 ///
 /// # Errors
-/// Returns [`LaError::NonFinite`] (propagated from `decompose_matrix` /
-/// `decompose_vec`) if any matrix or vector entry is NaN or infinite.
-/// The matrix is validated before the vector, matching public-API order.
 /// Returns [`LaError::Singular`] if the matrix is exactly singular.
-fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<[BigRational; D], LaError> {
-    // Decompose both matrix and RHS (validating finiteness in one pass);
-    // the shared minimum exponent makes every entry of the augmented
-    // system an integer after scaling.
-    let (m_components, m_e_min) = decompose_matrix(m)?;
-    let (b_components, b_e_min) = decompose_vec(b)?;
-    let mut e_min = m_e_min.min(b_e_min);
+fn gauss_solve_finite<const D: usize>(
+    m: &FiniteMatrix<D>,
+    b: &FiniteVector<D>,
+) -> Result<[BigRational; D], LaError> {
+    let (m_components, m_e_min) = decompose_finite_matrix(m);
+    let (b_components, b_e_min) = decompose_finite_vec(b);
+    gauss_solve_components(m_components, m_e_min, b_components, b_e_min)
+}
 
-    // All matrix + RHS entries are zero.  For `D > 0` this surfaces as
-    // singular inside forward elimination; for `D == 0` the elimination
-    // loop body is empty and we return `Ok([])` without touching e_min.
-    // Pick any finite value so the shift computation is well-defined (the
-    // resulting BigInts are all zero either way).
+/// Solve an exact integer-scaled augmented system from decomposed components.
+///
+/// Forward elimination runs in [`BigInt`] using fraction-free Bareiss updates.
+/// The resulting upper-triangular system is then lifted into [`BigRational`] for
+/// back-substitution, limiting rational arithmetic to the `O(D²)` phase.
+///
+/// # Errors
+/// Returns [`LaError::Singular`] if the matrix component table represents an
+/// exactly singular matrix.
+fn gauss_solve_components<const D: usize>(
+    m_components: [[Component; D]; D],
+    m_e_min: i32,
+    b_components: [Component; D],
+    b_e_min: i32,
+) -> Result<[BigRational; D], LaError> {
+    let mut e_min = m_e_min.min(b_e_min);
     if e_min == i32::MAX {
         e_min = 0;
     }
@@ -458,10 +432,6 @@ fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<[BigRatio
         return Err(LaError::Singular { pivot_col });
     }
 
-    // Back-substitution in `BigRational`.  Only the upper triangle of `a`
-    // and the transformed `rhs` are read, each exactly once — so we
-    // `mem::take` instead of `clone` to avoid a per-entry allocation.
-    // `BigInt::default()` is the zero value and does not allocate.
     let mut x: [BigRational; D] = from_fn(|_| BigRational::from_integer(BigInt::from(0)));
     for i in (0..D).rev() {
         let mut sum = BigRational::from_integer(take(&mut rhs[i]));
@@ -474,6 +444,102 @@ fn gauss_solve<const D: usize>(m: &Matrix<D>, b: &Vector<D>) -> Result<[BigRatio
     }
 
     Ok(x)
+}
+
+impl<const D: usize> FiniteMatrix<D> {
+    /// Exact determinant for an already finite matrix.
+    #[inline]
+    fn det_exact(&self) -> BigRational {
+        bareiss_det_finite(self)
+    }
+
+    /// Exact determinant converted to a finite `f64`.
+    ///
+    /// # Errors
+    /// Returns [`LaError::Overflow`] if the exact determinant cannot be
+    /// represented as a finite `f64`.
+    #[inline]
+    fn det_exact_f64(&self) -> Result<f64, LaError> {
+        let exact = self.det_exact();
+        let Some(val) = exact.to_f64() else {
+            cold_path();
+            return Err(LaError::Overflow { index: None });
+        };
+        if val.is_finite() {
+            Ok(val)
+        } else {
+            cold_path();
+            Err(LaError::Overflow { index: None })
+        }
+    }
+
+    /// Exact linear solve for finite inputs.
+    ///
+    /// # Errors
+    /// Returns [`LaError::Singular`] if the matrix is exactly singular.
+    #[inline]
+    fn solve_exact(&self, b: FiniteVector<D>) -> Result<[BigRational; D], LaError> {
+        gauss_solve_finite(self, &b)
+    }
+
+    /// Exact linear solve converted to a finite `f64` vector.
+    ///
+    /// # Errors
+    /// Returns [`LaError::Singular`] if the matrix is exactly singular.
+    /// Returns [`LaError::Overflow`] if any exact solution component cannot be
+    /// represented as a finite `f64`.
+    #[inline]
+    fn solve_exact_f64(&self, b: FiniteVector<D>) -> Result<FiniteVector<D>, LaError> {
+        let exact = self.solve_exact(b)?;
+        let mut result = [0.0f64; D];
+        for (i, val) in exact.iter().enumerate() {
+            let Some(f) = val.to_f64() else {
+                cold_path();
+                return Err(LaError::Overflow { index: Some(i) });
+            };
+            if !f.is_finite() {
+                cold_path();
+                return Err(LaError::Overflow { index: Some(i) });
+            }
+            result[i] = f;
+        }
+        Ok(FiniteVector::new_unchecked(Vector::new(result)))
+    }
+
+    /// Exact determinant sign for an already finite matrix.
+    ///
+    /// The fast `f64` filter may reject overflowed scalar intermediates as
+    /// inconclusive, then fall back to integer Bareiss sign computation.
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] if a direct determinant or error-bound
+    /// computation detects a non-finite condition that is not an inconclusive
+    /// scalar overflow.
+    #[inline]
+    fn det_sign_exact(&self) -> Result<i8, LaError> {
+        match (self.det_direct(), self.det_errbound()) {
+            (Ok(Some(det_f64)), Ok(Some(err))) => {
+                if det_f64 > err {
+                    return Ok(1);
+                }
+                if det_f64 < -err {
+                    return Ok(-1);
+                }
+            }
+            (Err(LaError::NonFinite { row: None, .. }), _)
+            | (_, Err(LaError::NonFinite { row: None, .. })) => {}
+            (Err(err), _) | (_, Err(err)) => return Err(err),
+            _ => {}
+        }
+
+        cold_path();
+        let (det_int, _) = bareiss_det_int_finite(self);
+        Ok(match det_int.sign() {
+            Sign::Plus => 1,
+            Sign::Minus => -1,
+            Sign::NoSign => 0,
+        })
+    }
 }
 
 impl<const D: usize> Matrix<D> {
@@ -509,7 +575,7 @@ impl<const D: usize> Matrix<D> {
     /// Returns [`LaError::NonFinite`] if any matrix entry is NaN or infinite.
     #[inline]
     pub fn det_exact(&self) -> Result<BigRational, LaError> {
-        bareiss_det(self)
+        Ok(FiniteMatrix::try_new(*self)?.det_exact())
     }
 
     /// Exact determinant converted to `f64`.
@@ -539,17 +605,7 @@ impl<const D: usize> Matrix<D> {
     /// represent as a finite `f64`.
     #[inline]
     pub fn det_exact_f64(&self) -> Result<f64, LaError> {
-        let exact = self.det_exact()?;
-        let Some(val) = exact.to_f64() else {
-            cold_path();
-            return Err(LaError::Overflow { index: None });
-        };
-        if val.is_finite() {
-            Ok(val)
-        } else {
-            cold_path();
-            Err(LaError::Overflow { index: None })
-        }
+        FiniteMatrix::try_new(*self)?.det_exact_f64()
     }
 
     /// Exact linear system solve using hybrid integer/rational arithmetic.
@@ -600,7 +656,9 @@ impl<const D: usize> Matrix<D> {
     /// Returns [`LaError::Singular`] if the matrix is exactly singular.
     #[inline]
     pub fn solve_exact(&self, b: Vector<D>) -> Result<[BigRational; D], LaError> {
-        gauss_solve(self, &b)
+        let finite_m = FiniteMatrix::try_new(*self)?;
+        let finite_b = FiniteVector::try_new(b)?;
+        finite_m.solve_exact(finite_b)
     }
 
     /// Exact linear system solve converted to `f64`.
@@ -634,20 +692,9 @@ impl<const D: usize> Matrix<D> {
     /// too large to represent as a finite `f64`.
     #[inline]
     pub fn solve_exact_f64(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        let exact = self.solve_exact(b)?;
-        let mut result = [0.0f64; D];
-        for (i, val) in exact.iter().enumerate() {
-            let Some(f) = val.to_f64() else {
-                cold_path();
-                return Err(LaError::Overflow { index: Some(i) });
-            };
-            if !f.is_finite() {
-                cold_path();
-                return Err(LaError::Overflow { index: Some(i) });
-            }
-            result[i] = f;
-        }
-        Ok(Vector::new(result))
+        let finite_m = FiniteMatrix::try_new(*self)?;
+        let finite_b = FiniteVector::try_new(b)?;
+        Ok(finite_m.solve_exact_f64(finite_b)?.into_vector())
     }
 
     /// Exact determinant sign using adaptive-precision arithmetic.
@@ -690,43 +737,7 @@ impl<const D: usize> Matrix<D> {
     /// Returns [`LaError::NonFinite`] if any matrix entry is NaN or infinite.
     #[inline]
     pub fn det_sign_exact(&self) -> Result<i8, LaError> {
-        // Stage 1: f64 fast filter for D ≤ 4.
-        //
-        // When entries are large (e.g. near f64::MAX), the f64 determinant or
-        // its error bound can overflow even though every individual entry is
-        // finite. In that case the fast filter is inconclusive; fall through to
-        // the exact Bareiss path. Stored NaN/±∞ entries are still rejected
-        // immediately with their source coordinates.
-        match (self.det_direct(), self.det_errbound()) {
-            (Ok(Some(det_f64)), Ok(Some(err))) => {
-                if det_f64 > err {
-                    return Ok(1);
-                }
-                if det_f64 < -err {
-                    return Ok(-1);
-                }
-            }
-            (Err(err @ LaError::NonFinite { row: Some(_), .. }), _)
-            | (_, Err(err @ LaError::NonFinite { row: Some(_), .. })) => return Err(err),
-            (Err(LaError::NonFinite { row: None, .. }), _)
-            | (_, Err(LaError::NonFinite { row: None, .. })) => {}
-            (Err(err), _) | (_, Err(err)) => return Err(err),
-            _ => {}
-        }
-
-        // Stage 2: integer Bareiss fallback — the 2^(D×e_min) scale factor
-        // is always positive, so det_int.sign() == det(A).sign().  This is
-        // the cold path: the fast filter resolves the vast majority of
-        // well-conditioned calls without allocating.  `bareiss_det_int`
-        // validates finiteness via `decompose_matrix`, so NaN/±∞ inputs
-        // surface here as `Err(LaError::NonFinite)`.
-        cold_path();
-        let (det_int, _) = bareiss_det_int(self)?;
-        Ok(match det_int.sign() {
-            Sign::Plus => 1,
-            Sign::Minus => -1,
-            Sign::NoSign => 0,
-        })
+        FiniteMatrix::try_new(*self)?.det_sign_exact()
     }
 }
 
@@ -780,6 +791,37 @@ mod tests {
     // -----------------------------------------------------------------------
     // Macro-generated per-dimension tests (D=2..5)
     // -----------------------------------------------------------------------
+
+    macro_rules! gen_internal_finite_exact_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<internal_finite_exact_paths_reuse_validation_ $d d>]() {
+                    let a = FiniteMatrix::<$d>::try_new(Matrix::<$d>::identity()).unwrap();
+                    let b = FiniteVector::<$d>::try_new(Vector::<$d>::new([1.0; $d])).unwrap();
+
+                    assert_eq!(a.det_exact(), BigRational::from_integer(BigInt::from(1)));
+                    assert!((a.det_exact_f64().unwrap() - 1.0).abs() <= f64::EPSILON);
+                    assert_eq!(a.det_sign_exact().unwrap(), 1);
+
+                    let exact = a.solve_exact(b).unwrap();
+                    for value in exact {
+                        assert_eq!(value, BigRational::from_integer(BigInt::from(1)));
+                    }
+
+                    let exact_f64 = a.solve_exact_f64(b).unwrap();
+                    for value in exact_f64.into_array() {
+                        assert!((value - 1.0).abs() <= f64::EPSILON);
+                    }
+                }
+            }
+        };
+    }
+
+    gen_internal_finite_exact_tests!(2);
+    gen_internal_finite_exact_tests!(3);
+    gen_internal_finite_exact_tests!(4);
+    gen_internal_finite_exact_tests!(5);
 
     macro_rules! gen_det_exact_tests {
         ($d:literal) => {
@@ -1231,7 +1273,8 @@ mod tests {
 
     #[test]
     fn bareiss_det_int_d0() {
-        let (det, exp) = bareiss_det_int(&Matrix::<0>::zero()).unwrap();
+        let m = FiniteMatrix::try_new(Matrix::<0>::zero()).unwrap();
+        let (det, exp) = bareiss_det_int_finite(&m);
         assert_eq!(det, BigInt::from(1));
         assert_eq!(exp, 0);
     }
@@ -1251,7 +1294,8 @@ mod tests {
             (0.5, 1, -1),   // 0.5  =  1 × 2^(-1)
         ];
         for &(input, expected_det_int, expected_exp) in cases {
-            let (det, exp) = bareiss_det_int(&Matrix::<1>::from_rows([[input]])).unwrap();
+            let m = FiniteMatrix::try_new(Matrix::<1>::from_rows([[input]])).unwrap();
+            let (det, exp) = bareiss_det_int_finite(&m);
             assert_eq!(
                 det,
                 BigInt::from(expected_det_int),
@@ -1264,8 +1308,8 @@ mod tests {
     #[test]
     fn bareiss_det_int_d2_known() {
         // det([[1,2],[3,4]]) = -2
-        let m = Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]]);
-        let (det_int, total_exp) = bareiss_det_int(&m).unwrap();
+        let m = FiniteMatrix::try_new(Matrix::<2>::from_rows([[1.0, 2.0], [3.0, 4.0]])).unwrap();
+        let (det_int, total_exp) = bareiss_det_int_finite(&m);
         // Reconstruct and verify.
         let det = bigint_exp_to_bigrational(det_int, total_exp);
         assert_eq!(det, BigRational::from_integer(BigInt::from(-2)));
@@ -1273,15 +1317,21 @@ mod tests {
 
     #[test]
     fn bareiss_det_int_all_zeros() {
-        let (det, _) = bareiss_det_int(&Matrix::<3>::zero()).unwrap();
+        let m = FiniteMatrix::try_new(Matrix::<3>::zero()).unwrap();
+        let (det, _) = bareiss_det_int_finite(&m);
         assert_eq!(det, BigInt::from(0));
     }
 
     #[test]
     fn bareiss_det_int_sign_matches_det_sign_exact() {
         // The sign of det_int should match det_sign_exact for various matrices.
-        let m = Matrix::<3>::from_rows([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
-        let (det_int, _) = bareiss_det_int(&m).unwrap();
+        let m = FiniteMatrix::try_new(Matrix::<3>::from_rows([
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]))
+        .unwrap();
+        let (det_int, _) = bareiss_det_int_finite(&m);
         assert_eq!(det_int.sign(), Sign::Minus); // det = -1
     }
 
@@ -1289,8 +1339,8 @@ mod tests {
     fn bareiss_det_int_fractional_entries() {
         // Entries with negative exponents: 0.5 = 1×2^(-1), 0.25 = 1×2^(-2).
         // det([[0.5, 0.25], [1.0, 1.0]]) = 0.5×1.0 − 0.25×1.0 = 0.25
-        let m = Matrix::<2>::from_rows([[0.5, 0.25], [1.0, 1.0]]);
-        let (det_int, total_exp) = bareiss_det_int(&m).unwrap();
+        let m = FiniteMatrix::try_new(Matrix::<2>::from_rows([[0.5, 0.25], [1.0, 1.0]])).unwrap();
+        let (det_int, total_exp) = bareiss_det_int_finite(&m);
         let det = bigint_exp_to_bigrational(det_int, total_exp);
         assert_eq!(det, BigRational::new(BigInt::from(1), BigInt::from(4)));
     }
@@ -1298,8 +1348,13 @@ mod tests {
     #[test]
     fn bareiss_det_int_d3_with_pivoting() {
         // Zero on diagonal → exercises pivot swap inside bareiss_det_int.
-        let m = Matrix::<3>::from_rows([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
-        let (det_int, total_exp) = bareiss_det_int(&m).unwrap();
+        let m = FiniteMatrix::try_new(Matrix::<3>::from_rows([
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]))
+        .unwrap();
+        let (det_int, total_exp) = bareiss_det_int_finite(&m);
         let det = bigint_exp_to_bigrational(det_int, total_exp);
         assert_eq!(det, BigRational::from_integer(BigInt::from(-1)));
     }
@@ -1311,7 +1366,7 @@ mod tests {
         let mut m = Matrix::<3>::identity();
         assert_eq!(m.set(1, 2, f64::NAN), Some(()));
         assert_eq!(
-            bareiss_det_int(&m),
+            m.det_exact(),
             Err(LaError::NonFinite {
                 row: Some(1),
                 col: 2
@@ -1324,7 +1379,7 @@ mod tests {
         let mut m = Matrix::<2>::identity();
         assert_eq!(m.set(0, 0, f64::INFINITY), Some(()));
         assert_eq!(
-            bareiss_det_int(&m),
+            m.det_exact(),
             Err(LaError::NonFinite {
                 row: Some(0),
                 col: 0
@@ -1338,8 +1393,8 @@ mod tests {
             paste! {
                 #[test]
                 fn [<bareiss_det_int_identity_ $d d>]() {
-                    let (det_int, total_exp) =
-                        bareiss_det_int(&Matrix::<$d>::identity()).unwrap();
+                    let m = FiniteMatrix::try_new(Matrix::<$d>::identity()).unwrap();
+                    let (det_int, total_exp) = bareiss_det_int_finite(&m);
                     let det = bigint_exp_to_bigrational(det_int, total_exp);
                     assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
                 }
@@ -1406,13 +1461,13 @@ mod tests {
 
     #[test]
     fn bareiss_det_d0_is_one() {
-        let det = bareiss_det(&Matrix::<0>::zero()).unwrap();
+        let det = Matrix::<0>::zero().det_exact().unwrap();
         assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
     }
 
     #[test]
     fn bareiss_det_d1_returns_entry() {
-        let det = bareiss_det(&Matrix::<1>::from_rows([[7.0]])).unwrap();
+        let det = Matrix::<1>::from_rows([[7.0]]).det_exact().unwrap();
         assert_eq!(det, f64_to_bigrational(7.0));
     }
 
@@ -1420,7 +1475,7 @@ mod tests {
     fn bareiss_det_d3_with_pivoting() {
         // First column has zero on diagonal → exercises pivot swap + break.
         let m = Matrix::<3>::from_rows([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
-        let det = bareiss_det(&m).unwrap();
+        let det = m.det_exact().unwrap();
         // det of this permutation matrix = -1
         assert_eq!(det, BigRational::from_integer(BigInt::from(-1)));
     }
@@ -1429,7 +1484,7 @@ mod tests {
     fn bareiss_det_singular_all_zeros_in_column() {
         // Column 1 is all zeros below diagonal after elimination → singular.
         let m = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
-        let det = bareiss_det(&m).unwrap();
+        let det = m.det_exact().unwrap();
         assert_eq!(det, BigRational::from_integer(BigInt::from(0)));
     }
 
@@ -2255,21 +2310,21 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // gauss_solve: internal helper tests
+    // exact solve boundary tests
     // -----------------------------------------------------------------------
 
     #[test]
     fn gauss_solve_d0_returns_empty() {
         let a = Matrix::<0>::zero();
         let b = Vector::<0>::zero();
-        assert_eq!(gauss_solve(&a, &b).unwrap().len(), 0);
+        assert_eq!(a.solve_exact(b).unwrap().len(), 0);
     }
 
     #[test]
     fn gauss_solve_d1() {
         let a = Matrix::<1>::from_rows([[2.0]]);
         let b = Vector::<1>::new([6.0]);
-        let x = gauss_solve(&a, &b).unwrap();
+        let x = a.solve_exact(b).unwrap();
         assert_eq!(x[0], f64_to_bigrational(3.0));
     }
 
@@ -2277,7 +2332,7 @@ mod tests {
     fn gauss_solve_singular_column_all_zero() {
         let a = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]);
         let b = Vector::<3>::new([1.0, 2.0, 3.0]);
-        assert_eq!(gauss_solve(&a, &b), Err(LaError::Singular { pivot_col: 1 }));
+        assert_eq!(a.solve_exact(b), Err(LaError::Singular { pivot_col: 1 }));
     }
 
     // -----------------------------------------------------------------------

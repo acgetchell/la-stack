@@ -109,6 +109,10 @@ const EPS: f64 = f64::EPSILON; // 2^-52
 
 /// Absolute error coefficient for [`Matrix::<2>::det_direct`](crate::Matrix::det_direct).
 ///
+/// This constant is not a caller-tuned tolerance. It is the dimension-specific
+/// multiplier that turns the matrix's absolute Leibniz sum into a conservative
+/// bound on floating-point roundoff in the closed-form 2×2 determinant formula.
+///
 /// For any 2×2 matrix `A = [[a, b], [c, d]]` with finite f64 entries,
 ///
 /// ```text
@@ -150,6 +154,10 @@ pub const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
 
 /// Absolute error coefficient for [`Matrix::<3>::det_direct`](crate::Matrix::det_direct).
 ///
+/// This constant is not a caller-tuned tolerance. It is the dimension-specific
+/// multiplier that turns the matrix's absolute Leibniz sum into a conservative
+/// bound on floating-point roundoff in the closed-form 3×3 determinant formula.
+///
 /// For any 3×3 matrix `A` with finite f64 entries,
 ///
 /// ```text
@@ -167,6 +175,10 @@ pub const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
 pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
 
 /// Absolute error coefficient for [`Matrix::<4>::det_direct`](crate::Matrix::det_direct).
+///
+/// This constant is not a caller-tuned tolerance. It is the dimension-specific
+/// multiplier that turns the matrix's absolute Leibniz sum into a conservative
+/// bound on floating-point roundoff in the closed-form 4×4 determinant formula.
 ///
 /// For any 4×4 matrix `A` with finite f64 entries,
 ///
@@ -351,6 +363,13 @@ pub enum LaError {
         /// Matrix dimension `D`.
         dim: usize,
     },
+    /// A symmetric matrix failed the positive-semidefinite LDLT domain check.
+    NotPositiveSemidefinite {
+        /// Factorization column/step where a negative LDLT diagonal was found.
+        pivot_col: usize,
+        /// Negative diagonal value observed at that step.
+        value: f64,
+    },
 }
 
 impl LaError {
@@ -490,6 +509,26 @@ impl LaError {
         Self::Asymmetric { row, col, dim }
     }
 
+    /// Construct a [`LaError::NotPositiveSemidefinite`] for LDLT factorization.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// assert_eq!(
+    ///     LaError::not_positive_semidefinite(1, -3.0),
+    ///     LaError::NotPositiveSemidefinite {
+    ///         pivot_col: 1,
+    ///         value: -3.0,
+    ///     }
+    /// );
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn not_positive_semidefinite(pivot_col: usize, value: f64) -> Self {
+        Self::NotPositiveSemidefinite { pivot_col, value }
+    }
+
     /// Parse a raw tolerance into a finite, non-negative [`Tolerance`].
     ///
     /// # Examples
@@ -560,6 +599,12 @@ impl fmt::Display for LaError {
                     "matrix is not symmetric for dimension {dim}: asymmetric pair ({row}, {col})"
                 )
             }
+            Self::NotPositiveSemidefinite { pivot_col, value } => {
+                write!(
+                    f,
+                    "matrix is not positive semidefinite at LDLT pivot column {pivot_col}: diagonal value {value} < 0"
+                )
+            }
         }
     }
 }
@@ -568,7 +613,7 @@ impl std::error::Error for LaError {}
 
 pub use ldlt::Ldlt;
 pub use lu::Lu;
-pub use matrix::{Matrix, SymmetricMatrix};
+pub use matrix::Matrix;
 pub use vector::Vector;
 
 /// Fallibly dispatch a runtime dimension to a concrete stack-allocated matrix.
@@ -654,11 +699,11 @@ macro_rules! try_with_stack_matrix {
 
 /// Common imports for ergonomic usage.
 ///
-/// This prelude re-exports the primary types and constants: [`Matrix`], [`SymmetricMatrix`],
-/// [`Vector`], [`Lu`], [`Ldlt`], [`Tolerance`], [`LaError`], [`DEFAULT_PIVOT_TOL`],
-/// [`DEFAULT_SINGULAR_TOL`], and the determinant error bound coefficients
-/// [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`]. It also re-exports
-/// [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
+/// This prelude re-exports the primary types and constants: [`Matrix`],
+/// [`Vector`], [`Lu`], [`Ldlt`], [`Tolerance`], [`LaError`],
+/// [`DEFAULT_PIVOT_TOL`], [`DEFAULT_SINGULAR_TOL`], and the determinant error
+/// bound coefficients [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`].
+/// It also re-exports [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
 /// [`try_with_stack_matrix!`] for runtime-to-const matrix dispatch.
 ///
 /// When the `exact` feature is enabled, [`BigInt`] and [`BigRational`]
@@ -672,8 +717,7 @@ macro_rules! try_with_stack_matrix {
 pub mod prelude {
     pub use crate::{
         DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError,
-        Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, SymmetricMatrix, Tolerance, Vector,
-        try_with_stack_matrix,
+        Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, Tolerance, Vector, try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]
@@ -853,6 +897,18 @@ mod tests {
     }
 
     #[test]
+    fn laerror_display_formats_not_positive_semidefinite() {
+        let err = LaError::NotPositiveSemidefinite {
+            pivot_col: 1,
+            value: -3.0,
+        };
+        assert_eq!(
+            err.to_string(),
+            "matrix is not positive semidefinite at LDLT pivot column 1: diagonal value -3 < 0"
+        );
+    }
+
+    #[test]
     fn laerror_is_std_error_with_no_source() {
         let err = LaError::Singular { pivot_col: 0 };
         let e: &dyn std::error::Error = &err;
@@ -867,12 +923,7 @@ mod tests {
         let m = Matrix::<2>::identity();
         let v = Vector::<2>::new([1.0, 2.0]);
         let _ = m.lu(DEFAULT_PIVOT_TOL).unwrap().solve_vec(v).unwrap();
-        let symmetric = SymmetricMatrix::try_new(m).unwrap();
-        let _ = symmetric
-            .ldlt(DEFAULT_SINGULAR_TOL)
-            .unwrap()
-            .solve_vec(v)
-            .unwrap();
+        let _ = m.ldlt(DEFAULT_SINGULAR_TOL).unwrap().solve_vec(v).unwrap();
         assert_eq!(MAX_STACK_MATRIX_DISPATCH_DIM, 7);
     }
 

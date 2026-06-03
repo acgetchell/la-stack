@@ -9,6 +9,113 @@ pub struct Vector<const D: usize> {
     pub(crate) data: [f64; D],
 }
 
+/// Fixed-size vector whose stored entries are all finite.
+///
+/// This proof-carrying wrapper lets callers validate raw [`Vector`] values once
+/// at an input boundary, then pass the finite invariant into numerical
+/// algorithms without rediscovering that no stored entry is NaN or infinite.
+#[must_use]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) struct FiniteVector<const D: usize> {
+    vector: Vector<D>,
+}
+
+impl<const D: usize> FiniteVector<D> {
+    /// Construct a finite vector without checking the invariant.
+    ///
+    /// This is crate-internal so public callers must use [`try_new`](Self::try_new)
+    /// or [`from_array`](Self::from_array), which preserve diagnostics for
+    /// rejected raw entries.
+    #[inline]
+    pub(crate) const fn new_unchecked(vector: Vector<D>) -> Self {
+        Self { vector }
+    }
+
+    /// Validate that every stored vector entry is finite.
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] with `row: None` and the first offending
+    /// entry index when `vector` contains NaN or infinity.
+    #[inline]
+    pub const fn try_new(vector: Vector<D>) -> Result<Self, LaError> {
+        let mut i = 0;
+        while i < D {
+            if !vector.data[i].is_finite() {
+                return Err(LaError::non_finite_at(i));
+            }
+            i += 1;
+        }
+        Ok(Self::new_unchecked(vector))
+    }
+
+    /// Validate raw vector storage and construct a finite vector.
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] with `row: None` and the first offending
+    /// entry index when `data` contains NaN or infinity.
+    #[inline]
+    pub const fn from_array(data: [f64; D]) -> Result<Self, LaError> {
+        Self::try_new(Vector::new(data))
+    }
+
+    /// All-zeros finite vector.
+    #[inline]
+    pub const fn zero() -> Self {
+        Self::new_unchecked(Vector::zero())
+    }
+
+    /// Consume the wrapper and return the underlying raw vector.
+    #[inline]
+    pub const fn into_vector(self) -> Vector<D> {
+        self.vector
+    }
+
+    /// Borrow the backing array without revalidating stored entries.
+    #[cfg(feature = "exact")]
+    #[inline]
+    pub(crate) const fn as_array(&self) -> &[f64; D] {
+        self.vector.as_array()
+    }
+
+    /// Consume and return the backing array.
+    #[inline]
+    #[must_use]
+    pub const fn into_array(self) -> [f64; D] {
+        self.vector.into_array()
+    }
+}
+
+impl<const D: usize> Default for FiniteVector<D> {
+    #[inline]
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
+impl<const D: usize> From<FiniteVector<D>> for Vector<D> {
+    #[inline]
+    fn from(value: FiniteVector<D>) -> Self {
+        value.into_vector()
+    }
+}
+
+impl<const D: usize> TryFrom<Vector<D>> for FiniteVector<D> {
+    type Error = LaError;
+
+    #[inline]
+    fn try_from(value: Vector<D>) -> Result<Self, Self::Error> {
+        Self::try_new(value)
+    }
+}
+
+impl<const D: usize> TryFrom<[f64; D]> for FiniteVector<D> {
+    type Error = LaError;
+
+    #[inline]
+    fn try_from(value: [f64; D]) -> Result<Self, Self::Error> {
+        Self::from_array(value)
+    }
+}
+
 impl<const D: usize> Vector<D> {
     /// Create a vector from a backing array.
     ///
@@ -137,7 +244,19 @@ impl<const D: usize> Vector<D> {
     /// or when the accumulated norm overflows to NaN or infinity.
     #[inline]
     pub const fn norm2_sq(self) -> Result<f64, LaError> {
-        self.dot(self)
+        let mut acc = 0.0;
+        let mut i = 0;
+        while i < D {
+            if !self.data[i].is_finite() {
+                return Err(LaError::non_finite_at(i));
+            }
+            acc = self.data[i].mul_add(self.data[i], acc);
+            if !acc.is_finite() {
+                return Err(LaError::non_finite_at(i));
+            }
+            i += 1;
+        }
+        Ok(acc)
     }
 }
 
@@ -156,6 +275,12 @@ mod tests {
 
     use approx::assert_abs_diff_eq;
     use pastey::paste;
+
+    fn assert_array_abs_eq<const D: usize>(actual: &[f64; D], expected: &[f64; D]) {
+        for i in 0..D {
+            assert_abs_diff_eq!(actual[i], expected[i], epsilon = 0.0);
+        }
+    }
 
     macro_rules! gen_public_api_vector_tests {
         ($d:literal) => {
@@ -307,6 +432,44 @@ mod tests {
 
                     assert_eq!(a.dot(b), Err(LaError::NonFinite { row: None, col: 0 }));
                     assert_eq!(a.norm2_sq(), Err(LaError::NonFinite { row: None, col: 0 }));
+                }
+
+                #[test]
+                fn [<finite_vector_accepts_and_roundtrips_ $d d>]() {
+                    let arr = {
+                        let mut arr = [0.0f64; $d];
+                        let values = [1.0f64, 2.0, 3.0, 4.0, 5.0];
+                        for (dst, src) in arr.iter_mut().zip(values.iter()) {
+                            *dst = *src;
+                        }
+                        arr
+                    };
+
+                    let finite = FiniteVector::<$d>::from_array(arr).unwrap();
+
+                    assert_array_abs_eq(&finite.into_array(), &arr);
+                    assert_array_abs_eq(&finite.into_vector().into_array(), &arr);
+                    assert_array_abs_eq(&FiniteVector::<$d>::zero().into_array(), &[0.0; $d]);
+                    assert_array_abs_eq(Vector::from(finite).as_array(), &arr);
+                    assert_array_abs_eq(
+                        &FiniteVector::<$d>::try_from(Vector::<$d>::new(arr)).unwrap().into_array(),
+                        &arr
+                    );
+                    assert_array_abs_eq(&FiniteVector::<$d>::try_from(arr).unwrap().into_array(), &arr);
+                }
+
+                #[test]
+                fn [<finite_vector_rejects_nonfinite_with_index_ $d d>]() {
+                    let mut arr = [1.0f64; $d];
+                    arr[$d - 1] = f64::INFINITY;
+
+                    assert_eq!(
+                        FiniteVector::<$d>::from_array(arr),
+                        Err(LaError::NonFinite {
+                            row: None,
+                            col: $d - 1,
+                        })
+                    );
                 }
             }
         };

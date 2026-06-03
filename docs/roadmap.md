@@ -35,28 +35,54 @@ The `v0.4.2` milestone collects the work that can be done on today's stable
 Rust while keeping the crate useful to downstream geometry crates. The GitHub
 native Blocking / Is blocked by graph mirrors this order:
 
-- [#100](https://github.com/acgetchell/la-stack/issues/100) - Clarify `f64`
+Completed foundation work:
+
+- [#100](https://github.com/acgetchell/la-stack/issues/100) clarified `f64`
   as the intended floating-point type in README and other documentation.
-- [#109](https://github.com/acgetchell/la-stack/issues/109) - Add fallible
+- [#109](https://github.com/acgetchell/la-stack/issues/109) added fallible
   runtime matrix dispatch and contextual index errors.
-- [#83](https://github.com/acgetchell/la-stack/issues/83) - Change
+- [#83](https://github.com/acgetchell/la-stack/issues/83) changed
   `Matrix::set` to return `Option<()>` instead of `bool`.
-- [#94](https://github.com/acgetchell/la-stack/issues/94) - Validate
-  tolerance arguments consistently across the crate.
-- [#82](https://github.com/acgetchell/la-stack/issues/82) - Unify `det()`
+- [#94](https://github.com/acgetchell/la-stack/issues/94) made tolerance
+  parsing explicit and consistent across the crate.
+- [#82](https://github.com/acgetchell/la-stack/issues/82) unified `det()`
   error behavior across all dimensions as far as stable Rust allows.
-- [#120](https://github.com/acgetchell/la-stack/issues/120) - Run the
+- [#120](https://github.com/acgetchell/la-stack/issues/120) completed the
   parse-don't-validate `NonZero*` audit.
-- [#126](https://github.com/acgetchell/la-stack/issues/126) - Add finite
-  `Matrix` and `Vector` proof types.
+- [#111](https://github.com/acgetchell/la-stack/issues/111),
+  [#112](https://github.com/acgetchell/la-stack/issues/112),
+  [#113](https://github.com/acgetchell/la-stack/issues/113), and
+  [#117](https://github.com/acgetchell/la-stack/issues/117) cleaned up
+  Markdown/YAML tooling, CI speed, and shared Rust workflow/security checks.
+
+Current API-invariant cleanup:
+
+- [#126](https://github.com/acgetchell/la-stack/issues/126) is resolved as an
+  internal parse-don't-validate design rather than a public proof-type API.
+  `Matrix<D>` and `Vector<D>` remain the raw boundary types so callers can pass
+  deserialized, fixture, or otherwise unchecked `f64` storage and receive
+  structured diagnostics. Crate-private `FiniteMatrix<D>` and
+  `FiniteVector<D>` carry the finite-entry proof behind the scenes for LU,
+  LDLT, determinant, error-bound, and exact-arithmetic paths.
+- The public LDLT API remains `Matrix::ldlt`. Symmetry proof storage is kept
+  internal, `SymmetricMatrix` is not exported, asymmetric inputs return
+  `LaError::Asymmetric`, and negative LDLT pivots return
+  `LaError::NotPositiveSemidefinite` rather than being folded into
+  `LaError::Singular`.
+- The determinant error-bound constants `ERR_COEFF_2`, `ERR_COEFF_3`, and
+  `ERR_COEFF_4` are documented as dimension-specific roundoff multipliers over
+  the absolute Leibniz sum, not caller-tuned tolerances.
+
+Remaining release blockers:
+
 - [#125](https://github.com/acgetchell/la-stack/issues/125) - Add a Semgrep
   guardrail against `unwrap` / `expect` in examples, benches, and doctests.
 - [#98](https://github.com/acgetchell/la-stack/issues/98) - Add random-input
   percentile benchmarks to the exact arithmetic suite.
 
-The broad shape is: document scope first, add downstream dispatch ergonomics,
-clean up small API contracts, tighten validation, make reusable invariants
-explicit in proof-carrying types, lock the public examples and benchmarks into
+The broad shape is now: document scalar scope, add downstream dispatch
+ergonomics, clean up small API contracts, tighten validation, encode reusable
+invariants behind the public raw-boundary API, lock examples and benchmarks into
 proper error handling, then finish with broader benchmark work.
 
 ### v0.5.0 Generic Const Expressions
