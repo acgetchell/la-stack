@@ -13,9 +13,9 @@
 
 use core::hint::cold_path;
 
-use crate::matrix::Matrix;
-use crate::vector::Vector;
-use crate::{LDLT_SYMMETRY_REL_TOL, LaError, Tolerance};
+use crate::matrix::{Matrix, SymmetricMatrix};
+use crate::vector::{FiniteVector, Vector};
+use crate::{LaError, Tolerance};
 
 /// LDLT factorization (`A = L D Lᵀ`) for symmetric positive (semi)definite matrices.
 ///
@@ -41,21 +41,10 @@ pub struct Ldlt<const D: usize> {
 }
 
 impl<const D: usize> Ldlt<D> {
-    /// Factor a symmetric square matrix into in-place LDLT storage for [`Matrix::ldlt`].
-    ///
-    /// This is the single validation boundary for LDLT construction: it rejects
-    /// invalid tolerances, asymmetric inputs, non-finite values, and degenerate
-    /// diagonals before callers can observe an [`Ldlt`] value.
-    #[inline]
-    pub(crate) fn factor(a: Matrix<D>, tol: Tolerance) -> Result<Self, LaError> {
-        reject_asymmetric(&a)?;
-        Self::factor_symmetric(a, tol)
-    }
-
     /// Factor a matrix that has already passed LDLT symmetry validation.
     #[inline]
-    pub(crate) fn factor_symmetric(a: Matrix<D>, tol: Tolerance) -> Result<Self, LaError> {
-        let mut f = a;
+    pub(crate) fn factor_symmetric(a: SymmetricMatrix<D>, tol: Tolerance) -> Result<Self, LaError> {
+        let mut f = a.into_matrix();
 
         // LDLT via symmetric rank-1 updates, using only the lower triangle.
         for j in 0..D {
@@ -63,6 +52,10 @@ impl<const D: usize> Ldlt<D> {
             if !d.is_finite() {
                 cold_path();
                 return Err(LaError::non_finite_cell(j, j));
+            }
+            if d < 0.0 {
+                cold_path();
+                return Err(LaError::not_positive_semidefinite(j, d));
             }
             if d <= tol.get() {
                 cold_path();
@@ -155,20 +148,57 @@ impl<const D: usize> Ldlt<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::Singular`] if a diagonal entry `d = D[i,i]` satisfies `d <= tol`
-    /// (non-positive or too small), where `tol` is the tolerance that was used during factorization.
+    /// Returns [`LaError::NotPositiveSemidefinite`] if a diagonal entry
+    /// `d = D[i,i]` is negative.
     ///
-    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected. The `row`/`col` coordinates
-    /// follow the convention documented on [`LaError::NonFinite`]:
+    /// Returns [`LaError::Singular`] if a diagonal entry `d = D[i,i]` satisfies
+    /// `0 <= d <= tol`, where `tol` is the tolerance that was used during factorization.
+    ///
+    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected. If
+    /// `FiniteVector::try_new(b)` rejects a non-finite RHS entry, the error uses
+    /// `row: None` and `col: i`, where `i` is the offending vector index. The
+    /// `row`/`col` coordinates follow the convention documented on
+    /// [`LaError::NonFinite`]:
     ///
     /// - `row: Some(i), col: i` — the stored `D` diagonal at `(i, i)` is non-finite
     ///   (only reachable via direct `Ldlt` construction; [`Matrix::ldlt`](crate::Matrix::ldlt)
     ///   rejects such factorizations).
-    /// - `row: None, col: i` — a computed intermediate (forward/back-substitution
-    ///   accumulator or the quotient `x[i] / diag`) overflowed to NaN/∞ at step `i`.
+    /// - `row: None, col: i` — either RHS entry `b[i]` is non-finite, or a
+    ///   computed intermediate (forward/back-substitution accumulator or the
+    ///   quotient `x[i] / diag`) overflowed to NaN/∞ at step `i`.
     #[inline]
     pub const fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        let mut x = b.data;
+        match FiniteVector::try_new(b) {
+            Ok(finite) => match self.solve_finite_vec(finite) {
+                Ok(x) => Ok(x.into_vector()),
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Solve `A x = b` using this LDLT factorization and a finite right-hand side.
+    ///
+    /// The right-hand side entries are known finite, so this path only checks
+    /// factorization defensive invariants and computed substitution overflows.
+    ///
+    /// # Errors
+    /// Returns [`LaError::NotPositiveSemidefinite`] if a diagonal entry
+    /// `d = D[i,i]` is negative.
+    ///
+    /// Returns [`LaError::Singular`] if a diagonal entry `d = D[i,i]` satisfies
+    /// `0 <= d <= tol`, where `tol` is the tolerance that was used during
+    /// factorization.
+    ///
+    /// Returns [`LaError::NonFinite`] if a stored factorization diagonal is
+    /// corrupt or if a computed substitution intermediate overflows to NaN or
+    /// infinity.
+    #[inline]
+    pub(crate) const fn solve_finite_vec(
+        &self,
+        b: FiniteVector<D>,
+    ) -> Result<FiniteVector<D>, LaError> {
+        let mut x = b.into_array();
 
         // Forward substitution: L y = b (L has unit diagonal).
         let mut i = 0;
@@ -199,6 +229,10 @@ impl<const D: usize> Ldlt<D> {
             if !diag.is_finite() {
                 cold_path();
                 return Err(LaError::non_finite_cell(i, i));
+            }
+            if diag < 0.0 {
+                cold_path();
+                return Err(LaError::not_positive_semidefinite(i, diag));
             }
             if diag <= self.tol.get() {
                 cold_path();
@@ -232,21 +266,7 @@ impl<const D: usize> Ldlt<D> {
             ii += 1;
         }
 
-        Ok(Vector::new(x))
-    }
-}
-
-/// Reject asymmetric matrices before the no-pivot LDLT algorithm reads only the lower triangle.
-///
-/// This preserves the public [`Matrix::ldlt`] contract: an input that would
-/// otherwise produce a factorization for a different implicit matrix returns
-/// [`LaError::Asymmetric`] instead.
-fn reject_asymmetric<const D: usize>(a: &Matrix<D>) -> Result<(), LaError> {
-    if let Some((row, col)) = a.first_asymmetry(LDLT_SYMMETRY_REL_TOL)? {
-        cold_path();
-        Err(LaError::asymmetric(row, col, D))
-    } else {
-        Ok(())
+        Ok(FiniteVector::new_unchecked(Vector::new(x)))
     }
 }
 
@@ -255,6 +275,7 @@ mod tests {
     use super::*;
 
     use crate::DEFAULT_SINGULAR_TOL;
+    use crate::matrix::FiniteMatrix;
 
     use core::assert_matches;
     use core::hint::black_box;
@@ -355,7 +376,10 @@ mod tests {
     #[test]
     fn solve_2x2_known_spd() {
         let a = Matrix::<2>::from_rows(black_box([[4.0, 2.0], [2.0, 3.0]]));
-        let ldlt = (black_box(Ldlt::<2>::factor))(a, DEFAULT_SINGULAR_TOL).unwrap();
+        let ldlt = FiniteMatrix::try_new(a)
+            .unwrap()
+            .ldlt(DEFAULT_SINGULAR_TOL)
+            .unwrap();
 
         let b = Vector::<2>::new(black_box([1.0, 2.0]));
         let x = ldlt.solve_vec(b).unwrap().into_array();
@@ -389,6 +413,32 @@ mod tests {
         let a = Matrix::<2>::from_rows(black_box([[1.0, 1.0], [1.0, 1.0]]));
         let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(err, LaError::Singular { pivot_col: 1 });
+    }
+
+    #[test]
+    fn negative_initial_diagonal_reports_not_positive_semidefinite() {
+        let a = Matrix::<2>::from_rows(black_box([[-1.0, 0.0], [0.0, 1.0]]));
+        let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
+        assert_eq!(
+            err,
+            LaError::NotPositiveSemidefinite {
+                pivot_col: 0,
+                value: -1.0,
+            }
+        );
+    }
+
+    #[test]
+    fn negative_updated_diagonal_reports_not_positive_semidefinite() {
+        let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [2.0, 1.0]]));
+        let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
+        assert_eq!(
+            err,
+            LaError::NotPositiveSemidefinite {
+                pivot_col: 1,
+                value: -3.0,
+            }
+        );
     }
 
     #[test]
@@ -577,9 +627,31 @@ mod tests {
                     );
                 }
 
+                /// `solve_vec` must surface `NotPositiveSemidefinite` when a
+                /// stored diagonal is negative, even though `ldlt` cannot
+                /// produce such a factorization.
+                #[test]
+                fn [<solve_vec_defensive_negative_diagonal_ $d d>]() {
+                    let mut factors = Matrix::<$d>::identity();
+                    factors.rows[$d - 1][$d - 1] = -1.0;
+                    let ldlt = Ldlt::<$d> {
+                        factors,
+                        tol: DEFAULT_SINGULAR_TOL,
+                    };
+                    let b = Vector::<$d>::new([1.0; $d]);
+                    let err = ldlt.solve_vec(b).unwrap_err();
+                    assert_eq!(
+                        err,
+                        LaError::NotPositiveSemidefinite {
+                            pivot_col: $d - 1,
+                            value: -1.0,
+                        }
+                    );
+                }
+
                 /// `solve_vec` must surface `Singular` when a stored
-                /// diagonal is at or below the recorded tolerance, even
-                /// though `factor` cannot produce such a factorization.
+                /// non-negative diagonal is at or below the recorded tolerance,
+                /// even though `ldlt` cannot produce such a factorization.
                 #[test]
                 fn [<solve_vec_defensive_sub_tolerance_diagonal_ $d d>]() {
                     let mut factors = Matrix::<$d>::identity();
@@ -591,6 +663,24 @@ mod tests {
                     let b = Vector::<$d>::new([1.0; $d]);
                     let err = ldlt.solve_vec(b).unwrap_err();
                     assert_eq!(err, LaError::Singular { pivot_col: $d - 1 });
+                }
+
+                /// `solve_vec` rejects raw non-finite right-hand sides before
+                /// entering the finite-RHS solve path.
+                #[test]
+                fn [<solve_vec_rejects_non_finite_rhs_ $d d>]() {
+                    let ldlt = Matrix::<$d>::identity().ldlt(DEFAULT_SINGULAR_TOL).unwrap();
+                    let mut rhs = [1.0; $d];
+                    rhs[$d - 1] = f64::NAN;
+
+                    let err = ldlt.solve_vec(Vector::<$d>::new(rhs)).unwrap_err();
+                    assert_eq!(
+                        err,
+                        LaError::NonFinite {
+                            row: None,
+                            col: $d - 1,
+                        }
+                    );
                 }
             }
         };

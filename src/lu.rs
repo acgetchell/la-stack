@@ -2,8 +2,8 @@
 
 use core::hint::cold_path;
 
-use crate::matrix::Matrix;
-use crate::vector::Vector;
+use crate::matrix::{FiniteMatrix, Matrix};
+use crate::vector::{FiniteVector, Vector};
 use crate::{LaError, Tolerance};
 
 /// LU decomposition (PA = LU) with partial pivoting.
@@ -17,17 +17,17 @@ pub struct Lu<const D: usize> {
 }
 
 impl<const D: usize> Lu<D> {
-    /// Factor a square matrix into in-place LU storage for [`Matrix::lu`](crate::Matrix::lu).
+    /// Factor a finite square matrix into in-place LU storage for
+    /// `FiniteMatrix::lu`.
     ///
-    /// This is the single validation boundary for LU construction: it rejects
-    /// invalid tolerances, non-finite pivot candidates, non-finite elimination
-    /// intermediates, and numerically singular pivots before callers can observe
-    /// a [`Lu`] value.  Computed trailing updates are checked before storage so
-    /// successful factors do not contain a non-finite value produced during
-    /// elimination.
+    /// The input has already proven finite entries, so LU construction rejects
+    /// numerically singular pivots and non-finite elimination intermediates
+    /// before callers can observe a [`Lu`] value. Computed trailing updates are
+    /// checked before storage so successful factors do not contain a non-finite
+    /// value produced during elimination.
     #[inline]
-    pub(crate) fn factor(a: Matrix<D>, tol: Tolerance) -> Result<Self, LaError> {
-        let mut lu = a;
+    pub(crate) fn factor_finite(a: FiniteMatrix<D>, tol: Tolerance) -> Result<Self, LaError> {
+        let mut lu = a.into_matrix();
 
         let mut piv = [0usize; D];
         for (i, p) in piv.iter_mut().enumerate() {
@@ -40,17 +40,9 @@ impl<const D: usize> Lu<D> {
             // Choose pivot row.
             let mut pivot_row = k;
             let mut pivot_abs = lu.rows[k][k].abs();
-            if !pivot_abs.is_finite() {
-                cold_path();
-                return Err(LaError::non_finite_cell(k, k));
-            }
 
             for r in (k + 1)..D {
                 let v = lu.rows[r][k].abs();
-                if !v.is_finite() {
-                    cold_path();
-                    return Err(LaError::non_finite_cell(r, k));
-                }
                 if v > pivot_abs {
                     pivot_abs = v;
                     pivot_row = r;
@@ -69,10 +61,6 @@ impl<const D: usize> Lu<D> {
             }
 
             let pivot = lu.rows[k][k];
-            if !pivot.is_finite() {
-                cold_path();
-                return Err(LaError::non_finite_cell(k, k));
-            }
 
             // Eliminate below pivot.
             for r in (k + 1)..D {
@@ -125,20 +113,52 @@ impl<const D: usize> Lu<D> {
     /// Returns [`LaError::Singular`] if a diagonal entry of `U` satisfies `|u_ii| <= tol`, where
     /// `tol` is the tolerance that was used during factorization.
     ///
-    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected. The `row`/`col` coordinates
-    /// follow the convention documented on [`LaError::NonFinite`]:
+    /// Returns [`LaError::NonFinite`] if NaN/∞ is detected. If
+    /// `FiniteVector::try_new(b)` rejects a non-finite RHS entry, the error uses
+    /// `row: None` and `col: i`, where `i` is the offending vector index. The
+    /// `row`/`col` coordinates follow the convention documented on
+    /// [`LaError::NonFinite`]:
     ///
     /// - `row: Some(i), col: i` — the stored `U` diagonal at `(i, i)` is non-finite
     ///   (only reachable via direct `Lu` construction; [`Matrix::lu`](crate::Matrix::lu)
     ///   rejects such factorizations).
-    /// - `row: None, col: i` — a computed intermediate (forward/back-substitution
-    ///   accumulator or the quotient `sum / diag`) overflowed to NaN/∞ at step `i`.
+    /// - `row: None, col: i` — either RHS entry `b[i]` is non-finite, or a
+    ///   computed intermediate (forward/back-substitution accumulator or the
+    ///   quotient `sum / diag`) overflowed to NaN/∞ at step `i`.
     #[inline]
     pub const fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
+        match FiniteVector::try_new(b) {
+            Ok(finite) => match self.solve_finite_vec(finite) {
+                Ok(x) => Ok(x.into_vector()),
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Solve `A x = b` using this LU factorization and a finite right-hand side.
+    ///
+    /// The right-hand side entries are known finite, so this path only checks
+    /// factorization defensive invariants and computed substitution overflows.
+    ///
+    /// # Errors
+    /// Returns [`LaError::Singular`] if a diagonal entry of `U` satisfies
+    /// `|u_ii| <= tol`, where `tol` is the tolerance that was used during
+    /// factorization.
+    ///
+    /// Returns [`LaError::NonFinite`] if a stored factorization diagonal is
+    /// corrupt or if a computed substitution intermediate overflows to NaN or
+    /// infinity.
+    #[inline]
+    pub(crate) const fn solve_finite_vec(
+        &self,
+        b: FiniteVector<D>,
+    ) -> Result<FiniteVector<D>, LaError> {
         let mut x = [0.0; D];
         let mut i = 0;
+        let b = b.into_array();
         while i < D {
-            x[i] = b.data[self.piv[i]];
+            x[i] = b[self.piv[i]];
             i += 1;
         }
 
@@ -198,7 +218,7 @@ impl<const D: usize> Lu<D> {
             ii += 1;
         }
 
-        Ok(Vector::new(x))
+        Ok(FiniteVector::new_unchecked(Vector::new(x)))
     }
 
     /// Determinant of the original matrix.
@@ -402,7 +422,10 @@ mod tests {
     #[test]
     fn solve_1x1() {
         let a = Matrix::<1>::from_rows(black_box([[2.0]]));
-        let lu = (black_box(Lu::<1>::factor))(a, DEFAULT_PIVOT_TOL).unwrap();
+        let lu = FiniteMatrix::try_new(a)
+            .unwrap()
+            .lu(DEFAULT_PIVOT_TOL)
+            .unwrap();
 
         let b = Vector::<1>::new(black_box([6.0]));
         let solve_fn: fn(&Lu<1>, Vector<1>) -> Result<Vector<1>, LaError> =
@@ -417,7 +440,10 @@ mod tests {
     #[test]
     fn solve_2x2_basic() {
         let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [3.0, 4.0]]));
-        let lu = (black_box(Lu::<2>::factor))(a, DEFAULT_PIVOT_TOL).unwrap();
+        let lu = FiniteMatrix::try_new(a)
+            .unwrap()
+            .lu(DEFAULT_PIVOT_TOL)
+            .unwrap();
         let b = Vector::<2>::new(black_box([5.0, 11.0]));
 
         let solve_fn: fn(&Lu<2>, Vector<2>) -> Result<Vector<2>, LaError> =
@@ -654,6 +680,24 @@ mod tests {
                         err,
                         LaError::NonFinite {
                             row: Some($d - 1),
+                            col: $d - 1,
+                        }
+                    );
+                }
+
+                /// `solve_vec` rejects raw non-finite right-hand sides before
+                /// entering the finite-RHS solve path.
+                #[test]
+                fn [<solve_vec_rejects_non_finite_rhs_ $d d>]() {
+                    let lu = Matrix::<$d>::identity().lu(DEFAULT_PIVOT_TOL).unwrap();
+                    let mut rhs = [1.0; $d];
+                    rhs[$d - 1] = f64::NAN;
+
+                    let err = lu.solve_vec(Vector::<$d>::new(rhs)).unwrap_err();
+                    assert_eq!(
+                        err,
+                        LaError::NonFinite {
+                            row: None,
                             col: $d - 1,
                         }
                     );

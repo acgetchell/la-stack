@@ -128,15 +128,14 @@ fn main() -> Result<(), LaError> {
 ```
 
 > ⚠️ **LDLT invariant:** The input matrix must be **symmetric**. Asymmetric
-> inputs return a typed `LaError::Asymmetric` before factorization starts.
-> Use
-> [`SymmetricMatrix`](https://docs.rs/la-stack/latest/la_stack/struct.SymmetricMatrix.html)
-> when you want to validate symmetry once and carry that proof into LDLT. Use
+> inputs passed to
+> [`Matrix::ldlt`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.ldlt)
+> return a typed `LaError::Asymmetric` before factorization starts. Use
 > [`Matrix::first_asymmetry`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.first_asymmetry)
 > to locate the offending pair, or fall back to `lu()` if your matrices may not
-> be symmetric at all. See
-> [`Matrix::ldlt`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.ldlt)
-> for the raw convenience path.
+> be symmetric at all. Symmetric inputs with a negative LDLT diagonal return
+> `LaError::NotPositiveSemidefinite`; zero or too-small non-negative diagonals
+> return `LaError::Singular`.
 
 ## ⚡ Compile-time determinants (D ≤ 4)
 
@@ -261,15 +260,34 @@ fn main() -> Result<(), LaError> {
 }
 ```
 
-The error coefficients (`ERR_COEFF_2`, `ERR_COEFF_3`, `ERR_COEFF_4`) are also
-exposed for advanced use cases.
+The error coefficients (`ERR_COEFF_2`, `ERR_COEFF_3`, `ERR_COEFF_4`) are the
+dimension-specific constants behind that bound. In plain terms, they answer:
+"how many machine-epsilon-sized rounding mistakes can this closed-form
+determinant formula accumulate?" To get an absolute error bound, `det_errbound()`
+multiplies the coefficient by a size measure of the matrix entries, the
+**absolute Leibniz sum**:
+
+```text
+p(|A|) = sum over determinant terms of product of absolute values
+```
+
+For a 2×2 matrix `[[a, b], [c, d]]`, that scale is `|a*d| + |b*c|`, so:
+
+```text
+|det_direct(A) - det_exact(A)| <= ERR_COEFF_2 * (|a*d| + |b*c|)
+```
+
+The coefficients are not tolerances and are not meant to be tuned by callers;
+they are conservative constants derived from the fixed D ≤ 4 formulas and their
+floating-point rounding chains. They are exposed for advanced users who want to
+compose the same bound themselves.
 
 ## 🧩 API at a glance
 
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
-| `Vector<D>` | `[f64; D]` | Fixed-length vector | `new`, `zero`, `dot`, `norm2_sq` |
-| `Matrix<D>` | `[[f64; D]; D]` | Square matrix | See below |
+| `Vector<D>` | `[f64; D]` | Fixed-length vector for input and computation | `new`, `zero`, `dot`, `norm2_sq` |
+| `Matrix<D>` | `[[f64; D]; D]` | Square matrix for input and computation | See below |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
 
@@ -277,6 +295,9 @@ Storage shown above reflects the intentional `f64` scalar model.
 
 `Matrix<D>` key methods: `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`,
 `det_exact`¹, `det_exact_f64`¹, `det_sign_exact`¹, `solve_exact`¹, `solve_exact_f64`¹.
+Matrix and vector methods validate non-finite inputs at public API boundaries and
+carry internal proof types through computation so successful factors do not store
+NaN or infinity.
 
 ¹ Requires `features = ["exact"]`.
 
