@@ -139,13 +139,18 @@ impl<const D: usize> Lu<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if a computed substitution intermediate
-    /// overflows to NaN or infinity. Raw non-finite right-hand sides are rejected
-    /// by [`Vector::try_new`](crate::Vector::try_new) before a [`Vector`] can be
-    /// passed to this method.
+    /// Returns [`LaError::NonFinite`] if the right-hand side contains
+    /// NaN/infinity or a computed substitution intermediate overflows to NaN or
+    /// infinity. The right-hand side is revalidated at this boundary before
+    /// entering substitution; public callers normally encounter the same
+    /// rejection earlier through [`Vector::try_new`](crate::Vector::try_new).
     #[inline]
     pub const fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        match self.solve_finite_vec(FiniteVector::new(b)) {
+        let b = match FiniteVector::new(b) {
+            Ok(b) => b,
+            Err(err) => return Err(err),
+        };
+        match self.solve_finite_vec(b) {
             Ok(x) => Ok(x.into_vector()),
             Err(err) => Err(err),
         }
@@ -217,7 +222,7 @@ impl<const D: usize> Lu<D> {
             ii += 1;
         }
 
-        Ok(FiniteVector::new(Vector::new_unchecked(x)))
+        Ok(FiniteVector::new_unchecked(Vector::new_unchecked(x)))
     }
 
     /// Determinant of the original matrix.
@@ -421,7 +426,7 @@ mod tests {
     #[test]
     fn solve_1x1() {
         let a = Matrix::<1>::from_rows(black_box([[2.0]]));
-        let lu = FiniteMatrix::new(a).lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = FiniteMatrix::new(a).unwrap().lu(DEFAULT_PIVOT_TOL).unwrap();
 
         let b = Vector::<1>::new(black_box([6.0]));
         let solve_fn: fn(&Lu<1>, Vector<1>) -> Result<Vector<1>, LaError> =
@@ -436,7 +441,7 @@ mod tests {
     #[test]
     fn solve_2x2_basic() {
         let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [3.0, 4.0]]));
-        let lu = FiniteMatrix::new(a).lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = FiniteMatrix::new(a).unwrap().lu(DEFAULT_PIVOT_TOL).unwrap();
         let b = Vector::<2>::new(black_box([5.0, 11.0]));
 
         let solve_fn: fn(&Lu<2>, Vector<2>) -> Result<Vector<2>, LaError> =
@@ -608,7 +613,7 @@ mod tests {
         ($d:literal) => {
             paste! {
                 /// Raw non-finite right-hand sides are rejected before a
-                /// `Vector` can be passed into `solve_vec`.
+                /// public caller can construct a `Vector`.
                 #[test]
                 fn [<solve_vec_rhs_boundary_rejects_non_finite_ $d d>]() {
                     let mut rhs = [1.0; $d];
@@ -616,6 +621,22 @@ mod tests {
 
                     assert_eq!(
                         Vector::<$d>::try_new(rhs),
+                        Err(LaError::NonFinite {
+                            row: None,
+                            col: $d - 1,
+                        })
+                    );
+                }
+
+                #[test]
+                fn [<solve_vec_revalidates_unchecked_rhs_storage_ $d d>]() {
+                    let lu = Matrix::<$d>::identity().lu(DEFAULT_PIVOT_TOL).unwrap();
+                    let mut rhs = [1.0; $d];
+                    rhs[$d - 1] = f64::NAN;
+                    let rhs = Vector::<$d>::new_unchecked(rhs);
+
+                    assert_eq!(
+                        lu.solve_vec(rhs),
                         Err(LaError::NonFinite {
                             row: None,
                             col: $d - 1,

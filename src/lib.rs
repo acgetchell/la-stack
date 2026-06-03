@@ -127,8 +127,8 @@ const EPS: f64 = f64::EPSILON; // 2^-52
 ///
 /// Prefer [`Matrix::det_errbound`](crate::Matrix::det_errbound) unless
 /// you already have the absolute-Leibniz sum available; see
-/// [`Matrix::det_sign_exact`](crate::Matrix::det_sign_exact) (under the
-/// `exact` feature) for the reference adaptive-precision filter.
+/// `Matrix::det_sign_exact` (under the `exact` feature) for the reference
+/// adaptive-precision filter.
 ///
 /// # Example
 /// ```
@@ -706,13 +706,12 @@ macro_rules! try_with_stack_matrix {
 /// It also re-exports [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
 /// [`try_with_stack_matrix!`] for runtime-to-const matrix dispatch.
 ///
-/// When the `exact` feature is enabled, [`BigInt`] and [`BigRational`]
-/// are also re-exported so callers can construct exact values (e.g. as
-/// the expected result of `Matrix::det_exact`) without adding
-/// `num-bigint` / `num-rational` to their own dependencies.  The most
-/// commonly needed `num-traits` items are re-exported alongside them:
-/// [`FromPrimitive`] for `BigRational::from_f64` / `from_i64`,
-/// [`ToPrimitive`] for `BigRational::to_f64` / `to_i64`, and [`Signed`]
+/// When the `exact` feature is enabled, `BigInt` and `BigRational` are also
+/// re-exported so callers can construct exact values (e.g. as the expected
+/// result of `Matrix::det_exact`) without adding `num-bigint` / `num-rational`
+/// to their own dependencies. The most commonly needed `num-traits` items are
+/// re-exported alongside them: `FromPrimitive` for `BigRational::from_f64` /
+/// `from_i64`, `ToPrimitive` for `BigRational::to_f64` / `to_i64`, and `Signed`
 /// for `.is_positive()` / `.is_negative()` / `.abs()`.
 pub mod prelude {
     pub use crate::{

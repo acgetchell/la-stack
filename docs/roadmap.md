@@ -58,12 +58,18 @@ Completed foundation work:
 Current API-invariant cleanup:
 
 - [#126](https://github.com/acgetchell/la-stack/issues/126) is resolved as an
-  internal parse-don't-validate design rather than a public proof-type API.
+  internal parse-don't-validate design rather than a public proof-bearing API.
   `Matrix<D>` and `Vector<D>` remain the raw boundary types so callers can pass
   deserialized, fixture, or otherwise unchecked `f64` storage and receive
   structured diagnostics. Crate-private `FiniteMatrix<D>` and
-  `FiniteVector<D>` carry the finite-entry proof behind the scenes for LU,
-  LDLT, determinant, error-bound, and exact-arithmetic paths.
+  `FiniteVector<D>` are validated domain types that carry the finite-entry proof
+  behind the scenes for LU, LDLT, determinant, error-bound, and exact-arithmetic
+  paths.
+- The public prelude stays focused on downstream composition: raw boundary
+  types, factorization handles, tolerances, crate errors, dispatch helpers, and
+  documented constants. Proof-bearing wrappers remain crate-private, and
+  exact-arithmetic integer/rational re-exports remain gated behind the `"exact"`
+  feature.
 - The public LDLT API remains `Matrix::ldlt`. Symmetry proof storage is kept
   internal, `SymmetricMatrix` is not exported, asymmetric inputs return
   `LaError::Asymmetric`, and negative LDLT pivots return
