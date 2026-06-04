@@ -49,6 +49,16 @@ See [CHANGELOG.md](CHANGELOG.md) for release history and
 - Large matrices/dimensions with parallelism: use [`faer`](https://crates.io/crates/faer) if you need this
 - Alternate floating-point scalar families: `la-stack` supports `f64` and optional exact arithmetic, not `f32` / `f16` APIs
 
+## ✅ Use this crate when
+
+- Your matrices and vectors have small, fixed dimensions known at compile time
+- Stack allocation and `Copy` value semantics fit your data flow
+- You want explicit LU / LDLT / determinant APIs rather than a broad algebra toolkit
+- You need exact determinants, exact determinant signs, or exact linear solves
+  for fixed-size systems
+- Robust predicates matter for geometry-style workloads near degeneracy
+- You prefer a default build with no runtime dependencies
+
 ## 🔢 Scalar types
 
 The scalar model is intentionally limited to `f64` for floating-point work and
@@ -70,6 +80,12 @@ Add this to your `Cargo.toml`:
 [dependencies]
 la-stack = "0.4.2"
 ```
+
+### Feature flags
+
+- `default`: no runtime dependencies
+- `exact`: `BigRational` exact determinant and solve APIs
+- `bench`: Criterion, nalgebra, and faer for internal benchmarks
 
 Solve a 5×5 system via LU:
 
@@ -335,7 +351,14 @@ not store NaN or infinity.
 
 Raw data: [docs/assets/bench/vs_linalg_lu_solve_median.csv](docs/assets/bench/vs_linalg_lu_solve_median.csv)
 
-Summary (median time; lower is better). The “la-stack vs nalgebra/faer” columns show the % time reduction relative to each baseline (positive = la-stack faster):
+Representative benchmark: `lu_solve` factors the matrix and solves one
+right-hand side. Median time is lower-is-better, and the “la-stack vs
+nalgebra/faer” columns show the % time reduction relative to each baseline
+(positive = la-stack faster). This is not an aggregate score across all
+operations.
+
+For the full per-kernel comparison methodology, input construction, and
+release-comparison workflow details, see [docs/BENCHMARKING.md](docs/BENCHMARKING.md).
 
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
 
@@ -397,12 +420,12 @@ CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
 aligned with the local comprehensive validation path.
 
 For coverage commands and report locations, see [`docs/COVERAGE.md`](docs/COVERAGE.md).
-For the full set of developer commands, see `just --list` and `AGENTS.md`.
+For the full contributor workflow, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## 📝 Citation
 
 If you use this library in academic work, please cite it using [CITATION.cff](CITATION.cff) (or GitHub's
-"Cite this repository" feature). A Zenodo DOI will be added for tagged releases.
+"Cite this repository" feature). Tagged releases are archived on Zenodo.
 
 ## 📚 References
 
@@ -410,24 +433,9 @@ For canonical references to the algorithms used by this crate, see [REFERENCES.m
 
 ## 🤖 AI Agents
 
-This repository contains an `AGENTS.md` file, which defines the canonical rules and invariants
-for all AI coding assistants and autonomous agents working on this codebase.
-
-AI tools (including `ChatGPT`, `Claude`, `CodeRabbit`, `KiloCode`, and `WARP`) are expected to read
-and follow `AGENTS.md` when proposing or applying changes.
-
-Portions of this library were developed with the assistance of these AI tools:
-
-- [ChatGPT](https://openai.com/chatgpt)
-- [Claude](https://www.anthropic.com/claude)
-- [CodeRabbit](https://coderabbit.ai/)
-- [KiloCode](https://kilocode.ai/)
-- [WARP](https://www.warp.dev)
-
-> All code was written and/or reviewed and validated by the author.
-
-For full tool citation metadata, see the [AI-Assisted Development Tools](REFERENCES.md#ai-assisted-development-tools)
-section of `REFERENCES.md`.
+AI coding assistants should read [AGENTS.md](AGENTS.md) before proposing or
+applying changes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository's
+AI-assisted development note.
 
 ## 📄 License
 

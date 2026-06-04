@@ -9,6 +9,10 @@ la-stack has two Criterion benchmark suites:
 - **`vs_linalg`** (`benches/vs_linalg.rs`) — compares la-stack against
   nalgebra and faer across D=2–64 for LU, solve, det, dot, norm, etc.
   Use this to answer "why choose la-stack over other crates?"
+  The suite also includes SPD factorization rows for la-stack LDLT, faer
+  LDLT, and nalgebra Cholesky. The nalgebra rows are labelled Cholesky
+  because nalgebra does not expose a dense LDLT factorization in the
+  dependency version used here.
 
 - **`exact`** (`benches/exact.rs`) — measures exact-arithmetic methods
   (`det_exact`, `solve_exact`, `det_sign_exact`, etc.) alongside f64
@@ -36,23 +40,77 @@ la-stack has two Criterion benchmark suites:
   `solve_exact_f64`) so the resulting tables are directly comparable
   across input classes.
 
+## `vs_linalg` methodology
+
+`vs_linalg` is a per-kernel comparison, not a single aggregate score. Each
+reported row compares one operation for one dimension `D`, using Criterion's
+selected statistic from `target/criterion/d{D}/{benchmark}/{sample}/estimates.json`.
+The default report and README table use Criterion's `median.point_estimate`
+in nanoseconds. Lower is better.
+
+All three crates receive equivalent deterministic inputs for a given
+dimension:
+
+- matrix entries come from the same strictly diagonally-dominant generator
+  (`matrix_entry::<D>`)
+- right-hand sides and vector inputs come from the same deterministic vector
+  generator
+- each benchmark uses `black_box` around inputs and outputs to keep the
+  measured operation visible to the optimizer
+
+The integration smoke test `tests/vs_linalg_inputs.rs` reuses the benchmark
+input helpers and verifies that la-stack, nalgebra, and faer agree on the
+determinant, solve, dot, and infinity-norm results for D=2..=5. Run it with
+`cargo test --features bench --test vs_linalg_inputs` when changing benchmark
+input construction, adding comparable kernels, or updating the `faer` or
+`nalgebra` benchmark dependencies.
+
+The main comparable metrics are:
+
+- `det_via_lu` — factor the matrix and compute determinant from the LU factor
+- `lu` — factorization only
+- `lu_solve` — factor the matrix and solve one right-hand side
+- `solve_from_lu` — solve one right-hand side using a precomputed LU factor
+- `det_from_lu` — compute determinant using a precomputed LU factor
+- `dot` — vector dot product
+- `norm2_sq` — squared Euclidean vector norm
+- `inf_norm` — matrix infinity norm, implemented as maximum absolute row sum
+
+Additional SPD metrics compare la-stack LDLT against faer LDLT and nalgebra
+Cholesky. These rows are labelled by algorithm (`ldlt` or `cholesky`) because
+nalgebra does not expose a dense LDLT factorization in the dependency version
+used here. They should be read as SPD factorization/solve/determinant
+comparisons, not as identical algorithm comparisons across all three crates.
+
+Release-signal reports compare latest la-stack measurements against a saved
+la-stack baseline, and show saved nalgebra/faer baseline timings as context
+where a matching peer benchmark exists. That keeps iteration cheap while still
+making the release signal auditable. The full `vs_linalg` run remains the
+source of README plots and crate-to-crate comparison tables.
+
 ## Quick reference
 
 ```bash
 # Run vs_linalg benchmarks
 just bench-vs-linalg
 
+# Run only la-stack rows from vs_linalg
+just bench-vs-linalg-la-stack
+
 # Run exact-arithmetic benchmarks
 just bench-exact
 
-# Save an exact baseline (e.g., before optimising)
-just bench-save-baseline <baseline>
+# Run the cheaper latest measurements used for latest-vs-last reports
+just bench-latest
 
-# Compare current code against a saved baseline
-just bench-compare <baseline>
+# Save a full baseline named "last"
+just bench-save-last
 
-# Generate a snapshot without comparison
+# Compare latest measurements against the saved "last" baseline
 just bench-compare
+
+# Run latest measurements and compare against "last"
+just bench-latest-vs-last
 ```
 
 ## Comparing performance across releases
@@ -60,18 +118,41 @@ just bench-compare
 Criterion baselines are saved into `target/criterion/` and persist across
 `git checkout` but **not** across `cargo clean`.
 
+### Latest vs last
+
+The default workflow is optimized for the common maintenance question:
+"how does latest la-stack compare to the last release?"
+
+At release time, save a full baseline:
+
+```bash
+just bench-save-last
+```
+
+During development, run the cheaper latest path:
+
+```bash
+just bench-latest-vs-last
+```
+
+`bench-latest` runs exact arithmetic plus only the la-stack rows from
+`vs_linalg`. The comparison report still shows the last-release nalgebra
+and faer timings for matching rows, so you can see whether a la-stack
+change improves or weakens the release signal without rerunning third-party
+benchmarks on every iteration.
+
 ### Workflow
 
 ```bash
-# 1. Check out the old release and save its baseline
+# 1. Check out the old release and save its full baseline
 git checkout v0.2.0
 just bench-save-baseline v0.2.0
 
-# 2. Switch to current code and run benchmarks
+# 2. Switch to current code and run latest la-stack measurements
 git checkout main   # or your feature branch
-just bench-exact    # populates target/criterion/*/new/
+just bench-latest   # populates target/criterion/*/new/
 
-# 3. Generate a comparison table in docs/PERFORMANCE.md
+# 3. Generate a local comparison report
 just bench-compare v0.2.0
 ```
 
@@ -79,9 +160,17 @@ You can save multiple baselines and compare against any of them.
 
 ### Output
 
-`just bench-compare` writes `docs/PERFORMANCE.md` (gitignored — it contains
-machine-specific timings). The file includes per-dimension tables showing
-median times, percent change, and speedup for each benchmark.
+`just bench-compare` writes `target/bench-reports/performance.md` by
+default. The file contains machine-specific timings and is intentionally
+local. The report includes per-dimension tables showing median times,
+percent change, speedup, and last-release nalgebra/faer context where a
+matching `vs_linalg` peer exists.
+
+To generate a current snapshot without a saved baseline:
+
+```bash
+uv run bench-compare --snapshot
+```
 
 ## vs\_linalg plotting
 
@@ -102,6 +191,7 @@ At release time, save a baseline so future work can compare against it:
 
 ```bash
 just bench-save-baseline $TAG
+just bench-save-last
 ```
 
 See `docs/RELEASING.md` step 5 for where this fits in the release process.

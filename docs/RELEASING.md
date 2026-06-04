@@ -100,14 +100,21 @@ just plot-vs-linalg-readme
 Review the updated table in `README.md` and the plot in `docs/assets/` for
 accuracy.
 
-5. Save an exact-arithmetic benchmark baseline for this release
+5. Save benchmark baselines for this release
 
 ```bash
-# Run exact benchmarks and save a named Criterion baseline
+# Save a named full baseline for this release
 just bench-save-baseline $TAG
+
+# Also refresh the conventional "last" baseline used by local
+# latest-vs-last performance checks
+just bench-save-last
 ```
 
-This baseline can be compared against in future optimization work.
+These baselines can be compared against in future optimization work. The
+default local report command, `just bench-compare`, compares latest
+measurements against `last` and writes `target/bench-reports/performance.md`;
+it does not update README benchmark tables or committed release artifacts.
 See `docs/BENCHMARKING.md` for the full comparison workflow.
 
 6. Validate the release branch
