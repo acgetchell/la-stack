@@ -461,11 +461,12 @@ python-sync: _ensure-uv
 
 python-typecheck: python-sync
     uv run ty check scripts/
-    uv run mypy scripts/archive_changelog.py scripts/bench_compare.py scripts/check_semgrep_fixtures.py scripts/criterion_dim_plot.py scripts/tag_release.py scripts/postprocess_changelog.py scripts/subprocess_utils.py
+    uv run mypy scripts/archive_changelog.py scripts/bench_compare.py scripts/check_docs_version_sync.py scripts/check_semgrep_fixtures.py scripts/criterion_dim_plot.py scripts/tag_release.py scripts/postprocess_changelog.py scripts/subprocess_utils.py
 
 # Repository-owned Semgrep rules for project-specific diagnostics.
 semgrep: _ensure-uv
     uv run semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .
+    uv run check-docs-version-sync
 
 # Fixture tests for repository-owned Semgrep rules.
 semgrep-test: _ensure-uv
