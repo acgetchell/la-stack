@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -154,7 +155,10 @@ def test_read_estimate_malformed_json_names_file(tmp_path: Path) -> None:
     est = tmp_path / "estimates.json"
     est.write_text("{not json", encoding="utf-8")
 
-    with pytest.raises(ValueError, match=f"malformed Criterion estimates JSON in {est}"):
+    with pytest.raises(
+        ValueError,
+        match=re.escape(f"malformed Criterion estimates JSON in {est}"),
+    ):
         bench_compare._read_estimate(est, "median")
 
 
