@@ -380,6 +380,28 @@ fn bareiss_forward_eliminate<const D: usize>(
     BareissResult::Upper { sign }
 }
 
+/// Compute the determinant scale exponent `D × e_min`.
+///
+/// This centralizes the scale-overflow classification used by public exact
+/// determinant APIs: [`Matrix::det_exact`], [`Matrix::det_exact_f64`], and
+/// [`Matrix::det_sign_exact`] all surface failures from this helper as
+/// [`LaError::DeterminantScaleOverflow`].
+///
+/// # Errors
+/// Returns [`LaError::DeterminantScaleOverflow`] if `D` cannot fit in the
+/// internal `i32` exponent multiplier or if `D × e_min` overflows `i32`.
+fn determinant_scale_exp<const D: usize>(e_min: i32) -> Result<i32, LaError> {
+    let Ok(d_i32) = i32::try_from(D) else {
+        cold_path();
+        return Err(LaError::determinant_scale_overflow(D, e_min));
+    };
+    let Some(total_exp) = e_min.checked_mul(d_i32) else {
+        cold_path();
+        return Err(LaError::determinant_scale_overflow(D, e_min));
+    };
+    Ok(total_exp)
+}
+
 /// Compute the exact determinant using integer-only Bareiss elimination.
 ///
 /// Returns `(det_int, scale_exp)` where the true determinant is
@@ -420,16 +442,7 @@ fn bareiss_det_int_finite<const D: usize>(m: &FiniteMatrix<D>) -> Result<(BigInt
         a[D - 1][D - 1].clone()
     };
 
-    // det(original) = det_int × 2^(D × e_min)
-    let Ok(d_i32) = i32::try_from(D) else {
-        cold_path();
-        return Err(LaError::determinant_scale_overflow(D, e_min));
-    };
-    let Some(total_exp) = e_min.checked_mul(d_i32) else {
-        cold_path();
-        return Err(LaError::determinant_scale_overflow(D, e_min));
-    };
-
+    let total_exp = determinant_scale_exp::<D>(e_min)?;
     Ok((det_int, total_exp))
 }
 
@@ -1365,6 +1378,33 @@ mod tests {
             is_negative: true,
         };
         assert_eq!(component_to_bigint(negative, 1), BigInt::from(-20));
+    }
+
+    #[test]
+    fn determinant_scale_exp_multiplies_dimension_and_min_exponent() {
+        assert_eq!(determinant_scale_exp::<4>(-1074), Ok(-4296));
+    }
+
+    #[test]
+    fn determinant_scale_exp_rejects_dimension_too_large_for_i32() {
+        assert_eq!(
+            determinant_scale_exp::<{ i32::MAX as usize + 1 }>(-1074),
+            Err(LaError::DeterminantScaleOverflow {
+                dim: i32::MAX as usize + 1,
+                min_exponent: -1074,
+            })
+        );
+    }
+
+    #[test]
+    fn determinant_scale_exp_rejects_exponent_product_overflow() {
+        assert_eq!(
+            determinant_scale_exp::<3_000_000>(-1074),
+            Err(LaError::DeterminantScaleOverflow {
+                dim: 3_000_000,
+                min_exponent: -1074,
+            })
+        );
     }
 
     // -----------------------------------------------------------------------
