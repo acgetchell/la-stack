@@ -159,6 +159,20 @@ When user requests commit message generation:
   take references (`&T`, `&mut T`, `&[T]`) as arguments and return borrowed views (`&T`, `&[T]`) when possible.
   Only take ownership or return `Vec`/allocated data when required.
 
+### Documentation
+
+- `src/lib.rs` includes `README.md` with `#![doc = include_str!("../README.md")]`, so README examples are the
+  docs.rs landing page examples.
+- When changing Rust examples in `README.md`, mirror executable versions in the private `readme_doctests` module in
+  `src/lib.rs`. Keep mirrors hidden/private so they do not duplicate the docs.rs landing page, but make them runnable
+  by `cargo test --doc`.
+- README examples that require optional features may remain `rust,ignore` in README for default-feature doctest
+  compatibility, but must have a `#[cfg(feature = "...")]` hidden doctest mirror in `src/lib.rs` and be verified with
+  the matching feature set (for example, `cargo test --features exact --doc`).
+- When intentionally updating package versions or dependency snippets, keep README `la-stack` dependency examples in
+  sync with the package `version` in `Cargo.toml`. Do not perform version bumps unless explicitly requested by the
+  maintainer; see **Public-API stability** above.
+
 ### Dimension Coverage (2D–5D)
 
 This library uses `const`-generic dimensions. Tests for dimension-generic code

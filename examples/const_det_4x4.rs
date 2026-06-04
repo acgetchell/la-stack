@@ -6,24 +6,22 @@
 use la_stack::prelude::*;
 
 /// An example 4×4 matrix with small integer entries.
-const MAT: Matrix<4> = match Matrix::<4>::try_from_rows([
+const MAT: Result<Matrix<4>, LaError> = Matrix::<4>::try_from_rows([
     [1.0, 2.0, 3.0, 4.0],
     [5.0, 6.0, 7.0, 8.0],
     [2.0, 6.0, 1.0, 5.0],
     [3.0, 8.0, 2.0, 9.0],
-]) {
-    Ok(matrix) => matrix,
-    Err(_) => panic!("matrix entries must be finite"),
-};
+]);
 
 /// Determinant computed at compile time.
-const DET: f64 = match MAT.det_direct() {
-    Ok(Some(d)) => d,
-    Ok(None) => panic!("det_direct only supports D <= 4"),
-    Err(_) => panic!("matrix entries must be finite"),
+const DET: Result<Option<f64>, LaError> = match MAT {
+    Ok(matrix) => matrix.det_direct(),
+    Err(err) => Err(err),
 };
 
 fn main() -> Result<(), LaError> {
+    let mat = MAT?;
+
     println!("4×4 matrix:");
     for r in 0..4 {
         print!("  [");
@@ -31,12 +29,15 @@ fn main() -> Result<(), LaError> {
             if c > 0 {
                 print!(", ");
             }
-            print!("{:5.1}", MAT.get_checked(r, c)?);
+            print!("{:5.1}", mat.get_checked(r, c)?);
         }
         println!("]");
     }
     println!();
-    println!("det (computed at compile time) = {DET}");
+    match DET? {
+        Some(det) => println!("det (computed at compile time) = {det}"),
+        None => println!("det_direct is only available for D <= 4"),
+    }
 
     Ok(())
 }

@@ -68,7 +68,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-la-stack = "0.4.1"
+la-stack = "0.4.2"
 ```
 
 Solve a 5×5 system via LU:
@@ -120,7 +120,16 @@ fn main() -> Result<(), LaError> {
         [0.0, 0.0, 0.0, 1.0, 2.0],
     ])?;
 
-    let det = a.ldlt(DEFAULT_SINGULAR_TOL)?.det()?;
+    let ldlt = match a.ldlt(DEFAULT_SINGULAR_TOL) {
+        Ok(ldlt) => ldlt,
+        Err(err @ LaError::Asymmetric { row, col, .. }) => {
+            eprintln!("LDLT requires symmetry; first mismatch at ({row}, {col})");
+            return Err(err);
+        }
+        Err(err) => return Err(err),
+    };
+
+    let det = ldlt.det()?;
     assert!((det - 1.0).abs() <= 1e-12);
 
     Ok(())
@@ -149,18 +158,20 @@ evaluation when inputs are known:
 use la_stack::prelude::*;
 
 // Evaluated entirely at compile time — no runtime cost.
-const DET: Result<Option<f64>, LaError> = {
-    let m = match Matrix::<3>::try_from_rows([
-        [2.0, 0.0, 0.0],
-        [0.0, 3.0, 0.0],
-        [0.0, 0.0, 5.0],
-    ]) {
-        Ok(matrix) => matrix,
-        Err(_) => panic!("matrix entries must be finite"),
-    };
-    m.det_direct()
+const DET: Result<Option<f64>, LaError> = match Matrix::<4>::try_from_rows([
+    [2.0, 0.0, 0.0, 0.0],
+    [0.0, 3.0, 0.0, 0.0],
+    [0.0, 0.0, 5.0, 0.0],
+    [0.0, 0.0, 0.0, 7.0],
+]) {
+    Ok(matrix) => matrix.det_direct(),
+    Err(err) => Err(err),
 };
-assert_eq!(DET, Ok(Some(30.0)));
+
+fn main() -> Result<(), LaError> {
+    assert_eq!(DET?, Some(210.0));
+    Ok(())
+}
 ```
 
 The public `det()` method automatically dispatches through the closed-form path
@@ -180,13 +191,14 @@ rationals (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
 
 ```toml
 [dependencies]
-la-stack = { version = "0.4.1", features = ["exact"] }
+la-stack = { version = "0.4.2", features = ["exact"] }
 ```
 
 **Determinants:**
 
 - **`det_exact()`** — returns the exact determinant as a `BigRational`
 - **`det_exact_f64()`** — returns the exact determinant converted to the nearest `f64`
+  (or `LaError::Overflow` when the exact value is unrepresentable)
 - **`det_sign_exact()`** — returns the provably correct sign (−1, 0, or +1)
 
 **Linear system solve:**
@@ -208,6 +220,19 @@ fn main() -> Result<(), LaError> {
 
     let det = m.det_exact()?;
     assert_eq!(det, BigRational::from_integer(0.into())); // exact zero
+    let det_f64 = m.det_exact_f64()?;
+    assert_eq!(det_f64, 0.0);
+
+    // If the exact determinant cannot fit in f64, keep the BigRational value.
+    let big = f64::MAX / 2.0;
+    let huge = Matrix::<3>::try_from_rows([
+        [0.0, 0.0, 1.0],
+        [big, 0.0, 1.0],
+        [0.0, big, 1.0],
+    ])?;
+    let huge_det = huge.det_exact()?;
+    assert_eq!(huge.det_exact_f64(), Err(LaError::Overflow { index: None }));
+    println!("exact determinant = {huge_det}");
 
     // Exact linear system solve
     let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;

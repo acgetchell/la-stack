@@ -46,12 +46,82 @@ mod readme_doctests {
     ///     [0.0, 0.0, 0.0, 1.0, 2.0],
     /// ])?;
     ///
-    /// let det = a.ldlt(DEFAULT_SINGULAR_TOL)?.det()?;
+    /// let ldlt = match a.ldlt(DEFAULT_SINGULAR_TOL) {
+    ///     Ok(ldlt) => ldlt,
+    ///     Err(err @ LaError::Asymmetric { row, col, .. }) => {
+    ///         eprintln!("LDLT requires symmetry; first mismatch at ({row}, {col})");
+    ///         return Err(err);
+    ///     }
+    ///     Err(err) => return Err(err),
+    /// };
+    ///
+    /// let det = ldlt.det()?;
     /// assert!((det - 1.0).abs() <= 1e-12);
     /// # Ok(())
     /// # }
     /// ```
     fn det_5x5_ldlt_example() {}
+
+    /// ```rust
+    /// use la_stack::prelude::*;
+    ///
+    /// // Evaluated entirely at compile time — no runtime cost.
+    /// const DET: Result<Option<f64>, LaError> = match Matrix::<4>::try_from_rows([
+    ///     [2.0, 0.0, 0.0, 0.0],
+    ///     [0.0, 3.0, 0.0, 0.0],
+    ///     [0.0, 0.0, 5.0, 0.0],
+    ///     [0.0, 0.0, 0.0, 7.0],
+    /// ]) {
+    ///     Ok(matrix) => matrix.det_direct(),
+    ///     Err(err) => Err(err),
+    /// };
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// assert_eq!(DET?, Some(210.0));
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn det_direct_4x4_const_example() {}
+
+    #[cfg(feature = "exact")]
+    /// ```rust
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// // Exact determinant
+    /// let m = Matrix::<3>::try_from_rows([
+    ///     [1.0, 2.0, 3.0],
+    ///     [4.0, 5.0, 6.0],
+    ///     [7.0, 8.0, 9.0],
+    /// ])?;
+    /// assert_eq!(m.det_sign_exact()?, 0); // exactly singular
+    ///
+    /// let det = m.det_exact()?;
+    /// assert_eq!(det, BigRational::from_integer(0.into())); // exact zero
+    /// let det_f64 = m.det_exact_f64()?;
+    /// assert_eq!(det_f64, 0.0);
+    ///
+    /// // If the exact determinant cannot fit in f64, keep the BigRational value.
+    /// let big = f64::MAX / 2.0;
+    /// let huge = Matrix::<3>::try_from_rows([
+    ///     [0.0, 0.0, 1.0],
+    ///     [big, 0.0, 1.0],
+    ///     [0.0, big, 1.0],
+    /// ])?;
+    /// let huge_det = huge.det_exact()?;
+    /// assert_eq!(huge.det_exact_f64(), Err(LaError::Overflow { index: None }));
+    /// println!("exact determinant = {huge_det}");
+    ///
+    /// // Exact linear system solve
+    /// let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
+    /// let b = Vector::<2>::try_new([5.0, 11.0])?;
+    /// let x = a.solve_exact_f64(b)?.into_array();
+    /// assert!((x[0] - 1.0).abs() <= f64::EPSILON);
+    /// assert!((x[1] - 2.0).abs() <= f64::EPSILON);
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn exact_arithmetic_example() {}
 }
 
 #[cfg(feature = "exact")]
