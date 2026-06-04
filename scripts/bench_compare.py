@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Compare exact-arithmetic benchmark results across Criterion baselines.
+"""Compare la-stack benchmark results across Criterion baselines.
 
 Reads Criterion output under:
   target/criterion/{group}/{bench}/{sample}/estimates.json
 
-And writes a markdown performance table to docs/PERFORMANCE.md.
+And writes a local markdown performance report.
 
 Typical workflow (see docs/RELEASING.md):
 
-  # Save baseline at a release tag
-  just bench-save-baseline v0.3.0
+  # Save a full baseline for the last release
+  just bench-save-last
 
   # ... make optimisations ...
 
-  # Compare current performance against the saved baseline
-  just bench-compare v0.3.0
+  # Run the cheap latest-vs-last workflow
+  just bench-latest-vs-last
 
-  # Or just generate a snapshot of current performance
+  # Or just render the report from existing Criterion output
   just bench-compare
 """
 
@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from criterion_dim_plot import METRICS
 from subprocess_utils import ExecutableNotFoundError, run_git_command
 
 # ---------------------------------------------------------------------------
@@ -62,11 +63,48 @@ EXACT_GROUPS: dict[str, list[str]] = {
     "exact_hilbert_5x5": _EXTREME_BENCHES,
 }
 
+VS_LINALG_LA_STACK_ONLY_BENCHES_BY_METRIC: dict[str, list[str]] = {
+    "det_via_lu": ["la_stack_det"],
+}
+VS_LINALG_EXTRA_PEER_BENCHES_BY_METRIC: dict[str, list[tuple[str, str, str]]] = {
+    "lu": [("la_stack_ldlt", "nalgebra_cholesky", "faer_ldlt")],
+    "lu_solve": [("la_stack_ldlt_solve", "nalgebra_cholesky_solve", "faer_ldlt_solve")],
+    "solve_from_lu": [("la_stack_solve_from_ldlt", "nalgebra_solve_from_cholesky", "faer_solve_from_ldlt")],
+    "det_from_lu": [("la_stack_det_from_ldlt", "nalgebra_det_from_cholesky", "faer_det_from_ldlt")],
+}
+VS_LINALG_BENCH_ORDER: list[str] = [
+    bench
+    for metric_key, metric in METRICS.items()
+    for bench in (
+        [
+            metric.la_bench,
+            *VS_LINALG_LA_STACK_ONLY_BENCHES_BY_METRIC.get(metric_key, []),
+            metric.na_bench,
+            metric.fa_bench,
+            *[peer_bench for peer_group in VS_LINALG_EXTRA_PEER_BENCHES_BY_METRIC.get(metric_key, []) for peer_bench in peer_group],
+        ]
+    )
+]
+
+VS_LINALG_LA_STACK_BENCHES: frozenset[str] = frozenset(bench for bench in VS_LINALG_BENCH_ORDER if bench.startswith("la_stack_"))
+VS_LINALG_BASELINE_PEERS: dict[str, tuple[str, str]] = {metric.la_bench: (metric.na_bench, metric.fa_bench) for metric in METRICS.values()}
+VS_LINALG_BASELINE_PEERS.update(
+    {
+        la_stack_bench: (nalgebra_bench, faer_bench)
+        for peer_groups in VS_LINALG_EXTRA_PEER_BENCHES_BY_METRIC.values()
+        for la_stack_bench, nalgebra_bench, faer_bench in peer_groups
+    }
+)
+
+SUITE_CHOICES: tuple[str, ...] = ("all", "exact", "vs_linalg")
+SCOPE_CHOICES: tuple[str, ...] = ("release-signal", "all-benches")
+
 
 @dataclass(frozen=True, slots=True)
 class BenchResult:
     """A single benchmark measurement (point estimate + confidence interval)."""
 
+    suite: str
     group: str
     bench: str
     point_ns: float
@@ -78,12 +116,25 @@ class BenchResult:
 class Comparison:
     """A comparison between baseline and current benchmark results."""
 
+    suite: str
     group: str
     bench: str
     baseline_ns: float
     current_ns: float
     speedup: float  # baseline / current (>1 = faster)
     pct_change: float  # signed percent change (negative = faster)
+    baseline_nalgebra_ns: float | None = None
+    baseline_faer_ns: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReportSettings:
+    """Settings rendered into the benchmark report header."""
+
+    baseline_name: str | None
+    stat: str
+    suite: str
+    scope: str
 
 
 # ---------------------------------------------------------------------------
@@ -95,30 +146,73 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _dim_from_vs_linalg_group(name: str) -> int | None:
+    """Parse a vs_linalg Criterion group name such as d2 or d64."""
+    if not name.startswith("d"):
+        return None
+    suffix = name.removeprefix("d")
+    if not suffix.isdecimal():
+        return None
+    return int(suffix)
+
+
 def _read_estimate(estimates_json: Path, stat: str = "median") -> tuple[float, float, float]:
     """Read a point estimate and confidence interval from Criterion estimates.json.
 
     Returns (point_ns, ci_lo_ns, ci_hi_ns).
     """
-    data = json.loads(estimates_json.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(estimates_json.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as err:
+        msg = f"malformed Criterion estimates JSON in {estimates_json}: {err}"
+        raise ValueError(msg) from err
+
+    if not isinstance(data, dict):
+        msg = f"expected JSON object in {estimates_json}"
+        raise TypeError(msg)
 
     stat_obj = data.get(stat)
     if not isinstance(stat_obj, dict):
         msg = f"stat '{stat}' not found in {estimates_json}"
         raise KeyError(msg)
 
-    point = float(stat_obj["point_estimate"])
+    point = _read_numeric_field(stat_obj, "point_estimate", estimates_json, stat)
     ci = stat_obj.get("confidence_interval")
     if not isinstance(ci, dict):
         return (point, point, point)
 
-    lo = float(ci.get("lower_bound", point))
-    hi = float(ci.get("upper_bound", point))
+    lo = _read_numeric_field(ci, "lower_bound", estimates_json, stat, default=point)
+    hi = _read_numeric_field(ci, "upper_bound", estimates_json, stat, default=point)
     return (point, lo, hi)
 
 
-def _collect_results(criterion_dir: Path, sample: str, stat: str) -> list[BenchResult]:
-    """Collect all benchmark results from Criterion output."""
+def _read_numeric_field(
+    obj: dict[str, object],
+    field: str,
+    estimates_json: Path,
+    stat: str,
+    *,
+    default: float | None = None,
+) -> float:
+    """Read a numeric Criterion field with file and statistic context."""
+    if field not in obj:
+        if default is not None:
+            return default
+        msg = f"field '{field}' for stat '{stat}' not found in {estimates_json}"
+        raise KeyError(msg)
+    value = obj[field]
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        msg = f"field '{field}' for stat '{stat}' in {estimates_json} is not numeric: {value!r}"
+        raise TypeError(msg)
+    try:
+        return float(value)
+    except ValueError as err:
+        msg = f"field '{field}' for stat '{stat}' in {estimates_json} is not numeric: {value!r}"
+        raise ValueError(msg) from err
+
+
+def _collect_exact_results(criterion_dir: Path, sample: str, stat: str) -> list[BenchResult]:
+    """Collect exact-arithmetic benchmark results from Criterion output."""
     results: list[BenchResult] = []
 
     for group, benches in EXACT_GROUPS.items():
@@ -132,17 +226,57 @@ def _collect_results(criterion_dir: Path, sample: str, stat: str) -> list[BenchR
                 continue
 
             point, lo, hi = _read_estimate(est_path, stat)
-            results.append(BenchResult(group=group, bench=bench, point_ns=point, ci_lo_ns=lo, ci_hi_ns=hi))
+            results.append(BenchResult(suite="exact", group=group, bench=bench, point_ns=point, ci_lo_ns=lo, ci_hi_ns=hi))
 
     return results
 
 
-def _collect_comparisons(
+def _ordered_vs_linalg_benches(group_dir: Path, sample: str) -> list[str]:
+    """Return present vs_linalg benches in a stable, metric-aware order."""
+    present = {child.name for child in group_dir.iterdir() if child.is_dir() and (child / sample / "estimates.json").exists()}
+    ordered = [bench for bench in VS_LINALG_BENCH_ORDER if bench in present]
+    extras = sorted(present.difference(VS_LINALG_BENCH_ORDER))
+    return [*ordered, *extras]
+
+
+def _collect_vs_linalg_results(criterion_dir: Path, sample: str, stat: str) -> list[BenchResult]:
+    """Collect vs_linalg benchmark results from Criterion output."""
+    results: list[BenchResult] = []
+    dim_groups: list[tuple[int, Path]] = []
+
+    for group_dir in criterion_dir.iterdir():
+        if not group_dir.is_dir():
+            continue
+        dim = _dim_from_vs_linalg_group(group_dir.name)
+        if dim is None:
+            continue
+        dim_groups.append((dim, group_dir))
+
+    for _dim, group_dir in sorted(dim_groups, key=lambda item: item[0]):
+        for bench in _ordered_vs_linalg_benches(group_dir, sample):
+            est_path = group_dir / bench / sample / "estimates.json"
+            point, lo, hi = _read_estimate(est_path, stat)
+            results.append(BenchResult(suite="vs_linalg", group=group_dir.name, bench=bench, point_ns=point, ci_lo_ns=lo, ci_hi_ns=hi))
+
+    return results
+
+
+def _collect_results(criterion_dir: Path, sample: str, stat: str, suite: str = "all") -> list[BenchResult]:
+    """Collect benchmark results from Criterion output."""
+    results: list[BenchResult] = []
+    if suite in ("all", "exact"):
+        results.extend(_collect_exact_results(criterion_dir, sample, stat))
+    if suite in ("all", "vs_linalg"):
+        results.extend(_collect_vs_linalg_results(criterion_dir, sample, stat))
+    return results
+
+
+def _collect_exact_comparisons(
     criterion_dir: Path,
     baseline_name: str,
     stat: str,
 ) -> list[Comparison]:
-    """Compare current (new) results against a named baseline."""
+    """Compare current exact-arithmetic results against a named baseline."""
     comparisons: list[Comparison] = []
 
     for group, benches in EXACT_GROUPS.items():
@@ -165,6 +299,7 @@ def _collect_comparisons(
 
             comparisons.append(
                 Comparison(
+                    suite="exact",
                     group=group,
                     bench=bench,
                     baseline_ns=base_point,
@@ -174,6 +309,103 @@ def _collect_comparisons(
                 )
             )
 
+    return comparisons
+
+
+def _ordered_vs_linalg_comparison_benches(group_dir: Path, baseline_name: str, scope: str) -> list[str]:
+    """Return present vs_linalg benches that have both current and baseline data."""
+    present = {
+        child.name
+        for child in group_dir.iterdir()
+        if child.is_dir() and (child / "new" / "estimates.json").exists() and (child / baseline_name / "estimates.json").exists()
+    }
+    if scope == "release-signal":
+        present = present.intersection(VS_LINALG_LA_STACK_BENCHES)
+    ordered = [bench for bench in VS_LINALG_BENCH_ORDER if bench in present]
+    extras = sorted(present.difference(VS_LINALG_BENCH_ORDER))
+    return [*ordered, *extras]
+
+
+def _read_optional_point(estimates_json: Path, stat: str) -> float | None:
+    """Read an optional Criterion point estimate."""
+    if not estimates_json.exists():
+        return None
+    point, _, _ = _read_estimate(estimates_json, stat)
+    return point
+
+
+def _baseline_peer_times(group_dir: Path, bench: str, baseline_name: str, stat: str) -> tuple[float | None, float | None]:
+    """Return last-release nalgebra/faer context for a la-stack vs_linalg bench."""
+    peers = VS_LINALG_BASELINE_PEERS.get(bench)
+    if peers is None:
+        return (None, None)
+
+    nalgebra_bench, faer_bench = peers
+    nalgebra_ns = _read_optional_point(group_dir / nalgebra_bench / baseline_name / "estimates.json", stat)
+    faer_ns = _read_optional_point(group_dir / faer_bench / baseline_name / "estimates.json", stat)
+    return (nalgebra_ns, faer_ns)
+
+
+def _collect_vs_linalg_comparisons(
+    criterion_dir: Path,
+    baseline_name: str,
+    stat: str,
+    scope: str,
+) -> list[Comparison]:
+    """Compare current vs_linalg results against a named baseline."""
+    comparisons: list[Comparison] = []
+    dim_groups: list[tuple[int, Path]] = []
+
+    for group_dir in criterion_dir.iterdir():
+        if not group_dir.is_dir():
+            continue
+        dim = _dim_from_vs_linalg_group(group_dir.name)
+        if dim is None:
+            continue
+        dim_groups.append((dim, group_dir))
+
+    for _dim, group_dir in sorted(dim_groups, key=lambda item: item[0]):
+        for bench in _ordered_vs_linalg_comparison_benches(group_dir, baseline_name, scope):
+            new_path = group_dir / bench / "new" / "estimates.json"
+            base_path = group_dir / bench / baseline_name / "estimates.json"
+
+            new_point, _, _ = _read_estimate(new_path, stat)
+            base_point, _, _ = _read_estimate(base_path, stat)
+            baseline_nalgebra_ns, baseline_faer_ns = _baseline_peer_times(group_dir, bench, baseline_name, stat)
+
+            speedup = base_point / new_point if new_point > 0 else float("inf")
+            pct_change = ((new_point - base_point) / base_point) * 100.0 if base_point > 0 else 0.0
+
+            comparisons.append(
+                Comparison(
+                    suite="vs_linalg",
+                    group=group_dir.name,
+                    bench=bench,
+                    baseline_ns=base_point,
+                    current_ns=new_point,
+                    speedup=speedup,
+                    pct_change=pct_change,
+                    baseline_nalgebra_ns=baseline_nalgebra_ns,
+                    baseline_faer_ns=baseline_faer_ns,
+                )
+            )
+
+    return comparisons
+
+
+def _collect_comparisons(
+    criterion_dir: Path,
+    baseline_name: str,
+    stat: str,
+    suite: str = "all",
+    scope: str = "release-signal",
+) -> list[Comparison]:
+    """Compare current (new) results against a named baseline."""
+    comparisons: list[Comparison] = []
+    if suite in ("all", "exact"):
+        comparisons.extend(_collect_exact_comparisons(criterion_dir, baseline_name, stat))
+    if suite in ("all", "vs_linalg"):
+        comparisons.extend(_collect_vs_linalg_comparisons(criterion_dir, baseline_name, stat, scope))
     return comparisons
 
 
@@ -202,7 +434,18 @@ def _format_pct(pct: float) -> str:
 
 class _GroupedItem(Protocol):
     @property
+    def suite(self) -> str: ...
+
+    @property
     def group(self) -> str: ...
+
+
+def _group_by_suite[T: _GroupedItem](items: list[T]) -> dict[str, list[T]]:
+    """Group results or comparisons by benchmark suite."""
+    suites: dict[str, list[T]] = {}
+    for item in items:
+        suites.setdefault(item.suite, []).append(item)
+    return suites
 
 
 def _group_by_group[T: _GroupedItem](items: list[T]) -> dict[str, list[T]]:
@@ -211,6 +454,15 @@ def _group_by_group[T: _GroupedItem](items: list[T]) -> dict[str, list[T]]:
     for item in items:
         groups.setdefault(item.group, []).append(item)
     return groups
+
+
+def _suite_heading(suite: str) -> str:
+    """Turn an internal suite name into a readable heading."""
+    if suite == "exact":
+        return "Exact arithmetic"
+    if suite == "vs_linalg":
+        return "vs_linalg"
+    return suite
 
 
 def _group_heading(group: str) -> str:
@@ -231,22 +483,33 @@ def _group_heading(group: str) -> str:
     return group
 
 
+def _group_heading_for_suite(suite: str, group: str) -> str:
+    """Turn a Criterion group name into a readable heading for its suite."""
+    if suite == "vs_linalg":
+        dim = _dim_from_vs_linalg_group(group)
+        if dim is not None:
+            return f"D={dim}"
+    return _group_heading(group)
+
+
 def _snapshot_tables(results: list[BenchResult], stat: str) -> str:
     """Generate per-dimension markdown tables for a single set of results."""
     stat_label = stat.capitalize()
     sections: list[str] = []
 
-    for group, items in _group_by_group(results).items():
-        lines = [
-            f"### {_group_heading(group)}",
-            "",
-            f"| Benchmark | {stat_label} | 95% CI |",
-            "|-----------|-------:|-------:|",
-        ]
-        for r in items:
-            ci_range = f"[{_format_time(r.ci_lo_ns)}, {_format_time(r.ci_hi_ns)}]"
-            lines.append(f"| {r.bench} | {_format_time(r.point_ns)} | {ci_range} |")
-        sections.append("\n".join(lines))
+    for suite, suite_items in _group_by_suite(results).items():
+        sections.append(f"## {_suite_heading(suite)}")
+        for group, items in _group_by_group(suite_items).items():
+            lines = [
+                f"### {_group_heading_for_suite(suite, group)}",
+                "",
+                f"| Benchmark | {stat_label} | 95% CI |",
+                "|-----------|-------:|-------:|",
+            ]
+            for r in items:
+                ci_range = f"[{_format_time(r.ci_lo_ns)}, {_format_time(r.ci_hi_ns)}]"
+                lines.append(f"| {r.bench} | {_format_time(r.point_ns)} | {ci_range} |")
+            sections.append("\n".join(lines))
 
     return "\n\n".join(sections)
 
@@ -255,16 +518,45 @@ def _comparison_tables(comparisons: list[Comparison], baseline_name: str) -> str
     """Generate per-dimension markdown tables comparing baseline vs current."""
     sections: list[str] = []
 
-    for group, items in _group_by_group(comparisons).items():
-        lines = [
-            f"### {_group_heading(group)}",
-            "",
-            f"| Benchmark | {baseline_name} | Current | Change | Speedup |",
-            "|-----------|-------:|--------:|-------:|--------:|",
-        ]
-        for c in items:
-            lines.append(f"| {c.bench} | {_format_time(c.baseline_ns)} | {_format_time(c.current_ns)} | {_format_pct(c.pct_change)} | {c.speedup:.2f}x |")
-        sections.append("\n".join(lines))
+    for suite, suite_items in _group_by_suite(comparisons).items():
+        sections.append(f"## {_suite_heading(suite)}")
+        for group, items in _group_by_group(suite_items).items():
+            has_peer_context = any(item.baseline_nalgebra_ns is not None or item.baseline_faer_ns is not None for item in items)
+            lines = [
+                f"### {_group_heading_for_suite(suite, group)}",
+                "",
+            ]
+            if has_peer_context:
+                lines.extend(
+                    [
+                        f"| Benchmark | {baseline_name} | Latest | Change | Speedup | {baseline_name} nalgebra | {baseline_name} faer |",
+                        "|-----------|-------:|-------:|-------:|--------:|-------:|-------:|",
+                    ]
+                )
+            else:
+                lines.extend(
+                    [
+                        f"| Benchmark | {baseline_name} | Latest | Change | Speedup |",
+                        "|-----------|-------:|-------:|-------:|--------:|",
+                    ]
+                )
+            for c in items:
+                cells = [
+                    c.bench,
+                    _format_time(c.baseline_ns),
+                    _format_time(c.current_ns),
+                    _format_pct(c.pct_change),
+                    f"{c.speedup:.2f}x",
+                ]
+                if has_peer_context:
+                    cells.extend(
+                        [
+                            _format_time(c.baseline_nalgebra_ns) if c.baseline_nalgebra_ns is not None else "",
+                            _format_time(c.baseline_faer_ns) if c.baseline_faer_ns is not None else "",
+                        ]
+                    )
+                lines.append(f"| {' | '.join(cells)} |")
+            sections.append("\n".join(lines))
 
     return "\n\n".join(sections)
 
@@ -302,26 +594,27 @@ def _get_git_info(root: Path) -> tuple[str, str]:
 def _generate_markdown(
     root: Path,
     table: str,
-    baseline_name: str | None,
-    stat: str,
+    settings: ReportSettings,
 ) -> str:
-    """Generate the complete PERFORMANCE.md content."""
+    """Generate the complete benchmark report content."""
     version = _read_cargo_version(root)
     short_hash, branch = _get_git_info(root)
     now = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     lines = [
-        "# Exact Arithmetic Performance",
+        "# Benchmark Performance",
         "",
         f"**la-stack** v{version} · `{short_hash}` ({branch}) · {now}",
-        f"**Statistic**: {stat}",
+        f"**Statistic**: {settings.stat}",
+        f"**Suite**: {settings.suite}",
+        f"**Scope**: {settings.scope}",
         "",
         "## Benchmark Results",
         "",
     ]
 
-    if baseline_name:
-        lines.append(f"Comparison against baseline **{baseline_name}**:")
+    if settings.baseline_name:
+        lines.append(f"Comparison against baseline **{settings.baseline_name}**:")
         lines.append("")
         lines.append("Negative change = faster. Speedup > 1.00x = improvement.")
     else:
@@ -334,14 +627,17 @@ def _generate_markdown(
             "## How to Update",
             "",
             "```bash",
-            "# Save a baseline at the current release",
-            "just bench-save-baseline <TAG>",
+            "# Save a full last-release baseline",
+            "just bench-save-last",
             "",
-            "# Compare current code against a saved baseline",
-            "just bench-compare <TAG>",
+            "# Run the cheaper latest measurements and compare against last",
+            "just bench-latest-vs-last",
+            "",
+            "# Re-render the report from existing Criterion output",
+            "just bench-compare",
             "",
             "# Generate a snapshot without comparison",
-            "just bench-compare",
+            "uv run bench-compare --snapshot",
             "```",
             "",
             "To compare against a *previous* release, check out the old tag first:",
@@ -350,7 +646,7 @@ def _generate_markdown(
             "git checkout v0.2.0",
             "just bench-save-baseline v0.2.0",
             "git checkout main",
-            "just bench-exact",
+            "just bench-latest",
             "just bench-compare v0.2.0",
             "```",
             "",
@@ -370,13 +666,18 @@ def _generate_markdown(
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compare exact-arithmetic benchmark results across Criterion baselines.",
+        description="Compare la-stack benchmark results across Criterion baselines.",
     )
     parser.add_argument(
         "baseline",
         nargs="?",
-        default=None,
-        help="Baseline name to compare against (e.g. 'v0.3.0'). Omit for a snapshot.",
+        default="last",
+        help="Baseline name to compare against (default: 'last').",
+    )
+    parser.add_argument(
+        "--snapshot",
+        action="store_true",
+        help="Generate a current-performance snapshot instead of comparing against a baseline.",
     )
     parser.add_argument(
         "--stat",
@@ -385,16 +686,44 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Statistic to compare (default: median).",
     )
     parser.add_argument(
+        "--suite",
+        default="all",
+        choices=SUITE_CHOICES,
+        help="Benchmark suite to compare (default: all).",
+    )
+    parser.add_argument(
+        "--scope",
+        default="release-signal",
+        choices=SCOPE_CHOICES,
+        help="Comparison scope: release-signal compares la-stack latest against last with baseline peer context; all-benches compares every present bench.",
+    )
+    parser.add_argument(
         "--criterion-dir",
         default="target/criterion",
         help="Criterion output directory (default: target/criterion).",
     )
     parser.add_argument(
         "--output",
-        default="docs/PERFORMANCE.md",
-        help="Output markdown file (default: docs/PERFORMANCE.md).",
+        default="target/bench-reports/performance.md",
+        help="Output markdown file (default: target/bench-reports/performance.md).",
     )
     return parser.parse_args(argv)
+
+
+def _run_bench_hint(suite: str) -> str:
+    if suite == "exact":
+        return "just bench-exact"
+    if suite == "vs_linalg":
+        return "just bench-vs-linalg-la-stack"
+    return "just bench-latest"
+
+
+def _save_baseline_hint(suite: str, baseline: str) -> str:
+    if suite == "exact":
+        return f"just bench-save-baseline {baseline} exact"
+    if suite == "vs_linalg":
+        return f"just bench-save-baseline {baseline} vs_linalg"
+    return f"just bench-save-baseline {baseline}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -406,33 +735,41 @@ def main(argv: list[str] | None = None) -> int:
 
     if not criterion_dir.is_dir():
         print(
-            f"No Criterion results found at {criterion_dir}.\nRun benchmarks first:\n  just bench-exact\n",
+            f"No Criterion results found at {criterion_dir}.\nRun benchmarks first:\n  {_run_bench_hint(args.suite)}\n",
             file=sys.stderr,
         )
         return 2
 
-    if args.baseline:
-        comparisons = _collect_comparisons(criterion_dir, args.baseline, args.stat)
+    baseline_name = None if args.snapshot else args.baseline
+
+    if baseline_name:
+        comparisons = _collect_comparisons(criterion_dir, baseline_name, args.stat, args.suite, args.scope)
         if not comparisons:
             print(
-                f"No comparison data found for baseline '{args.baseline}'.\n"
-                f"Save a baseline first:\n  just bench-save-baseline {args.baseline}\n"
-                "Then run benchmarks:\n  just bench-exact\n",
+                f"No comparison data found for baseline '{baseline_name}'.\n"
+                f"Save a baseline first:\n  {_save_baseline_hint(args.suite, baseline_name)}\n"
+                f"Then run benchmarks:\n  {_run_bench_hint(args.suite)}\n",
                 file=sys.stderr,
             )
             return 2
-        table = _comparison_tables(comparisons, args.baseline)
+        table = _comparison_tables(comparisons, baseline_name)
     else:
-        results = _collect_results(criterion_dir, "new", args.stat)
+        results = _collect_results(criterion_dir, "new", args.stat, args.suite)
         if not results:
             print(
-                "No benchmark results found.\nRun benchmarks first:\n  just bench-exact\n",
+                f"No benchmark results found.\nRun benchmarks first:\n  {_run_bench_hint(args.suite)}\n",
                 file=sys.stderr,
             )
             return 2
         table = _snapshot_tables(results, args.stat)
 
-    md = _generate_markdown(root, table, args.baseline, args.stat)
+    settings = ReportSettings(
+        baseline_name=baseline_name,
+        stat=args.stat,
+        suite=args.suite,
+        scope=args.scope,
+    )
+    md = _generate_markdown(root, table, settings)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(md, encoding="utf-8")

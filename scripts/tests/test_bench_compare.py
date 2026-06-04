@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -39,6 +40,25 @@ def _build_criterion_tree(criterion_dir: Path, stat: str = "median") -> None:
 
     random_group = criterion_dir / "exact_random_percentile_d3"
     _write_estimates(random_group / "det_exact_p95" / "new" / "estimates.json", stat, 33000.0)
+
+
+def _build_vs_linalg_tree(criterion_dir: Path, stat: str = "median") -> None:
+    """Create fake Criterion vs_linalg data with latest la-stack and baseline peer rows."""
+    group = criterion_dir / "d2"
+
+    _write_estimates(group / "la_stack_lu_solve" / "new" / "estimates.json", stat, 10.0)
+    _write_estimates(group / "la_stack_lu_solve" / "last" / "estimates.json", stat, 20.0)
+    _write_estimates(group / "nalgebra_lu_solve" / "last" / "estimates.json", stat, 30.0)
+    _write_estimates(group / "faer_lu_solve" / "last" / "estimates.json", stat, 40.0)
+
+    _write_estimates(group / "la_stack_ldlt_solve" / "new" / "estimates.json", stat, 12.0)
+    _write_estimates(group / "la_stack_ldlt_solve" / "last" / "estimates.json", stat, 24.0)
+    _write_estimates(group / "nalgebra_cholesky_solve" / "last" / "estimates.json", stat, 36.0)
+    _write_estimates(group / "faer_ldlt_solve" / "last" / "estimates.json", stat, 48.0)
+
+    # Present only in the baseline; release-signal comparison should not require
+    # latest third-party measurements.
+    _write_estimates(group / "nalgebra_lu_solve" / "new" / "estimates.json", stat, 31.0)
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +151,43 @@ def test_read_estimate_missing_stat(tmp_path: Path) -> None:
         bench_compare._read_estimate(est, "mean")
 
 
+def test_read_estimate_malformed_json_names_file(tmp_path: Path) -> None:
+    est = tmp_path / "estimates.json"
+    est.write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(f"malformed Criterion estimates JSON in {est}"),
+    ):
+        bench_compare._read_estimate(est, "median")
+
+
+def test_read_estimate_missing_point_estimate_names_field(tmp_path: Path) -> None:
+    est = tmp_path / "estimates.json"
+    est.write_text(json.dumps({"median": {}}), encoding="utf-8")
+
+    with pytest.raises(KeyError, match="field 'point_estimate' for stat 'median' not found"):
+        bench_compare._read_estimate(est, "median")
+
+
+def test_read_estimate_non_numeric_ci_bound_names_field(tmp_path: Path) -> None:
+    est = tmp_path / "estimates.json"
+    est.write_text(
+        json.dumps(
+            {
+                "median": {
+                    "point_estimate": 1.0,
+                    "confidence_interval": {"lower_bound": "fast", "upper_bound": 2.0},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"field 'lower_bound' for stat 'median'.*not numeric"):
+        bench_compare._read_estimate(est, "median")
+
+
 # ---------------------------------------------------------------------------
 # collect_results / collect_comparisons
 # ---------------------------------------------------------------------------
@@ -187,6 +244,33 @@ def test_collect_comparisons_missing_baseline(tmp_path: Path) -> None:
     assert comparisons == []
 
 
+def test_collect_vs_linalg_release_signal_uses_baseline_peer_context(tmp_path: Path) -> None:
+    _build_vs_linalg_tree(tmp_path)
+    comparisons = bench_compare._collect_comparisons(tmp_path, "last", "median")
+
+    assert [c.bench for c in comparisons] == ["la_stack_lu_solve", "la_stack_ldlt_solve"]
+    lu = comparisons[0]
+    assert lu.baseline_ns == 20.0
+    assert lu.current_ns == 10.0
+    assert lu.baseline_nalgebra_ns == 30.0
+    assert lu.baseline_faer_ns == 40.0
+
+    ldlt = comparisons[1]
+    assert ldlt.baseline_nalgebra_ns == 36.0
+    assert ldlt.baseline_faer_ns == 48.0
+
+
+def test_collect_vs_linalg_all_benches_includes_latest_peer_rows(tmp_path: Path) -> None:
+    _build_vs_linalg_tree(tmp_path)
+    comparisons = bench_compare._collect_comparisons(tmp_path, "last", "median", scope="all-benches")
+
+    assert [c.bench for c in comparisons] == [
+        "la_stack_lu_solve",
+        "nalgebra_lu_solve",
+        "la_stack_ldlt_solve",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Table generation
 # ---------------------------------------------------------------------------
@@ -222,7 +306,17 @@ def test_comparison_tables_per_dimension(tmp_path: Path) -> None:
     tables = bench_compare._comparison_tables(comparisons, "v0.3.0")
     assert "### D=2" in tables
     assert "### D=3" in tables
-    assert "| Benchmark | v0.3.0 | Current | Change | Speedup |" in tables
+    assert "| Benchmark | v0.3.0 | Latest | Change | Speedup |" in tables
+
+
+def test_comparison_tables_include_vs_linalg_peer_context(tmp_path: Path) -> None:
+    _build_vs_linalg_tree(tmp_path)
+    comparisons = bench_compare._collect_comparisons(tmp_path, "last", "median")
+    tables = bench_compare._comparison_tables(comparisons, "last")
+
+    assert "| Benchmark | last | Latest | Change | Speedup | last nalgebra | last faer |" in tables
+    assert "| la_stack_lu_solve | 20.0 ns | 10.0 ns | **-50.0%** | 2.00x | 30.0 ns | 40.0 ns |" in tables
+    assert "| la_stack_ldlt_solve | 24.0 ns | 12.0 ns | **-50.0%** | 2.00x | 36.0 ns | 48.0 ns |" in tables
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +329,7 @@ def test_main_snapshot_writes_output(tmp_path: Path) -> None:
     _build_criterion_tree(criterion_dir)
     output = tmp_path / "PERFORMANCE.md"
 
-    rc = bench_compare.main(["--criterion-dir", str(criterion_dir), "--output", str(output)])
+    rc = bench_compare.main(["--snapshot", "--criterion-dir", str(criterion_dir), "--output", str(output)])
     assert rc == 0
     assert output.exists()
 

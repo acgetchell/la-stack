@@ -170,25 +170,50 @@ bench:
 bench-compile:
     RUSTFLAGS='-D warnings' cargo bench --no-run --features bench
 
-# Compare exact-arithmetic benchmarks against a saved baseline.
-# Omit the baseline arg to generate a snapshot without comparison.
-bench-compare baseline="": python-sync
+# Run the cheaper latest measurements used for latest-vs-last reports.
+bench-latest: bench-vs-linalg-la-stack bench-exact
+
+# Run latest measurements and render the latest-vs-last performance report.
+bench-latest-vs-last baseline="last": bench-latest python-sync
+    uv run bench-compare {{baseline}}
+
+# Compare latest measurements against a saved baseline.
+# Defaults to the `last` full-release baseline.
+bench-compare baseline="last" suite="all" scope="release-signal": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     baseline="{{baseline}}"
-    if [ -n "$baseline" ]; then
-        uv run bench-compare "$baseline"
-    else
-        uv run bench-compare
-    fi
+    uv run bench-compare "$baseline" --suite "{{suite}}" --scope "{{scope}}"
 
 # Run the exact-arithmetic benchmark suite.
 bench-exact:
     cargo bench --features bench,exact --bench exact
 
-# Save a Criterion baseline for the exact-arithmetic benchmarks.
-bench-save-baseline tag:
-    cargo bench --features bench,exact --bench exact -- --save-baseline {{tag}}
+# Save a full Criterion baseline for the previous release signal.
+bench-save-last:
+    just bench-save-baseline last
+
+# Save a Criterion baseline. Defaults to all release-signal benchmark suites.
+bench-save-baseline tag suite="all":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    suite="{{suite}}"
+    case "$suite" in
+        all)
+            cargo bench --features bench --bench vs_linalg -- --save-baseline {{tag}}
+            cargo bench --features bench,exact --bench exact -- --save-baseline {{tag}}
+            ;;
+        exact)
+            cargo bench --features bench,exact --bench exact -- --save-baseline {{tag}}
+            ;;
+        vs_linalg)
+            cargo bench --features bench --bench vs_linalg -- --save-baseline {{tag}}
+            ;;
+        *)
+            echo "unknown benchmark suite: $suite" >&2
+            exit 2
+            ;;
+    esac
 
 # Bench the la-stack vs nalgebra/faer comparison suite.
 bench-vs-linalg filter="":
@@ -200,6 +225,10 @@ bench-vs-linalg filter="":
     else
         cargo bench --features bench --bench vs_linalg
     fi
+
+# Bench only la-stack rows from the vs_linalg suite for cheap latest-vs-last comparisons.
+bench-vs-linalg-la-stack:
+    cargo bench --features bench --bench vs_linalg -- la_stack
 
 # Quick iteration (reduced runtime, no Criterion HTML).
 bench-vs-linalg-quick filter="":
@@ -358,7 +387,11 @@ help-workflows:
     @echo "Benchmarks:"
     @echo "  just bench                 # Run benchmarks"
     @echo "  just bench-compile          # Compile benches with warnings-as-errors"
+    @echo "  just bench-latest           # Run cheap latest measurements"
+    @echo "  just bench-latest-vs-last   # Run latest and compare against last"
+    @echo "  just bench-save-last        # Save full baseline as 'last'"
     @echo "  just bench-vs-linalg        # Run vs_linalg bench (optional filter)"
+    @echo "  just bench-vs-linalg-la-stack # Run la-stack rows from vs_linalg"
     @echo "  just bench-vs-linalg-quick  # Quick vs_linalg bench (reduced samples)"
     @echo ""
     @echo "Benchmark plotting:"

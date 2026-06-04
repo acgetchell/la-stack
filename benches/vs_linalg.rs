@@ -11,11 +11,21 @@ use std::fmt::Display;
 use std::hint::black_box;
 
 use criterion::Criterion;
-use faer::linalg::solvers::{PartialPivLu, Solve};
-use faer::perm::PermRef;
+use faer::linalg::solvers::Solve;
+use faer::{Mat, Side};
+use nalgebra::{SMatrix, SVector};
 use pastey::paste;
 
-use la_stack::{DEFAULT_PIVOT_TOL, Matrix, Vector};
+use la_stack::{DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, Matrix, Vector};
+
+mod common {
+    pub mod vs_linalg;
+}
+
+use common::vs_linalg::{
+    faer_det_from_ldlt, faer_det_from_partial_piv_lu, make_matrix_rows, make_vector_array,
+    matrix_entry, nalgebra_inf_norm, vector_entry,
+};
 
 /// Return a successful benchmark operation result or panic with the named operation.
 fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
@@ -30,126 +40,11 @@ fn require_some<T>(value: Option<T>, operation: &str) -> T {
     value.unwrap_or_else(|| panic!("{operation} returned no result"))
 }
 
-/// Return `det(P)` for faer's permutation representation.
-///
-/// Sign(det(P)) is +1 for even permutations and -1 for odd. Parity is computed
-/// from the number of cycles: `sign = (-1)^(n - cycles)`.
-fn faer_perm_sign(p: PermRef<'_, usize>) -> f64 {
-    let (forward, _inverse) = p.arrays();
-    let n = forward.len();
-
-    let mut seen = vec![false; n];
-    let mut cycles = 0usize;
-
-    for start in 0..n {
-        if seen[start] {
-            continue;
-        }
-        cycles += 1;
-
-        let mut i = start;
-        while !seen[i] {
-            seen[i] = true;
-            i = forward[i];
-        }
-    }
-
-    if (n - cycles).is_multiple_of(2) {
-        1.0
-    } else {
-        -1.0
-    }
-}
-
-/// Compute a determinant from a faer partial-pivot LU factorization.
-fn faer_det_from_partial_piv_lu(lu: &PartialPivLu<f64>) -> f64 {
-    // For PA = LU with unit-lower L, det(A) = det(P) * det(U).
-    let u = lu.U();
-    let mut det = 1.0;
-    for i in 0..u.nrows() {
-        det *= u[(i, i)];
-    }
-    det * faer_perm_sign(lu.P())
-}
-
-/// Return a deterministic, strictly diagonally-dominant benchmark matrix entry.
-#[inline]
-#[allow(clippy::cast_precision_loss)] // D, r, c are small integers, precision loss is not an issue.
-fn matrix_entry<const D: usize>(r: usize, c: usize) -> f64 {
-    if r == c {
-        // Strict diagonal dominance for stability.
-        (r as f64).mul_add(1.0e-3, (D as f64) + 1.0)
-    } else {
-        // Small, varying off-diagonals.
-        0.1 / ((r + c + 1) as f64)
-    }
-}
-
-/// Build the shared matrix rows used by all crates for a dimension.
-#[inline]
-fn make_matrix_rows<const D: usize>() -> [[f64; D]; D] {
-    let mut rows = [[0.0; D]; D];
-
-    let mut r = 0;
-    while r < D {
-        let mut c = 0;
-        while c < D {
-            rows[r][c] = matrix_entry::<D>(r, c);
-            c += 1;
-        }
-        r += 1;
-    }
-
-    rows
-}
-
-/// Return a deterministic benchmark vector entry.
-#[inline]
-#[allow(clippy::cast_precision_loss)] // i is a small integer, precision loss is not an issue.
-fn vector_entry(i: usize, offset: f64) -> f64 {
-    (i as f64) + 1.0 + offset
-}
-
-/// Build the shared vector input used by all crates for a dimension.
-#[inline]
-fn make_vector_array<const D: usize>(offset: f64) -> [f64; D] {
-    let mut data = [0.0; D];
-
-    let mut i = 0;
-    while i < D {
-        data[i] = vector_entry(i, offset);
-        i += 1;
-    }
-
-    data
-}
-
-/// Compute nalgebra's matrix infinity norm using la-stack's row-sum convention.
-#[inline]
-fn nalgebra_inf_norm<const D: usize>(m: &nalgebra::SMatrix<f64, D, D>) -> f64 {
-    // Infinity norm = max absolute row sum.
-    let mut max_row_sum = 0.0;
-
-    let mut r = 0;
-    while r < D {
-        let mut row_sum = 0.0;
-        let mut c = 0;
-        while c < D {
-            row_sum += m[(r, c)].abs();
-            c += 1;
-        }
-        if row_sum > max_row_sum {
-            max_row_sum = row_sum;
-        }
-        r += 1;
-    }
-
-    max_row_sum
-}
-
-macro_rules! gen_vs_linalg_benches_for_dim {
-    ($c:expr, $d:literal) => {
-        paste! {{
+macro_rules! define_vs_linalg_benches_for_dim {
+    ($fn_name:ident, $d:literal) => {
+        paste! {
+            #[allow(clippy::too_many_lines)]
+            fn $fn_name(c: &mut Criterion) {
             // Isolate each dimension's inputs to keep types and captures clean.
             {
                 let a = require_ok(
@@ -169,22 +64,25 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                     "la_stack vector construction",
                 );
 
-                let na = nalgebra::SMatrix::<f64, $d, $d>::from_fn(|r, c| matrix_entry::<$d>(r, c));
-                let nrhs = nalgebra::SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 0.0));
-                let nv1 = nalgebra::SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 0.0));
-                let nv2 = nalgebra::SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 1.0));
+                let na = SMatrix::<f64, $d, $d>::from_fn(|r, c| matrix_entry::<$d>(r, c));
+                let nrhs = SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 0.0));
+                let nv1 = SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 0.0));
+                let nv2 = SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 1.0));
 
-                let fa = faer::Mat::<f64>::from_fn($d, $d, |r, c| matrix_entry::<$d>(r, c));
-                let frhs = faer::Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 0.0));
-                let fv1 = faer::Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 0.0));
-                let fv2 = faer::Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 1.0));
+                let fa = Mat::<f64>::from_fn($d, $d, |r, c| matrix_entry::<$d>(r, c));
+                let frhs = Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 0.0));
+                let fv1 = Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 0.0));
+                let fv2 = Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 1.0));
 
                 // Precompute LU once for solve-only / det-only benchmarks.
                 let a_lu = require_ok(a.lu(DEFAULT_PIVOT_TOL), "precomputed la_stack LU");
+                let a_ldlt = require_ok(a.ldlt(DEFAULT_SINGULAR_TOL), "precomputed la_stack LDLT");
                 let na_lu = na.clone().lu();
+                let na_cholesky = require_some(na.clone().cholesky(), "precomputed nalgebra Cholesky");
                 let fa_lu = fa.partial_piv_lu();
+                let fa_ldlt = require_ok(fa.ldlt(Side::Lower), "precomputed faer LDLT");
 
-                let mut [<group_d $d>] = ($c).benchmark_group(concat!("d", stringify!($d)));
+                let mut [<group_d $d>] = c.benchmark_group(concat!("d", stringify!($d)));
 
                 // === Determinant via LU (factor + det) ===
                 [<group_d $d>].bench_function("la_stack_det_via_lu", |bencher| {
@@ -247,6 +145,37 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                     });
                 });
 
+                // === SPD factorization (LDLT / Cholesky) ===
+                [<group_d $d>].bench_function("la_stack_ldlt", |bencher| {
+                    bencher.iter(|| {
+                        let ldlt = require_ok(
+                            black_box(a).ldlt(DEFAULT_SINGULAR_TOL),
+                            "la_stack LDLT factorization",
+                        );
+                        let _ = black_box(ldlt);
+                    });
+                });
+
+                [<group_d $d>].bench_function("nalgebra_cholesky", |bencher| {
+                    bencher.iter(|| {
+                        let chol = require_some(
+                            black_box(na.clone()).cholesky(),
+                            "nalgebra Cholesky factorization",
+                        );
+                        black_box(chol);
+                    });
+                });
+
+                [<group_d $d>].bench_function("faer_ldlt", |bencher| {
+                    bencher.iter(|| {
+                        let ldlt = require_ok(
+                            black_box(&fa).ldlt(Side::Lower),
+                            "faer LDLT factorization",
+                        );
+                        black_box(ldlt);
+                    });
+                });
+
                 // === LU solve (factor + solve) ===
                 [<group_d $d>].bench_function("la_stack_lu_solve", |bencher| {
                     bencher.iter(|| {
@@ -274,6 +203,43 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                     bencher.iter(|| {
                         let lu = black_box(&fa).partial_piv_lu();
                         let x = lu.solve(black_box(&frhs));
+                        black_box(x);
+                    });
+                });
+
+                // === SPD solve (factor + solve) ===
+                [<group_d $d>].bench_function("la_stack_ldlt_solve", |bencher| {
+                    bencher.iter(|| {
+                        let ldlt = require_ok(
+                            black_box(a).ldlt(DEFAULT_SINGULAR_TOL),
+                            "la_stack LDLT factorization",
+                        );
+                        let x = require_ok(
+                            ldlt.solve_vec(black_box(rhs)),
+                            "la_stack LDLT solve",
+                        );
+                        let _ = black_box(x);
+                    });
+                });
+
+                [<group_d $d>].bench_function("nalgebra_cholesky_solve", |bencher| {
+                    bencher.iter(|| {
+                        let chol = require_some(
+                            black_box(na.clone()).cholesky(),
+                            "nalgebra Cholesky factorization",
+                        );
+                        let x = chol.solve(black_box(&nrhs));
+                        black_box(x);
+                    });
+                });
+
+                [<group_d $d>].bench_function("faer_ldlt_solve", |bencher| {
+                    bencher.iter(|| {
+                        let ldlt = require_ok(
+                            black_box(&fa).ldlt(Side::Lower),
+                            "faer LDLT factorization",
+                        );
+                        let x = ldlt.solve(black_box(&frhs));
                         black_box(x);
                     });
                 });
@@ -306,6 +272,31 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                     });
                 });
 
+                // === Solve using a precomputed SPD factorization ===
+                [<group_d $d>].bench_function("la_stack_solve_from_ldlt", |bencher| {
+                    bencher.iter(|| {
+                        let x = require_ok(
+                            a_ldlt.solve_vec(black_box(rhs)),
+                            "precomputed la_stack LDLT solve",
+                        );
+                        let _ = black_box(x);
+                    });
+                });
+
+                [<group_d $d>].bench_function("nalgebra_solve_from_cholesky", |bencher| {
+                    bencher.iter(|| {
+                        let x = na_cholesky.solve(black_box(&nrhs));
+                        black_box(x);
+                    });
+                });
+
+                [<group_d $d>].bench_function("faer_solve_from_ldlt", |bencher| {
+                    bencher.iter(|| {
+                        let x = fa_ldlt.solve(black_box(&frhs));
+                        black_box(x);
+                    });
+                });
+
                 // === Determinant from a precomputed LU ===
                 [<group_d $d>].bench_function("la_stack_det_from_lu", |bencher| {
                     bencher.iter(|| {
@@ -324,6 +315,28 @@ macro_rules! gen_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("faer_det_from_lu", |bencher| {
                     bencher.iter(|| {
                         let det = faer_det_from_partial_piv_lu(&fa_lu);
+                        black_box(det);
+                    });
+                });
+
+                // === Determinant from a precomputed SPD factorization ===
+                [<group_d $d>].bench_function("la_stack_det_from_ldlt", |bencher| {
+                    bencher.iter(|| {
+                        let det = require_ok(a_ldlt.det(), "precomputed la_stack LDLT determinant");
+                        black_box(det);
+                    });
+                });
+
+                [<group_d $d>].bench_function("nalgebra_det_from_cholesky", |bencher| {
+                    bencher.iter(|| {
+                        let det = na_cholesky.determinant();
+                        black_box(det);
+                    });
+                });
+
+                [<group_d $d>].bench_function("faer_det_from_ldlt", |bencher| {
+                    bencher.iter(|| {
+                        let det = faer_det_from_ldlt(&fa_ldlt);
                         black_box(det);
                     });
                 });
@@ -418,22 +431,32 @@ macro_rules! gen_vs_linalg_benches_for_dim {
 
                 [<group_d $d>].finish();
             }
-        }}
+        }
+    }
     };
 }
+
+define_vs_linalg_benches_for_dim!(bench_d2, 2);
+define_vs_linalg_benches_for_dim!(bench_d3, 3);
+define_vs_linalg_benches_for_dim!(bench_d4, 4);
+define_vs_linalg_benches_for_dim!(bench_d5, 5);
+define_vs_linalg_benches_for_dim!(bench_d8, 8);
+define_vs_linalg_benches_for_dim!(bench_d16, 16);
+define_vs_linalg_benches_for_dim!(bench_d32, 32);
+define_vs_linalg_benches_for_dim!(bench_d64, 64);
 
 fn main() {
     let mut c = Criterion::default().configure_from_args();
 
-    gen_vs_linalg_benches_for_dim!(&mut c, 2);
-    gen_vs_linalg_benches_for_dim!(&mut c, 3);
-    gen_vs_linalg_benches_for_dim!(&mut c, 4);
-    gen_vs_linalg_benches_for_dim!(&mut c, 5);
+    bench_d2(&mut c);
+    bench_d3(&mut c);
+    bench_d4(&mut c);
+    bench_d5(&mut c);
 
-    gen_vs_linalg_benches_for_dim!(&mut c, 8);
-    gen_vs_linalg_benches_for_dim!(&mut c, 16);
-    gen_vs_linalg_benches_for_dim!(&mut c, 32);
-    gen_vs_linalg_benches_for_dim!(&mut c, 64);
+    bench_d8(&mut c);
+    bench_d16(&mut c);
+    bench_d32(&mut c);
+    bench_d64(&mut c);
 
     c.final_summary();
 }

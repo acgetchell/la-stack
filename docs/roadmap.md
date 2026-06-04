@@ -6,12 +6,12 @@ maturity, downstream need, and validation quality. Concrete implementation work
 is tracked as GitHub issues; keep this document focused on release direction,
 ordering, and non-goals.
 
-Pre-1.0 releases may still revise public APIs when that makes the crate more
-correct or easier to use safely. The `v0.4.x` line should stay on stable Rust
-and focus on documentation, downstream ergonomics, API-contract cleanup,
-validation, invariant audits, and benchmark coverage. The `v0.5.0` line is
-reserved for work that depends on stabilized `generic_const_exprs` or equivalent
-const-generic expressiveness.
+Until v1.0, API breaks are acceptable when they improve correctness,
+performance, or orthogonality. The `v0.4.x` line should stay on stable Rust and
+focus on documentation, downstream ergonomics, API-contract cleanup, validation,
+invariant audits, benchmark coverage, and release/tooling hardening. The
+`v0.5.0` line is reserved for work that depends on stabilized
+`generic_const_exprs` or equivalent const-generic expressiveness.
 
 ## Scalar Scope
 
@@ -31,9 +31,8 @@ coverage should use larger linear-algebra ecosystems such as `nalgebra` or
 
 ### v0.4.2 Stable Rust Cleanup
 
-The `v0.4.2` milestone collects the work that can be done on today's stable
-Rust while keeping the crate useful to downstream geometry crates. The GitHub
-native Blocking / Is blocked by graph mirrors this order:
+The `v0.4.2` milestone collected work that could be done on stable Rust while
+keeping the crate useful to downstream geometry crates:
 
 Completed foundation work:
 
@@ -55,7 +54,7 @@ Completed foundation work:
   [#117](https://github.com/acgetchell/la-stack/issues/117) cleaned up
   Markdown/YAML tooling, CI speed, and shared Rust workflow/security checks.
 
-Current API-invariant cleanup:
+API-invariant cleanup:
 
 - [#126](https://github.com/acgetchell/la-stack/issues/126) is resolved as an
   internal parse-don't-validate design rather than a public proof-bearing API.
@@ -79,7 +78,7 @@ Current API-invariant cleanup:
   `ERR_COEFF_4` are documented as dimension-specific roundoff multipliers over
   the absolute Leibniz sum, not caller-tuned tolerances.
 
-Remaining release blockers:
+Final release blockers:
 
 - [#125](https://github.com/acgetchell/la-stack/issues/125) - Add a Semgrep
   guardrail against `unwrap` / `expect` in examples, benches, and doctests.
@@ -90,6 +89,19 @@ The broad shape is now: document scalar scope, add downstream dispatch
 ergonomics, clean up small API contracts, tighten validation, encode reusable
 invariants behind the public raw-boundary API, lock examples and benchmarks into
 proper error handling, then finish with broader benchmark work.
+
+### v0.4.3 Benchmark and Tooling Hardening
+
+Before the const-generic API revision, tighten the benchmark and tooling story so
+performance claims are auditable across releases and Python support scripts have
+a modern typed baseline.
+
+- [#137](https://github.com/acgetchell/la-stack/issues/137) - Investigate
+  checked vector kernel performance for v0.4.3.
+- [#138](https://github.com/acgetchell/la-stack/issues/138) - Add first-class
+  cross-release performance comparison tooling.
+- [#142](https://github.com/acgetchell/la-stack/issues/142) - Update Python
+  tooling to 3.13 and parse scripts at boundaries.
 
 ### v0.5.0 Generic Const Expressions
 

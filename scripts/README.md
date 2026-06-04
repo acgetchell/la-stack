@@ -14,6 +14,25 @@ uv sync --group dev
 
 ## How to use it
 
+### Comparing latest performance against the last release
+
+The comparison script reads Criterion output and writes a local report to
+`target/bench-reports/performance.md` by default:
+
+```bash
+# Save a full release baseline named "last"
+just bench-save-last
+
+# Run exact benches plus la-stack rows from vs_linalg, then compare to last
+just bench-latest-vs-last
+
+# Re-render from existing Criterion output
+just bench-compare
+```
+
+Use `uv run bench-compare --snapshot` for a no-baseline snapshot, or
+`uv run bench-compare <baseline>` to compare against a named saved baseline.
+
 ### Plotting Criterion benchmarks (la-stack vs nalgebra/faer)
 
 The plotter reads Criterion output under:
