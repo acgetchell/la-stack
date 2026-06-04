@@ -35,6 +35,23 @@ fn small_int_f64() -> impl Strategy<Value = f64> {
     (-10i32..=10i32).prop_map(f64::from)
 }
 
+fn mixed_scale_finite_f64() -> impl Strategy<Value = f64> {
+    prop_oneof![
+        Just(0.0),
+        Just(-0.0),
+        Just(f64::from_bits(1)),
+        Just(-f64::from_bits(1)),
+        Just(f64::MIN_POSITIVE),
+        Just(-f64::MIN_POSITIVE),
+        Just(1.0),
+        Just(-1.0),
+        Just(3.5),
+        Just(-7.25),
+        Just(f64::MAX / 4.0),
+        Just(-f64::MAX / 4.0),
+    ]
+}
+
 /// Multiply `A · x` entirely in `BigRational`, lifting each f64 matrix
 /// entry via `BigRational::from_f64`.  Used by residual assertions.
 ///
@@ -333,3 +350,63 @@ macro_rules! gen_det_sign_fast_filter_boundary_proptests {
 gen_det_sign_fast_filter_boundary_proptests!(2);
 gen_det_sign_fast_filter_boundary_proptests!(3);
 gen_det_sign_fast_filter_boundary_proptests!(4);
+
+/// Mixed-scale diagonal matrices stress the shared-exponent conversion path:
+/// zeros, subnormals, tiny normal values, ordinary values, and very large
+/// finite values can all appear in the same determinant.  The independent
+/// expectation uses `BigRational::from_f64` on each diagonal value.
+macro_rules! gen_mixed_scale_diagonal_exact_det_proptests {
+    ($d:literal) => {
+        paste! {
+            proptest! {
+                #![proptest_config(ProptestConfig::with_cases(32))]
+
+                #[test]
+                fn [<det_exact_handles_mixed_scale_diagonal_ $d d>](
+                    diag in proptest::array::[<uniform $d>](mixed_scale_finite_f64()),
+                ) {
+                    let mut rows = [[0.0f64; $d]; $d];
+                    let mut expected = BigRational::from_integer(BigInt::from(1));
+                    for i in 0..$d {
+                        rows[i][i] = diag[i];
+                        expected *= BigRational::from_f64(diag[i])
+                            .expect("strategy only emits finite f64 values");
+                    }
+                    let m = Matrix::<$d>::try_from_rows(rows).unwrap();
+
+                    let expected_sign = if expected.is_positive() {
+                        1
+                    } else if expected.is_negative() {
+                        -1
+                    } else {
+                        0
+                    };
+                    let expected_f64 = expected.to_f64();
+
+                    prop_assert_eq!(m.det_exact().unwrap(), expected);
+                    prop_assert_eq!(m.det_sign_exact().unwrap(), expected_sign);
+
+                    match expected_f64 {
+                        Some(expected_f64) if expected_f64.is_finite() => {
+                            prop_assert_eq!(
+                                m.det_exact_f64().unwrap().to_bits(),
+                                expected_f64.to_bits()
+                            );
+                        }
+                        _ => {
+                            prop_assert_eq!(
+                                m.det_exact_f64(),
+                                Err(LaError::Overflow { index: None })
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    };
+}
+
+gen_mixed_scale_diagonal_exact_det_proptests!(2);
+gen_mixed_scale_diagonal_exact_det_proptests!(3);
+gen_mixed_scale_diagonal_exact_det_proptests!(4);
+gen_mixed_scale_diagonal_exact_det_proptests!(5);

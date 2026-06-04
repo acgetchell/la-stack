@@ -39,14 +39,11 @@ impl<const D: usize> FiniteVector<D> {
     /// entry index when `vector` contains NaN or infinity.
     #[inline]
     pub(crate) const fn new(vector: Vector<D>) -> Result<Self, LaError> {
-        let mut i = 0;
-        while i < D {
-            if !vector.data[i].is_finite() {
-                return Err(LaError::non_finite_at(i));
-            }
-            i += 1;
+        if let Some(index) = Vector::<D>::first_non_finite_entry_in(&vector.data) {
+            Err(LaError::non_finite_at(index))
+        } else {
+            Ok(Self::new_unchecked(vector))
         }
-        Ok(Self::new_unchecked(vector))
     }
 
     /// Validate raw vector storage and construct a finite vector.
@@ -199,14 +196,11 @@ impl<const D: usize> Vector<D> {
     /// `data` contains NaN or infinity.
     #[inline]
     pub const fn try_new(data: [f64; D]) -> Result<Self, LaError> {
-        let mut i = 0;
-        while i < D {
-            if !data[i].is_finite() {
-                return Err(LaError::non_finite_at(i));
-            }
-            i += 1;
+        if let Some(index) = Self::first_non_finite_entry_in(&data) {
+            Err(LaError::non_finite_at(index))
+        } else {
+            Ok(Self::new_unchecked(data))
         }
-        Ok(Self::new_unchecked(data))
     }
 
     /// Construct a vector without checking that entries are finite.
@@ -216,6 +210,22 @@ impl<const D: usize> Vector<D> {
     #[inline]
     pub(crate) const fn new_unchecked(data: [f64; D]) -> Self {
         Self { data }
+    }
+
+    /// Return the first non-finite stored entry in index order.
+    ///
+    /// Shared by the public raw-storage boundary and the internal finite-vector
+    /// proof wrapper so both paths report the same first offending index with
+    /// [`LaError::NonFinite`].
+    const fn first_non_finite_entry_in(data: &[f64; D]) -> Option<usize> {
+        let mut i = 0;
+        while i < D {
+            if !data[i].is_finite() {
+                return Some(i);
+            }
+            i += 1;
+        }
+        None
     }
 
     /// All-zeros vector.
