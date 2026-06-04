@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.2] - 2026-06-04
 
 ### Added
 
@@ -73,6 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Document that LU and LDLT solve_vec reject non-finite RHS entries with LaError::NonFinite metadata.
   - Cite the Bareiss reference in the exact solve helper docs and describe exact-arithmetic growth and complexity.
   - Cover finite proof defaults and non-finite RHS solve boundaries in unit tests.
+- Clarify finite solve and norm guarantees [`fb71485`](https://github.com/acgetchell/la-stack/commit/fb71485cac0b464b2fa9ee949140a558b7738781)
+
+  - State that LU and LDLT solve_vec use floating-point substitution without a certified absolute rounding-error bound.
+  - Clarify that inf_norm reports NonFinite for unchecked stored NaN/∞ as well as row-sum overflow.
+  - Exercise the unchecked finite-proof fixture path directly in exact tests.
 
 ### Fixed
 
@@ -100,6 +105,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Measure exact random percentile benchmarks over repeated corpus timings and cumulative input sets.
   - Tighten Codecov status thresholds and extend benchmark workflow timeout.
   - Keep Semgrep constructor fixtures aligned with public API guardrails.
+- Revalidate public compute inputs [`ffca00e`](https://github.com/acgetchell/la-stack/commit/ffca00e9dd6fde5e57c8064f69807a76e45a469e)
+
+  - Parse Matrix and Vector storage into private finite proof-bearing types at public compute boundaries.
+  - Reject unchecked non-finite storage before LU, LDLT, determinant, norm, dot, and exact-arithmetic paths can proceed.
+  - Keep unchecked proof-wrapper constructors crate-private for internal paths with local finiteness proofs.
+  - Document the private proof-bearing invariant model in the API overview and roadmap.
 
 ### Maintenance
 
@@ -606,6 +617,6 @@ Older releases are archived by minor series:
 - [0.2.x](docs/archive/changelog/0.2.md)
 - [0.1.x](docs/archive/changelog/0.1.md)
 
-[Unreleased]: https://github.com/acgetchell/la-stack/compare/v0.4.1...HEAD
+[0.4.2]: https://github.com/acgetchell/la-stack/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/acgetchell/la-stack/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/acgetchell/la-stack/compare/v0.3.0...v0.4.0

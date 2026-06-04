@@ -13,7 +13,7 @@
 
 use core::hint::cold_path;
 
-use crate::matrix::{Matrix, SymmetricMatrix};
+use crate::matrix::{FiniteMatrix, Matrix, SymmetricMatrix};
 use crate::vector::{FiniteVector, Vector};
 use crate::{LaError, Tolerance};
 
@@ -55,11 +55,11 @@ impl<const D: usize> LdltFactors<D> {
         Self { storage }
     }
 
-    /// Return a copied factor row.
+    /// Borrow a factor row.
     #[inline]
     #[must_use]
-    const fn row(&self, index: usize) -> [f64; D] {
-        self.storage.rows[index]
+    const fn row(&self, index: usize) -> &[f64; D] {
+        &self.storage.rows[index]
     }
 
     /// Return a factor entry.
@@ -82,6 +82,7 @@ impl<const D: usize> Ldlt<D> {
     #[inline]
     pub(crate) fn factor_symmetric(a: SymmetricMatrix<D>, tol: Tolerance) -> Result<Self, LaError> {
         let mut f = a.into_matrix();
+        let tol = tol.get();
 
         // LDLT via symmetric rank-1 updates, using only the lower triangle.
         for j in 0..D {
@@ -94,7 +95,7 @@ impl<const D: usize> Ldlt<D> {
                 cold_path();
                 return Err(LaError::not_positive_semidefinite(j, d));
             }
-            if d <= tol.get() {
+            if d <= tol {
                 cold_path();
                 return Err(LaError::Singular { pivot_col: j });
             }
@@ -117,14 +118,12 @@ impl<const D: usize> Ldlt<D> {
                 for k in (j + 1)..=i {
                     let l_k = f.rows[k][j];
                     let new_val = (-l_i_d).mul_add(l_k, f.rows[i][k]);
-                    if !new_val.is_finite() {
-                        cold_path();
-                        return Err(LaError::non_finite_cell(i, k));
-                    }
                     f.rows[i][k] = new_val;
                 }
             }
         }
+
+        let f = FiniteMatrix::new(f)?.into_matrix();
 
         Ok(Self {
             factors: LdltFactors::new_unchecked(f),

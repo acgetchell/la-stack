@@ -1,8 +1,11 @@
 # Releasing la-stack
 
-This guide documents the exact commands for performing a clean release using a
-dedicated release PR, followed by tagging, publishing to crates.io, and
-creating a GitHub release.
+This guide documents the release flow for `vX.Y.Z`: prepare a dedicated
+release PR, merge it, create the final annotated tag from the generated
+changelog, publish to crates.io, and create the GitHub release.
+
+The release changelog is generated with `git-cliff --tag` through
+`just changelog-unreleased`, so no temporary local tag is needed.
 
 Applies to versions vX.Y.Z. Prefer updating documentation before publishing
 to crates.io.
@@ -25,7 +28,7 @@ Verify your git remotes:
 git remote -v
 ```
 
-Ensure your local main is up to date before beginning:
+Ensure your local `main` is up to date before beginning:
 
 ```bash
 git checkout main
@@ -36,48 +39,49 @@ git pull --ff-only
 
 ## Step 1: Create a clean release PR
 
-This PR should primarily include: version bumps, changelog updates, and
-documentation updates. All major code changes should already be on main.
+This PR should primarily include version bumps, changelog updates, benchmark
+comparison updates, and documentation updates. All major code changes should
+already be on `main`.
 
-**Exception:** Small, critical fixes discovered during the release process
-(e.g., documentation errors, script bugs, formatting issues) may be included
-but should be minimal and release-critical only.
+Small, critical fixes discovered during the release process may be included,
+but keep them minimal and release-critical.
 
 1. Create the release branch
 
 ```bash
-git checkout -b release/$TAG
+git checkout -b "release/$TAG"
 ```
 
 2. Bump versions
 
-Preferred (if cargo-edit is installed):
+Preferred, if `cargo-edit` is installed:
 
 ```bash
-# Bump package version in Cargo.toml
-cargo set-version $VERSION
+cargo set-version "$VERSION"
 ```
 
-Alternative: edit `Cargo.toml` manually (update `version = "..."` under
-`[package]`).
+Alternative: edit `Cargo.toml` manually and update `version = "..."` under
+`[package]`.
 
-Update references in documentation (search, then manually edit as needed):
+Review version references in documentation:
 
 ```bash
-# List occurrences of version-like strings to review
 rg -n "\bv?[0-9]+\.[0-9]+\.[0-9]+\b" README.md docs/ || true
 ```
 
-3. Generate changelog using a temporary local tag (DO NOT PUSH this tag)
+3. Generate the release changelog
 
 ```bash
-# Create a temporary annotated tag locally to enable changelog generation
-# Do not push this tag; it will be recreated later after merge
-git tag -a "$TAG" -m "la-stack $TAG"
-
-# Generate changelog (git-cliff + post-processing)
-just changelog
+# Generates CHANGELOG.md as though TAG already exists, then applies
+# markdown hygiene and archives completed minor release series.
+just changelog-unreleased "$TAG"
 ```
+
+`just changelog-unreleased` runs
+`GIT_CLIFF_OFFLINE=true git-cliff --tag "$TAG" -o CHANGELOG.md`, then
+`postprocess-changelog`, then `archive-changelog`. The root changelog keeps
+Unreleased plus the active minor series; older completed minor series live
+under `docs/archive/changelog/`.
 
 4. Run benchmarks and update the README comparison table
 
@@ -101,7 +105,14 @@ just bench-save-baseline $TAG
 This baseline can be compared against in future optimization work.
 See `docs/BENCHMARKING.md` for the full comparison workflow.
 
-6. Stage and commit release artifacts
+6. Validate the release branch
+
+```bash
+just ci
+cargo publish --locked --dry-run
+```
+
+7. Stage and commit release artifacts
 
 ```bash
 git add Cargo.toml Cargo.lock CHANGELOG.md README.md docs/
@@ -114,7 +125,7 @@ git commit -m "chore(release): release $TAG
 - Update documentation for release"
 ```
 
-7. Push the branch and open a PR
+8. Push the branch and open a PR
 
 ```bash
 git push -u origin "release/$TAG"
@@ -124,64 +135,46 @@ PR metadata:
 
 - Title: chore(release): release $TAG
 - Description: Clean release PR with version bump, changelog, and
-  documentation updates. No code changes.
+  documentation updates. No feature work.
 
-Note: Do NOT push the temporary tag created in step 3.
+### Handling fixes discovered during the release process
 
-### Handling fixes discovered during release process
+If you discover issues after generating the changelog:
 
-If you discover issues (bugs, formatting problems, etc.) after creating the
-changelog:
-
-1. **For critical fixes that must be in this release:**
+1. For critical fixes that must be in this release, make and commit the fix,
+   then regenerate the release changelog:
 
    ```bash
-   # Make your fixes
-   # Run code quality tools
-   # Commit the fixes
-   git add .
-   git commit -m "fix: [description of fix]"
-
-   # Delete the temporary tag and regenerate changelog
-   git tag -d "$TAG"
-   git tag -a "$TAG" -m "la-stack $TAG"
-   just changelog
-
-   # Commit updated changelog
-   git add CHANGELOG.md
+   just changelog-unreleased "$TAG"
+   git add CHANGELOG.md docs/archive/changelog/
    git commit -m "docs: update changelog with release fixes"
    ```
 
-2. **For non-critical fixes:**
-   - Document them as known issues in the release notes
-   - Include them in the next release
-   - This avoids the changelog regeneration loop
+2. For non-critical fixes, document them as known issues in the release notes
+   or include them in the next release.
 
 ---
 
 ## Step 2: After the PR is merged into main
 
-1. Sync your local main to the merge commit
+1. Sync your local `main` to the merge commit
 
 ```bash
 git checkout main
 git pull --ff-only
 ```
 
-2. Recreate the final annotated tag using the changelog content
+2. Create the final annotated tag using the changelog content
 
 ```bash
-# Remove the temporary local tag if it exists
-git tag -d "$TAG" 2>/dev/null || true
-
-# Create the final annotated tag with the changelog section as the tag message
-# Note: For large changelogs (>125KB), this automatically creates an annotated
-# tag with a reference message pointing to CHANGELOG.md instead of the full
-# content
+# Creates the annotated tag from the matching CHANGELOG.md section.
+# Archived versions are read from docs/archive/changelog/ automatically.
+# For large changelogs (>125KB), the tag message points to the changelog
+# section instead of embedding the full content.
 just tag "$TAG"
 ```
 
-3. (Optional) Verify tag message content
+3. Optional: verify the tag message content
 
 ```bash
 git tag -l --format='%(contents)' "$TAG"
@@ -193,32 +186,35 @@ git tag -l --format='%(contents)' "$TAG"
 git push origin "$TAG"
 ```
 
-5. Create the GitHub release with notes from the tag annotation
+5. Publish to crates.io
 
 ```bash
-# Requires GitHub CLI (gh) and authenticated session
-gh release create "$TAG" --notes-from-tag
-```
-
-6. Publish to crates.io
-
-```bash
-# Sanity check before publishing
-cargo publish --locked --dry-run
-
 # Publish the crate (ensure docs are already updated on main via the PR)
 cargo publish --locked
 ```
+
+6. Create the GitHub release with notes from the tag annotation
+
+```bash
+# Requires GitHub CLI (gh) and authenticated session
+gh release create "$TAG" --title "$TAG" --notes-from-tag
+```
+
+Always set the GitHub release title to the exact tag string, including the
+leading `v`.
 
 ---
 
 ## Notes and tips
 
-- Never push the temporary tag created for changelog generation; only push
-  the final tag after the PR is merged.
-- Keep the release PR strictly to version + changelog + documentation to
-  maintain a clean history.
+- Do not create a temporary local release tag for changelog generation; use
+  `just changelog-unreleased "$TAG"`.
+- Keep the release PR scoped to version, changelog, archive, benchmark
+  comparison, and documentation changes.
+- `just changelog` regenerates the current changelog from existing tags and may
+  update `docs/archive/changelog/`.
+- `just changelog-unreleased "$TAG"` is for release PR preparation before the
+  final tag exists.
+- `just tag "$TAG"` is for the final post-merge annotated tag.
 - If multiple crates or files reference the version, confirm all of them are
   updated consistently.
-- For future convenience, parts of this document can be automated into a
-  release script.
