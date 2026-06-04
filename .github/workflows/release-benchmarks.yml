@@ -1,0 +1,87 @@
+name: Release Benchmarks
+
+# Archive full Criterion benchmark baselines for published releases.
+# Release jobs publish durable artifacts, so they intentionally do not restore
+# or save dependency caches.
+
+permissions:
+  contents: write
+
+on:
+  release:
+    types:
+      - published
+
+concurrency:
+  group: release-benchmarks-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  release-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        with:
+          cache: false
+
+      - name: Save release Criterion baseline
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          cargo bench --features bench --bench vs_linalg -- --save-baseline "$RELEASE_TAG"
+          cargo bench --features bench,exact --bench exact -- --save-baseline "$RELEASE_TAG"
+
+      - name: Package release Criterion baseline
+        id: package-baseline
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          asset="la-stack-${RELEASE_TAG}-criterion-baseline.tar.gz"
+          tar -C target -czf "$asset" criterion
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Upload temporary baseline artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-baseline-${{ github.event.release.tag_name }}
+          path: ${{ steps.package-baseline.outputs.asset }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Attach baseline to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_ASSET: ${{ steps.package-baseline.outputs.asset }}
+        run: |
+          set -euo pipefail
+
+          gh release upload "$RELEASE_TAG" "$RELEASE_ASSET" --clobber
+
+      - name: Release baseline summary
+        env:
+          RELEASE_ASSET: ${{ steps.package-baseline.outputs.asset }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "### Release Benchmark Baseline"
+            echo ""
+            echo "Uploaded release asset: \`$RELEASE_ASSET\`"
+          } >> "$GITHUB_STEP_SUMMARY"
