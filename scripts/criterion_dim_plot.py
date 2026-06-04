@@ -280,7 +280,7 @@ def _update_readme_table(readme_path: Path, marker_begin: str, marker_end: str, 
         msg = "README markers are out of order."
         raise MarkerOrderError(msg)
 
-    table_lines = [line + "\n" for line in table_md.strip("\n").splitlines()]
+    table_lines = ["\n", *[line + "\n" for line in table_md.strip("\n").splitlines()], "\n"]
     new_lines = [
         *lines[: begin_idx + 1],
         *table_lines,

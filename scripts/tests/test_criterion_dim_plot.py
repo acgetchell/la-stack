@@ -184,6 +184,7 @@ def test_update_readme_table_replaces_only_between_markers(tmp_path: Path) -> No
     assert marker_begin in text
     assert marker_end in text
     assert "| a |" in text
+    assert f"{marker_begin}\n\n| a |\n|---|\n| 1 |\n\n{marker_end}" in text
 
     # Re-running with the same content should be a no-op.
     changed_again = criterion_dim_plot._update_readme_table(readme, marker_begin, marker_end, table_md)

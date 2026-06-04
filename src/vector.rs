@@ -74,7 +74,6 @@ impl<const D: usize> FiniteVector<D> {
     }
 
     /// Borrow the backing array without revalidating stored entries.
-    #[cfg(feature = "exact")]
     #[inline]
     pub(crate) const fn as_array(&self) -> &[f64; D] {
         self.vector.as_array()
@@ -97,8 +96,8 @@ impl<const D: usize> FiniteVector<D> {
     /// to NaN or infinity.
     #[inline]
     pub(crate) const fn dot(self, other: Self) -> Result<f64, LaError> {
-        let lhs = self.vector.data;
-        let rhs = other.vector.data;
+        let lhs = self.as_array();
+        let rhs = other.as_array();
         let mut acc = 0.0;
         let mut i = 0;
         while i < D {
@@ -121,7 +120,7 @@ impl<const D: usize> FiniteVector<D> {
     /// or infinity.
     #[inline]
     pub(crate) const fn norm2_sq(self) -> Result<f64, LaError> {
-        let data = self.vector.data;
+        let data = self.as_array();
         let mut acc = 0.0;
         let mut i = 0;
         while i < D {

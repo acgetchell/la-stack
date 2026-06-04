@@ -31,11 +31,11 @@ impl<const D: usize> LuFactors<D> {
         Self { storage }
     }
 
-    /// Return a copied factor row.
+    /// Borrow a factor row.
     #[inline]
     #[must_use]
-    const fn row(&self, index: usize) -> [f64; D] {
-        self.storage.rows[index]
+    const fn row(&self, index: usize) -> &[f64; D] {
+        &self.storage.rows[index]
     }
 
     /// Return a diagonal entry of `U`.
@@ -52,12 +52,13 @@ impl<const D: usize> Lu<D> {
     ///
     /// The input has already proven finite entries, so LU construction rejects
     /// numerically singular pivots and non-finite elimination intermediates
-    /// before callers can observe a [`Lu`] value. Computed trailing updates are
-    /// checked before storage so successful factors do not contain a non-finite
+    /// before callers can observe a [`Lu`] value. Completed factor storage is
+    /// checked before return so successful factors do not contain a non-finite
     /// value produced during elimination.
     #[inline]
     pub(crate) fn factor_finite(a: FiniteMatrix<D>, tol: Tolerance) -> Result<Self, LaError> {
         let mut lu = a.into_matrix();
+        let tol = tol.get();
 
         let mut piv = [0usize; D];
         for (i, p) in piv.iter_mut().enumerate() {
@@ -79,7 +80,7 @@ impl<const D: usize> Lu<D> {
                 }
             }
 
-            if pivot_abs <= tol.get() {
+            if pivot_abs <= tol {
                 cold_path();
                 return Err(LaError::Singular { pivot_col: k });
             }
@@ -95,22 +96,16 @@ impl<const D: usize> Lu<D> {
             // Eliminate below pivot.
             for r in (k + 1)..D {
                 let mult = lu.rows[r][k] / pivot;
-                if !mult.is_finite() {
-                    cold_path();
-                    return Err(LaError::non_finite_cell(r, k));
-                }
                 lu.rows[r][k] = mult;
 
                 for c in (k + 1)..D {
                     let updated = (-mult).mul_add(lu.rows[k][c], lu.rows[r][c]);
-                    if !updated.is_finite() {
-                        cold_path();
-                        return Err(LaError::non_finite_cell(r, c));
-                    }
                     lu.rows[r][c] = updated;
                 }
             }
         }
+
+        let lu = FiniteMatrix::new(lu)?.into_matrix();
 
         Ok(Self {
             factors: LuFactors::new_unchecked(lu),
@@ -177,7 +172,7 @@ impl<const D: usize> Lu<D> {
     ) -> Result<FiniteVector<D>, LaError> {
         let mut x = [0.0; D];
         let mut i = 0;
-        let b = b.into_array();
+        let b = b.as_array();
         while i < D {
             x[i] = b[self.piv[i]];
             i += 1;
