@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 import tomllib
@@ -68,12 +69,16 @@ def _read_cargo_package_info(cargo_toml: Path) -> PackageInfo:
 
 
 def _iter_markdown_files(root: Path) -> list[Path]:
-    return sorted(path for path in root.rglob("*.md") if path.is_file() and not (set(path.relative_to(root).parts) & SKIP_DIRS))
+    markdown_files: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [dirname for dirname in dirnames if not (set((Path(dirpath) / dirname).relative_to(root).parts) & SKIP_DIRS)]
+        markdown_files.extend(Path(dirpath) / filename for filename in filenames if filename.endswith(".md"))
+    return sorted(markdown_files)
 
 
 def _dependency_regex(package_name: str) -> re.Pattern[str]:
     escaped_name = re.escape(package_name)
-    return re.compile(rf'(?<![\w.-]){escaped_name}\s*=\s*(?:"(?P<plain>[^"]+)"|\{{\s*version\s*=\s*"(?P<table>[^"]+)")')
+    return re.compile(rf'(?<![\w.-]){escaped_name}\s*=\s*(?:"(?P<plain>[^"]+)"|\{{[^}}]*version\s*=\s*"(?P<table>[^"]+)"[^}}]*\}})')
 
 
 def _dependency_snippets(path: Path, package_name: str) -> list[DependencySnippet]:

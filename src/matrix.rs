@@ -7,6 +7,12 @@ use crate::lu::Lu;
 use crate::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LDLT_SYMMETRY_REL_TOL, LaError, Tolerance};
 
 /// Fixed-size square matrix `D×D`, stored inline.
+///
+/// `Matrix` is designed for small, robustness-sensitive systems where stack
+/// allocation and const-generic dimensions are useful. For large, dynamic, sparse,
+/// or parallel workloads, prefer a broader linear-algebra crate such as
+/// [`nalgebra`](https://crates.io/crates/nalgebra) or
+/// [`faer`](https://crates.io/crates/faer).
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Matrix<const D: usize> {

@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Guard README dependency snippets [`7137fee`](https://github.com/acgetchell/la-stack/commit/7137fee16ab33e08f4dc6a60e02417e3e7c4e020)
+
+  - Add a generic docs-version sync check that compares Markdown dependency
+    snippets against the Cargo package name and version
+
+  - Run the docs-version check from the repository Semgrep policy lane
+  - Refresh README determinant examples with explicit fallible handling and
+    hidden doctest mirrors
+
+  - Update CI uv pins to 0.11.19
+
+### Documentation
+
+- Sync citation metadata for v0.4.2 [`f473ec5`](https://github.com/acgetchell/la-stack/commit/f473ec50946e5f668e9ad9a2d978e499dcb10f04)
+
+  - Update CITATION.cff with the v0.4.2 version and release date.
+  - Align the Python utility package metadata and lockfile with the crate release.
+  - Add citation metadata validation to the release checklist and config lint flow.
+  - Include CITATION.cff in YAML/CFF formatting checks.
+
 ## [0.4.2] - 2026-06-04
 
 ### Added
@@ -78,6 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - State that LU and LDLT solve_vec use floating-point substitution without a certified absolute rounding-error bound.
   - Clarify that inf_norm reports NonFinite for unchecked stored NaN/∞ as well as row-sum overflow.
   - Exercise the unchecked finite-proof fixture path directly in exact tests.
+- Update v0.4.2 release notes [`7e11f93`](https://github.com/acgetchell/la-stack/commit/7e11f930b94bbba99c1c426e68a515bbefb8c489)
 
 ### Fixed
 
@@ -626,6 +651,7 @@ Older releases are archived by minor series:
 - [0.2.x](docs/archive/changelog/0.2.md)
 - [0.1.x](docs/archive/changelog/0.1.md)
 
+[Unreleased]: https://github.com/acgetchell/la-stack/compare/v0.4.2...HEAD
 [0.4.2]: https://github.com/acgetchell/la-stack/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/acgetchell/la-stack/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/acgetchell/la-stack/compare/v0.3.0...v0.4.0

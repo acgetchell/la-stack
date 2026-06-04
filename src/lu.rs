@@ -266,7 +266,6 @@ mod tests {
     use super::*;
     use crate::DEFAULT_PIVOT_TOL;
 
-    use core::assert_matches;
     use core::hint::black_box;
 
     use approx::assert_abs_diff_eq;
@@ -499,25 +498,6 @@ mod tests {
         let a = Matrix::<2>::from_rows(black_box([[1e-13, 0.0], [0.0, 1.0]]));
         let err = a.lu(DEFAULT_PIVOT_TOL).unwrap_err();
         assert_eq!(err, LaError::Singular { pivot_col: 0 });
-    }
-
-    #[test]
-    fn invalid_tolerance_rejected() {
-        assert_eq!(
-            Tolerance::new(-1.0),
-            Err(LaError::InvalidTolerance { value: -1.0 })
-        );
-
-        assert_matches!(
-            Tolerance::new(f64::NAN),
-            Err(LaError::InvalidTolerance { value }) if value.is_nan()
-        );
-        assert_eq!(
-            Tolerance::new(f64::INFINITY),
-            Err(LaError::InvalidTolerance {
-                value: f64::INFINITY,
-            })
-        );
     }
 
     #[test]

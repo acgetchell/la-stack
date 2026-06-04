@@ -403,6 +403,13 @@ pub enum LaError {
         /// component that overflowed.  `None` for scalar results.
         index: Option<usize>,
     },
+    /// Exact determinant scaling overflowed the internal exponent representation.
+    DeterminantScaleOverflow {
+        /// Matrix dimension `D`.
+        dim: usize,
+        /// Minimum decomposed f64 exponent among non-zero matrix entries.
+        min_exponent: i32,
+    },
     /// A requested runtime matrix dimension has no stack-dispatch arm.
     UnsupportedDimension {
         /// Runtime dimension requested by the caller.
@@ -498,6 +505,26 @@ impl LaError {
     #[must_use]
     pub const fn non_finite_at(col: usize) -> Self {
         Self::NonFinite { row: None, col }
+    }
+
+    /// Construct a [`LaError::DeterminantScaleOverflow`] for exact determinant scaling.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// assert_eq!(
+    ///     LaError::determinant_scale_overflow(3, -1074),
+    ///     LaError::DeterminantScaleOverflow {
+    ///         dim: 3,
+    ///         min_exponent: -1074,
+    ///     }
+    /// );
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn determinant_scale_overflow(dim: usize, min_exponent: i32) -> Self {
+        Self::DeterminantScaleOverflow { dim, min_exponent }
     }
 
     /// Construct a [`LaError::UnsupportedDimension`] for runtime stack dispatch.
@@ -647,6 +674,12 @@ impl fmt::Display for LaError {
             }
             Self::Overflow { index: None } => {
                 write!(f, "exact result overflows the target representation")
+            }
+            Self::DeterminantScaleOverflow { dim, min_exponent } => {
+                write!(
+                    f,
+                    "exact determinant scale exponent overflows for dimension {dim} with minimum entry exponent {min_exponent}"
+                )
             }
             Self::UnsupportedDimension { requested, max } => {
                 write!(
@@ -915,6 +948,18 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "exact result overflows the target representation at index 2"
+        );
+    }
+
+    #[test]
+    fn laerror_display_formats_determinant_scale_overflow() {
+        let err = LaError::DeterminantScaleOverflow {
+            dim: 3,
+            min_exponent: -1074,
+        };
+        assert_eq!(
+            err.to_string(),
+            "exact determinant scale exponent overflows for dimension 3 with minimum entry exponent -1074"
         );
     }
 

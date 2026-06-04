@@ -13,9 +13,10 @@
 //! `e - e_min`), and Bareiss elimination runs entirely in `BigInt`
 //! arithmetic — no `BigRational`, no GCD, no denominator tracking.
 //! The result is `(det_int, total_exp)` where `det = det_int × 2^(D × e_min)`.
-//! `bareiss_det` wraps this with `bigint_exp_to_bigrational` to reconstruct
-//! a reduced `BigRational`; `det_sign_exact` reads the sign directly from
-//! `det_int` (the scale factor is always positive).
+//! `det_exact` wraps this with `bigint_exp_to_bigrational` to reconstruct a
+//! reduced `BigRational`; `det_exact_f64` converts the same pair directly to
+//! `f64`; and `det_sign_exact` reads the sign directly from `det_int` (the
+//! scale factor is always positive).
 //!
 //! `det_sign_exact` adds a two-stage adaptive-precision optimisation inspired
 //! by Shewchuk's robust geometric predicates:
@@ -142,7 +143,8 @@ fn bigint_exp_to_bigrational(mut value: BigInt, mut exp: i32) -> BigRational {
         let exp_abs = exp.unsigned_abs();
         let reduce = tz.min(u64::from(exp_abs));
         value >>= reduce;
-        let reduce = u32::try_from(reduce).unwrap_or(u32::MAX);
+        #[allow(clippy::cast_possible_truncation)]
+        let reduce = reduce as u32;
         let remaining_abs = exp_abs - reduce;
         exp = match remaining_abs {
             0 => 0,
@@ -155,6 +157,31 @@ fn bigint_exp_to_bigrational(mut value: BigInt, mut exp: i32) -> BigRational {
         BigRational::new_raw(value << exp.cast_unsigned(), BigInt::from(1u32))
     } else {
         BigRational::new_raw(value, BigInt::from(1u32) << exp.unsigned_abs())
+    }
+}
+
+/// Convert a `BigInt × 2^exp` determinant pair to finite `f64` without first
+/// reducing a public `BigRational` determinant value.
+fn bigint_exp_to_finite_f64(value: BigInt, exp: i32) -> Result<f64, LaError> {
+    if value == BigInt::from(0) {
+        return Ok(0.0);
+    }
+
+    let exact = if exp >= 0 {
+        BigRational::new_raw(value << exp.cast_unsigned(), BigInt::from(1u32))
+    } else {
+        BigRational::new_raw(value, BigInt::from(1u32) << exp.unsigned_abs())
+    };
+
+    let Some(val) = exact.to_f64() else {
+        cold_path();
+        return Err(LaError::Overflow { index: None });
+    };
+    if val.is_finite() {
+        Ok(val)
+    } else {
+        cold_path();
+        Err(LaError::Overflow { index: None })
     }
 }
 
@@ -353,6 +380,28 @@ fn bareiss_forward_eliminate<const D: usize>(
     BareissResult::Upper { sign }
 }
 
+/// Compute the determinant scale exponent `D × e_min`.
+///
+/// This centralizes the scale-overflow classification used by public exact
+/// determinant APIs: [`Matrix::det_exact`], [`Matrix::det_exact_f64`], and
+/// [`Matrix::det_sign_exact`] all surface failures from this helper as
+/// [`LaError::DeterminantScaleOverflow`].
+///
+/// # Errors
+/// Returns [`LaError::DeterminantScaleOverflow`] if `D` cannot fit in the
+/// internal `i32` exponent multiplier or if `D × e_min` overflows `i32`.
+fn determinant_scale_exp<const D: usize>(e_min: i32) -> Result<i32, LaError> {
+    let Ok(d_i32) = i32::try_from(D) else {
+        cold_path();
+        return Err(LaError::determinant_scale_overflow(D, e_min));
+    };
+    let Some(total_exp) = e_min.checked_mul(d_i32) else {
+        cold_path();
+        return Err(LaError::determinant_scale_overflow(D, e_min));
+    };
+    Ok(total_exp)
+}
+
 /// Compute the exact determinant using integer-only Bareiss elimination.
 ///
 /// Returns `(det_int, scale_exp)` where the true determinant is
@@ -393,16 +442,7 @@ fn bareiss_det_int_finite<const D: usize>(m: &FiniteMatrix<D>) -> Result<(BigInt
         a[D - 1][D - 1].clone()
     };
 
-    // det(original) = det_int × 2^(D × e_min)
-    let Ok(d_i32) = i32::try_from(D) else {
-        cold_path();
-        return Err(LaError::unsupported_dimension(D, i32::MAX as usize));
-    };
-    let Some(total_exp) = e_min.checked_mul(d_i32) else {
-        cold_path();
-        return Err(LaError::Overflow { index: None });
-    };
-
+    let total_exp = determinant_scale_exp::<D>(e_min)?;
     Ok((det_int, total_exp))
 }
 
@@ -489,21 +529,15 @@ impl<const D: usize> FiniteMatrix<D> {
     /// Exact determinant converted to a finite `f64`.
     ///
     /// # Errors
+    /// Returns [`LaError::DeterminantScaleOverflow`] if determinant scaling
+    /// overflows the internal exponent representation.
+    ///
     /// Returns [`LaError::Overflow`] if the exact determinant cannot be
     /// represented as a finite `f64`.
     #[inline]
     fn det_exact_f64(&self) -> Result<f64, LaError> {
-        let exact = self.det_exact()?;
-        let Some(val) = exact.to_f64() else {
-            cold_path();
-            return Err(LaError::Overflow { index: None });
-        };
-        if val.is_finite() {
-            Ok(val)
-        } else {
-            cold_path();
-            Err(LaError::Overflow { index: None })
-        }
+        let (det_int, total_exp) = bareiss_det_int_finite(self)?;
+        bigint_exp_to_finite_f64(det_int, total_exp)
     }
 
     /// Exact linear solve for finite inputs.
@@ -548,6 +582,9 @@ impl<const D: usize> FiniteMatrix<D> {
     /// Returns [`LaError::NonFinite`] if a direct determinant or error-bound
     /// computation detects a non-finite condition that is not an inconclusive
     /// scalar overflow.
+    ///
+    /// Returns [`LaError::DeterminantScaleOverflow`] if determinant scaling
+    /// overflows the internal exponent representation.
     #[inline]
     fn det_sign_exact(&self) -> Result<i8, LaError> {
         match (self.det_direct(), self.det_errbound()) {
@@ -607,11 +644,8 @@ impl<const D: usize> Matrix<D> {
     /// # Errors
     /// Returns [`LaError::NonFinite`] if stored matrix entries are NaN or infinity.
     ///
-    /// Returns [`LaError::Overflow`] if determinant scaling overflows the internal
-    /// exponent representation.
-    ///
-    /// Returns [`LaError::UnsupportedDimension`] if `D` cannot be represented in
-    /// the internal determinant exponent calculation.
+    /// Returns [`LaError::DeterminantScaleOverflow`] if determinant scaling
+    /// overflows the internal exponent representation.
     #[inline]
     pub fn det_exact(&self) -> Result<BigRational, LaError> {
         FiniteMatrix::new(*self)?.det_exact()
@@ -621,10 +655,12 @@ impl<const D: usize> Matrix<D> {
     ///
     /// Requires the `exact` Cargo feature.
     ///
-    /// Computes the exact [`BigRational`] determinant via [`det_exact`](Self::det_exact)
-    /// and converts it to the nearest `f64`.  This is useful when you want the
-    /// most accurate f64 determinant possible without committing to `BigRational`
-    /// in your downstream code.
+    /// Computes the exact determinant with the same integer Bareiss core used by
+    /// [`det_exact`](Self::det_exact), then converts the exact scaled integer
+    /// result to the nearest `f64` without first materializing the public
+    /// [`BigRational`] determinant. This is useful when you want the most accurate
+    /// f64 determinant possible without committing to `BigRational` in your
+    /// downstream code.
     ///
     /// # Examples
     /// ```
@@ -641,8 +677,10 @@ impl<const D: usize> Matrix<D> {
     /// # Errors
     /// Returns [`LaError::NonFinite`] if stored matrix entries are NaN or infinity.
     ///
-    /// Returns [`LaError::Overflow`] if determinant scaling overflows the internal
-    /// exponent representation or if the exact determinant is too large to
+    /// Returns [`LaError::DeterminantScaleOverflow`] if determinant scaling
+    /// overflows the internal exponent representation.
+    ///
+    /// Returns [`LaError::Overflow`] if the exact determinant is too large to
     /// represent as a finite `f64`.
     #[inline]
     pub fn det_exact_f64(&self) -> Result<f64, LaError> {
@@ -778,7 +816,9 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Errors
     /// Returns [`LaError::NonFinite`] if stored matrix entries are NaN or infinity.
-    /// This exact sign path has no additional runtime errors for finite matrices.
+    ///
+    /// Returns [`LaError::DeterminantScaleOverflow`] if determinant scaling
+    /// overflows the internal exponent representation.
     #[inline]
     pub fn det_sign_exact(&self) -> Result<i8, LaError> {
         FiniteMatrix::new(*self)?.det_sign_exact()
@@ -1338,6 +1378,33 @@ mod tests {
             is_negative: true,
         };
         assert_eq!(component_to_bigint(negative, 1), BigInt::from(-20));
+    }
+
+    #[test]
+    fn determinant_scale_exp_multiplies_dimension_and_min_exponent() {
+        assert_eq!(determinant_scale_exp::<4>(-1074), Ok(-4296));
+    }
+
+    #[test]
+    fn determinant_scale_exp_rejects_dimension_too_large_for_i32() {
+        assert_eq!(
+            determinant_scale_exp::<{ i32::MAX as usize + 1 }>(-1074),
+            Err(LaError::DeterminantScaleOverflow {
+                dim: i32::MAX as usize + 1,
+                min_exponent: -1074,
+            })
+        );
+    }
+
+    #[test]
+    fn determinant_scale_exp_rejects_exponent_product_overflow() {
+        assert_eq!(
+            determinant_scale_exp::<3_000_000>(-1074),
+            Err(LaError::DeterminantScaleOverflow {
+                dim: 3_000_000,
+                min_exponent: -1074,
+            })
+        );
     }
 
     // -----------------------------------------------------------------------
