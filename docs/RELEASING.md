@@ -63,10 +63,15 @@ cargo set-version "$VERSION"
 Alternative: edit `Cargo.toml` manually and update `version = "..."` under
 `[package]`.
 
+Update release metadata to match the crate version:
+
+- `CITATION.cff`: update `version` and `date-released`
+- `pyproject.toml`: update `[project] version` for the Python utility package
+
 Review version references in documentation:
 
 ```bash
-rg -n "\bv?[0-9]+\.[0-9]+\.[0-9]+\b" README.md docs/ || true
+rg -n "\bv?[0-9]+\.[0-9]+\.[0-9]+\b" README.md docs/ CITATION.cff pyproject.toml || true
 ```
 
 3. Generate the release changelog
@@ -109,17 +114,19 @@ See `docs/BENCHMARKING.md` for the full comparison workflow.
 
 ```bash
 just ci
+just citation-check
 cargo publish --locked --dry-run
 ```
 
 7. Stage and commit release artifacts
 
 ```bash
-git add Cargo.toml Cargo.lock CHANGELOG.md README.md docs/
+git add Cargo.toml Cargo.lock CITATION.cff pyproject.toml CHANGELOG.md README.md docs/
 
 git commit -m "chore(release): release $TAG
 
 - Bump version to $TAG
+- Update citation and utility package metadata
 - Update changelog with latest changes
 - Update benchmark comparison table
 - Update documentation for release"

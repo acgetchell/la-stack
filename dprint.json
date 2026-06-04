@@ -6,7 +6,8 @@
   ],
   "includes": [
     "**/*.yml",
-    "**/*.yaml"
+    "**/*.yaml",
+    "CITATION.cff"
   ],
   "excludes": [
     "**/target",

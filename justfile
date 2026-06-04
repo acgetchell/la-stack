@@ -391,7 +391,7 @@ lint: lint-code lint-docs lint-config
 
 lint-code: fmt-check clippy doc-check python-check shell-check semgrep semgrep-test
 
-lint-config: validate-json toml-lint toml-fmt-check yaml-check action-lint zizmor
+lint-config: validate-json toml-lint toml-fmt-check yaml-check citation-check action-lint zizmor
 
 lint-docs: markdown-check spell-check
 
@@ -785,6 +785,10 @@ yaml-fix: _ensure-dprint
     fi
 
 yaml-lint: yaml-check
+
+# Validate CITATION.cff against the Citation File Format schema.
+citation-check: _ensure-uv
+    uvx --from cffconvert==2.0.0 cffconvert --validate -i CITATION.cff
 
 # GitHub Actions security analysis
 zizmor: _ensure-zizmor
