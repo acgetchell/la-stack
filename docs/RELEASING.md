@@ -111,10 +111,18 @@ just bench-save-baseline $TAG
 just bench-save-last
 ```
 
-These baselines can be compared against in future optimization work. The
-default local report command, `just bench-compare`, compares latest
-measurements against `last` and writes `target/bench-reports/performance.md`;
-it does not update README benchmark tables or committed release artifacts.
+These baselines can be compared against in future optimization work on the
+release branch. The default local report command, `just bench-compare`, compares
+latest measurements against `last` and writes
+`target/bench-reports/performance.md`; it does not update README benchmark
+tables or committed release artifacts.
+
+After the GitHub Release is published, the `Release Benchmarks` workflow checks
+out the release tag, saves a full Criterion baseline, and attaches
+`la-stack-$TAG-criterion-baseline.tar.gz` to the release. That release asset is
+the durable archive for historical baseline comparisons; the workflow also
+uploads a short-lived Actions artifact for debugging the run.
+
 See `docs/BENCHMARKING.md` for the full comparison workflow.
 
 6. Validate the release branch

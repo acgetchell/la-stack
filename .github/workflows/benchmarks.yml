@@ -1,6 +1,6 @@
 name: Benchmarks
 
-# Detect performance regressions in exact-arithmetic benchmarks.
+# Detect performance regressions.
 # - Push to main: run benchmarks, save Criterion baseline, upload as artifact.
 # - PRs: find latest main baseline artifact, download, compare, report.
 # Regressions are warning-only — this workflow never fails on regression.

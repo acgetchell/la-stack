@@ -116,7 +116,9 @@ just bench-latest-vs-last
 ## Comparing performance across releases
 
 Criterion baselines are saved into `target/criterion/` and persist across
-`git checkout` but **not** across `cargo clean`.
+`git checkout` but **not** across `cargo clean`. Published releases also attach
+a compressed Criterion baseline to the GitHub Release so historical release
+baselines can be restored later.
 
 ### Latest vs last
 
@@ -158,6 +160,26 @@ just bench-compare v0.2.0
 
 You can save multiple baselines and compare against any of them.
 
+If the release baseline is already present in `target/criterion/`, skip the
+checkout step and compare directly. For example, to compare current code against
+the saved `v0.4.2` release baseline:
+
+```bash
+just bench-latest          # gather latest la-stack measurements
+just bench-compare v0.4.2  # compare latest measurements against v0.4.2
+```
+
+If the release baseline is not present locally, download and restore the release
+asset first:
+
+```bash
+gh release download v0.4.2 --pattern "la-stack-v0.4.2-criterion-baseline.tar.gz"  # fetch archived release baseline
+mkdir -p target                                                                    # ensure Criterion parent directory exists
+tar -C target -xzf la-stack-v0.4.2-criterion-baseline.tar.gz                       # restore target/criterion baseline data
+just bench-latest                                                                  # gather latest la-stack measurements
+just bench-compare v0.4.2                                                          # compare latest measurements against v0.4.2
+```
+
 ### Output
 
 `just bench-compare` writes `target/bench-reports/performance.md` by
@@ -187,11 +209,14 @@ See `scripts/criterion_dim_plot.py --help` for options.
 
 ## Release workflow
 
-At release time, save a baseline so future work can compare against it:
+At release time, save a local baseline so future work can compare against it:
 
 ```bash
 just bench-save-baseline $TAG
 just bench-save-last
 ```
 
+When the GitHub Release is published, `.github/workflows/release-benchmarks.yml`
+saves a full release baseline and attaches
+`la-stack-$TAG-criterion-baseline.tar.gz` to the release as the durable archive.
 See `docs/RELEASING.md` step 5 for where this fits in the release process.
