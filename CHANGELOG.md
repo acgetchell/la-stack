@@ -130,6 +130,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Tighten Python/tooling setup by pinning pytest, using .python-version in CI, and hardening setup-tool version checks.
   - Keep CI running the full just ci workflow across Ubuntu, macOS, and Windows.
 
+### Performance
+
+- Restore checked factorization throughput [`f2e6d56`](https://github.com/acgetchell/la-stack/commit/f2e6d560bd1cb327ff0616644ef704a865520e32)
+
+  - Move LU and LDLT non-finite factor checks out of cubic update loops while preserving completed-storage validation before factors escape.
+  - Borrow factor rows and finite vector arrays in solve, dot, and norm paths to avoid avoidable copies.
+  - Refresh v0.4.2 release artifacts, LU solve benchmark docs, and release workflow docs.
+  - Preserve README benchmark table spacing in the Criterion plot updater.
+
 ## [0.4.1] - 2026-04-21
 
 ### Merged Pull Requests
