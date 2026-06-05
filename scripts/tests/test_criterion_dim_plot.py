@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import tomllib
 from typing import TYPE_CHECKING, cast
 
@@ -67,26 +68,26 @@ def test_markdown_table_formats_values_and_pct() -> None:
         criterion_dim_plot.Row(
             dim=2,
             la_time=50.0,
-            la_lo=0.0,
-            la_hi=0.0,
+            la_lo=45.0,
+            la_hi=55.0,
             na_time=100.0,
-            na_lo=0.0,
-            na_hi=0.0,
+            na_lo=90.0,
+            na_hi=110.0,
             fa_time=200.0,
-            fa_lo=0.0,
-            fa_hi=0.0,
+            fa_lo=180.0,
+            fa_hi=220.0,
         ),  # +50.0% vs na, +75.0% vs fa
         criterion_dim_plot.Row(
             dim=64,
             la_time=1_000.0,
-            la_lo=0.0,
-            la_hi=0.0,
+            la_lo=900.0,
+            la_hi=1_100.0,
             na_time=900.0,
-            na_lo=0.0,
-            na_hi=0.0,
+            na_lo=800.0,
+            na_hi=1_000.0,
             fa_time=800.0,
-            fa_lo=0.0,
-            fa_hi=0.0,
+            fa_lo=700.0,
+            fa_hi=900.0,
         ),  # -11.1% vs na, -25.0% vs fa
     ]
 
@@ -104,14 +105,14 @@ def test_markdown_table_handles_zero_nalgebra_time() -> None:
         criterion_dim_plot.Row(
             dim=2,
             la_time=10.0,
-            la_lo=0.0,
-            la_hi=0.0,
+            la_lo=9.0,
+            la_hi=11.0,
             na_time=0.0,
             na_lo=0.0,
             na_hi=0.0,
             fa_time=100.0,
-            fa_lo=0.0,
-            fa_hi=0.0,
+            fa_lo=90.0,
+            fa_hi=110.0,
         ),
     ]
 
@@ -359,6 +360,159 @@ def test_read_estimate_errors_and_success(tmp_path: Path) -> None:
 
     with pytest.raises(KeyError, match="stat 'mean' not found"):
         criterion_dim_plot._read_estimate(estimates, "mean")
+
+
+def test_read_estimate_malformed_json_names_file(tmp_path: Path) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=re.escape(f"malformed Criterion estimates JSON in {estimates}")):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+
+def test_read_estimate_missing_point_estimate_names_field(tmp_path: Path) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text(json.dumps({"median": {}}), encoding="utf-8")
+
+    with pytest.raises(KeyError, match="field 'point_estimate' for stat 'median' not found"):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+
+def test_read_estimate_non_numeric_ci_bound_names_field(tmp_path: Path) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text(
+        json.dumps(
+            {
+                "median": {
+                    "point_estimate": 1.0,
+                    "confidence_interval": {"lower_bound": "fast", "upper_bound": 2.0},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"field 'lower_bound' for stat 'median'.*not numeric"):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+
+@pytest.mark.parametrize(
+    ("payload", "field"),
+    [
+        ({"median": {"point_estimate": True}}, "point_estimate"),
+        (
+            {
+                "median": {
+                    "point_estimate": 1.0,
+                    "confidence_interval": {"lower_bound": False, "upper_bound": 2.0},
+                }
+            },
+            "lower_bound",
+        ),
+    ],
+)
+def test_read_estimate_rejects_boolean_numeric_fields(tmp_path: Path, payload: dict[str, object], field: str) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(TypeError, match=rf"field '{field}' for stat 'median'.*not numeric"):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+
+def test_read_estimate_rejects_nonfinite_time(tmp_path: Path) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text(json.dumps({"median": {"point_estimate": "NaN"}}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"median\.point_estimate.*finite and nonnegative"):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+
+def test_read_estimate_rejects_negative_time(tmp_path: Path) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text(json.dumps({"median": {"point_estimate": -1.0}}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"median\.point_estimate.*finite and nonnegative"):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+
+def test_read_estimate_rejects_inverted_confidence_interval(tmp_path: Path) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text(
+        json.dumps(
+            {
+                "median": {
+                    "point_estimate": 5.0,
+                    "confidence_interval": {"lower_bound": 6.0, "upper_bound": 4.0},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="lower bound must be <= upper bound"):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+
+def test_read_estimate_rejects_point_outside_confidence_interval(tmp_path: Path) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text(
+        json.dumps(
+            {
+                "median": {
+                    "point_estimate": 5.0,
+                    "confidence_interval": {"lower_bound": 1.0, "upper_bound": 4.0},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="point estimate must be inside confidence interval"):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+
+def test_row_rejects_invalid_dimension_and_times() -> None:
+    with pytest.raises(ValueError, match="dimension must be positive"):
+        criterion_dim_plot.Row(
+            dim=0,
+            la_time=1.0,
+            la_lo=1.0,
+            la_hi=1.0,
+            na_time=1.0,
+            na_lo=1.0,
+            na_hi=1.0,
+            fa_time=1.0,
+            fa_lo=1.0,
+            fa_hi=1.0,
+        )
+
+    with pytest.raises(ValueError, match="la_time must be finite and nonnegative"):
+        criterion_dim_plot.Row(
+            dim=2,
+            la_time=float("inf"),
+            la_lo=1.0,
+            la_hi=1.0,
+            na_time=1.0,
+            na_lo=1.0,
+            na_hi=1.0,
+            fa_time=1.0,
+            fa_lo=1.0,
+            fa_hi=1.0,
+        )
+
+    with pytest.raises(ValueError, match="point estimate must be inside confidence interval"):
+        criterion_dim_plot.Row(
+            dim=2,
+            la_time=5.0,
+            la_lo=1.0,
+            la_hi=4.0,
+            na_time=1.0,
+            na_lo=1.0,
+            na_hi=1.0,
+            fa_time=1.0,
+            fa_lo=1.0,
+            fa_hi=1.0,
+        )
 
 
 def test_write_csv_and_collect_rows(tmp_path: Path) -> None:

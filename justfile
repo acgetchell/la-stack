@@ -493,8 +493,7 @@ python-sync: _ensure-uv
     uv sync --group dev
 
 python-typecheck: python-sync
-    uv run ty check scripts/
-    uv run mypy scripts/archive_changelog.py scripts/bench_compare.py scripts/check_docs_version_sync.py scripts/check_semgrep_fixtures.py scripts/criterion_dim_plot.py scripts/tag_release.py scripts/postprocess_changelog.py scripts/subprocess_utils.py
+    uv run ty check scripts/ --error all
 
 # Repository-owned Semgrep rules for project-specific diagnostics.
 semgrep: _ensure-uv

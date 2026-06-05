@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -23,7 +24,7 @@ import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Final, Protocol, TypeGuard
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +49,22 @@ class PlotRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class PlotCliArgs:
+    """Validated command-line options for the plot generator."""
+
+    metric: str
+    stat: str
+    sample: str
+    criterion_dir: str
+    out: str | None
+    csv: str | None
+    log_y: bool
+    no_plot: bool
+    update_readme: bool
+    readme: str
+
+
+@dataclass(frozen=True, slots=True)
 class Row:
     dim: int
     la_time: float
@@ -60,6 +77,26 @@ class Row:
     fa_lo: float
     fa_hi: float
 
+    def __post_init__(self) -> None:
+        if self.dim <= 0:
+            msg = f"dimension must be positive: {self.dim}"
+            raise ValueError(msg)
+        for field, value in (
+            ("la_time", self.la_time),
+            ("la_lo", self.la_lo),
+            ("la_hi", self.la_hi),
+            ("na_time", self.na_time),
+            ("na_lo", self.na_lo),
+            ("na_hi", self.na_hi),
+            ("fa_time", self.fa_time),
+            ("fa_lo", self.fa_lo),
+            ("fa_hi", self.fa_hi),
+        ):
+            _require_nonnegative_finite_time(value, field)
+        _require_confidence_interval(self.la_lo, self.la_time, self.la_hi, "la_stack row")
+        _require_confidence_interval(self.na_lo, self.na_time, self.na_hi, "nalgebra row")
+        _require_confidence_interval(self.fa_lo, self.fa_time, self.fa_hi, "faer row")
+
 
 class ReadmeMarkerError(ValueError):
     """Base error for invalid README BENCH_TABLE markers."""
@@ -71,6 +108,31 @@ class MarkerNotFoundError(ReadmeMarkerError):
 
 class MarkerOrderError(ReadmeMarkerError):
     """Raised when README markers are out of order."""
+
+
+class _ReadmeArgs(Protocol):
+    @property
+    def update_readme(self) -> bool: ...
+
+    @property
+    def readme(self) -> str: ...
+
+    @property
+    def metric(self) -> str: ...
+
+    @property
+    def stat(self) -> str: ...
+
+    @property
+    def sample(self) -> str: ...
+
+
+class _RenderArgs(Protocol):
+    @property
+    def no_plot(self) -> bool: ...
+
+
+type ParsedObject = dict[str, object]
 
 
 METRICS: Final[dict[str, Metric]] = {
@@ -137,6 +199,18 @@ def _dim_from_group_dir(name: str) -> int | None:
     return int(match.group(1))
 
 
+def _is_parsed_object(value: object) -> TypeGuard[ParsedObject]:
+    """Return true when a parsed JSON/TOML value is an object with string keys."""
+    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
+
+
+def _require_parsed_object(value: object, context: str) -> ParsedObject:
+    if not _is_parsed_object(value):
+        msg = f"expected object for {context}"
+        raise TypeError(msg)
+    return value
+
+
 def _discover_dims(criterion_dir: Path) -> list[int]:
     dims: list[int] = []
     for child in criterion_dir.iterdir():
@@ -155,7 +229,7 @@ def _read_cargo_package_version(cargo_toml: Path) -> str | None:
 
     data = _read_cargo_toml(cargo_toml)
     package = data.get("package")
-    if isinstance(package, dict):
+    if _is_parsed_object(package):
         version = package.get("version")
         if isinstance(version, str):
             return version
@@ -170,13 +244,13 @@ def _read_cargo_dependency_versions(cargo_toml: Path, names: set[str]) -> dict[s
     versions: dict[str, str] = {}
     for section in ("dependencies", "dev-dependencies", "build-dependencies"):
         table = data.get(section)
-        if not isinstance(table, dict):
+        if not _is_parsed_object(table):
             continue
         for name in names:
             value = table.get(name)
             if isinstance(value, str):
                 versions[name] = value
-            elif isinstance(value, dict):
+            elif _is_parsed_object(value):
                 version = value.get("version")
                 if isinstance(version, str):
                     versions[name] = version
@@ -184,8 +258,9 @@ def _read_cargo_dependency_versions(cargo_toml: Path, names: set[str]) -> dict[s
     return versions
 
 
-def _read_cargo_toml(cargo_toml: Path) -> dict[str, Any]:
-    return tomllib.loads(cargo_toml.read_text(encoding="utf-8"))
+def _read_cargo_toml(cargo_toml: Path) -> ParsedObject:
+    data: object = tomllib.loads(cargo_toml.read_text(encoding="utf-8"))
+    return _require_parsed_object(data, str(cargo_toml))
 
 
 def _detect_versions(root: Path) -> dict[str, str]:
@@ -213,20 +288,73 @@ def _format_legend_label(name: str, version: str) -> str:
 
 
 def _read_estimate(estimates_json: Path, stat: str) -> tuple[float, float, float]:
-    data = json.loads(estimates_json.read_text(encoding="utf-8"))
+    data = _read_json_object(estimates_json)
 
     stat_obj = data.get(stat)
-    if not isinstance(stat_obj, dict):
+    if not _is_parsed_object(stat_obj):
         raise KeyError(f"stat '{stat}' not found in {estimates_json}")
 
-    point = float(stat_obj["point_estimate"])
+    point = _read_numeric_field(stat_obj, "point_estimate", estimates_json, stat)
     ci = stat_obj.get("confidence_interval")
-    if not isinstance(ci, dict):
+    if not _is_parsed_object(ci):
         return (point, point, point)
 
-    lo = float(ci.get("lower_bound", point))
-    hi = float(ci.get("upper_bound", point))
+    lo = _read_numeric_field(ci, "lower_bound", estimates_json, stat, default=point)
+    hi = _read_numeric_field(ci, "upper_bound", estimates_json, stat, default=point)
+    _require_confidence_interval(lo, point, hi, f"{stat}.confidence_interval in {estimates_json}")
     return (point, lo, hi)
+
+
+def _read_json_object(path: Path) -> ParsedObject:
+    try:
+        data: object = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as err:
+        msg = f"malformed Criterion estimates JSON in {path}: {err}"
+        raise ValueError(msg) from err
+    return _require_parsed_object(data, str(path))
+
+
+def _read_numeric_field(
+    obj: ParsedObject,
+    field: str,
+    estimates_json: Path,
+    stat: str,
+    *,
+    default: float | None = None,
+) -> float:
+    if field not in obj:
+        if default is not None:
+            return default
+        msg = f"field '{field}' for stat '{stat}' not found in {estimates_json}"
+        raise KeyError(msg)
+
+    value = obj[field]
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        msg = f"field '{field}' for stat '{stat}' in {estimates_json} is not numeric: {value!r}"
+        raise TypeError(msg)
+
+    try:
+        parsed = float(value)
+    except ValueError as err:
+        msg = f"field '{field}' for stat '{stat}' in {estimates_json} is not numeric: {value!r}"
+        raise ValueError(msg) from err
+    return _require_nonnegative_finite_time(parsed, f"{stat}.{field} in {estimates_json}")
+
+
+def _require_nonnegative_finite_time(value: float, context: str) -> float:
+    if not math.isfinite(value) or value < 0.0:
+        msg = f"{context} must be finite and nonnegative: {value!r}"
+        raise ValueError(msg)
+    return value
+
+
+def _require_confidence_interval(lo: float, point: float, hi: float, context: str) -> None:
+    if lo > hi:
+        msg = f"{context} lower bound must be <= upper bound: {lo!r} > {hi!r}"
+        raise ValueError(msg)
+    if not lo <= point <= hi:
+        msg = f"{context} point estimate must be inside confidence interval: {lo!r} <= {point!r} <= {hi!r}"
+        raise ValueError(msg)
 
 
 def _write_csv(out_csv: Path, rows: list[Row]) -> None:
@@ -344,7 +472,7 @@ def _render_svg_with_gnuplot(req: PlotRequest) -> None:
     subprocess.run([gnuplot_path], input="\n".join(gp_lines), text=True, check=True)  # noqa: S603
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace:
+def _parse_args(argv: list[str]) -> PlotCliArgs:
     parser = argparse.ArgumentParser(description="Plot Criterion time vs dimension for la-stack vs nalgebra/faer.")
 
     parser.add_argument(
@@ -401,7 +529,43 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Path to README file to update (default: README.md at repo root).",
     )
 
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    return PlotCliArgs(
+        metric=_required_str_attr(args, "metric"),
+        stat=_required_str_attr(args, "stat"),
+        sample=_required_str_attr(args, "sample"),
+        criterion_dir=_required_str_attr(args, "criterion_dir"),
+        out=_optional_str_attr(args, "out"),
+        csv=_optional_str_attr(args, "csv"),
+        log_y=_required_bool_attr(args, "log_y"),
+        no_plot=_required_bool_attr(args, "no_plot"),
+        update_readme=_required_bool_attr(args, "update_readme"),
+        readme=_required_str_attr(args, "readme"),
+    )
+
+
+def _required_str_attr(args: argparse.Namespace, name: str) -> str:
+    value = getattr(args, name)
+    if not isinstance(value, str):
+        msg = f"argparse returned non-string value for {name}: {value!r}"
+        raise TypeError(msg)
+    return value
+
+
+def _optional_str_attr(args: argparse.Namespace, name: str) -> str | None:
+    value = getattr(args, name)
+    if value is None or isinstance(value, str):
+        return value
+    msg = f"argparse returned non-string value for {name}: {value!r}"
+    raise TypeError(msg)
+
+
+def _required_bool_attr(args: argparse.Namespace, name: str) -> bool:
+    value = getattr(args, name)
+    if not isinstance(value, bool):
+        msg = f"argparse returned non-bool value for {name}: {value!r}"
+        raise TypeError(msg)
+    return value
 
 
 def _resolve_under_root(root: Path, arg: str) -> Path:
@@ -456,7 +620,7 @@ def _collect_rows(criterion_dir: Path, dims: list[int], metric: Metric, stat: st
     return (rows, skipped)
 
 
-def _maybe_update_readme(root: Path, args: argparse.Namespace, rows: list[Row]) -> int:
+def _maybe_update_readme(root: Path, args: _ReadmeArgs, rows: list[Row]) -> int:
     if not args.update_readme:
         return 0
 
@@ -477,7 +641,7 @@ def _maybe_update_readme(root: Path, args: argparse.Namespace, rows: list[Row]) 
     return 0
 
 
-def _maybe_render_plot(args: argparse.Namespace, req: PlotRequest, skipped: list[str]) -> int:
+def _maybe_render_plot(args: _RenderArgs, req: PlotRequest, skipped: list[str]) -> int:
     if args.no_plot:
         print(f"Wrote CSV: {req.csv_path}")
         return 0
