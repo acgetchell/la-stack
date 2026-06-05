@@ -8,7 +8,7 @@ import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TypeGuard
 
 SKIP_DIRS = frozenset(
     {
@@ -23,7 +23,22 @@ SKIP_DIRS = frozenset(
 )
 
 
-@dataclass(frozen=True)
+type ParsedObject = dict[str, object]
+
+
+def _is_parsed_object(value: object) -> TypeGuard[ParsedObject]:
+    """Return true when a parsed TOML value is an object with string keys."""
+    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
+
+
+def _require_parsed_object(value: object, context: str) -> ParsedObject:
+    if not _is_parsed_object(value):
+        msg = f"{context} is not a TOML object"
+        raise TypeError(msg)
+    return value
+
+
+@dataclass(frozen=True, slots=True)
 class PackageInfo:
     """Cargo package identity used in documented dependency snippets."""
 
@@ -31,7 +46,7 @@ class PackageInfo:
     version: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DependencySnippet:
     """A documented dependency version snippet for the current package."""
 
@@ -41,7 +56,7 @@ class DependencySnippet:
     text: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class VersionMismatch:
     """A dependency snippet whose version does not match Cargo.toml."""
 
@@ -50,9 +65,10 @@ class VersionMismatch:
 
 
 def _read_cargo_package_info(cargo_toml: Path) -> PackageInfo:
-    data: dict[str, Any] = tomllib.loads(cargo_toml.read_text(encoding="utf-8"))
-    package = data.get("package")
-    if not isinstance(package, dict):
+    data: object = tomllib.loads(cargo_toml.read_text(encoding="utf-8"))
+    cargo = _require_parsed_object(data, str(cargo_toml))
+    package = cargo.get("package")
+    if not _is_parsed_object(package):
         msg = f"{cargo_toml} is missing a [package] table"
         raise TypeError(msg)
 
