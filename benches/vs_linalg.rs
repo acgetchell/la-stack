@@ -16,7 +16,7 @@ use faer::{Mat, Side};
 use nalgebra::{SMatrix, SVector};
 use pastey::paste;
 
-use la_stack::{DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, Matrix, Vector};
+use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
 
 mod common {
     pub mod vs_linalg;
@@ -63,7 +63,6 @@ macro_rules! define_vs_linalg_benches_for_dim {
                     Vector::<$d>::try_new(make_vector_array::<$d>(1.0)),
                     "la_stack vector construction",
                 );
-
                 let na = SMatrix::<f64, $d, $d>::from_fn(|r, c| matrix_entry::<$d>(r, c));
                 let nrhs = SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 0.0));
                 let nv1 = SVector::<f64, $d>::from_fn(|i, _| vector_entry(i, 0.0));
@@ -75,7 +74,7 @@ macro_rules! define_vs_linalg_benches_for_dim {
                 let fv2 = Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 1.0));
 
                 // Precompute LU once for solve-only / det-only benchmarks.
-                let a_lu = require_ok(a.lu(DEFAULT_PIVOT_TOL), "precomputed la_stack LU");
+                let a_lu = require_ok(a.lu(DEFAULT_SINGULAR_TOL), "precomputed la_stack LU");
                 let a_ldlt = require_ok(a.ldlt(DEFAULT_SINGULAR_TOL), "precomputed la_stack LDLT");
                 let na_lu = na.clone().lu();
                 let na_cholesky = require_some(na.clone().cholesky(), "precomputed nalgebra Cholesky");
@@ -88,7 +87,7 @@ macro_rules! define_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("la_stack_det_via_lu", |bencher| {
                     bencher.iter(|| {
                         let lu = require_ok(
-                            black_box(a).lu(DEFAULT_PIVOT_TOL),
+                            black_box(a).lu(DEFAULT_SINGULAR_TOL),
                             "la_stack LU factorization",
                         );
                         let det = require_ok(lu.det(), "la_stack LU determinant");
@@ -124,7 +123,7 @@ macro_rules! define_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("la_stack_lu", |bencher| {
                     bencher.iter(|| {
                         let lu = require_ok(
-                            black_box(a).lu(DEFAULT_PIVOT_TOL),
+                            black_box(a).lu(DEFAULT_SINGULAR_TOL),
                             "la_stack LU factorization",
                         );
                         let _ = black_box(lu);
@@ -180,11 +179,11 @@ macro_rules! define_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("la_stack_lu_solve", |bencher| {
                     bencher.iter(|| {
                         let lu = require_ok(
-                            black_box(a).lu(DEFAULT_PIVOT_TOL),
+                            black_box(a).lu(DEFAULT_SINGULAR_TOL),
                             "la_stack LU factorization",
                         );
                         let x = require_ok(
-                            lu.solve_vec(black_box(rhs)),
+                            lu.solve(black_box(rhs)),
                             "la_stack LU solve",
                         );
                         let _ = black_box(x);
@@ -215,7 +214,7 @@ macro_rules! define_vs_linalg_benches_for_dim {
                             "la_stack LDLT factorization",
                         );
                         let x = require_ok(
-                            ldlt.solve_vec(black_box(rhs)),
+                            ldlt.solve(black_box(rhs)),
                             "la_stack LDLT solve",
                         );
                         let _ = black_box(x);
@@ -248,7 +247,7 @@ macro_rules! define_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("la_stack_solve_from_lu", |bencher| {
                     bencher.iter(|| {
                         let x = require_ok(
-                            a_lu.solve_vec(black_box(rhs)),
+                            a_lu.solve(black_box(rhs)),
                             "precomputed la_stack LU solve",
                         );
                         let _ = black_box(x);
@@ -276,7 +275,7 @@ macro_rules! define_vs_linalg_benches_for_dim {
                 [<group_d $d>].bench_function("la_stack_solve_from_ldlt", |bencher| {
                     bencher.iter(|| {
                         let x = require_ok(
-                            a_ldlt.solve_vec(black_box(rhs)),
+                            a_ldlt.solve(black_box(rhs)),
                             "precomputed la_stack LDLT solve",
                         );
                         let _ = black_box(x);

@@ -6,28 +6,45 @@ use crate::ldlt::Ldlt;
 use crate::lu::Lu;
 use crate::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LDLT_SYMMETRY_REL_TOL, LaError, Tolerance};
 
-/// Fixed-size square matrix `D×D`, stored inline.
+/// Finite fixed-size square matrix `D×D`, stored inline.
 ///
 /// `Matrix` is designed for small, robustness-sensitive systems where stack
 /// allocation and const-generic dimensions are useful. For large, dynamic, sparse,
 /// or parallel workloads, prefer a broader linear-algebra crate such as
 /// [`nalgebra`](https://crates.io/crates/nalgebra) or
 /// [`faer`](https://crates.io/crates/faer).
+///
+/// Public construction and mutation reject NaN and infinity through
+/// [`try_from_rows`](Self::try_from_rows), [`set`](Self::set), and
+/// [`set_checked`](Self::set_checked). The storage field is private, so a
+/// `Matrix` value carries the invariant that every stored entry is finite.
+/// Algorithms therefore do not re-scan stored entries before using a `Matrix`;
+/// they only report non-finite values computed during arithmetic, such as
+/// overflowed elimination or determinant intermediates.
+///
+/// Direct field construction is intentionally unavailable to downstream callers:
+///
+/// ```compile_fail
+/// use la_stack::Matrix;
+///
+/// let _ = Matrix::<2> {
+///     rows: [[1.0, f64::NAN], [0.0, 1.0]],
+/// };
+/// ```
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Matrix<const D: usize> {
-    pub(crate) rows: [[f64; D]; D],
+    rows: [[f64; D]; D],
 }
 
 /// Fixed-size square matrix whose stored entries are all finite.
 ///
-/// This proof-bearing wrapper makes the finite invariant explicit for internal
-/// algorithms that should not repeatedly check stored entries for NaN or
-/// infinity.
+/// This internal proof wrapper is used where carrying the invariant explicitly
+/// makes algorithm boundaries clearer. Public callers use [`Matrix`], which is
+/// already finite by construction.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) struct FiniteMatrix<const D: usize> {
+pub struct FiniteMatrix<const D: usize> {
     matrix: Matrix<D>,
 }
 
@@ -54,24 +71,6 @@ impl<const D: usize> FiniteMatrix<D> {
         } else {
             Ok(Self::new_unchecked(matrix))
         }
-    }
-
-    /// Validate raw row-major storage and construct a finite matrix.
-    /// # Errors
-    /// Returns [`LaError::NonFinite`] with matrix coordinates for the first
-    /// offending entry in row-major order when `rows` contains NaN or infinity.
-    #[inline]
-    pub(crate) const fn from_rows(rows: [[f64; D]; D]) -> Result<Self, LaError> {
-        match Matrix::try_from_rows(rows) {
-            Ok(matrix) => Ok(Self::new_unchecked(matrix)),
-            Err(err) => Err(err),
-        }
-    }
-
-    /// All-zeros finite matrix.
-    #[inline]
-    pub(crate) const fn zero() -> Self {
-        Self::new_unchecked(Matrix::zero())
     }
 
     /// Consume the wrapper and return the underlying raw matrix.
@@ -345,38 +344,6 @@ impl<const D: usize> FiniteMatrix<D> {
     }
 }
 
-impl<const D: usize> Default for FiniteMatrix<D> {
-    #[inline]
-    fn default() -> Self {
-        Self::zero()
-    }
-}
-
-impl<const D: usize> From<FiniteMatrix<D>> for Matrix<D> {
-    #[inline]
-    fn from(value: FiniteMatrix<D>) -> Self {
-        value.into_matrix()
-    }
-}
-
-impl<const D: usize> TryFrom<Matrix<D>> for FiniteMatrix<D> {
-    type Error = LaError;
-
-    #[inline]
-    fn try_from(value: Matrix<D>) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl<const D: usize> TryFrom<[[f64; D]; D]> for FiniteMatrix<D> {
-    type Error = LaError;
-
-    #[inline]
-    fn try_from(value: [[f64; D]; D]) -> Result<Self, Self::Error> {
-        Self::from_rows(value)
-    }
-}
-
 /// Matrix proven finite and symmetric under the crate's LDLT symmetry tolerance.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -438,9 +405,8 @@ impl<const D: usize> Matrix<D> {
 
     /// Try to create a finite matrix from row-major storage.
     ///
-    /// This is the public raw-storage boundary for matrices. Public compute
-    /// methods parse stored rows into crate-internal proof-bearing types before
-    /// arithmetic, including when crate-internal unchecked storage exists.
+    /// This is the public raw-storage boundary for matrices. Successful
+    /// construction makes the returned [`Matrix`] a finite-storage proof.
     ///
     /// # Examples
     /// ```
@@ -467,14 +433,34 @@ impl<const D: usize> Matrix<D> {
 
     /// Construct a matrix without checking that entries are finite.
     ///
-    /// This crate-internal escape hatch is reserved for literals and algorithm
-    /// outputs whose finite invariant is visible at the call site.
+    /// This crate-internal escape hatch is reserved for finite literals and
+    /// algorithm outputs whose finite invariant is visible at the call site.
+    /// Computed outputs must be validated before becoming observable API values.
     #[inline]
     pub(crate) const fn from_rows_unchecked(rows: [[f64; D]; D]) -> Self {
         Self { rows }
     }
 
-    /// All-zeros matrix.
+    /// Borrow finite row-major storage.
+    ///
+    /// This accessor exposes the already validated backing array to internal
+    /// algorithms without giving them mutable access that could invalidate the
+    /// [`Matrix`] invariant.
+    #[inline]
+    pub(crate) const fn rows(&self) -> &[[f64; D]; D] {
+        &self.rows
+    }
+
+    /// Mutably borrow raw row-major storage without preserving the finite invariant.
+    ///
+    /// This is reserved for internal factorization temporaries whose results are
+    /// validated before becoming observable API values.
+    #[inline]
+    pub(crate) const fn rows_mut_unchecked(&mut self) -> &mut [[f64; D]; D] {
+        &mut self.rows
+    }
+
+    /// All-zeros finite matrix.
     ///
     /// # Examples
     /// ```
@@ -488,7 +474,7 @@ impl<const D: usize> Matrix<D> {
         Self::from_rows_unchecked([[0.0; D]; D])
     }
 
-    /// Identity matrix.
+    /// Finite identity matrix.
     ///
     /// # Examples
     /// ```
@@ -512,7 +498,7 @@ impl<const D: usize> Matrix<D> {
         m
     }
 
-    /// Get an element with bounds checking.
+    /// Get a finite element with bounds checking.
     ///
     /// # Examples
     /// ```
@@ -535,7 +521,7 @@ impl<const D: usize> Matrix<D> {
         }
     }
 
-    /// Get an element, preserving index context on failure.
+    /// Get a finite element, preserving index context on failure.
     ///
     /// Prefer [`get`](Self::get) for const or hot paths that only need
     /// `Option`-style absence.  Use this method at public runtime boundaries
@@ -646,9 +632,8 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # Non-finite handling
     /// Public constructors and setters reject raw non-finite entries, but
-    /// crate-internal unchecked storage can still contain NaN or infinity.
-    /// `inf_norm` returns [`LaError::NonFinite`] if it encounters stored NaN/∞
-    /// or if a row sum overflows to a non-finite value.
+    /// `Matrix` values are finite by construction. `inf_norm` returns
+    /// [`LaError::NonFinite`] if a row sum overflows to a non-finite value.
     ///
     /// Row sums are accumulated in `f64` with ordinary addition.  This method
     /// checks for overflowed accumulators, but it does not provide a certified
@@ -675,14 +660,10 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when stored entries are NaN/infinity or a
-    /// row sum overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] when a row sum overflows to NaN or infinity.
     #[inline]
     pub const fn inf_norm(&self) -> Result<f64, LaError> {
-        match FiniteMatrix::new(*self) {
-            Ok(matrix) => matrix.inf_norm(),
-            Err(err) => Err(err),
-        }
+        FiniteMatrix::new_unchecked(*self).inf_norm()
     }
 
     /// Returns `true` if the matrix is symmetric within a relative tolerance.
@@ -724,11 +705,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when stored entries are NaN/infinity or
-    /// computing the scaled symmetry tolerance overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] when computing the scaled symmetry
+    /// tolerance overflows to NaN or infinity.
     #[inline]
     pub fn is_symmetric(&self, rel_tol: Tolerance) -> Result<bool, LaError> {
-        FiniteMatrix::new(*self)?.is_symmetric(rel_tol)
+        FiniteMatrix::new_unchecked(*self).is_symmetric(rel_tol)
     }
 
     /// Returns the indices `(r, c)` (with `r < c`) of the first off-diagonal
@@ -769,11 +750,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when stored entries are NaN/infinity or
-    /// computing the scaled symmetry tolerance overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] when computing the scaled symmetry
+    /// tolerance overflows to NaN or infinity.
     #[inline]
     pub fn first_asymmetry(&self, rel_tol: Tolerance) -> Result<Option<(usize, usize)>, LaError> {
-        FiniteMatrix::new(*self)?.first_asymmetry(rel_tol)
+        FiniteMatrix::new_unchecked(*self).first_asymmetry(rel_tol)
     }
 
     /// Compute an LU decomposition with partial pivoting.
@@ -784,10 +765,10 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # fn main() -> Result<(), LaError> {
     /// let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
-    /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
+    /// let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
     ///
     /// let b = Vector::<2>::try_new([5.0, 11.0])?;
-    /// let x = lu.solve_vec(b)?.into_array();
+    /// let x = lu.solve(b)?.into_array();
     ///
     /// assert!((x[0] - 1.0).abs() <= 1e-12);
     /// assert!((x[1] - 2.0).abs() <= 1e-12);
@@ -804,12 +785,11 @@ impl<const D: usize> Matrix<D> {
     /// # Errors
     /// Returns [`LaError::Singular`] if, for some column `k`, the largest-magnitude candidate pivot
     /// in that column satisfies `|pivot| <= tol` (so no numerically usable pivot exists).
-    /// Returns [`LaError::NonFinite`] if stored entries are NaN/infinity or an
-    /// elimination intermediate overflows to NaN/∞ before it can be stored in
-    /// the returned [`Lu`].
+    /// Returns [`LaError::NonFinite`] if an elimination intermediate overflows
+    /// to NaN/∞ before it can be stored in the returned [`Lu`].
     #[inline]
     pub fn lu(self, tol: Tolerance) -> Result<Lu<D>, LaError> {
-        FiniteMatrix::new(self)?.lu(tol)
+        FiniteMatrix::new_unchecked(self).lu(tol)
     }
 
     /// Compute an LDLT factorization (`A = L D Lᵀ`) without pivoting.
@@ -846,7 +826,7 @@ impl<const D: usize> Matrix<D> {
     ///
     /// // Solve A x = b
     /// let b = Vector::<2>::try_new([1.0, 2.0])?;
-    /// let x = ldlt.solve_vec(b)?.into_array();
+    /// let x = ldlt.solve(b)?.into_array();
     /// assert!((x[0] - (-0.125)).abs() <= 1e-12);
     /// assert!((x[1] - 0.75).abs() <= 1e-12);
     /// # Ok(())
@@ -858,12 +838,12 @@ impl<const D: usize> Matrix<D> {
     /// diagonal entry `d = D[k,k]` is negative.
     /// Returns [`LaError::Singular`] if `0 <= d <= tol`, treating PSD degeneracy
     /// as singular/degenerate.
-    /// Returns [`LaError::NonFinite`] if stored entries are NaN/infinity or
-    /// factorization computes a non-finite intermediate.
+    /// Returns [`LaError::NonFinite`] if factorization computes a non-finite
+    /// intermediate.
     /// Returns [`LaError::Asymmetric`] if the input matrix is not symmetric.
     #[inline]
     pub fn ldlt(self, tol: Tolerance) -> Result<Ldlt<D>, LaError> {
-        FiniteMatrix::new(self)?.ldlt(tol)
+        FiniteMatrix::new_unchecked(self).ldlt(tol)
     }
 
     /// Return the first non-finite stored cell in row-major order.
@@ -910,14 +890,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when stored entries are NaN/infinity or
-    /// the closed-form determinant overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] when the closed-form determinant overflows
+    /// to NaN or infinity.
     #[inline]
     pub const fn det_direct(&self) -> Result<Option<f64>, LaError> {
-        match FiniteMatrix::new(*self) {
-            Ok(matrix) => matrix.det_direct(),
-            Err(err) => Err(err),
-        }
+        FiniteMatrix::new_unchecked(*self).det_direct()
     }
 
     /// Floating-point determinant, using closed-form formulas for D ≤ 4 and
@@ -948,12 +925,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if stored entries are NaN/infinity, the
-    /// LU fallback computes a non-finite factorization cell, or the determinant
-    /// product overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] if the LU fallback computes a non-finite
+    /// factorization cell, or the determinant product overflows to NaN or infinity.
     #[inline]
     pub fn det(self) -> Result<f64, LaError> {
-        FiniteMatrix::new(self)?.det()
+        FiniteMatrix::new_unchecked(self).det()
     }
 
     /// Conservative absolute error bound for `det_direct()`.
@@ -1017,14 +993,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when stored entries are NaN/infinity or
-    /// the bound computation overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] when the bound computation overflows to
+    /// NaN or infinity.
     #[inline]
     pub const fn det_errbound(&self) -> Result<Option<f64>, LaError> {
-        match FiniteMatrix::new(*self) {
-            Ok(matrix) => matrix.det_errbound(),
-            Err(err) => Err(err),
-        }
+        FiniteMatrix::new_unchecked(*self).det_errbound()
     }
 }
 
@@ -1038,7 +1011,7 @@ impl<const D: usize> Default for Matrix<D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DEFAULT_PIVOT_TOL;
+    use crate::DEFAULT_SINGULAR_TOL;
     use crate::vector::{FiniteVector, Vector};
 
     use approx::assert_abs_diff_eq;
@@ -1157,7 +1130,7 @@ mod tests {
                 }
 
                 #[test]
-                fn [<public_api_matrix_identity_lu_det_solve_vec_ $d d>]() {
+                fn [<public_api_matrix_identity_lu_det_solve_ $d d>]() {
                     let m = Matrix::<$d>::identity();
 
                     // Identity has ones on diag and zeros off diag.
@@ -1173,7 +1146,7 @@ mod tests {
                     assert_abs_diff_eq!(det, 1.0, epsilon = 1e-12);
 
                     // LU solve on identity returns the RHS.
-                    let lu = m.lu(DEFAULT_PIVOT_TOL).unwrap();
+                    let lu = m.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
                     let b_arr = {
                         let mut arr = [0.0f64; $d];
@@ -1185,7 +1158,7 @@ mod tests {
                     };
 
                     let b = Vector::<$d>::new(b_arr);
-                    let x = lu.solve_vec(b).unwrap().into_array();
+                    let x = lu.solve(b).unwrap().into_array();
 
                     for (x_i, b_i) in x.iter().zip(b_arr.iter()) {
                         assert_abs_diff_eq!(*x_i, *b_i, epsilon = 1e-12);
@@ -1199,11 +1172,9 @@ mod tests {
                         rows[r][r] = 1.0;
                     }
 
-                    let finite = FiniteMatrix::<$d>::from_rows(rows).unwrap();
+                    let finite = FiniteMatrix::<$d>::new(Matrix::<$d>::from_rows(rows)).unwrap();
 
                     assert_matrix_abs_eq(&finite.into_matrix(), &Matrix::<$d>::from_rows(rows));
-                    assert_matrix_abs_eq(&FiniteMatrix::<$d>::zero().into_matrix(), &Matrix::<$d>::zero());
-                    assert_matrix_abs_eq(&FiniteMatrix::<$d>::default().into_matrix(), &Matrix::<$d>::zero());
                     assert_eq!(finite.into_matrix().get(0, 0), Some(1.0));
                     assert_eq!(finite.into_matrix().get($d, 0), None);
                     assert_eq!(
@@ -1214,44 +1185,19 @@ mod tests {
                             dim: $d,
                         })
                     );
-                    assert_matrix_abs_eq(&Matrix::from(finite), &Matrix::<$d>::from_rows(rows));
-                    assert_matrix_abs_eq(
-                        &FiniteMatrix::<$d>::try_from(Matrix::<$d>::from_rows(rows))
-                            .unwrap()
-                            .into_matrix(),
-                        &finite.into_matrix()
-                    );
-                    assert_matrix_abs_eq(
-                        &FiniteMatrix::<$d>::try_from(rows).unwrap().into_matrix(),
-                        &finite.into_matrix()
-                    );
                 }
 
                 #[test]
                 fn [<finite_matrix_rejects_nonfinite_with_coordinates_ $d d>]() {
                     let mut rows = [[1.0f64; $d]; $d];
                     rows[$d - 1][0] = f64::NAN;
-
-                    assert_eq!(
-                        FiniteMatrix::<$d>::from_rows(rows),
-                        Err(LaError::NonFinite {
-                            row: Some($d - 1),
-                            col: 0,
-                        })
-                    );
-                }
-
-                #[test]
-                fn [<finite_matrix_try_from_raw_matrix_revalidates_entries_ $d d>]() {
-                    let mut rows = [[1.0f64; $d]; $d];
-                    rows[$d - 1][$d - 1] = f64::INFINITY;
                     let raw = Matrix::<$d>::from_rows_unchecked(rows);
 
                     assert_eq!(
-                        FiniteMatrix::<$d>::try_from(raw),
+                        FiniteMatrix::<$d>::new(raw),
                         Err(LaError::NonFinite {
                             row: Some($d - 1),
-                            col: $d - 1,
+                            col: 0,
                         })
                     );
                 }
@@ -1265,7 +1211,7 @@ mod tests {
                     }
 
                     let raw = Matrix::<$d>::from_rows(rows);
-                    let finite = FiniteMatrix::<$d>::from_rows(rows).unwrap();
+                    let finite = FiniteMatrix::<$d>::new(raw).unwrap();
 
                     assert_abs_diff_eq!(finite.inf_norm().unwrap(), raw.inf_norm().unwrap(), epsilon = 0.0);
                     assert_eq!(finite.det_direct(), raw.det_direct());
@@ -1290,18 +1236,18 @@ mod tests {
                         for (dst, src) in arr.iter_mut().zip(values.iter()) {
                             *dst = *src;
                         }
-                        FiniteVector::<$d>::from_array(arr).unwrap()
+                        FiniteVector::<$d>::new_unchecked(Vector::<$d>::new(arr))
                     };
 
-                    let lu = finite.lu(DEFAULT_PIVOT_TOL).unwrap();
+                    let lu = finite.lu(DEFAULT_SINGULAR_TOL).unwrap();
                     assert_array_abs_eq(
-                        &lu.solve_finite_vec(rhs).unwrap().into_array(),
+                        &lu.solve_finite(rhs).unwrap().into_array(),
                         &rhs.into_array()
                     );
 
-                    let ldlt = finite.ldlt(DEFAULT_PIVOT_TOL).unwrap();
+                    let ldlt = finite.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
                     assert_array_abs_eq(
-                        &ldlt.solve_finite_vec(rhs).unwrap().into_array(),
+                        &ldlt.solve_finite(rhs).unwrap().into_array(),
                         &rhs.into_array()
                     );
                 }
@@ -1314,61 +1260,6 @@ mod tests {
     gen_public_api_matrix_tests!(3);
     gen_public_api_matrix_tests!(4);
     gen_public_api_matrix_tests!(5);
-
-    macro_rules! gen_public_matrix_revalidation_tests {
-        ($d:literal) => {
-            paste! {
-                #[test]
-                fn [<public_matrix_compute_methods_revalidate_unchecked_storage_ $d d>]() {
-                    let mut rows = [[0.0f64; $d]; $d];
-                    for i in 0..$d {
-                        rows[i][i] = 1.0;
-                    }
-                    rows[0][$d - 1] = f64::NAN;
-                    let raw = Matrix::<$d>::from_rows_unchecked(rows);
-                    let expected = LaError::NonFinite {
-                        row: Some(0),
-                        col: $d - 1,
-                    };
-
-                    assert_eq!(raw.inf_norm(), Err(expected));
-                    assert_eq!(
-                        raw.is_symmetric(Tolerance::new(0.0).unwrap()),
-                        Err(expected)
-                    );
-                    assert_eq!(
-                        raw.first_asymmetry(Tolerance::new(0.0).unwrap()),
-                        Err(expected)
-                    );
-                    assert_eq!(raw.lu(DEFAULT_PIVOT_TOL), Err(expected));
-                    assert_eq!(raw.ldlt(DEFAULT_PIVOT_TOL), Err(expected));
-                    assert_eq!(raw.det_direct(), Err(expected));
-                    assert_eq!(raw.det(), Err(expected));
-                    assert_eq!(raw.det_errbound(), Err(expected));
-                }
-            }
-        };
-    }
-
-    gen_public_matrix_revalidation_tests!(2);
-    gen_public_matrix_revalidation_tests!(3);
-    gen_public_matrix_revalidation_tests!(4);
-    gen_public_matrix_revalidation_tests!(5);
-
-    #[test]
-    fn public_matrix_fast_none_paths_revalidate_unchecked_storage() {
-        let mut rows = [[1.0f64; 5]; 5];
-        rows[4][1] = f64::INFINITY;
-        let raw = Matrix::<5>::from_rows_unchecked(rows);
-
-        let expected = Err(LaError::NonFinite {
-            row: Some(4),
-            col: 1,
-        });
-
-        assert_eq!(raw.det_direct(), expected);
-        assert_eq!(raw.det_errbound(), expected);
-    }
 
     // === det_direct tests ===
 
@@ -1523,7 +1414,7 @@ mod tests {
                     }
                     let m = Matrix::<$d>::from_rows(rows);
                     let direct = m.det_direct().unwrap().unwrap();
-                    let lu_det = m.lu(DEFAULT_PIVOT_TOL).unwrap().det().unwrap();
+                    let lu_det = m.lu(DEFAULT_SINGULAR_TOL).unwrap().det().unwrap();
                     let eps = lu_det.abs().mul_add(1e-12, 1e-12);
                     assert_abs_diff_eq!(direct, lu_det, epsilon = eps);
                 }
@@ -1614,7 +1505,7 @@ mod tests {
 
         assert_abs_diff_eq!(m.det().unwrap(), 1e-13, epsilon = 0.0);
         assert_eq!(
-            m.lu(DEFAULT_PIVOT_TOL),
+            m.lu(DEFAULT_SINGULAR_TOL),
             Err(LaError::Singular { pivot_col: 0 })
         );
     }
@@ -1966,7 +1857,7 @@ mod tests {
             paste! {
                 #[test]
                 fn [<matrix_ldlt_accepts_identity_ $d d>]() {
-                    let ldlt = Matrix::<$d>::identity().ldlt(DEFAULT_PIVOT_TOL).unwrap();
+                    let ldlt = Matrix::<$d>::identity().ldlt(DEFAULT_SINGULAR_TOL).unwrap();
                     assert_abs_diff_eq!(ldlt.det().unwrap(), 1.0, epsilon = 0.0);
                 }
 

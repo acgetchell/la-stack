@@ -58,12 +58,9 @@ API-invariant cleanup:
 
 - [#126](https://github.com/acgetchell/la-stack/issues/126) is resolved as an
   internal parse-don't-validate design rather than a public proof-bearing API.
-  `Matrix<D>` and `Vector<D>` remain the raw boundary types so callers can pass
-  deserialized, fixture, or otherwise unchecked `f64` storage and receive
-  structured diagnostics. Crate-private `FiniteMatrix<D>` and
-  `FiniteVector<D>` are validated domain types that carry the finite-entry proof
-  behind the scenes for LU, LDLT, determinant, error-bound, and exact-arithmetic
-  paths.
+  `Matrix<D>` and `Vector<D>` parse raw `f64` storage at construction and then
+  carry the finite-entry proof directly. Crate-private finite wrappers remain
+  only as implementation helpers at algorithm boundaries.
 - The public prelude stays focused on downstream composition: raw boundary
   types, factorization handles, tolerances, crate errors, dispatch helpers, and
   documented constants. Proof-bearing wrappers remain crate-private, and

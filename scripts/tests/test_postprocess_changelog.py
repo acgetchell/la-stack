@@ -10,8 +10,10 @@ from postprocess_changelog import (
     _is_duplicate_squash_heading,
     _is_isolated_body_heading,
     _max_pr_number,
+    _normalize_email_autolinks,
     _normalize_entry_heading,
     _normalize_indented_heading,
+    _normalize_list_continuation_indent,
     _normalize_squash_heading,
     _plain_summary,
     _process_code_fence,
@@ -81,6 +83,119 @@ class TestStripTrailingBlanks:
         postprocess(f)
 
         assert f.read_text(encoding="utf-8") == "\n"
+
+
+class TestListContinuationIndent:
+    def test_normalizes_over_indented_top_level_continuation(self) -> None:
+        lines = [
+            "- Replace BigRational-only gauss_solve",
+            "",
+            "      Bareiss fraction-free forward elimination.",
+        ]
+
+        result = _normalize_list_continuation_indent(lines[2], lines, 2)
+
+        assert result == "  Bareiss fraction-free forward elimination."
+
+    def test_preserves_nested_list_continuation_indent(self) -> None:
+        lines = [
+            "- Parent item",
+            "",
+            "  - Nested item",
+            "    continued nested prose",
+        ]
+
+        result = _normalize_list_continuation_indent(lines[3], lines, 3)
+
+        assert result == "    continued nested prose"
+
+    def test_full_postprocess_normalizes_git_cliff_continuation(self) -> None:
+        content = (
+            "# Changelog\n\n"
+            "## [1.0.0] - 2026-01-01\n\n"
+            "### Performance\n\n"
+            "- Integer-only Bareiss determinant via BigInt\n"
+            "  [`d422b25`](https://github.com/acgetchell/la-stack/commit/d422b251ca86a914522f80285964d4513bca1817)\n\n"
+            "    det_exact: 16x faster\n"
+        )
+
+        result = postprocess_text(content)
+
+        assert "\n  det_exact: 16x faster\n" in result
+        assert "\n    det_exact: 16x faster\n" not in result
+
+
+class TestRumdlCompatibility:
+    def test_removes_blank_between_peer_list_items(self) -> None:
+        content = (
+            "# Changelog\n\n"
+            "## [1.0.0] - 2026-01-01\n\n"
+            "### Added\n\n"
+            "- First item\n"
+            "  [`1111111`](https://github.com/acgetchell/la-stack/commit/1111111111111111111111111111111111111111)\n\n"
+            "- Second item\n"
+        )
+
+        result = postprocess_text(content)
+
+        assert "\n\n- Second item\n" not in result
+        assert "\n- Second item\n" in result
+
+    def test_removes_blank_after_nested_body_before_top_level_peer(self) -> None:
+        content = "# Changelog\n\n## [1.0.0] - 2026-01-01\n\n### Added\n\n- First item\n\n  - Body point\n  - Body point\n\n- Second item\n"
+
+        result = postprocess_text(content)
+
+        assert "\n\n- Second item\n" not in result
+        assert "\n- Second item\n" in result
+
+    def test_removes_blank_after_mixed_body_before_top_level_peer(self) -> None:
+        content = (
+            "# Changelog\n\n"
+            "## [1.0.0] - 2026-01-01\n\n"
+            "### Changed\n\n"
+            "- First item\n\n"
+            "  Body paragraph.\n\n"
+            "  - Body point\n"
+            "  - Body point\n\n"
+            "  More body prose.\n\n"
+            "- Second item\n"
+        )
+
+        result = postprocess_text(content)
+
+        assert "\n\n- Second item\n" not in result
+        assert "\n- Second item\n" in result
+
+    def test_preserves_blank_before_list_item_body(self) -> None:
+        content = "# Changelog\n\n## [1.0.0] - 2026-01-01\n\n### Added\n\n- First item\n\n  Body paragraph.\n"
+
+        result = postprocess_text(content)
+
+        assert "- First item\n\n  Body paragraph.\n" in result
+
+    def test_keeps_body_item_tight_after_plain_peer(self) -> None:
+        content = (
+            "# Changelog\n\n"
+            "## [1.0.0] - 2026-01-01\n\n"
+            "### Added\n\n"
+            "- Simple item [`1111111`](https://github.com/acgetchell/la-stack/commit/1111111111111111111111111111111111111111)\n"
+            "- Item with body [`2222222`](https://github.com/acgetchell/la-stack/commit/2222222222222222222222222222222222222222)\n\n"
+            "  Body paragraph.\n"
+        )
+
+        result = postprocess_text(content)
+
+        assert "\n- Simple item" in result
+        assert "\n- Item with body" in result
+        assert "\n\n- Item with body" not in result
+
+    def test_normalizes_git_cliff_escaped_email_autolink(self) -> None:
+        line = "  Co-Authored-By: Oz &lt;oz-agent@warp.dev&gt;"
+
+        result = _normalize_email_autolinks(line)
+
+        assert result == "  Co-Authored-By: Oz <oz-agent@warp.dev>"
 
 
 class TestReflowLine:

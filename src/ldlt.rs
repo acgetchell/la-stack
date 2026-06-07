@@ -59,66 +59,71 @@ impl<const D: usize> LdltFactors<D> {
     #[inline]
     #[must_use]
     const fn row(&self, index: usize) -> &[f64; D] {
-        &self.storage.rows[index]
+        &self.storage.rows()[index]
     }
 
     /// Return a factor entry.
     #[inline]
     #[must_use]
     const fn entry(&self, row: usize, col: usize) -> f64 {
-        self.storage.rows[row][col]
+        self.storage.rows()[row][col]
     }
 
     /// Return a diagonal entry of `D`.
     #[inline]
     #[must_use]
     const fn diag(&self, index: usize) -> f64 {
-        self.storage.rows[index][index]
+        self.storage.rows()[index][index]
     }
 }
 
 impl<const D: usize> Ldlt<D> {
     /// Factor a matrix that has already passed LDLT symmetry validation.
     #[inline]
+    #[allow(clippy::needless_range_loop)]
     pub(crate) fn factor_symmetric(a: SymmetricMatrix<D>, tol: Tolerance) -> Result<Self, LaError> {
         let mut f = a.into_matrix();
         let tol = tol.get();
 
-        // LDLT via symmetric rank-1 updates, using only the lower triangle.
-        for j in 0..D {
-            let d = f.rows[j][j];
-            if !d.is_finite() {
-                cold_path();
-                return Err(LaError::non_finite_cell(j, j));
-            }
-            if d < 0.0 {
-                cold_path();
-                return Err(LaError::not_positive_semidefinite(j, d));
-            }
-            if d <= tol {
-                cold_path();
-                return Err(LaError::Singular { pivot_col: j });
-            }
+        {
+            let rows = f.rows_mut_unchecked();
 
-            // Compute L multipliers below the diagonal in column j.
-            for i in (j + 1)..D {
-                let l = f.rows[i][j] / d;
-                if !l.is_finite() {
+            // LDLT via symmetric rank-1 updates, using only the lower triangle.
+            for j in 0..D {
+                let d = rows[j][j];
+                if !d.is_finite() {
                     cold_path();
-                    return Err(LaError::non_finite_cell(i, j));
+                    return Err(LaError::non_finite_cell(j, j));
                 }
-                f.rows[i][j] = l;
-            }
+                if d < 0.0 {
+                    cold_path();
+                    return Err(LaError::not_positive_semidefinite(j, d));
+                }
+                if d <= tol {
+                    cold_path();
+                    return Err(LaError::Singular { pivot_col: j });
+                }
 
-            // Update the trailing submatrix (lower triangle): A := A - (L_col * d) * L_col^T.
-            for i in (j + 1)..D {
-                let l_i = f.rows[i][j];
-                let l_i_d = l_i * d;
+                // Compute L multipliers below the diagonal in column j.
+                for i in (j + 1)..D {
+                    let l = rows[i][j] / d;
+                    if !l.is_finite() {
+                        cold_path();
+                        return Err(LaError::non_finite_cell(i, j));
+                    }
+                    rows[i][j] = l;
+                }
 
-                for k in (j + 1)..=i {
-                    let l_k = f.rows[k][j];
-                    let new_val = (-l_i_d).mul_add(l_k, f.rows[i][k]);
-                    f.rows[i][k] = new_val;
+                // Update the trailing submatrix (lower triangle): A := A - (L_col * d) * L_col^T.
+                for i in (j + 1)..D {
+                    let l_i = rows[i][j];
+                    let l_i_d = l_i * d;
+
+                    for k in (j + 1)..=i {
+                        let l_k = rows[k][j];
+                        let new_val = (-l_i_d).mul_add(l_k, rows[i][k]);
+                        rows[i][k] = new_val;
+                    }
                 }
             }
         }
@@ -168,8 +173,10 @@ impl<const D: usize> Ldlt<D> {
 
     /// Solve `A x = b` using this LDLT factorization.
     ///
-    /// `solve_vec` performs floating-point substitution and does not provide a
-    /// certified absolute rounding-error bound for the returned solution.
+    /// [`Vector`] is finite by construction, so this method only checks computed
+    /// substitution overflows. It performs floating-point substitution and does
+    /// not provide a certified absolute rounding-error bound for the returned
+    /// solution.
     ///
     /// # Examples
     /// ```
@@ -180,7 +187,7 @@ impl<const D: usize> Ldlt<D> {
     /// let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL)?;
     ///
     /// let b = Vector::<2>::try_new([1.0, 2.0])?;
-    /// let x = ldlt.solve_vec(b)?.into_array();
+    /// let x = ldlt.solve(b)?.into_array();
     ///
     /// assert!((x[0] - (-0.125)).abs() <= 1e-12);
     /// assert!((x[1] - 0.75).abs() <= 1e-12);
@@ -189,18 +196,11 @@ impl<const D: usize> Ldlt<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if the right-hand side contains
-    /// NaN/infinity or a computed substitution intermediate overflows to NaN or
-    /// infinity. The right-hand side is revalidated at this boundary before
-    /// entering substitution; public callers normally encounter the same
-    /// rejection earlier through [`Vector::try_new`](crate::Vector::try_new).
+    /// Returns [`LaError::NonFinite`] if a computed substitution intermediate
+    /// overflows to NaN or infinity.
     #[inline]
-    pub const fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        let b = match FiniteVector::new(b) {
-            Ok(b) => b,
-            Err(err) => return Err(err),
-        };
-        match self.solve_finite_vec(b) {
+    pub const fn solve(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
+        match self.solve_finite(FiniteVector::new_unchecked(b)) {
             Ok(x) => Ok(x.into_vector()),
             Err(err) => Err(err),
         }
@@ -215,7 +215,7 @@ impl<const D: usize> Ldlt<D> {
     /// Returns [`LaError::NonFinite`] if a computed substitution intermediate
     /// overflows to NaN or infinity.
     #[inline]
-    pub(crate) const fn solve_finite_vec(
+    pub(crate) const fn solve_finite(
         &self,
         b: FiniteVector<D>,
     ) -> Result<FiniteVector<D>, LaError> {
@@ -306,7 +306,7 @@ mod tests {
                         arr
                     };
                     let b = Vector::<$d>::new(black_box(b_arr));
-                    let x = ldlt.solve_vec(b).unwrap().into_array();
+                    let x = ldlt.solve(b).unwrap().into_array();
 
                     for i in 0..$d {
                         assert_abs_diff_eq!(x[i], b_arr[i], epsilon = 1e-12);
@@ -362,7 +362,7 @@ mod tests {
                     };
 
                     let b = Vector::<$d>::new(black_box(b_arr));
-                    let x = ldlt.solve_vec(b).unwrap().into_array();
+                    let x = ldlt.solve(b).unwrap().into_array();
 
                     for i in 0..$d {
                         assert_abs_diff_eq!(x[i], b_arr[i] / diag[i], epsilon = 1e-12);
@@ -386,7 +386,7 @@ mod tests {
             .unwrap();
 
         let b = Vector::<2>::new(black_box([1.0, 2.0]));
-        let x = ldlt.solve_vec(b).unwrap().into_array();
+        let x = ldlt.solve(b).unwrap().into_array();
 
         assert_abs_diff_eq!(x[0], -0.125, epsilon = 1e-12);
         assert_abs_diff_eq!(x[1], 0.75, epsilon = 1e-12);
@@ -404,7 +404,7 @@ mod tests {
 
         // Choose x = 1 so b = A x is simple: [1, 0, 1].
         let b = Vector::<3>::new(black_box([1.0, 0.0, 1.0]));
-        let x = ldlt.solve_vec(b).unwrap().into_array();
+        let x = ldlt.solve(b).unwrap().into_array();
 
         for &x_i in &x {
             assert_abs_diff_eq!(x_i, 1.0, epsilon = 1e-9);
@@ -499,7 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn nonfinite_solve_vec_forward_substitution_overflow() {
+    fn nonfinite_solve_forward_substitution_overflow() {
         // SPD matrix with large L multiplier: L[1,0] = 1e153.
         // Forward substitution overflows: y[1] = 0 - 1e153 * 1e156 = -inf.
         let a = Matrix::<3>::from_rows([
@@ -510,12 +510,12 @@ mod tests {
         let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<3>::new([1e156, 0.0, 0.0]);
-        let err = ldlt.solve_vec(b).unwrap_err();
+        let err = ldlt.solve(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
 
     #[test]
-    fn nonfinite_solve_vec_back_substitution_overflow() {
+    fn nonfinite_solve_back_substitution_overflow() {
         // SPD matrix: [[1,0,0],[0,1,2],[0,2,5]] has LDLT factors
         // D=[1,1,1], L[2,1]=2.  Forward sub and diagonal solve produce
         // z=[0,0,1e308].  Back-substitution: x[2]=1e308 then
@@ -524,12 +524,12 @@ mod tests {
         let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<3>::new([0.0, 0.0, 1e308]);
-        let err = ldlt.solve_vec(b).unwrap_err();
+        let err = ldlt.solve(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
 
     #[test]
-    fn nonfinite_solve_vec_diagonal_solve_overflow() {
+    fn nonfinite_solve_diagonal_solve_overflow() {
         // Diagonal SPD matrix with a tiny diagonal entry just above the
         // singularity tolerance.  Forward substitution passes through the
         // large RHS unchanged, then the diagonal solve z[1] = y[1] / D[1]
@@ -539,7 +539,7 @@ mod tests {
         let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<2>::new([0.0, 1.0e300]);
-        let err = ldlt.solve_vec(b).unwrap_err();
+        let err = ldlt.solve(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
 
@@ -570,13 +570,13 @@ mod tests {
         );
     }
 
-    macro_rules! gen_solve_vec_boundary_tests {
+    macro_rules! gen_solve_boundary_tests {
         ($d:literal) => {
             paste! {
                 /// Raw non-finite right-hand sides are rejected before a
                 /// public caller can construct a `Vector`.
                 #[test]
-                fn [<solve_vec_rhs_boundary_rejects_non_finite_ $d d>]() {
+                fn [<solve_rhs_constructor_rejects_non_finite_ $d d>]() {
                     let mut rhs = [1.0; $d];
                     rhs[$d - 1] = f64::NAN;
 
@@ -588,35 +588,19 @@ mod tests {
                         })
                     );
                 }
-
-                #[test]
-                fn [<solve_vec_revalidates_unchecked_rhs_storage_ $d d>]() {
-                    let ldlt = Matrix::<$d>::identity().ldlt(DEFAULT_SINGULAR_TOL).unwrap();
-                    let mut rhs = [1.0; $d];
-                    rhs[$d - 1] = f64::NAN;
-                    let rhs = Vector::<$d>::new_unchecked(rhs);
-
-                    assert_eq!(
-                        ldlt.solve_vec(rhs),
-                        Err(LaError::NonFinite {
-                            row: None,
-                            col: $d - 1,
-                        })
-                    );
-                }
             }
         };
     }
 
-    gen_solve_vec_boundary_tests!(2);
-    gen_solve_vec_boundary_tests!(3);
-    gen_solve_vec_boundary_tests!(4);
-    gen_solve_vec_boundary_tests!(5);
+    gen_solve_boundary_tests!(2);
+    gen_solve_boundary_tests!(3);
+    gen_solve_boundary_tests!(4);
+    gen_solve_boundary_tests!(5);
 
     // -----------------------------------------------------------------------
     // Const-evaluability tests.
     //
-    // These prove that `Ldlt::det` and `Ldlt::solve_vec` are truly `const fn`
+    // These prove that `Ldlt::det` and `Ldlt::solve` are truly `const fn`
     // by forcing the compiler to evaluate them inside a `const` initializer.
     // `Ldlt::factor` is not (yet) `const fn` because the rank-1 update loop
     // uses array indexing patterns that still require non-const helpers on
@@ -633,8 +617,14 @@ mod tests {
                 #[test]
                 fn [<ldlt_det_const_eval_ $d d>]() {
                     const DET: Result<f64, LaError> = {
-                        let mut factors = Matrix::<$d>::identity();
-                        factors.rows[0][0] = 2.0;
+                        let mut rows = [[0.0f64; $d]; $d];
+                        let mut i = 0;
+                        while i < $d {
+                            rows[i][i] = 1.0;
+                            i += 1;
+                        }
+                        rows[0][0] = 2.0;
+                        let factors = Matrix::<$d>::from_rows_unchecked(rows);
                         let ldlt = Ldlt::<$d> {
                             factors: LdltFactors::new_unchecked(factors),
                         };
@@ -643,12 +633,12 @@ mod tests {
                     assert_eq!(DET, Ok(2.0));
                 }
 
-                /// `Ldlt::solve_vec` must be fully const-evaluable. Identity
+                /// `Ldlt::solve` must be fully const-evaluable. Identity
                 /// factors with RHS `b = [1.0, 2.0, …, D]` round-trips `b`
                 /// unchanged, exercising the full forward sub / diagonal solve
                 /// / back sub pipeline inside a `const { … }` initializer.
                 #[test]
-                fn [<ldlt_solve_vec_const_eval_ $d d>]() {
+                fn [<ldlt_solve_const_eval_ $d d>]() {
                     #[allow(clippy::cast_precision_loss)]
                         const X: [f64; $d] = {
                             let ldlt = Ldlt::<$d> {
@@ -661,7 +651,7 @@ mod tests {
                             i += 1;
                         }
                         let b = Vector::<$d>::new(b_arr);
-                        match ldlt.solve_vec(b) {
+                        match ldlt.solve(b) {
                             Ok(v) => v.into_array(),
                             Err(_) => [0.0f64; $d],
                         }

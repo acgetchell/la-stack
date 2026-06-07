@@ -20,7 +20,7 @@ fn small_ldlt_l_entry() -> impl Strategy<Value = f64> {
 }
 
 fn positive_ldlt_diag() -> impl Strategy<Value = f64> {
-    // Positive diagonal, comfortably above DEFAULT_PIVOT_TOL.
+    // Positive diagonal, comfortably above DEFAULT_SINGULAR_TOL.
     (1i16..=20i16).prop_map(|x| f64::from(x) / 10.0)
 }
 
@@ -136,7 +136,7 @@ macro_rules! gen_public_api_matrix_proptests {
                 }
 
                 #[test]
-                fn [<matrix_det_and_solve_vec_for_diagonal_ $d d>](
+                fn [<matrix_det_and_solve_for_diagonal_ $d d>](
                     diag in proptest::array::[<uniform $d>](small_nonzero_f64()),
                     b_arr in proptest::array::[<uniform $d>](small_f64()),
                 ) {
@@ -161,9 +161,9 @@ macro_rules! gen_public_api_matrix_proptests {
                     let eps = expected_det.abs().mul_add(1e-12, 1e-12);
                     assert_abs_diff_eq!(det, expected_det, epsilon = eps);
 
-                    let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+                    let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
                     let b = Vector::<$d>::try_new(b_arr).unwrap();
-                    let x = lu.solve_vec(b).unwrap().into_array();
+                    let x = lu.solve(b).unwrap().into_array();
 
                     for i in 0..$d {
                         let expected_x = b_arr[i] / diag[i];
@@ -219,11 +219,11 @@ macro_rules! gen_public_api_matrix_proptests {
                     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
                     let det_ldlt = ldlt.det().unwrap();
-                    let det_lu = a.lu(DEFAULT_PIVOT_TOL).unwrap().det().unwrap();
+                    let det_lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap().det().unwrap();
                     assert_abs_diff_eq!(det_ldlt, det_lu, epsilon = 1e-8);
 
                     let b = Vector::<$d>::try_new(b_arr).unwrap();
-                    let x = ldlt.solve_vec(b).unwrap().into_array();
+                    let x = ldlt.solve(b).unwrap().into_array();
 
                     for i in 0..$d {
                         assert_abs_diff_eq!(x[i], x_true[i], epsilon = 1e-8);

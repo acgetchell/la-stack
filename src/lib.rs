@@ -20,8 +20,8 @@ mod readme_doctests {
     ///
     /// let b = Vector::<5>::try_new([14.0, 13.0, 12.0, 11.0, 10.0])?;
     ///
-    /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
-    /// let x = lu.solve_vec(b)?.into_array();
+    /// let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
+    /// let x = lu.solve(b)?.into_array();
     ///
     /// // Floating-point rounding is expected; compare with a tolerance.
     /// let expected = [1.0, 2.0, 3.0, 4.0, 5.0];
@@ -350,12 +350,6 @@ impl Tolerance {
 /// Conceptually, this is an absolute bound for deciding when a scalar should be treated
 /// as "numerically zero" (e.g. LU pivots, LDLT diagonal entries).
 pub const DEFAULT_SINGULAR_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
-
-/// Default absolute pivot magnitude threshold used for LU pivot selection / singularity detection.
-///
-/// This name is kept for backwards compatibility; prefer [`DEFAULT_SINGULAR_TOL`] when the
-/// tolerance is not specifically about pivot selection.
-pub const DEFAULT_PIVOT_TOL: Tolerance = DEFAULT_SINGULAR_TOL;
 
 /// Relative tolerance used to validate matrices for LDLT factorization.
 pub(crate) const LDLT_SYMMETRY_REL_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
@@ -804,9 +798,9 @@ macro_rules! try_with_stack_matrix {
 ///
 /// This prelude re-exports the primary types and constants: [`Matrix`],
 /// [`Vector`], [`Lu`], [`Ldlt`], [`Tolerance`], [`LaError`],
-/// [`DEFAULT_PIVOT_TOL`], [`DEFAULT_SINGULAR_TOL`], and the determinant error
-/// bound coefficients [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`].
-/// It also re-exports [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
+/// [`DEFAULT_SINGULAR_TOL`], and the determinant error bound coefficients
+/// [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`]. It also re-exports
+/// [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
 /// [`try_with_stack_matrix!`] for runtime-to-const matrix dispatch.
 ///
 /// When the `exact` feature is enabled, `BigInt` and `BigRational` are also
@@ -818,8 +812,8 @@ macro_rules! try_with_stack_matrix {
 /// for `.is_positive()` / `.is_negative()` / `.abs()`.
 pub mod prelude {
     pub use crate::{
-        DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError,
-        Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, Tolerance, Vector, try_with_stack_matrix,
+        DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError, Ldlt, Lu,
+        MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, Tolerance, Vector, try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]
@@ -837,11 +831,6 @@ mod tests {
     #[test]
     fn default_singular_tol_is_expected() {
         assert_abs_diff_eq!(DEFAULT_SINGULAR_TOL.get(), 1e-12, epsilon = 0.0);
-        assert_abs_diff_eq!(
-            DEFAULT_PIVOT_TOL.get(),
-            DEFAULT_SINGULAR_TOL.get(),
-            epsilon = 0.0
-        );
     }
 
     #[test]
@@ -1030,15 +1019,18 @@ mod tests {
     }
 
     #[test]
-    fn prelude_reexports_compile_and_work() {
+    fn prelude_reexports_compile_and_work() -> Result<(), LaError> {
         use crate::prelude::*;
 
         // Use the items so we know they are in scope and usable.
         let m = Matrix::<2>::identity();
-        let v = Vector::<2>::new([1.0, 2.0]);
-        let _ = m.lu(DEFAULT_PIVOT_TOL).unwrap().solve_vec(v).unwrap();
-        let _ = m.ldlt(DEFAULT_SINGULAR_TOL).unwrap().solve_vec(v).unwrap();
+        let v = Vector::<2>::try_new([1.0, 2.0])?;
+        assert_abs_diff_eq!(m.inf_norm()?, 1.0, epsilon = 0.0);
+        assert_abs_diff_eq!(v.norm2_sq()?, 5.0, epsilon = 0.0);
+        let _ = m.lu(DEFAULT_SINGULAR_TOL)?.solve(v)?;
+        let _ = m.ldlt(DEFAULT_SINGULAR_TOL)?.solve(v)?;
         assert_eq!(MAX_STACK_MATRIX_DISPATCH_DIM, 7);
+        Ok(())
     }
 
     macro_rules! gen_stack_matrix_dispatch_tests {
@@ -1106,7 +1098,7 @@ mod tests {
     #[test]
     fn try_with_stack_matrix_converts_unsupported_dimension_error() {
         let got = try_with_stack_matrix!(9usize, |m| -> Result<usize, DownstreamError> {
-            assert_abs_diff_eq!(m.inf_norm().unwrap(), 0.0, epsilon = 0.0);
+            assert_abs_diff_eq!(m.inf_norm()?, 0.0, epsilon = 0.0);
             Ok(0)
         });
 
@@ -1133,8 +1125,10 @@ mod tests {
         assert_eq!(*r.numer(), n);
 
         // `FromPrimitive::from_f64` / `from_i64` on `BigRational`.
-        let half = BigRational::from_f64(0.5).unwrap();
-        let two = BigRational::from_i64(2).unwrap();
+        let half = BigRational::new(BigInt::from(1), BigInt::from(2));
+        let two = BigRational::from_integer(BigInt::from(2));
+        assert_eq!(BigRational::from_f64(0.5), Some(half.clone()));
+        assert_eq!(BigRational::from_i64(2), Some(two.clone()));
         assert_eq!(
             half.clone() + half.clone(),
             BigRational::from_integer(BigInt::from(1))
@@ -1148,7 +1142,7 @@ mod tests {
         assert_eq!(neg.abs(), half);
 
         // `ToPrimitive::to_f64` / `to_i64`.
-        assert!((half.to_f64().unwrap() - 0.5).abs() <= f64::EPSILON);
-        assert_eq!(two.to_i64().unwrap(), 2);
+        assert_eq!(half.to_f64(), Some(0.5));
+        assert_eq!(two.to_i64(), Some(2));
     }
 }

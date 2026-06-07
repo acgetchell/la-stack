@@ -13,11 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   - Add a generic docs-version sync check that compares Markdown dependency
     snippets against the Cargo package name and version
-
   - Run the docs-version check from the repository Semgrep policy lane
   - Refresh README determinant examples with explicit fallible handling and
     hidden doctest mirrors
-
   - Update CI uv pins to 0.11.19
 
 ### Documentation
@@ -52,22 +50,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Remove the broad restore-keys pattern to ensure only exact version matches
   are used from the cache, preventing potential version mismatches during
   CI runs.
-
 - Revert "ci: modernize tooling checks and example execution"
   [`a4b9f64`](https://github.com/acgetchell/la-stack/commit/a4b9f64235f53274270ef9272634a61f653dad87)
-
 - Reapply "ci: modernize tooling checks and example execution"
   [`758321a`](https://github.com/acgetchell/la-stack/commit/758321acf872b1f17286ff3bb7bee6a807e4b440)
-
 - Encode nonzero mantissas in exact decomposition [`7a664ed`](https://github.com/acgetchell/la-stack/commit/7a664ede2f4add168c5813f8d24e16732fa03b30)
 
   - Replace the exact-arithmetic zero mantissa sentinel with `Option&lt;NonZeroU64&gt;`.
   - Carry nonzero mantissa proof through matrix/vector decomposition and BigInt scaling.
   - Clarify determinant documentation around uncertified `det()` bounds.
   - Keep SPD determinant proptests on the tolerance-aware LU path.
-
 - Simplify finite proof wrappers [`54b603c`](https://github.com/acgetchell/la-stack/commit/54b603c21f0eb5b4d63ff334fac7f8cc325ebc2e)
-
   - Use the checked proof-wrapper constructors as the single internal path for finite matrices and vectors.
   - Remove exact-arithmetic tests that duplicated the matrix and vector non-finite boundary checks.
 
@@ -93,12 +86,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add a roadmap covering the v0.4.x stable-Rust issue sequence and the v0.5.0 generic_const_exprs anchor.
   - Refresh generated changelog entries and archived changelog grouping.
 - Document finite RHS solve validation [`075aed7`](https://github.com/acgetchell/la-stack/commit/075aed78cf8264fc920258f1f1d977ddd589ffd7)
-
   - Document that LU and LDLT solve_vec reject non-finite RHS entries with LaError::NonFinite metadata.
   - Cite the Bareiss reference in the exact solve helper docs and describe exact-arithmetic growth and complexity.
   - Cover finite proof defaults and non-finite RHS solve boundaries in unit tests.
 - Clarify finite solve and norm guarantees [`fb71485`](https://github.com/acgetchell/la-stack/commit/fb71485cac0b464b2fa9ee949140a558b7738781)
-
   - State that LU and LDLT solve_vec use floating-point substitution without a certified absolute rounding-error bound.
   - Clarify that inf_norm reports NonFinite for unchecked stored NaN/∞ as well as row-sum overflow.
   - Exercise the unchecked finite-proof fixture path directly in exact tests.
@@ -110,28 +101,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   - Enforce the tolerance contract around symmetry checks by surfacing scaled
     tolerance overflow as a typed non-finite intermediate error.
-
   - Document finite, non-negative tolerance requirements across tolerance-taking
     matrix APIs.
-
   - Add regression coverage for invalid tolerance construction and symmetry
     tolerance overflow.
-
   - Update exact examples to propagate typed crate errors instead of unwrapping.
 - Harden Semgrep fixture parsing [`ac44c07`](https://github.com/acgetchell/la-stack/commit/ac44c078cc4435d5beca27f1890fbb4046cf5952)
-
   - Ignore non-canonical todoruleid annotations when counting expected rule hits.
   - Reject malformed Semgrep JSON results with clear stderr diagnostics instead of propagating KeyError.
 - Revalidate finite proof conversions [`419a90f`](https://github.com/acgetchell/la-stack/commit/419a90f7267608051736498154ac5e6faf0909c5)
 
   Ensure internal finite proof conversions cannot accept raw Matrix or Vector storage without checking the invariant.
-
   - Revalidate TryFrom&lt;Matrix&lt;D&gt;&gt; and TryFrom&lt;Vector&lt;D&gt;&gt; before constructing finite wrappers.
   - Measure exact random percentile benchmarks over repeated corpus timings and cumulative input sets.
   - Tighten Codecov status thresholds and extend benchmark workflow timeout.
   - Keep Semgrep constructor fixtures aligned with public API guardrails.
 - Revalidate public compute inputs [`ffca00e`](https://github.com/acgetchell/la-stack/commit/ffca00e9dd6fde5e57c8064f69807a76e45a469e)
-
   - Parse Matrix and Vector storage into private finite proof-bearing types at public compute boundaries.
   - Reject unchecked non-finite storage before LU, LDLT, determinant, norm, dot, and exact-arithmetic paths can proceed.
   - Keep unchecked proof-wrapper constructors crate-private for internal paths with local finiteness proofs.
@@ -148,7 +133,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add archive-aware changelog generation, post-processing, and tag-release tooling.
   - Preserve exact arithmetic overflow reporting without non-finite sentinel defaults.
 - Modernize tooling checks and example execution [`da626bc`](https://github.com/acgetchell/la-stack/commit/da626bcca899aa91d58f728db433a53a46179e92)
-
   - Run examples from prebuilt binaries instead of invoking cargo run for each example.
   - Add check/fix recipe aliases and guard documented command ordering with Semgrep.
   - Document the Rust-native Markdown, YAML, TOML, spelling, and workflow action policy.
@@ -181,7 +165,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calculations, correctly detect and return `LaError::NonFinite` when
   intermediate calculations overflow to infinity despite having finite
   inputs.
-
 - Defensive-path test coverage for LU and LDLT solve_vec [`87d426f`](https://github.com/acgetchell/la-stack/commit/87d426fca1627445b804fd26b62fc7d9d4f0ae48)
 
   Add unit tests to exercise internal safety nets in the LU and LDLT
@@ -189,7 +172,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   invalid diagonals (NaN or sub-tolerance) to verify that solve_vec
   correctly surfaces NonFinite and Singular errors, even though these
   states are unreachable via the standard factorization APIs.
-
 - Const-ify Lu/Ldlt det + solve_vec and Matrix inf_norm + det_errbound
   [`81ecb35`](https://github.com/acgetchell/la-stack/commit/81ecb35bdaf159f1f44d1eb24274ecf82c6567d5)
 
@@ -207,11 +189,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rewritten as `while` loops since they are not const-stable.
 
   Fix error-variant correctness in both solve_vec paths:
-
   - A corrupt stored `U` / `D` diagonal at `(i, i)` now surfaces as
     `LaError::NonFinite { row: Some(i), col: i }`, matching the
     convention used by `Matrix::det`, `Lu::factor`, and `Ldlt::factor`.
-
   - A computed-intermediate overflow keeps `row: None, col: i`.
   - Previously both were conflated into `row: None, col: i`, defeating
     debuggability for callers who construct factorizations directly.
@@ -219,7 +199,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Sharpen `LaError::NonFinite` variant docs and the `# Errors` sections of
   `Lu::solve_vec` / `Ldlt::solve_vec` to spell out the `(row, col)`
   contract for each failure mode.
-
 - Fast-filter boundary proptests for exact determinant sign [`6357db3`](https://github.com/acgetchell/la-stack/commit/6357db35c70bca1b93e6bbf9a4fd231913631950)
 
   Introduce proptests to verify that the floating-point determinant sign
@@ -240,14 +219,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   determinants, adding a dedicated section for AI agent governance, and
   refining internal error helpers to use a more consistent coordinate
   convention for non-finite values.
-
 - Consolidate and expand const-evaluability tests via macros [`f8d80a0`](https://github.com/acgetchell/la-stack/commit/f8d80a01e9913f87e1b19b2ad5ffbc0994e2bfdb)
 
   Refactor manual const-evaluation tests in `Ldlt` and `Matrix` into macros
   to standardize coverage across matrix dimensions 2 through 5. This
   ensures all determinant and norm variants are fully exercised at compile
   time.
-
 - Refactor solve_exact to use hybrid Bareiss forward elimination
   [`ecbbe8a`](https://github.com/acgetchell/la-stack/commit/ecbbe8a571ccaeb9cfedbf0269b8db44d43a5773)
 
@@ -257,7 +234,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This eliminates per-entry GCD overhead during elimination. Internal f64
   decomposition is unified via f64_decompose, and f64_to_bigrational is
   moved to test scope.
-
 - Polish exact module (Component struct, errors, perf) [`53a5be6`](https://github.com/acgetchell/la-stack/commit/53a5be6abecc0af332398236ed6803ed75564b03)
 
   Major refactor of `src/exact.rs`:
@@ -266,28 +242,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `component_to_bigint`, `build_bigint_matrix`, `build_bigint_vec`,
     `bareiss_forward_eliminate`) so `bareiss_det_int` and `gauss_solve`
     share a single integer-Bareiss core.
-
   - Hybrid BigInt/BigRational solve: forward elimination runs entirely in
     `BigInt` with fraction-free Bareiss updates on `(A | b)`; only the
     `O(D²)` back-substitution phase lifts into `BigRational`.
-
   - `mem::take` in back-substitution eliminates per-entry `clone()` calls
     on `rhs[i]`, `a[i][j]`, `a[i][i]`.
 
   Structured errors replace preconditions:
-
   - `decompose_matrix` / `decompose_vec` fold `is_finite()` into the same
     pass that decomposes each entry and return
     `Err(LaError::NonFinite { row, col })` on the first non-finite cell.
-
   - `bareiss_det_int`, `bareiss_det`, `gauss_solve` now return
     `Result&lt;_, LaError&gt;`; error propagates to every public entry point via
     `?`.
-
   - `validate_finite` and `validate_finite_vec` removed (dead after the
     refactor); `det_sign_exact` relies on IEEE 754 NaN/∞ propagation
     through `det_direct()` plus `bareiss_det_int` for Stage-2 validation.
-
 - Add adversarial-input coverage for exact arithmetic [#80](https://github.com/acgetchell/la-stack/pull/80)
   [`5bf5815`](https://github.com/acgetchell/la-stack/commit/5bf5815cb165c3b6145c5592420a58085a66efaa)
 
@@ -295,56 +265,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   APIs to catch tail cases that fixed well-conditioned inputs miss.
 
   Benchmarks (benches/exact.rs):
-
   - Factor out `bench_extreme_group` helper running the same four benches
     (`det_sign_exact`, `det_exact`, `solve_exact`, `solve_exact_f64`) so
     adversarial groups are directly comparable.
-
   - Extend `exact_near_singular_3x3` with the two solve benches (the
     primary motivating use case for exact solve was previously unmeasured).
-
   - Add `exact_large_entries_3x3` (entries near `f64::MAX / 2`) to stress
     intermediate BigInt growth during Bareiss forward elimination.
-
   - Add `exact_hilbert_4x4` / `exact_hilbert_5x5` to stress the
     `f64_decompose → BigInt` scaling path on ill-conditioned inputs.
-
   - Tighten bench `expect(...)` messages to name the invariant each call
     relies on (e.g. "non-singular matrix with finite entries") so panics
     identify both where (Criterion bench name) and why.
 
   Unit tests (src/exact.rs):
-
   - `solve_exact_near_singular_3x3_integer_x0` — integer-x0 round-trip
     through the 2^-50-perturbed matrix.
-
   - `solve_exact_large_entries_3x3_unit_vector` — `A·[1,0,0] = [big,1,1]`
     round-trip with `f64::MAX/2` diagonal.
-
   - `det_sign_exact_large_entries_3x3_positive` — asserts the fast filter
     falls through (`det_direct` is non-finite) and `det_exact_f64` returns
     `Overflow { index: None }`.
-
   - `det_sign_exact_hilbert_positive_{3,4,5}d` — Hilbert is SPD, sign = 1.
   - `solve_exact_hilbert_residual_{3,4,5}d` — residual `A·x - b` is exactly
     zero in `BigRational`, stronger than integer round-trips since Hilbert
     entries are non-terminating in binary.
 
   Proptests (tests/proptest_exact.rs):
-
   - `solve_exact_integer_roundtrip_{2..5}d` — random diagonally-dominant
     integer `A` and small-integer `x0`, verify `solve(A, A·x0) == x0` exactly.
-
   - `solve_exact_residual_{2..5}d` — random `A` + small-integer `b`, verify
     `A · solve(A, b) == b` exactly (catches back-sub bugs on fractional
     solutions).
-
   - `det_sign_exact_agrees_with_det_exact_{2..5}d` — on full (non-diagonal)
     small-integer matrices, asserts `det_sign_exact() == det_exact().sign()`
     (exercises the filter/fallback boundary previously only diagonal-tested).
 
   Prelude (src/lib.rs):
-
   - Re-export `BigInt` alongside `BigRational` (crate root + prelude).
   - Re-export `FromPrimitive`, `Signed`, `ToPrimitive` from `num-traits` in
     the prelude so the re-exported `BigRational` is actually usable for
@@ -353,23 +310,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     their own Cargo.toml. Additive; no public API breaks.
 
   Tooling (scripts/bench_compare.py + test_bench_compare.py):
-
   - Register the three new adversarial groups in `EXACT_GROUPS`.
   - Extend `_group_heading` with human-readable titles
     ("Large entries 3x3", "Hilbert 4x4", "Hilbert 5x5").
-
   - Add group-heading unit tests for the new cases.
 
   Test results (`just ci`):
-
   - cargo test --features exact: 368 lib + 20 proptest_exact + 40 other
     proptests + 34 doc-tests — all pass
-
   - cargo test (no features): 175 lib + 40 proptests + 29 doc-tests — all pass
   - Python: 104 tests pass (ty, mypy, ruff clean)
   - Clippy (pedantic + nursery + cargo, `-D warnings`): clean
   - fmt, taplo, yamllint, shellcheck, spell-check, bench-compile, examples: clean
-
 - Expand exact-arithmetic re-exports and adversarial benchmarks
   [`b1a491d`](https://github.com/acgetchell/la-stack/commit/b1a491d902ccdaba6f9cd2e6f8e05514b6dfa3de)
 
@@ -382,7 +334,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   large-entry, and Hilbert matrices to better track performance on
   ill-conditioned data. CI benchmark comparisons are now more resilient to
   newly added benchmarks via `--baseline-lenient`.
-
 - Update AGENTS.md [`1e0648d`](https://github.com/acgetchell/la-stack/commit/1e0648dad3147ef127c775d8969b7cd214a2a6ed)
 
 ### Dependencies
@@ -412,7 +363,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Propagate NaN in Matrix::inf_norm [#85](https://github.com/acgetchell/la-stack/pull/85)
   [`16ffa45`](https://github.com/acgetchell/la-stack/commit/16ffa45ade11b21a179cad8fcecc51d802086a1d)
-
 - Report infinite vs finite off-diagonal pairs as asymmetric [`1805779`](https://github.com/acgetchell/la-stack/commit/1805779dbca49183fbfa95c68ec00984966aa551)
 
   Update Matrix::first_asymmetry to flag any non-finite difference between
@@ -428,28 +378,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Bump rust-version to 1.95 in Cargo.toml
   - Bump channel to 1.95.0 in rust-toolchain.toml
   - Add core::hint::cold_path() hints at cold/error branches:
+
     - src/exact.rs: validate_finite, validate_finite_vec, gauss_solve
       singular return, det_exact_f64 / solve_exact_f64 overflow returns,
       det_sign_exact Stage 2 Bareiss fallback
-
     - src/lu.rs: Lu::factor and Lu::solve_vec NonFinite / Singular returns
     - src/ldlt.rs: Ldlt::factor and Ldlt::solve_vec NonFinite / Singular
       returns
-
     - src/matrix.rs: det_direct D &gt;= 5 fallback arm (legal because
       cold_path is const fn in 1.95) and det NonFinite / overflow scan
-
   - Refactor det_sign_exact Stage 1 fast filter to use match + if let
     guard with let-chain, replacing the tuple destructure; semantics
     unchanged
 
   Test results (local `just ci`):
-
   - cargo fmt --all -- --check: clean
   - cargo clippy --workspace --all-targets --all-features
     -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::cargo:
     clean
-
   - cargo test --features exact --lib: 258 passed, 0 failed
   - cargo test --features exact (doctests + examples): 31 passed, 0 failed
   - RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --features exact: clean
@@ -461,17 +407,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [`a1d3bdb`](https://github.com/acgetchell/la-stack/commit/a1d3bdbdb6fcb778a78a2a3d0cb66b79484e1472)
 
   Replace BigRational-only gauss_solve with a hybrid that runs
-      Bareiss fraction-free forward elimination in BigInt on the
-      augmented (A | b) system, then back-substitutes in BigRational.
-      Eliminates GCD normalization from the O(D^3) phase while keeping
-      rational overhead limited to the cheaper O(D^2) back-sub.
+  Bareiss fraction-free forward elimination in BigInt on the
+  augmented (A | b) system, then back-substitutes in BigRational.
+  Eliminates GCD normalization from the O(D^3) phase while keeping
+  rational overhead limited to the cheaper O(D^2) back-sub.
 
-      Scope f64_to_bigrational to cfg(test); production code paths now
-      use f64_decompose directly (shared with bareiss_det_int).
+  Scope f64_to_bigrational to cfg(test); production code paths now
+  use f64_decompose directly (shared with bareiss_det_int).
 
-      Closes #72
+  Closes #72
 
-      Co-Authored-By: Oz &lt;oz-agent@warp.dev&gt;
+  Co-Authored-By: Oz <oz-agent@warp.dev>
 
 ## [0.4.0] - 2026-04-11
 
@@ -497,23 +443,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Update CITATION.cff to reflect the v0.3.0 release. Keywords are updated to
   include exact arithmetic and robust predicates, with existing terms
   standardized to kebab-case.
-
 - Refine benchmark comparison reporting and documentation [`e1b5955`](https://github.com/acgetchell/la-stack/commit/e1b5955fb5024232e34e9df9701bb24fb98efa15)
 
   Refactor the `bench_compare.py` script to group results by dimension and
   add a new test suite. Consolidate all benchmarking workflows into a new
   dedicated guide and move machine-specific performance snapshots to
   `.gitignore`.
-
 - Expand test coverage for benchmark comparison edge cases [`bced7d9`](https://github.com/acgetchell/la-stack/commit/bced7d988bd2f42cb6bb5af9c54dabdcf787a5fc)
-
 - Update documentation and tests for integer-only Bareiss [`2ee3f05`](https://github.com/acgetchell/la-stack/commit/2ee3f05caecfdf1a23b61257a7465b3bb6d63614)
 
   Update architecture descriptions in AGENTS.md and REFERENCES.md to
   reflect the move from BigRational to integer-only BigInt arithmetic.
   Add unit tests for bareiss_det_int covering negative inputs and pivot
   swapping. Refine gh CLI patterns for automated issue listing.
-
 - Restrict benchmark baselines to main and improve reporting [`9a7caa2`](https://github.com/acgetchell/la-stack/commit/9a7caa241b5f476c2659772f3189468b10fcba2e)
 
   Update internal CI logic to ensure Criterion baselines are only saved
@@ -554,14 +496,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   - On push to main: run exact benchmarks, save Criterion baseline as
     artifact (30-day retention)
-
   - On PRs: find latest main baseline artifact, download, run benchmarks
     with --baseline comparison, report regressions in job summary
-
   - Regressions are warning-only — the workflow never blocks PRs
   - Uses artifact-based baselines (not cache) for robustness: explicit
     provenance, no silent eviction, fork-safe
-
   - Validated locally: --save-baseline and --baseline flags confirmed
     working with Criterion
 
@@ -578,23 +517,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   - bareiss_det: Vec&lt;Vec&lt;BigRational&gt;&gt; → [[BigRational; D]; D] via
     std::array::from_fn
-
   - gauss_solve: Vec&lt;Vec&lt;BigRational&gt;&gt; augmented matrix → separate
     [[BigRational; D]; D] + [BigRational; D] (avoids unstable
     const-generic [T; D+1])
-
   - gauss_solve return type: Vec&lt;BigRational&gt; → [BigRational; D]
   - solve_exact: drop intermediate clone, forward array directly
 
   Error enrichment (src/lib.rs, src/lu.rs, src/ldlt.rs, src/matrix.rs,
   src/exact.rs):
-
   - LaError::NonFinite gains row: Option&lt;usize&gt; for full (row, col)
     location on matrix inputs; None for vectors/intermediates
-
   - LaError::Overflow becomes a struct variant with index: Option&lt;usize&gt;
     to identify which solution component overflowed
-
   - Display messages updated to show positional context
 - Custom f64 → BigRational via IEEE 754 bit decomposition [#63](https://github.com/acgetchell/la-stack/pull/63)
   [`0a8ce5b`](https://github.com/acgetchell/la-stack/commit/0a8ce5b45e21fa88e4e9832bc6ada38b3ba68eeb)
@@ -602,15 +536,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Replace `BigRational::from_float(x)` in `f64_to_bigrational` with manual
   IEEE 754 binary64 bit decomposition and `BigRational::new_raw`, bypassing
   the unnecessary GCD normalization that `from_float` performs internally.
-
   - Decompose f64 into sign, biased exponent, and significand fields
   - Strip trailing zeros from the significand so the fraction is already
     in lowest terms (odd numerator over power-of-two denominator)
-
   - Handle zero (±0.0), subnormals, and normal values; panic on NaN/Inf
   - Add 15 dedicated unit tests: ±zero, integers, fractions, powers of
     two, subnormals, round-trip fidelity, lowest-terms, and panic cases
-
   - Add IEEE 754-2019 [9] and Goldberg [10] references to REFERENCES.md
   - Add module-level and function-level doc citations
 - Integer-only Bareiss determinant via BigInt [#64](https://github.com/acgetchell/la-stack/pull/64)
@@ -620,16 +551,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all f64 entries are decomposed into mantissa × 2^exponent, scaled to
   a common integer base, and eliminated without any rational arithmetic.
   The result is reconstructed as BigRational only at the end.
-
   - Add f64_decompose helper (extracted from f64_to_bigrational)
   - Add bareiss_det_int: integer-only Bareiss returning (BigInt, i32)
   - Add bigint_exp_to_bigrational: reconstruction with trailing-zero
     reduction (no full GCD needed)
-
   - Refactor bareiss_det as thin wrapper over bareiss_det_int
   - Optimize det_sign_exact to read sign from BigInt directly
     (skip BigRational reconstruction entirely)
-
   - Import std::array::from_fn for shorter call sites
   - Replace clippy cast suppression with exact try_from conversions
   - Update AGENTS.md with non-interactive gh CLI patterns
@@ -638,10 +566,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     negative exp, reduction, negative values)
 
   Performance (vs pre-bigint baseline on Apple M4 Max):
-    det_exact: 16x (D=2) → 39x (D=5) faster
-    det_exact_f64: 10x (D=2) → 38x (D=5) faster
-    det_sign_exact: 40x at D=5 (bypasses BigRational entirely)
-    Near-singular: 18x faster
+  det_exact: 16x (D=2) → 39x (D=5) faster
+  det_exact_f64: 10x (D=2) → 38x (D=5) faster
+  det_sign_exact: 40x at D=5 (bypasses BigRational entirely)
+  Near-singular: 18x faster
 
 ## Archives
 

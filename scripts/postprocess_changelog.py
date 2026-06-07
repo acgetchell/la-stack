@@ -9,7 +9,9 @@ Tera templates:
      and code spans as atomic tokens (MD013).
   3. Tag bare fenced code blocks with a language (MD040).
   4. Normalize indented commit-body headings (MD023).
-  5. Strip trailing blank lines (MD012).
+  5. Normalize list continuation indentation (MD077).
+  6. Normalize escaped email autolinks (MD034).
+  7. Strip trailing blank lines (MD012).
 
 Usage:
     postprocess-changelog                     # default: CHANGELOG.md
@@ -86,6 +88,10 @@ _CHANGELOG_SECTION_HEADINGS = {
     "⚠️ Breaking Changes",
 }
 _ENTRY_HEADING_RE = re.compile(r"^(?P<level>#{2,6})\s+(?P<title>.*?)(?:\s+#+\s*)?$")
+
+# git-cliff HTML-escapes co-author email angle brackets. Markdown wants real
+# angle brackets for email autolinks, otherwise rumdl treats the address as bare.
+_ESCAPED_EMAIL_RE = re.compile(r"&lt;(?P<email>[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})&gt;", re.IGNORECASE)
 
 # This label set is intentionally broad, including release labels such as
 # "added", "fixed", "changed", "removed", and "deprecated". Rewriting is
@@ -415,21 +421,115 @@ def _deindent_orphan(line: str, lines: list[str], idx: int) -> str:
     return line[2:] if nearest_parent_indent is not None else stripped
 
 
-def _needs_blank_before(stripped: str, result: list[str]) -> bool:
+def _normalize_list_continuation_indent(line: str, lines: list[str], idx: int) -> str:
+    """
+    Normalize generated list continuation indentation.
+
+    git-cliff commit bodies can contain pre-indented prose under a list item.
+    Markdown treats that prose as list-continuation content, where rumdl's MD077
+    expects exactly two spaces past the parent bullet indentation.
+    """
+    stripped = line.lstrip()
+    if not line.startswith(" ") or not stripped or stripped.startswith(("- ", "* ")):
+        return line
+
+    our_indent = len(line) - len(stripped)
+
+    for j in range(idx - 1, -1, -1):
+        prev = lines[j]
+        if not prev.strip():
+            continue
+
+        prev_stripped = prev.lstrip()
+        if prev_stripped.startswith(("- ", "* ")):
+            parent_indent = len(prev) - len(prev_stripped)
+            expected_indent = parent_indent + 2
+            if our_indent > expected_indent:
+                return " " * expected_indent + stripped
+            return line
+
+        if not prev.startswith(" "):
+            return line
+
+    return line
+
+
+def _list_item_indent(line: str) -> int | None:
+    """Return the indentation of a Markdown list item, if *line* is one."""
+    stripped = line.lstrip()
+    if not stripped.startswith(("- ", "* ")):
+        return None
+    return len(line) - len(stripped)
+
+
+def _has_previous_peer_list_item(lines: list[str], idx: int, peer_indent: int) -> bool:
+    """Return true if a prior list item exists at *peer_indent* before *idx*."""
+    for j in range(idx - 1, -1, -1):
+        prev = lines[j]
+        if not prev.strip():
+            continue
+
+        prev_indent = _list_item_indent(prev)
+        if prev_indent == peer_indent:
+            return True
+        if prev_indent is not None or prev.startswith(" "):
+            continue
+        return False
+
+    return False
+
+
+def _next_list_item_indent(lines: list[str], idx: int) -> int | None:
+    """Return the next nonblank line's list-item indentation, if it is a list item."""
+    for next_line in lines[idx + 1 :]:
+        if not next_line.strip():
+            continue
+        return _list_item_indent(next_line)
+    return None
+
+
+def _is_blank_between_peer_list_items(lines: list[str], idx: int) -> bool:
+    """Return true when a blank line separates adjacent items in the same list."""
+    if lines[idx].strip():
+        return False
+
+    next_indent = _next_list_item_indent(lines, idx)
+    if next_indent is None:
+        return False
+
+    return _has_previous_peer_list_item(lines, idx, next_indent)
+
+
+def _normalize_email_autolinks(line: str) -> str:
+    """Convert git-cliff's escaped email autolinks into Markdown autolinks."""
+    return _ESCAPED_EMAIL_RE.sub(r"<\g<email>>", line)
+
+
+def _needs_blank_before(line: str, lines: list[str], idx: int, result: list[str]) -> bool:
     """
     Determine whether a blank line is required before a list item to satisfy Markdown rule MD032.
 
     Parameters:
-        stripped (str): The current line with leading whitespace removed.
+        line (str): The current line.
+        lines (list[str]): The source lines being post-processed.
+        idx (int): The index of the current line in ``lines``.
         result (list[str]): The lines already emitted immediately before the current line.
 
     Returns:
         bool: `True` if a blank line should be inserted before the list item, `False` otherwise.
     """
+    stripped = line.lstrip()
     if not stripped.startswith("- ") or not result or not result[-1].strip():
         return False
+
     prev = result[-1].lstrip()
-    return not prev.startswith(("-", "#"))
+    if prev.startswith("#"):
+        return False
+    if prev.startswith("- "):
+        return False
+
+    current_indent = len(line) - len(stripped)
+    return not _has_previous_peer_list_item(result, len(result), current_indent)
 
 
 def _normalize_indented_heading(line: str) -> str:
@@ -534,13 +634,14 @@ def _normalize_body_line(line: str, lines: list[str], idx: int, result: list[str
     """Apply markdown hygiene transforms to a non-code line."""
     is_isolated_body_heading = _is_isolated_body_heading(lines, idx)
     line = _deindent_orphan(line, lines, idx)
+    line = _normalize_list_continuation_indent(line, lines, idx)
     line = _normalize_indented_heading(line)
     line = _normalize_entry_heading(line)
 
     if is_isolated_body_heading:
         line = _normalize_squash_heading(line, nested=current_entry_summary is not None)
 
-    if _needs_blank_before(line.lstrip(), result):
+    if _needs_blank_before(line, lines, idx, result):
         result.append("")
 
     return _reflow_line(line) if len(line) > MAX_LINE_WIDTH else line
@@ -571,11 +672,15 @@ def postprocess_text(text: str) -> str:
             result.append(line)
             continue
 
+        if _is_blank_between_peer_list_items(lines, idx):
+            continue
+
         # --- MD004: normalise ``* `` list markers to ``- `` ---
         line = _STAR_LIST_RE.sub(r"\1- ", line)
 
         # --- MD030: normalise spaces after list marker ---
         line = _LIST_MARKER_SPACE_RE.sub(r"\1 ", line)
+        line = _normalize_email_autolinks(line)
 
         current_entry_summary = _update_entry_summary(line, current_entry_summary)
         is_isolated_body_heading = _is_isolated_body_heading(lines, idx)

@@ -10,9 +10,9 @@ cargo_nextest_version := "0.9.137"
 cargo_llvm_cov_version := "0.8.7"
 dprint_version := "0.54.0"
 git_cliff_version := "2.13.1"
-rumdl_version := "0.2.6"
+rumdl_version := "0.2.9"
 taplo_version := "0.10.0"
-typos_version := "1.47.1"
+typos_version := "1.47.2"
 zizmor_version := "1.25.2"
 
 # Internal helpers: ensure external tooling is installed

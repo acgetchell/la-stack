@@ -1,23 +1,40 @@
 //! Fixed-size, stack-allocated vectors.
 
+use core::hint::cold_path;
+
 use crate::LaError;
 
-/// Fixed-size vector of length `D`, stored inline.
+/// Finite fixed-size vector of length `D`, stored inline.
+///
+/// Public construction rejects NaN and infinity through [`try_new`](Self::try_new),
+/// and the storage field is private, so a `Vector` value carries the invariant
+/// that every stored entry is finite. Algorithms therefore do not re-scan stored
+/// entries before using a `Vector`; they only report non-finite values computed
+/// during arithmetic, such as overflowed accumulators.
+///
+/// Direct field construction is intentionally unavailable to downstream callers:
+///
+/// ```compile_fail
+/// use la_stack::Vector;
+///
+/// let _ = Vector::<2> {
+///     data: [1.0, f64::NAN],
+/// };
+/// ```
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vector<const D: usize> {
-    pub(crate) data: [f64; D],
+    data: [f64; D],
 }
 
 /// Fixed-size vector whose stored entries are all finite.
 ///
-/// This proof-bearing wrapper makes the finite invariant explicit for internal
-/// algorithms that should not rediscover that no stored entry is NaN or
-/// infinite.
+/// This internal proof wrapper is used where carrying the invariant explicitly
+/// makes algorithm boundaries clearer. Public callers use [`Vector`], which is
+/// already finite by construction.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) struct FiniteVector<const D: usize> {
+pub struct FiniteVector<const D: usize> {
     vector: Vector<D>,
 }
 
@@ -31,39 +48,6 @@ impl<const D: usize> FiniteVector<D> {
         Self { vector }
     }
 
-    /// Validate a vector and wrap it for algorithms that carry the finite
-    /// invariant explicitly.
-    ///
-    /// # Errors
-    /// Returns [`LaError::NonFinite`] with `row: None` and the first offending
-    /// entry index when `vector` contains NaN or infinity.
-    #[inline]
-    pub(crate) const fn new(vector: Vector<D>) -> Result<Self, LaError> {
-        if let Some(index) = Vector::<D>::first_non_finite_entry_in(&vector.data) {
-            Err(LaError::non_finite_at(index))
-        } else {
-            Ok(Self::new_unchecked(vector))
-        }
-    }
-
-    /// Validate raw vector storage and construct a finite vector.
-    /// # Errors
-    /// Returns [`LaError::NonFinite`] with `row: None` and the first offending
-    /// entry index when `data` contains NaN or infinity.
-    #[inline]
-    pub(crate) const fn from_array(data: [f64; D]) -> Result<Self, LaError> {
-        match Vector::try_new(data) {
-            Ok(vector) => Ok(Self::new_unchecked(vector)),
-            Err(err) => Err(err),
-        }
-    }
-
-    /// All-zeros finite vector.
-    #[inline]
-    pub(crate) const fn zero() -> Self {
-        Self::new_unchecked(Vector::zero())
-    }
-
     /// Consume the wrapper and return the underlying raw vector.
     #[inline]
     pub(crate) const fn into_vector(self) -> Vector<D> {
@@ -72,6 +56,7 @@ impl<const D: usize> FiniteVector<D> {
 
     /// Borrow the backing array without revalidating stored entries.
     #[inline]
+    #[must_use]
     pub(crate) const fn as_array(&self) -> &[f64; D] {
         self.vector.as_array()
     }
@@ -100,6 +85,7 @@ impl<const D: usize> FiniteVector<D> {
         while i < D {
             acc = lhs[i].mul_add(rhs[i], acc);
             if !acc.is_finite() {
+                cold_path();
                 return Err(LaError::non_finite_at(i));
             }
             i += 1;
@@ -123,43 +109,12 @@ impl<const D: usize> FiniteVector<D> {
         while i < D {
             acc = data[i].mul_add(data[i], acc);
             if !acc.is_finite() {
+                cold_path();
                 return Err(LaError::non_finite_at(i));
             }
             i += 1;
         }
         Ok(acc)
-    }
-}
-
-impl<const D: usize> Default for FiniteVector<D> {
-    #[inline]
-    fn default() -> Self {
-        Self::zero()
-    }
-}
-
-impl<const D: usize> From<FiniteVector<D>> for Vector<D> {
-    #[inline]
-    fn from(value: FiniteVector<D>) -> Self {
-        value.into_vector()
-    }
-}
-
-impl<const D: usize> TryFrom<Vector<D>> for FiniteVector<D> {
-    type Error = LaError;
-
-    #[inline]
-    fn try_from(value: Vector<D>) -> Result<Self, Self::Error> {
-        Self::new(value)
-    }
-}
-
-impl<const D: usize> TryFrom<[f64; D]> for FiniteVector<D> {
-    type Error = LaError;
-
-    #[inline]
-    fn try_from(value: [f64; D]) -> Result<Self, Self::Error> {
-        Self::from_array(value)
     }
 }
 
@@ -176,9 +131,8 @@ impl<const D: usize> Vector<D> {
 
     /// Try to create a finite vector from a backing array.
     ///
-    /// This is the public raw-storage boundary for vectors. Public compute
-    /// methods parse stored entries into crate-internal proof-bearing types
-    /// before arithmetic, including when crate-internal unchecked storage exists.
+    /// This is the public raw-storage boundary for vectors. Successful
+    /// construction makes the returned [`Vector`] a finite-storage proof.
     ///
     /// # Examples
     /// ```
@@ -205,8 +159,10 @@ impl<const D: usize> Vector<D> {
 
     /// Construct a vector without checking that entries are finite.
     ///
-    /// This crate-internal escape hatch is reserved for literals and algorithm
-    /// outputs whose finite invariant is visible at the call site.
+    /// This crate-internal escape hatch is reserved for finite literals and
+    /// algorithm outputs whose finite invariant is visible at the call site.
+    /// Computed outputs must check their intermediates before using this
+    /// constructor to create an observable [`Vector`].
     #[inline]
     pub(crate) const fn new_unchecked(data: [f64; D]) -> Self {
         Self { data }
@@ -228,7 +184,7 @@ impl<const D: usize> Vector<D> {
         None
     }
 
-    /// All-zeros vector.
+    /// All-zeros finite vector.
     ///
     /// # Examples
     /// ```
@@ -242,7 +198,7 @@ impl<const D: usize> Vector<D> {
         Self::new_unchecked([0.0; D])
     }
 
-    /// Borrow the backing array.
+    /// Borrow the finite backing array.
     ///
     /// # Examples
     /// ```
@@ -260,7 +216,7 @@ impl<const D: usize> Vector<D> {
         &self.data
     }
 
-    /// Consume and return the backing array.
+    /// Consume and return the finite backing array.
     ///
     /// # Examples
     /// ```
@@ -284,9 +240,8 @@ impl<const D: usize> Vector<D> {
     /// Terms are accumulated in `f64` using [`f64::mul_add`] at each index.
     /// Intermediate rounding occurs, and this method does not provide a
     /// certified absolute rounding bound for the returned dot product. Raw
-    /// storage is parsed into the crate-internal finite-vector proof before
-    /// accumulation, so internally unchecked vectors are rejected before
-    /// arithmetic starts.
+    /// `Vector` values are finite by construction, so this method only checks
+    /// whether the accumulation overflows to NaN or infinity.
     ///
     /// # Examples
     /// ```
@@ -301,19 +256,11 @@ impl<const D: usize> Vector<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when either input contains NaN/infinity or
-    /// the accumulated dot product overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] when the accumulated dot product overflows
+    /// to NaN or infinity.
     #[inline]
     pub const fn dot(self, other: Self) -> Result<f64, LaError> {
-        let lhs = match FiniteVector::new(self) {
-            Ok(lhs) => lhs,
-            Err(err) => return Err(err),
-        };
-        let rhs = match FiniteVector::new(other) {
-            Ok(rhs) => rhs,
-            Err(err) => return Err(err),
-        };
-        lhs.dot(rhs)
+        FiniteVector::new_unchecked(self).dot(FiniteVector::new_unchecked(other))
     }
 
     /// Squared Euclidean norm.
@@ -321,9 +268,9 @@ impl<const D: usize> Vector<D> {
     /// This is computed as `dot(self, self)`, so `norm2_sq` has the same
     /// `f64` [`mul_add`](f64::mul_add) accumulation behavior as [`dot`](Self::dot).
     /// Intermediate rounding occurs, and this method does not provide a
-    /// certified absolute rounding bound for the returned squared norm. Raw
-    /// storage is parsed into the crate-internal finite-vector proof before
-    /// accumulation.
+    /// certified absolute rounding bound for the returned squared norm.
+    /// `Vector` values are finite by construction, so this method only checks
+    /// whether the accumulation overflows to NaN or infinity.
     ///
     /// # Examples
     /// ```
@@ -337,14 +284,11 @@ impl<const D: usize> Vector<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when stored entries are NaN/infinity or
-    /// the accumulated norm overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] when the accumulated norm overflows to NaN
+    /// or infinity.
     #[inline]
     pub const fn norm2_sq(self) -> Result<f64, LaError> {
-        match FiniteVector::new(self) {
-            Ok(vector) => vector.norm2_sq(),
-            Err(err) => Err(err),
-        }
+        FiniteVector::new_unchecked(self).norm2_sq()
     }
 }
 
@@ -515,38 +459,6 @@ mod tests {
                 }
 
                 #[test]
-                fn [<public_api_vector_methods_revalidate_unchecked_storage_ $d d>]() {
-                    let mut lhs_arr = [1.0f64; $d];
-                    lhs_arr[$d - 1] = f64::NAN;
-                    let lhs = Vector::<$d>::new_unchecked(lhs_arr);
-                    let valid = Vector::<$d>::new([1.0; $d]);
-
-                    assert_eq!(
-                        lhs.dot(valid),
-                        Err(LaError::NonFinite {
-                            row: None,
-                            col: $d - 1,
-                        })
-                    );
-                    assert_eq!(
-                        lhs.norm2_sq(),
-                        Err(LaError::NonFinite {
-                            row: None,
-                            col: $d - 1,
-                        })
-                    );
-
-                    let mut rhs_arr = [1.0f64; $d];
-                    rhs_arr[0] = f64::INFINITY;
-                    let rhs = Vector::<$d>::new_unchecked(rhs_arr);
-
-                    assert_eq!(
-                        valid.dot(rhs),
-                        Err(LaError::NonFinite { row: None, col: 0 })
-                    );
-                }
-
-                #[test]
                 fn [<finite_vector_accepts_and_roundtrips_ $d d>]() {
                     let arr = {
                         let mut arr = [0.0f64; $d];
@@ -557,47 +469,10 @@ mod tests {
                         arr
                     };
 
-                    let finite = FiniteVector::<$d>::from_array(arr).unwrap();
+                    let finite = FiniteVector::<$d>::new_unchecked(Vector::<$d>::new(arr));
 
                     assert_array_abs_eq(&finite.into_array(), &arr);
                     assert_array_abs_eq(&finite.into_vector().into_array(), &arr);
-                    assert_array_abs_eq(&FiniteVector::<$d>::zero().into_array(), &[0.0; $d]);
-                    assert_array_abs_eq(&FiniteVector::<$d>::default().into_array(), &[0.0; $d]);
-                    assert_array_abs_eq(Vector::from(finite).as_array(), &arr);
-                    assert_array_abs_eq(
-                        &FiniteVector::<$d>::try_from(Vector::<$d>::new(arr)).unwrap().into_array(),
-                        &arr
-                    );
-                    assert_array_abs_eq(&FiniteVector::<$d>::try_from(arr).unwrap().into_array(), &arr);
-                }
-
-                #[test]
-                fn [<finite_vector_rejects_nonfinite_with_index_ $d d>]() {
-                    let mut arr = [1.0f64; $d];
-                    arr[$d - 1] = f64::INFINITY;
-
-                    assert_eq!(
-                        FiniteVector::<$d>::from_array(arr),
-                        Err(LaError::NonFinite {
-                            row: None,
-                            col: $d - 1,
-                        })
-                    );
-                }
-
-                #[test]
-                fn [<finite_vector_try_from_raw_vector_revalidates_entries_ $d d>]() {
-                    let mut arr = [1.0f64; $d];
-                    arr[$d - 1] = f64::NAN;
-                    let raw = Vector::<$d>::new_unchecked(arr);
-
-                    assert_eq!(
-                        FiniteVector::<$d>::try_from(raw),
-                        Err(LaError::NonFinite {
-                            row: None,
-                            col: $d - 1,
-                        })
-                    );
                 }
             }
         };
