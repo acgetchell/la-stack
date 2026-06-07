@@ -2,8 +2,8 @@
 
 use core::hint::cold_path;
 
-use crate::matrix::{FiniteMatrix, Matrix};
-use crate::vector::{FiniteVector, Vector};
+use crate::matrix::Matrix;
+use crate::vector::Vector;
 use crate::{LaError, Tolerance};
 
 /// LU decomposition (PA = LU) with partial pivoting.
@@ -48,7 +48,7 @@ impl<const D: usize> LuFactors<D> {
 
 impl<const D: usize> Lu<D> {
     /// Factor a finite square matrix into in-place LU storage for
-    /// `FiniteMatrix::lu`.
+    /// [`Matrix::lu`].
     ///
     /// The input has already proven finite entries, so LU construction rejects
     /// numerically singular pivots and non-finite elimination intermediates
@@ -57,8 +57,8 @@ impl<const D: usize> Lu<D> {
     /// value produced during elimination.
     #[inline]
     #[allow(clippy::needless_range_loop)]
-    pub(crate) fn factor_finite(a: FiniteMatrix<D>, tol: Tolerance) -> Result<Self, LaError> {
-        let mut lu = a.into_matrix();
+    pub(crate) fn factor_finite(a: Matrix<D>, tol: Tolerance) -> Result<Self, LaError> {
+        let mut lu = a;
         let tol = tol.get();
 
         let mut piv = [0usize; D];
@@ -110,7 +110,7 @@ impl<const D: usize> Lu<D> {
             }
         }
 
-        let lu = FiniteMatrix::new(lu)?.into_matrix();
+        let lu = lu.validate_finite()?;
 
         Ok(Self {
             factors: LuFactors::new_unchecked(lu),
@@ -148,8 +148,8 @@ impl<const D: usize> Lu<D> {
     /// overflows to NaN or infinity.
     #[inline]
     pub const fn solve(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        match self.solve_finite(FiniteVector::new_unchecked(b)) {
-            Ok(x) => Ok(x.into_vector()),
+        match Vector::try_new(b.into_array()) {
+            Ok(b) => self.solve_finite(b),
             Err(err) => Err(err),
         }
     }
@@ -163,10 +163,7 @@ impl<const D: usize> Lu<D> {
     /// Returns [`LaError::NonFinite`] if a computed substitution intermediate
     /// overflows to NaN or infinity.
     #[inline]
-    pub(crate) const fn solve_finite(
-        &self,
-        b: FiniteVector<D>,
-    ) -> Result<FiniteVector<D>, LaError> {
+    pub(crate) const fn solve_finite(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
         let mut x = [0.0; D];
         let mut i = 0;
         let b = b.as_array();
@@ -220,7 +217,7 @@ impl<const D: usize> Lu<D> {
             ii += 1;
         }
 
-        Ok(FiniteVector::new_unchecked(Vector::new_unchecked(x)))
+        Ok(Vector::new_unchecked(x))
     }
 
     /// Determinant of the original matrix.
@@ -284,7 +281,7 @@ mod tests {
                     }
                     rows.swap(0, 1);
 
-                    let a = Matrix::<$d>::from_rows(black_box(rows));
+                    let a = Matrix::<$d>::try_from_rows(black_box(rows)).unwrap();
                     let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
                     let lu = lu_fn(a, DEFAULT_SINGULAR_TOL).unwrap();
@@ -324,7 +321,7 @@ mod tests {
                     }
                     rows.swap(0, 1);
 
-                    let a = Matrix::<$d>::from_rows(black_box(rows));
+                    let a = Matrix::<$d>::try_from_rows(black_box(rows)).unwrap();
                     let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
                     let lu = lu_fn(a, DEFAULT_SINGULAR_TOL).unwrap();
@@ -364,7 +361,7 @@ mod tests {
                         }
                     }
 
-                    let a = Matrix::<$d>::from_rows(black_box(rows));
+                    let a = Matrix::<$d>::try_from_rows(black_box(rows)).unwrap();
                     let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
                     let lu = lu_fn(a, DEFAULT_SINGULAR_TOL).unwrap();
@@ -403,7 +400,7 @@ mod tests {
                         }
                     }
 
-                    let a = Matrix::<$d>::from_rows(black_box(rows));
+                    let a = Matrix::<$d>::try_from_rows(black_box(rows)).unwrap();
                     let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
                     let lu = lu_fn(a, DEFAULT_SINGULAR_TOL).unwrap();
@@ -422,11 +419,8 @@ mod tests {
 
     #[test]
     fn solve_1x1() {
-        let a = Matrix::<1>::from_rows(black_box([[2.0]]));
-        let lu = FiniteMatrix::new(a)
-            .unwrap()
-            .lu(DEFAULT_SINGULAR_TOL)
-            .unwrap();
+        let a = Matrix::<1>::try_from_rows(black_box([[2.0]])).unwrap();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<1>::new(black_box([6.0]));
         let solve_fn: fn(&Lu<1>, Vector<1>) -> Result<Vector<1>, LaError> =
@@ -440,11 +434,8 @@ mod tests {
 
     #[test]
     fn solve_2x2_basic() {
-        let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [3.0, 4.0]]));
-        let lu = FiniteMatrix::new(a)
-            .unwrap()
-            .lu(DEFAULT_SINGULAR_TOL)
-            .unwrap();
+        let a = Matrix::<2>::try_from_rows(black_box([[1.0, 2.0], [3.0, 4.0]])).unwrap();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
         let b = Vector::<2>::new(black_box([5.0, 11.0]));
 
         let solve_fn: fn(&Lu<2>, Vector<2>) -> Result<Vector<2>, LaError> =
@@ -457,7 +448,7 @@ mod tests {
 
     #[test]
     fn det_2x2_basic() {
-        let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [3.0, 4.0]]));
+        let a = Matrix::<2>::try_from_rows(black_box([[1.0, 2.0], [3.0, 4.0]])).unwrap();
         let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let det_fn: fn(&Lu<2>) -> Result<f64, LaError> = black_box(Lu::<2>::det);
@@ -467,7 +458,7 @@ mod tests {
     #[test]
     fn det_requires_pivot_sign() {
         // Row swap ⇒ determinant sign flip.
-        let a = Matrix::<2>::from_rows(black_box([[0.0, 1.0], [1.0, 0.0]]));
+        let a = Matrix::<2>::try_from_rows(black_box([[0.0, 1.0], [1.0, 0.0]])).unwrap();
         let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let det_fn: fn(&Lu<2>) -> Result<f64, LaError> = black_box(Lu::<2>::det);
@@ -476,7 +467,7 @@ mod tests {
 
     #[test]
     fn solve_requires_pivoting() {
-        let a = Matrix::<2>::from_rows(black_box([[0.0, 1.0], [1.0, 0.0]]));
+        let a = Matrix::<2>::try_from_rows(black_box([[0.0, 1.0], [1.0, 0.0]])).unwrap();
         let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
         let b = Vector::<2>::new(black_box([1.0, 2.0]));
 
@@ -490,7 +481,7 @@ mod tests {
 
     #[test]
     fn singular_detected() {
-        let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [2.0, 4.0]]));
+        let a = Matrix::<2>::try_from_rows(black_box([[1.0, 2.0], [2.0, 4.0]])).unwrap();
         let err = a.lu(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(err, LaError::Singular { pivot_col: 1 });
     }
@@ -498,7 +489,7 @@ mod tests {
     #[test]
     fn singular_due_to_tolerance_at_first_pivot() {
         // Not exactly singular, but below DEFAULT_SINGULAR_TOL.
-        let a = Matrix::<2>::from_rows(black_box([[1e-13, 0.0], [0.0, 1.0]]));
+        let a = Matrix::<2>::try_from_rows(black_box([[1e-13, 0.0], [0.0, 1.0]])).unwrap();
         let err = a.lu(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(err, LaError::Singular { pivot_col: 0 });
     }
@@ -529,8 +520,12 @@ mod tests {
 
     #[test]
     fn nonfinite_detected_in_trailing_update() {
-        let a =
-            Matrix::<3>::from_rows([[1.0, f64::MAX, 0.0], [-1.0, f64::MAX, 0.0], [0.0, 0.0, 1.0]]);
+        let a = Matrix::<3>::try_from_rows([
+            [1.0, f64::MAX, 0.0],
+            [-1.0, f64::MAX, 0.0],
+            [0.0, 0.0, 1.0],
+        ])
+        .unwrap();
 
         let err = a.lu(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(
@@ -545,7 +540,8 @@ mod tests {
     #[test]
     fn solve_nonfinite_forward_substitution_overflow() {
         // L has a -1 multiplier, and a large RHS makes forward substitution overflow.
-        let a = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [-1.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+        let a = Matrix::<3>::try_from_rows([[1.0, 0.0, 0.0], [-1.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+            .unwrap();
         let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<3>::new([1.0e308, 1.0e308, 0.0]);
@@ -556,7 +552,7 @@ mod tests {
     #[test]
     fn solve_nonfinite_back_substitution_overflow() {
         // Make x[1] overflow during back substitution, then ensure it is detected on the next row.
-        let a = Matrix::<2>::from_rows([[1.0, 1.0], [0.0, 2.0e-12]]);
+        let a = Matrix::<2>::try_from_rows([[1.0, 1.0], [0.0, 2.0e-12]]).unwrap();
         let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<2>::new([0.0, 1.0e300]);
@@ -572,7 +568,8 @@ mod tests {
         // reducing row 1, so the failure is detected via the `!sum.is_finite()`
         // branch of the combined diag/sum check (distinct from the
         // `q = sum / diag` overflow path covered above).
-        let a = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 1.0, 1.0e200], [0.0, 0.0, 1.0]]);
+        let a = Matrix::<3>::try_from_rows([[1.0, 0.0, 0.0], [0.0, 1.0, 1.0e200], [0.0, 0.0, 1.0]])
+            .unwrap();
         let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<3>::new([0.0, 0.0, 1.0e200]);
@@ -582,13 +579,14 @@ mod tests {
 
     #[test]
     fn det_rejects_product_overflow() {
-        let a = Matrix::<5>::from_rows([
+        let a = Matrix::<5>::try_from_rows([
             [1.0e100, 0.0, 0.0, 0.0, 0.0],
             [0.0, 1.0e100, 0.0, 0.0, 0.0],
             [0.0, 0.0, 1.0e100, 0.0, 0.0],
             [0.0, 0.0, 0.0, 1.0e100, 0.0],
             [0.0, 0.0, 0.0, 0.0, 1.0e100],
-        ]);
+        ])
+        .unwrap();
         let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
         assert_eq!(lu.det(), Err(LaError::NonFinite { row: None, col: 3 }));
     }

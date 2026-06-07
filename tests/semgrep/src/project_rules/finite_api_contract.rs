@@ -10,23 +10,6 @@ pub mod vector;
 // ok: la-stack.rust.no-public-raw-linear-algebra-modules
 mod exact;
 
-pub mod reexports {
-    // ruleid: la-stack.rust.no-public-finite-proof-reexports
-    pub use crate::matrix::FiniteMatrix;
-
-    // ruleid: la-stack.rust.no-public-finite-proof-reexports
-    pub use crate::vector::{FiniteVector, Vector};
-
-    // ruleid: la-stack.rust.no-public-finite-proof-reexports
-    pub use crate::matrix::FiniteMatrix as ParsedMatrix;
-
-    // ok: la-stack.rust.no-public-finite-proof-reexports
-    pub(crate) use crate::vector::FiniteVector as InternalFiniteVector;
-
-    // ok: la-stack.rust.no-public-finite-proof-reexports
-    pub use crate::matrix::Matrix;
-}
-
 #[must_use]
 pub struct Matrix<const D: usize> {
     // ruleid: la-stack.rust.no-public-matrix-vector-storage-fields

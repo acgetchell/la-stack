@@ -34,7 +34,7 @@ while keeping the API intentionally small and explicit.
 - ✅ `const fn` where possible (compile-time evaluation of determinants, dot products, etc.)
 - ✅ Explicit algorithms (LU, solve, determinant)
 - ✅ Robust geometric predicates via optional exact arithmetic (`det_sign_exact`, `det_errbound`)
-- ✅ Exact linear system solve via optional arbitrary-precision arithmetic (`solve_exact`, `solve_exact_f64`)
+- ✅ Exact linear system solve via optional arbitrary-precision arithmetic (`solve_exact`, strict/rounded f64 conversions)
 - ✅ No runtime dependencies by default (optional features may add deps)
 - ✅ Stack storage only (no heap allocation in core types)
 - ✅ `unsafe` forbidden
@@ -213,14 +213,19 @@ la-stack = { version = "0.4.2", features = ["exact"] }
 **Determinants:**
 
 - **`det_exact()`** — returns the exact determinant as a `BigRational`
-- **`det_exact_f64()`** — returns the exact determinant converted to the nearest `f64`
-  (or `LaError::Overflow` when the exact value is unrepresentable)
+- **`det_exact_f64()`** — returns the exact determinant as `f64` only when
+  it is exactly representable (or `LaError::Unrepresentable` otherwise)
+- **`det_exact_rounded_f64()`** — returns the exact determinant rounded to a
+  finite `f64`
 - **`det_sign_exact()`** — returns the provably correct sign (−1, 0, or +1)
 
 **Linear system solve:**
 
 - **`solve_exact(b)`** — solves `Ax = b` exactly, returning `[BigRational; D]`
-- **`solve_exact_f64(b)`** — solves `Ax = b` exactly, converting the result to `Vector<D>` (f64)
+- **`solve_exact_f64(b)`** — solves `Ax = b` exactly, returning `Vector<D>` only when
+  every component is exactly representable as `f64`
+- **`solve_exact_rounded_f64(b)`** — solves `Ax = b` exactly, returning each
+  component rounded to finite `f64`
 
 ```rust,ignore
 use la_stack::prelude::*;
@@ -239,6 +244,19 @@ fn main() -> Result<(), LaError> {
     let det_f64 = m.det_exact_f64()?;
     assert_eq!(det_f64, 0.0);
 
+    // If strict exact-to-f64 conversion would require rounding, opt in
+    // explicitly with the rounded API.
+    let inexact = Matrix::<2>::try_from_rows([
+        [1.0 + f64::EPSILON, 0.0],
+        [0.0, 1.0 - f64::EPSILON],
+    ])?;
+    let rounded_det = match inexact.det_exact_f64() {
+        Ok(det) => det,
+        Err(err) if err.requires_rounding() => inexact.det_exact_rounded_f64()?,
+        Err(err) => return Err(err),
+    };
+    assert_eq!(rounded_det.to_bits(), 1.0f64.to_bits());
+
     // If the exact determinant cannot fit in f64, keep the BigRational value.
     let big = f64::MAX / 2.0;
     let huge = Matrix::<3>::try_from_rows([
@@ -247,7 +265,12 @@ fn main() -> Result<(), LaError> {
         [0.0, big, 1.0],
     ])?;
     let huge_det = huge.det_exact()?;
-    assert_eq!(huge.det_exact_f64(), Err(LaError::Overflow { index: None }));
+    assert_eq!(
+        huge.det_exact_f64()
+            .err()
+            .and_then(|err| err.unrepresentable_reason()),
+        Some(UnrepresentableReason::NotFinite)
+    );
     println!("exact determinant = {huge_det}");
 
     // Exact linear system solve
@@ -338,7 +361,8 @@ compose the same bound themselves.
 Storage shown above reflects the intentional `f64` scalar model.
 
 `Matrix<D>` key methods: `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`,
-`det_exact`¹, `det_exact_f64`¹, `det_sign_exact`¹, `solve_exact`¹, `solve_exact_f64`¹.
+`det_exact`¹, `det_exact_f64`¹, `det_exact_rounded_f64`¹, `det_sign_exact`¹,
+`solve_exact`¹, `solve_exact_f64`¹, `solve_exact_rounded_f64`¹.
 Matrix and vector constructors validate non-finite inputs at public API
 boundaries. After construction, `Matrix<D>` and `Vector<D>` carry that
 finite-storage invariant directly, so kernels do not revalidate stored entries.

@@ -1,9 +1,10 @@
 //! Exact linear system solve for a near-singular 3×3 system.
 //!
-//! This example demonstrates `solve_exact()` and `solve_exact_f64()`, which use
-//! arbitrary-precision rational arithmetic to compute a provably correct
-//! solution — even when the matrix is so close to singular that the f64 LU
-//! solve produces a wildly inaccurate result.
+//! This example demonstrates `solve_exact()` and `solve_exact_f64()`. The exact
+//! solve uses arbitrary-precision rational arithmetic to compute a provably
+//! correct solution — even when the matrix is so close to singular that the f64
+//! LU solve produces a wildly inaccurate result. The `solve_exact_f64()` helper
+//! only succeeds when every exact component is exactly representable as `f64`.
 //!
 //! Run with: `cargo run --features exact --example exact_solve_3x3`
 
@@ -30,8 +31,6 @@ fn main() -> Result<(), LaError> {
 
     // Exact solve.
     let exact_x = a.solve_exact(b)?;
-    let exact_x_f64 = a.solve_exact_f64(b)?.into_array();
-
     println!("Near-singular 3×3 system (perturbation = 2^-50 ≈ {perturbation:.2e}):");
     for r in 0..3 {
         print!("  [");
@@ -58,9 +57,23 @@ fn main() -> Result<(), LaError> {
         "solve_exact():      x = [{}, {}, {}]",
         exact_x[0], exact_x[1], exact_x[2]
     );
-    println!(
-        "solve_exact_f64():  x = [{:+.6e}, {:+.6e}, {:+.6e}]",
-        exact_x_f64[0], exact_x_f64[1], exact_x_f64[2]
-    );
+    match a.solve_exact_f64(b) {
+        Ok(x) => {
+            let x = x.into_array();
+            println!(
+                "solve_exact_f64():  x = [{:+.6e}, {:+.6e}, {:+.6e}]",
+                x[0], x[1], x[2]
+            );
+        }
+        Err(err) if err.requires_rounding() => {
+            println!("solve_exact_f64():  {err}");
+            let x = a.solve_exact_rounded_f64(b)?.into_array();
+            println!(
+                "rounded fallback:    x = [{:+.6e}, {:+.6e}, {:+.6e}]",
+                x[0], x[1], x[2]
+            );
+        }
+        Err(err) => return Err(err),
+    }
     Ok(())
 }

@@ -383,23 +383,40 @@ macro_rules! gen_mixed_scale_diagonal_exact_det_proptests {
                     };
                     let expected_f64 = expected.to_f64();
 
-                    prop_assert_eq!(m.det_exact().unwrap(), expected);
                     prop_assert_eq!(m.det_sign_exact().unwrap(), expected_sign);
 
                     match expected_f64 {
-                        Some(expected_f64) if expected_f64.is_finite() => {
+                        Some(expected_f64)
+                            if expected_f64.is_finite()
+                                && BigRational::from_f64(expected_f64).as_ref()
+                                    == Some(&expected) =>
+                        {
                             prop_assert_eq!(
                                 m.det_exact_f64().unwrap().to_bits(),
                                 expected_f64.to_bits()
                             );
                         }
+                        Some(expected_f64) if expected_f64.is_finite() => {
+                            prop_assert_eq!(
+                                m.det_exact_f64(),
+                                Err(LaError::Unrepresentable {
+                                    index: None,
+                                    reason: UnrepresentableReason::RequiresRounding,
+                                })
+                            );
+                        }
                         _ => {
                             prop_assert_eq!(
                                 m.det_exact_f64(),
-                                Err(LaError::Overflow { index: None })
+                                Err(LaError::Unrepresentable {
+                                    index: None,
+                                    reason: UnrepresentableReason::NotFinite,
+                                })
                             );
                         }
                     }
+
+                    prop_assert_eq!(m.det_exact().unwrap(), expected);
                 }
             }
         }

@@ -17,18 +17,13 @@ pub enum LaError {
 }
 
 impl<const D: usize> Matrix<D> {
-    // ruleid: la-stack.rust.no-public-infallible-raw-f64-constructors
-    pub const fn from_rows(rows: [[f64; D]; D]) -> Self {
-        Self { rows }
-    }
-
     // ok: la-stack.rust.no-public-infallible-raw-f64-constructors
     pub const fn try_from_rows(rows: [[f64; D]; D]) -> Result<Self, LaError> {
         Ok(Self { rows })
     }
 
     // ok: la-stack.rust.no-public-infallible-raw-f64-constructors
-    pub(crate) const fn from_rows_literal(rows: [[f64; D]; D]) -> Self {
+    pub(crate) const fn matrix_literal(rows: [[f64; D]; D]) -> Self {
         Self { rows }
     }
 }

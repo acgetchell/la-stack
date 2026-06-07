@@ -27,97 +27,6 @@ pub struct Vector<const D: usize> {
     data: [f64; D],
 }
 
-/// Fixed-size vector whose stored entries are all finite.
-///
-/// This internal proof wrapper is used where carrying the invariant explicitly
-/// makes algorithm boundaries clearer. Public callers use [`Vector`], which is
-/// already finite by construction.
-#[must_use]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FiniteVector<const D: usize> {
-    vector: Vector<D>,
-}
-
-impl<const D: usize> FiniteVector<D> {
-    /// Construct a finite vector without checking the invariant.
-    ///
-    /// This crate-internal escape hatch is only for paths with a local proof
-    /// that every stored entry is finite.
-    #[inline]
-    pub(crate) const fn new_unchecked(vector: Vector<D>) -> Self {
-        Self { vector }
-    }
-
-    /// Consume the wrapper and return the underlying raw vector.
-    #[inline]
-    pub(crate) const fn into_vector(self) -> Vector<D> {
-        self.vector
-    }
-
-    /// Borrow the backing array without revalidating stored entries.
-    #[inline]
-    #[must_use]
-    pub(crate) const fn as_array(&self) -> &[f64; D] {
-        self.vector.as_array()
-    }
-
-    /// Consume and return the backing array.
-    #[inline]
-    #[must_use]
-    pub(crate) const fn into_array(self) -> [f64; D] {
-        self.vector.into_array()
-    }
-
-    /// Dot product for already finite vectors.
-    ///
-    /// Stored entries are known finite, so this path only checks whether the
-    /// accumulation overflows to NaN or infinity.
-    ///
-    /// # Errors
-    /// Returns [`LaError::NonFinite`] when the accumulated dot product overflows
-    /// to NaN or infinity.
-    #[inline]
-    pub(crate) const fn dot(self, other: Self) -> Result<f64, LaError> {
-        let lhs = self.as_array();
-        let rhs = other.as_array();
-        let mut acc = 0.0;
-        let mut i = 0;
-        while i < D {
-            acc = lhs[i].mul_add(rhs[i], acc);
-            if !acc.is_finite() {
-                cold_path();
-                return Err(LaError::non_finite_at(i));
-            }
-            i += 1;
-        }
-        Ok(acc)
-    }
-
-    /// Squared Euclidean norm for an already finite vector.
-    ///
-    /// Stored entries are known finite, so this path only checks whether the
-    /// accumulation overflows to NaN or infinity.
-    ///
-    /// # Errors
-    /// Returns [`LaError::NonFinite`] when the accumulated norm overflows to NaN
-    /// or infinity.
-    #[inline]
-    pub(crate) const fn norm2_sq(self) -> Result<f64, LaError> {
-        let data = self.as_array();
-        let mut acc = 0.0;
-        let mut i = 0;
-        while i < D {
-            acc = data[i].mul_add(data[i], acc);
-            if !acc.is_finite() {
-                cold_path();
-                return Err(LaError::non_finite_at(i));
-            }
-            i += 1;
-        }
-        Ok(acc)
-    }
-}
-
 impl<const D: usize> Vector<D> {
     /// Test-only infallible constructor for finite literal fixtures.
     #[cfg(test)]
@@ -170,8 +79,8 @@ impl<const D: usize> Vector<D> {
 
     /// Return the first non-finite stored entry in index order.
     ///
-    /// Shared by the public raw-storage boundary and the internal finite-vector
-    /// proof wrapper so both paths report the same first offending index with
+    /// Shared by the public raw-storage boundary and crate-internal reparsing
+    /// paths so both report the same first offending index with
     /// [`LaError::NonFinite`].
     const fn first_non_finite_entry_in(data: &[f64; D]) -> Option<usize> {
         let mut i = 0;
@@ -260,7 +169,19 @@ impl<const D: usize> Vector<D> {
     /// to NaN or infinity.
     #[inline]
     pub const fn dot(self, other: Self) -> Result<f64, LaError> {
-        FiniteVector::new_unchecked(self).dot(FiniteVector::new_unchecked(other))
+        let lhs = self.as_array();
+        let rhs = other.as_array();
+        let mut acc = 0.0;
+        let mut i = 0;
+        while i < D {
+            acc = lhs[i].mul_add(rhs[i], acc);
+            if !acc.is_finite() {
+                cold_path();
+                return Err(LaError::non_finite_at(i));
+            }
+            i += 1;
+        }
+        Ok(acc)
     }
 
     /// Squared Euclidean norm.
@@ -288,7 +209,7 @@ impl<const D: usize> Vector<D> {
     /// or infinity.
     #[inline]
     pub const fn norm2_sq(self) -> Result<f64, LaError> {
-        FiniteVector::new_unchecked(self).norm2_sq()
+        self.dot(self)
     }
 }
 
@@ -307,12 +228,6 @@ mod tests {
 
     use approx::assert_abs_diff_eq;
     use pastey::paste;
-
-    fn assert_array_abs_eq<const D: usize>(actual: &[f64; D], expected: &[f64; D]) {
-        for i in 0..D {
-            assert_abs_diff_eq!(actual[i], expected[i], epsilon = 0.0);
-        }
-    }
 
     macro_rules! gen_public_api_vector_tests {
         ($d:literal) => {
@@ -458,22 +373,6 @@ mod tests {
                     assert_eq!(a.norm2_sq(), Err(LaError::NonFinite { row: None, col: 0 }));
                 }
 
-                #[test]
-                fn [<finite_vector_accepts_and_roundtrips_ $d d>]() {
-                    let arr = {
-                        let mut arr = [0.0f64; $d];
-                        let values = [1.0f64, 2.0, 3.0, 4.0, 5.0];
-                        for (dst, src) in arr.iter_mut().zip(values.iter()) {
-                            *dst = *src;
-                        }
-                        arr
-                    };
-
-                    let finite = FiniteVector::<$d>::new_unchecked(Vector::<$d>::new(arr));
-
-                    assert_array_abs_eq(&finite.into_array(), &arr);
-                    assert_array_abs_eq(&finite.into_vector().into_array(), &arr);
-                }
             }
         };
     }

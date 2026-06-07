@@ -15,7 +15,8 @@ la-stack has two Criterion benchmark suites:
   dependency version used here.
 
 - **`exact`** (`benches/exact.rs`) — measures exact-arithmetic methods
-  (`det_exact`, `solve_exact`, `det_sign_exact`, etc.) alongside f64
+  (`det_exact`, `solve_exact`, `det_sign_exact`, strict `*_result`
+  conversions, and lossy `*_rounded_f64` conversions) alongside f64
   baselines (`det`, `det_direct`) across D=2–5. Use this to understand
   the cost of exact arithmetic and track optimization progress.
   In addition to the fixed per-dimension groups (`exact_d{2..5}`), the
@@ -35,10 +36,14 @@ la-stack has two Criterion benchmark suites:
     ill-conditioned matrices whose non-terminating-in-binary entries
     stress the `f64_decompose → BigInt` scaling path.
 
-  Each random percentile and adversarial group runs the same four
+  Each random percentile and adversarial group runs the same five
   exact-arithmetic benches (`det_sign_exact`, `det_exact`, `solve_exact`,
-  `solve_exact_f64`) so the resulting tables are directly comparable
-  across input classes.
+  `solve_exact_f64_result`, `solve_exact_rounded_f64`) so the resulting tables
+  are directly comparable across input classes. Rows with a `_result` suffix
+  measure the strict fallible conversion path, including valid
+  `Err(Unrepresentable)` outcomes when the exact answer is not
+  finite-binary64 representable. Rows with a `_rounded_f64` suffix measure the
+  intentionally lossy finite-binary64 conversion path.
 
 ## `vs_linalg` methodology
 

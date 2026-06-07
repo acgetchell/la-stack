@@ -17,6 +17,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Refresh README determinant examples with explicit fallible handling and
     hidden doctest mirrors
   - Update CI uv pins to 0.11.19
+- Report determinant scale overflow precisely [`928f62b`](https://github.com/acgetchell/la-stack/commit/928f62bba0d837afe04cb8ccb3fbfed6b095d8f7)
+  - Add a typed LaError::DeterminantScaleOverflow path for exact determinant scale exponent failures
+  - Convert det_exact_f64 directly from the shared Bareiss integer/exponent pair while preserving Overflow for finite-f64 conversion failures
+  - Reuse vector finiteness scanning across raw and proof-bearing constructors
+  - Harden docs version sync checks for reordered inline-table dependency snippets and pruned Markdown traversal
+- Add release performance comparison workflow [`53b5fde`](https://github.com/acgetchell/la-stack/commit/53b5fde13f3e4afbd3db80d324185a091203cb75)
+  - Extend vs_linalg with LDLT/Cholesky benchmark rows and shared deterministic inputs.
+  - Add smoke coverage that checks la-stack, nalgebra, and faer agree on benchmark inputs.
+  - Expand bench-compare to support latest-vs-last reports, suite/scope selection, peer baseline context, and clearer malformed Criterion diagnostics.
+  - Document the benchmark methodology, release baseline workflow, roadmap direction, and contributor guidance.
+- Publish release benchmark baselines [`9497ca5`](https://github.com/acgetchell/la-stack/commit/9497ca5f88dd7800bdf3823123e2a295fcb5ced1)
+  - Add a release-only benchmark workflow that saves full Criterion baselines for published releases and attaches the archived baseline to the GitHub Release.
+  - Keep the regular benchmark workflow focused on PR and main-branch comparison runs.
+  - Document how to restore archived release baselines for future performance comparisons.
+- Feat!(api): make Matrix and Vector finite by construction [`1fa2f55`](https://github.com/acgetchell/la-stack/commit/1fa2f55cfac6f249a7e2bf30922901539e580dd8)
+
+### Changed
+
+- Cover determinant scale overflow boundaries [`532093a`](https://github.com/acgetchell/la-stack/commit/532093a1ed9f65ace159f80aac290907d570ea8a)
+
+  - Extract determinant scale exponent calculation into a private helper
+  - Assert typed DeterminantScaleOverflow errors for dimension conversion and exponent product overflow
+- Harden support script parsing [`87e1d00`](https://github.com/acgetchell/la-stack/commit/87e1d0042ad2de7888c1a065ab78524a63f4c045)
+  - Require Python 3.13 for support-script tooling and align Ruff/Ty with that baseline.
+  - Replace mypy with strict Ty checking in the Python workflow.
+  - Parse TOML, JSON, argparse, and Semgrep inputs into typed boundary objects before downstream use.
+  - Reject malformed Criterion estimates, non-finite timings, invalid confidence intervals, and malformed Semgrep result shapes.
 
 ### Documentation
 
@@ -26,6 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Align the Python utility package metadata and lockfile with the crate release.
   - Add citation metadata validation to the release checklist and config lint flow.
   - Include CITATION.cff in YAML/CFF formatting checks.
+
+### Fixed
+
+- Escape path regex in benchmark parser test [`1222c93`](https://github.com/acgetchell/la-stack/commit/1222c9325c7b7ea0e1a174e4ee6f0f08e1f7e94b)
+
+  Use a literal regex pattern for the malformed Criterion JSON diagnostic so
+  Windows paths with backslashes do not break pytest's match expression.
+- Align ty with Python 3.13 [`b9e0ba0`](https://github.com/acgetchell/la-stack/commit/b9e0ba08e54a15d8eddd5c5c53edc37bbc03939a)
 
 ## [0.4.2] - 2026-06-04
 
@@ -378,7 +413,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Bump rust-version to 1.95 in Cargo.toml
   - Bump channel to 1.95.0 in rust-toolchain.toml
   - Add core::hint::cold_path() hints at cold/error branches:
-
     - src/exact.rs: validate_finite, validate_finite_vec, gauss_solve
       singular return, det_exact_f64 / solve_exact_f64 overflow returns,
       det_sign_exact Stage 2 Bareiss fallback
