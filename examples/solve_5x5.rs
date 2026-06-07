@@ -16,8 +16,8 @@ fn main() -> Result<(), LaError> {
     // Choose x = [1, 2, 3, 4, 5]. Then b = A x = [14, 13, 12, 11, 10].
     let b = Vector::<5>::try_new([14.0, 13.0, 12.0, 11.0, 10.0])?;
 
-    let lu = a.lu(DEFAULT_PIVOT_TOL)?;
-    let x = lu.solve_vec(b)?.into_array();
+    let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
+    let x = lu.solve(b)?.into_array();
 
     println!("x = {x:?}");
     Ok(())

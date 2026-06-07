@@ -105,8 +105,8 @@ fn main() -> Result<(), LaError> {
 
     let b = Vector::<5>::try_new([14.0, 13.0, 12.0, 11.0, 10.0])?;
 
-    let lu = a.lu(DEFAULT_PIVOT_TOL)?;
-    let x = lu.solve_vec(b)?.into_array();
+    let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
+    let x = lu.solve(b)?.into_array();
 
     // Floating-point rounding is expected; compare with a tolerance.
     let expected = [1.0, 2.0, 3.0, 4.0, 5.0];
@@ -330,18 +330,18 @@ compose the same bound themselves.
 
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
-| `Vector<D>` | `[f64; D]` | Fixed-length vector for input and computation | `try_new`, `zero`, `dot`, `norm2_sq` |
-| `Matrix<D>` | `[[f64; D]; D]` | Square matrix for input and computation | See below |
-| `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve_vec`, `det` |
-| `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve_vec`, `det` |
+| `Vector<D>` | `[f64; D]` | Finite fixed-length vector for input and computation | `try_new`, `zero`, `dot`, `norm2_sq` |
+| `Matrix<D>` | `[[f64; D]; D]` | Finite square matrix for input and computation | See below |
+| `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve`, `det` |
+| `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve`, `det` |
 
 Storage shown above reflects the intentional `f64` scalar model.
 
 `Matrix<D>` key methods: `lu`, `ldlt`, `det`, `det_direct`, `det_errbound`,
 `det_exact`¹, `det_exact_f64`¹, `det_sign_exact`¹, `solve_exact`¹, `solve_exact_f64`¹.
-Matrix and vector methods validate non-finite inputs at public API boundaries and
-carry private proof-bearing types through computation so successful factors do
-not store NaN or infinity.
+Matrix and vector constructors validate non-finite inputs at public API
+boundaries. After construction, `Matrix<D>` and `Vector<D>` carry that
+finite-storage invariant directly, so kernels do not revalidate stored entries.
 
 ¹ Requires `features = ["exact"]`.
 

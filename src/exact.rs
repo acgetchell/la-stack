@@ -60,11 +60,11 @@
 //!
 //! ## Validation
 //!
-//! Public exact methods parse raw `Matrix` / `Vector` values into internal
-//! finite proof-bearing types before reaching the integer-Bareiss core. The
-//! decomposition helpers for those validated domain types can then call
-//! `f64_decompose` without repeating stored-entry validation; `f64_decompose`
-//! itself is therefore never called with non-finite input from the public API.
+//! Public `Matrix` / `Vector` values are finite by construction before exact
+//! methods reach the integer-Bareiss core. The decomposition helpers for those
+//! domain types can then call `f64_decompose` without repeating stored-entry
+//! validation; `f64_decompose` itself is therefore never called with non-finite
+//! input from the public API.
 
 use core::hint::cold_path;
 use core::mem::take;
@@ -224,7 +224,7 @@ fn decompose_finite_matrix<const D: usize>(
     let mut components = [[Component::default(); D]; D];
     let mut e_min = i32::MAX;
     let matrix = m.as_matrix();
-    for (r, row) in matrix.rows.iter().enumerate() {
+    for (r, row) in matrix.rows().iter().enumerate() {
         for (c, &entry) in row.iter().enumerate() {
             if let Some((mantissa, exponent, is_negative)) =
                 f64_decompose(entry).map_err(|_| LaError::non_finite_cell(r, c))?
@@ -455,9 +455,9 @@ fn bareiss_det_finite<const D: usize>(m: &FiniteMatrix<D>) -> Result<BigRational
 
 /// Solve `A x = b` exactly after matrix and RHS finiteness has been proven.
 ///
-/// Public solve APIs parse raw [`Matrix`] / [`Vector`] values before reaching
-/// this helper, so decomposition can proceed without rediscovering stored
-/// NaN/∞ entries.
+/// Public [`Matrix`] / [`Vector`] values are finite by construction before
+/// reaching this helper, so decomposition can proceed without rediscovering
+/// stored NaN/∞ entries.
 ///
 /// # Errors
 /// Returns [`LaError::Singular`] if the matrix is exactly singular.
@@ -642,13 +642,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if stored matrix entries are NaN or infinity.
-    ///
     /// Returns [`LaError::DeterminantScaleOverflow`] if determinant scaling
     /// overflows the internal exponent representation.
     #[inline]
     pub fn det_exact(&self) -> Result<BigRational, LaError> {
-        FiniteMatrix::new(*self)?.det_exact()
+        FiniteMatrix::new_unchecked(*self).det_exact()
     }
 
     /// Exact determinant converted to `f64`.
@@ -675,8 +673,6 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if stored matrix entries are NaN or infinity.
-    ///
     /// Returns [`LaError::DeterminantScaleOverflow`] if determinant scaling
     /// overflows the internal exponent representation.
     ///
@@ -684,7 +680,7 @@ impl<const D: usize> Matrix<D> {
     /// represent as a finite `f64`.
     #[inline]
     pub fn det_exact_f64(&self) -> Result<f64, LaError> {
-        FiniteMatrix::new(*self)?.det_exact_f64()
+        FiniteMatrix::new_unchecked(*self).det_exact_f64()
     }
 
     /// Exact linear system solve using hybrid integer/rational arithmetic.
@@ -730,14 +726,11 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if stored matrix or right-hand-side entries
-    /// are NaN or infinity.
-    ///
     /// Returns [`LaError::Singular`] if the matrix is exactly singular.
     #[inline]
     pub fn solve_exact(&self, b: Vector<D>) -> Result<[BigRational; D], LaError> {
-        let finite_m = FiniteMatrix::new(*self)?;
-        let finite_b = FiniteVector::new(b)?;
+        let finite_m = FiniteMatrix::new_unchecked(*self);
+        let finite_b = FiniteVector::new_unchecked(b);
         finite_m.solve_exact(finite_b)
     }
 
@@ -765,16 +758,13 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if stored matrix or right-hand-side entries
-    /// are NaN or infinity.
-    ///
     /// Returns [`LaError::Singular`] if the matrix is exactly singular.
     /// Returns [`LaError::Overflow`] if any component of the exact solution is
     /// too large to represent as a finite `f64`.
     #[inline]
     pub fn solve_exact_f64(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        let finite_m = FiniteMatrix::new(*self)?;
-        let finite_b = FiniteVector::new(b)?;
+        let finite_m = FiniteMatrix::new_unchecked(*self);
+        let finite_b = FiniteVector::new_unchecked(b);
         Ok(finite_m.solve_exact_f64(finite_b)?.into_vector())
     }
 
@@ -815,20 +805,18 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if stored matrix entries are NaN or infinity.
-    ///
     /// Returns [`LaError::DeterminantScaleOverflow`] if determinant scaling
     /// overflows the internal exponent representation.
     #[inline]
     pub fn det_sign_exact(&self) -> Result<i8, LaError> {
-        FiniteMatrix::new(*self)?.det_sign_exact()
+        FiniteMatrix::new_unchecked(*self).det_sign_exact()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DEFAULT_PIVOT_TOL;
+    use crate::DEFAULT_SINGULAR_TOL;
 
     use core::assert_matches;
     use num_traits::Signed;
@@ -911,53 +899,6 @@ mod tests {
     gen_internal_finite_exact_tests!(3);
     gen_internal_finite_exact_tests!(4);
     gen_internal_finite_exact_tests!(5);
-
-    macro_rules! gen_public_exact_revalidation_tests {
-        ($d:literal) => {
-            paste! {
-                #[test]
-                fn [<public_exact_methods_revalidate_unchecked_matrix_storage_ $d d>]() {
-                    let mut rows = [[0.0f64; $d]; $d];
-                    for i in 0..$d {
-                        rows[i][i] = 1.0;
-                    }
-                    rows[0][$d - 1] = f64::NAN;
-                    let raw = Matrix::<$d>::from_rows_unchecked(rows);
-                    let rhs = Vector::<$d>::new([1.0; $d]);
-                    let expected = LaError::NonFinite {
-                        row: Some(0),
-                        col: $d - 1,
-                    };
-
-                    assert_eq!(raw.det_exact(), Err(expected));
-                    assert_eq!(raw.det_exact_f64(), Err(expected));
-                    assert_eq!(raw.det_sign_exact(), Err(expected));
-                    assert_eq!(raw.solve_exact(rhs), Err(expected));
-                    assert_eq!(raw.solve_exact_f64(rhs), Err(expected));
-                }
-
-                #[test]
-                fn [<public_exact_solve_methods_revalidate_unchecked_rhs_storage_ $d d>]() {
-                    let matrix = Matrix::<$d>::identity();
-                    let mut rhs = [1.0; $d];
-                    rhs[$d - 1] = f64::INFINITY;
-                    let rhs = Vector::<$d>::new_unchecked(rhs);
-                    let expected = LaError::NonFinite {
-                        row: None,
-                        col: $d - 1,
-                    };
-
-                    assert_eq!(matrix.solve_exact(rhs), Err(expected));
-                    assert_eq!(matrix.solve_exact_f64(rhs), Err(expected));
-                }
-            }
-        };
-    }
-
-    gen_public_exact_revalidation_tests!(2);
-    gen_public_exact_revalidation_tests!(3);
-    gen_public_exact_revalidation_tests!(4);
-    gen_public_exact_revalidation_tests!(5);
 
     macro_rules! gen_det_exact_tests {
         ($d:literal) => {
@@ -1715,7 +1656,7 @@ mod tests {
                     let b = arbitrary_rhs::<$d>();
                     let x = a.solve_exact(b).unwrap();
                     for (i, xi) in x.iter().enumerate() {
-                        assert_eq!(*xi, f64_to_bigrational(b.data[i]));
+                        assert_eq!(*xi, f64_to_bigrational(b.as_array()[i]));
                     }
                 }
 
@@ -1744,7 +1685,7 @@ mod tests {
                     let b = arbitrary_rhs::<$d>();
                     let x = a.solve_exact_f64(b).unwrap().into_array();
                     for i in 0..$d {
-                        assert!((x[i] - b.data[i]).abs() <= f64::EPSILON);
+                        assert!((x[i] - b.as_array()[i]).abs() <= f64::EPSILON);
                     }
                 }
             }
@@ -1756,7 +1697,7 @@ mod tests {
     gen_solve_exact_f64_tests!(4);
     gen_solve_exact_f64_tests!(5);
 
-    /// For D ≤ 4, `solve_exact_f64` should agree with `Lu::solve_vec` on
+    /// For D ≤ 4, `solve_exact_f64` should agree with `Lu::solve` on
     /// well-conditioned matrices.
     macro_rules! gen_solve_exact_f64_agrees_with_lu {
         ($d:literal) => {
@@ -1778,8 +1719,8 @@ mod tests {
                     let a = Matrix::<$d>::from_rows(rows);
                     let b = arbitrary_rhs::<$d>();
                     let exact = a.solve_exact_f64(b).unwrap().into_array();
-                    let lu_sol = a.lu(DEFAULT_PIVOT_TOL).unwrap()
-                        .solve_vec(b).unwrap().into_array();
+                    let lu_sol = a.lu(DEFAULT_SINGULAR_TOL).unwrap()
+                        .solve(b).unwrap().into_array();
                     for i in 0..$d {
                         let eps = lu_sol[i].abs().mul_add(1e-12, 1e-12);
                         assert!((exact[i] - lu_sol[i]).abs() <= eps);
@@ -2215,7 +2156,7 @@ mod tests {
     fn bigrational_matvec<const D: usize>(a: &Matrix<D>, x: &[BigRational; D]) -> [BigRational; D] {
         from_fn(|i| {
             let mut sum = BigRational::from_integer(BigInt::from(0));
-            for (aij, xj) in a.rows[i].iter().zip(x.iter()) {
+            for (aij, xj) in a.rows()[i].iter().zip(x.iter()) {
                 sum += f64_to_bigrational(*aij) * xj;
             }
             sum

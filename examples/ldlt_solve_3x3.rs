@@ -16,7 +16,7 @@ fn main() -> Result<(), LaError> {
     let b = Vector::<3>::try_new([2.0, 4.0, 10.0])?;
 
     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL)?;
-    let x = ldlt.solve_vec(b)?.into_array();
+    let x = ldlt.solve(b)?.into_array();
     let det = ldlt.det()?;
 
     println!("A (3×3 SPD tridiagonal):");

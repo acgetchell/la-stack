@@ -6,7 +6,7 @@ use faer::linalg::solvers::Solve;
 use faer::{Mat, Side};
 use nalgebra::{SMatrix, SVector};
 
-use la_stack::{DEFAULT_PIVOT_TOL, DEFAULT_SINGULAR_TOL, Matrix, Vector};
+use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
 
 #[path = "../benches/common/vs_linalg.rs"]
 mod vs_linalg;
@@ -75,7 +75,7 @@ macro_rules! gen_smoke_test {
             let fv2 = Mat::<f64>::from_fn($d, 1, |i, _| vector_entry(i, 1.0));
 
             let la_lu = a
-                .lu(DEFAULT_PIVOT_TOL)
+                .lu(DEFAULT_SINGULAR_TOL)
                 .unwrap_or_else(|err| panic!("la_stack LU factorization failed: {err}"));
             let na_lu = na.lu();
             let fa_lu = fa.partial_piv_lu();
@@ -91,7 +91,7 @@ macro_rules! gen_smoke_test {
             );
 
             let la_lu_x = la_lu
-                .solve_vec(rhs)
+                .solve(rhs)
                 .unwrap_or_else(|err| panic!("la_stack LU solve failed: {err}"));
             let na_lu_x = na_lu
                 .solve(&nrhs)
@@ -134,7 +134,7 @@ macro_rules! gen_smoke_test {
             );
 
             let la_ldlt_x = la_ldlt
-                .solve_vec(rhs)
+                .solve(rhs)
                 .unwrap_or_else(|err| panic!("la_stack LDLT solve failed: {err}"));
             let na_cholesky_x = na_cholesky.solve(&nrhs);
             let fa_ldlt_x = fa_ldlt.solve(&frhs);

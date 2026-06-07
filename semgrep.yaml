@@ -76,6 +76,96 @@ rules:
         - "/tests/semgrep/src/project_rules/raw_f64_constructors.rs"
     pattern-regex: '(?m)^\s*pub\s+(?:const\s+)?fn\s+(?:new|from_rows)\s*\([^)]*(?:\[\s*f64\s*;\s*D\s*\]|\[\s*\[\s*f64\s*;\s*D\s*\]\s*;\s*D\s*\])[^)]*\)\s*->\s*(?:Self|(?:Matrix|Vector)\s*<)'
 
+  - id: la-stack.rust.no-public-unchecked-finite-constructors
+    languages:
+      - rust
+    severity: WARNING
+    message: "Unchecked Matrix/Vector constructors must stay crate-private; public callers must parse through fallible constructors."
+    metadata:
+      category: correctness
+      rationale: >-
+        Matrix and Vector are finite proof types. Public unchecked constructors
+        would let downstream callers bypass parsing and construct invalid finite
+        proofs.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
+    pattern-regex: '(?m)^\s*pub\s+(?:const\s+)?fn\s+(?:new_unchecked|from_rows_unchecked)\s*\('
+
+  - id: la-stack.rust.no-public-matrix-vector-storage-fields
+    languages:
+      - regex
+    severity: WARNING
+    message: "Matrix/Vector storage fields must stay private so callers cannot bypass finite parsing."
+    metadata:
+      category: correctness
+      rationale: >-
+        Matrix and Vector carry the finite-entry invariant. Public or crate-public
+        raw storage fields allow construction or mutation paths that bypass the
+        parsing boundary.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
+    pattern-regex: '(?ms)^\s*pub\s+struct\s+(?:Matrix|Vector)\s*(?:<[^>{]*>)?\s*\{(?:(?!^\s*\}).|\n)*^\s*pub(?:\([^)]*\))?\s+(?:rows|data)\s*:'
+
+  - id: la-stack.rust.no-public-finite-proof-reexports
+    languages:
+      - regex
+    severity: WARNING
+    message: "Do not publicly re-export FiniteMatrix/FiniteVector; Matrix/Vector are the public finite proof types."
+    metadata:
+      category: api
+      rationale: >-
+        Internal finite wrappers may exist to make algorithm boundaries explicit,
+        but downstream callers should not name or construct them directly.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
+    pattern-regex: '(?m)^\s*pub\s+use\s+(?:crate::)?(?:matrix|vector)::(?:\{[^;\n]*(?:FiniteMatrix|FiniteVector)[^;\n]*\}|(?:FiniteMatrix|FiniteVector)(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?)\s*;'
+
+  - id: la-stack.rust.no-public-raw-linear-algebra-modules
+    languages:
+      - regex
+    severity: WARNING
+    message: "Keep matrix/vector modules private; re-export only the curated public API from crate root/prelude."
+    metadata:
+      category: api
+      rationale: >-
+        The matrix and vector modules contain crate-internal proof wrappers and
+        unchecked helpers. Making the modules public would expose implementation
+        details that bypass the clean API surface.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
+    pattern-regex: '(?m)^\s*pub\s+mod\s+(?:matrix|vector)\s*;'
+
+  - id: la-stack.rust.no-legacy-solve-vec-api
+    languages:
+      - regex
+    severity: WARNING
+    message: "Use the clean solve API name; do not reintroduce solve_vec."
+    metadata:
+      category: api
+      rationale: >-
+        Lu::solve and Ldlt::solve are the clean API because Vector is already
+        the finite right-hand-side proof type.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/benches/**/*.rs"
+        - "/examples/**/*.rs"
+        - "/tests/**/*.rs"
+        - "/README.md"
+      exclude:
+        - "/tests/semgrep/src/project_rules/raw_f64_constructors.rs"
+        - "/tests/semgrep/src/project_rules/public_api_panic_paths.rs"
+        - "/tests/semgrep/src/project_rules/bench_example_usage.rs"
+    pattern-regex: '\bsolve_vec\b'
+
   - id: la-stack.rust.no-public-api-panic-paths
     languages:
       - regex
@@ -124,6 +214,23 @@ rules:
       exclude:
         - "/tests/semgrep/src/**"
     pattern-regex: '^\s*//[!/]\s*(?:#\s*)?.*(?:\b[\w:]+|[\]\)])\.(unwrap|expect)\s*\('
+
+  - id: la-stack.rust.no-unwrap-expect-in-readme-doctest-mirrors
+    languages:
+      - regex
+    severity: WARNING
+    message: "Use fallible flow instead of unwrap() or expect() in src/lib.rs README doctest mirrors."
+    metadata:
+      category: correctness
+      rationale: >-
+        The private readme_doctests module in src/lib.rs keeps README examples
+        executable for docs.rs-facing documentation. Those mirrors should model
+        the same fallible Result/? flow as the public examples they verify.
+    paths:
+      include:
+        - "/src/lib.rs"
+        - "/tests/semgrep/src/project_rules/readme_doctest_mirrors.rs"
+    pattern-regex: '(?ms)^\s*mod\s+readme_doctests\s*\{(?:(?!^\}).|\n)*(?:\.unwrap\s*\(|\.expect\s*\()'
 
   - id: la-stack.rust.no-unwrap-expect-in-benches-examples
     languages:

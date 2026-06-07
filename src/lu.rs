@@ -35,14 +35,14 @@ impl<const D: usize> LuFactors<D> {
     #[inline]
     #[must_use]
     const fn row(&self, index: usize) -> &[f64; D] {
-        &self.storage.rows[index]
+        &self.storage.rows()[index]
     }
 
     /// Return a diagonal entry of `U`.
     #[inline]
     #[must_use]
     const fn diag(&self, index: usize) -> f64 {
-        self.storage.rows[index][index]
+        self.storage.rows()[index][index]
     }
 }
 
@@ -56,6 +56,7 @@ impl<const D: usize> Lu<D> {
     /// checked before return so successful factors do not contain a non-finite
     /// value produced during elimination.
     #[inline]
+    #[allow(clippy::needless_range_loop)]
     pub(crate) fn factor_finite(a: FiniteMatrix<D>, tol: Tolerance) -> Result<Self, LaError> {
         let mut lu = a.into_matrix();
         let tol = tol.get();
@@ -67,40 +68,44 @@ impl<const D: usize> Lu<D> {
 
         let mut piv_sign = 1.0;
 
-        for k in 0..D {
-            // Choose pivot row.
-            let mut pivot_row = k;
-            let mut pivot_abs = lu.rows[k][k].abs();
+        {
+            let rows = lu.rows_mut_unchecked();
 
-            for r in (k + 1)..D {
-                let v = lu.rows[r][k].abs();
-                if v > pivot_abs {
-                    pivot_abs = v;
-                    pivot_row = r;
+            for k in 0..D {
+                // Choose pivot row.
+                let mut pivot_row = k;
+                let mut pivot_abs = rows[k][k].abs();
+
+                for r in (k + 1)..D {
+                    let v = rows[r][k].abs();
+                    if v > pivot_abs {
+                        pivot_abs = v;
+                        pivot_row = r;
+                    }
                 }
-            }
 
-            if pivot_abs <= tol {
-                cold_path();
-                return Err(LaError::Singular { pivot_col: k });
-            }
+                if pivot_abs <= tol {
+                    cold_path();
+                    return Err(LaError::Singular { pivot_col: k });
+                }
 
-            if pivot_row != k {
-                lu.rows.swap(k, pivot_row);
-                piv.swap(k, pivot_row);
-                piv_sign = -piv_sign;
-            }
+                if pivot_row != k {
+                    rows.swap(k, pivot_row);
+                    piv.swap(k, pivot_row);
+                    piv_sign = -piv_sign;
+                }
 
-            let pivot = lu.rows[k][k];
+                let pivot = rows[k][k];
 
-            // Eliminate below pivot.
-            for r in (k + 1)..D {
-                let mult = lu.rows[r][k] / pivot;
-                lu.rows[r][k] = mult;
+                // Eliminate below pivot.
+                for r in (k + 1)..D {
+                    let mult = rows[r][k] / pivot;
+                    rows[r][k] = mult;
 
-                for c in (k + 1)..D {
-                    let updated = (-mult).mul_add(lu.rows[k][c], lu.rows[r][c]);
-                    lu.rows[r][c] = updated;
+                    for c in (k + 1)..D {
+                        let updated = (-mult).mul_add(rows[k][c], rows[r][c]);
+                        rows[r][c] = updated;
+                    }
                 }
             }
         }
@@ -116,11 +121,10 @@ impl<const D: usize> Lu<D> {
 
     /// Solve `A x = b` using this LU factorization.
     ///
-    /// `solve_vec` performs floating-point forward/back substitution and does
-    /// not provide a certified absolute rounding-error bound for the returned
-    /// solution. Callers should not expect an absolute error bound like
-    /// [`Matrix::det_errbound`](crate::Matrix::det_errbound) or the
-    /// `ERR_COEFF_*` determinant constants provide.
+    /// [`Vector`] is finite by construction, so this method only checks computed
+    /// substitution overflows. It performs floating-point forward/back
+    /// substitution and does not provide a certified absolute rounding-error
+    /// bound for the returned solution.
     ///
     /// # Examples
     /// ```
@@ -128,10 +132,10 @@ impl<const D: usize> Lu<D> {
     ///
     /// # fn main() -> Result<(), LaError> {
     /// let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
-    /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
+    /// let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
     ///
     /// let b = Vector::<2>::try_new([5.0, 11.0])?;
-    /// let x = lu.solve_vec(b)?.into_array();
+    /// let x = lu.solve(b)?.into_array();
     ///
     /// assert!((x[0] - 1.0).abs() <= 1e-12);
     /// assert!((x[1] - 2.0).abs() <= 1e-12);
@@ -140,18 +144,11 @@ impl<const D: usize> Lu<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] if the right-hand side contains
-    /// NaN/infinity or a computed substitution intermediate overflows to NaN or
-    /// infinity. The right-hand side is revalidated at this boundary before
-    /// entering substitution; public callers normally encounter the same
-    /// rejection earlier through [`Vector::try_new`](crate::Vector::try_new).
+    /// Returns [`LaError::NonFinite`] if a computed substitution intermediate
+    /// overflows to NaN or infinity.
     #[inline]
-    pub const fn solve_vec(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        let b = match FiniteVector::new(b) {
-            Ok(b) => b,
-            Err(err) => return Err(err),
-        };
-        match self.solve_finite_vec(b) {
+    pub const fn solve(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
+        match self.solve_finite(FiniteVector::new_unchecked(b)) {
             Ok(x) => Ok(x.into_vector()),
             Err(err) => Err(err),
         }
@@ -166,7 +163,7 @@ impl<const D: usize> Lu<D> {
     /// Returns [`LaError::NonFinite`] if a computed substitution intermediate
     /// overflows to NaN or infinity.
     #[inline]
-    pub(crate) const fn solve_finite_vec(
+    pub(crate) const fn solve_finite(
         &self,
         b: FiniteVector<D>,
     ) -> Result<FiniteVector<D>, LaError> {
@@ -234,7 +231,7 @@ impl<const D: usize> Lu<D> {
     ///
     /// # fn main() -> Result<(), LaError> {
     /// let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
-    /// let lu = a.lu(DEFAULT_PIVOT_TOL)?;
+    /// let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
     ///
     /// let det = lu.det()?;
     /// assert!((det - (-2.0)).abs() <= 1e-12);
@@ -264,20 +261,20 @@ impl<const D: usize> Lu<D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DEFAULT_PIVOT_TOL;
+    use crate::DEFAULT_SINGULAR_TOL;
 
     use core::hint::black_box;
 
     use approx::assert_abs_diff_eq;
     use pastey::paste;
 
-    macro_rules! gen_public_api_pivoting_solve_vec_and_det_tests {
+    macro_rules! gen_public_api_pivoting_solve_and_det_tests {
         ($d:literal) => {
             paste! {
                 #[test]
-                fn [<public_api_lu_solve_vec_pivoting_ $d d>]() {
+                fn [<public_api_lu_solve_pivoting_ $d d>]() {
                     // Public API path under test:
-                    // Matrix::lu (pub) -> Lu::solve_vec (pub).
+                    // Matrix::lu (pub) -> Lu::solve (pub).
 
                     // Permutation matrix that swaps the first two basis vectors.
                     // This forces pivoting in column 0 for any D >= 2.
@@ -290,7 +287,7 @@ mod tests {
                     let a = Matrix::<$d>::from_rows(black_box(rows));
                     let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
-                    let lu = lu_fn(a, DEFAULT_PIVOT_TOL).unwrap();
+                    let lu = lu_fn(a, DEFAULT_SINGULAR_TOL).unwrap();
 
                     // Pick a simple RHS with unique entries, so the expected swap is obvious.
                     let b_arr = {
@@ -307,7 +304,7 @@ mod tests {
                     let b = Vector::<$d>::new(black_box(b_arr));
 
                     let solve_fn: fn(&Lu<$d>, Vector<$d>) -> Result<Vector<$d>, LaError> =
-                        black_box(Lu::<$d>::solve_vec);
+                        black_box(Lu::<$d>::solve);
                     let x = solve_fn(&lu, b).unwrap().into_array();
 
                     for i in 0..$d {
@@ -330,7 +327,7 @@ mod tests {
                     let a = Matrix::<$d>::from_rows(black_box(rows));
                     let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
-                    let lu = lu_fn(a, DEFAULT_PIVOT_TOL).unwrap();
+                    let lu = lu_fn(a, DEFAULT_SINGULAR_TOL).unwrap();
 
                     // Row swap ⇒ determinant sign flip.
                     let det_fn: fn(&Lu<$d>) -> Result<f64, LaError> =
@@ -341,18 +338,18 @@ mod tests {
         };
     }
 
-    gen_public_api_pivoting_solve_vec_and_det_tests!(2);
-    gen_public_api_pivoting_solve_vec_and_det_tests!(3);
-    gen_public_api_pivoting_solve_vec_and_det_tests!(4);
-    gen_public_api_pivoting_solve_vec_and_det_tests!(5);
+    gen_public_api_pivoting_solve_and_det_tests!(2);
+    gen_public_api_pivoting_solve_and_det_tests!(3);
+    gen_public_api_pivoting_solve_and_det_tests!(4);
+    gen_public_api_pivoting_solve_and_det_tests!(5);
 
-    macro_rules! gen_public_api_tridiagonal_smoke_solve_vec_and_det_tests {
+    macro_rules! gen_public_api_tridiagonal_smoke_solve_and_det_tests {
         ($d:literal) => {
             paste! {
                 #[test]
-                fn [<public_api_lu_solve_vec_tridiagonal_smoke_ $d d>]() {
+                fn [<public_api_lu_solve_tridiagonal_smoke_ $d d>]() {
                     // Public API path under test:
-                    // Matrix::lu (pub) -> Lu::solve_vec (pub).
+                    // Matrix::lu (pub) -> Lu::solve (pub).
 
                     // Classic SPD tridiagonal: 2 on diagonal, -1 on sub/super-diagonals.
                     #[allow(clippy::large_stack_arrays)]
@@ -370,7 +367,7 @@ mod tests {
                     let a = Matrix::<$d>::from_rows(black_box(rows));
                     let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
-                    let lu = lu_fn(a, DEFAULT_PIVOT_TOL).unwrap();
+                    let lu = lu_fn(a, DEFAULT_SINGULAR_TOL).unwrap();
 
                     // Choose x = 1, so b = A x is simple: [1, 0, 0, ..., 0, 1].
                     let mut b_arr = [0.0f64; $d];
@@ -379,7 +376,7 @@ mod tests {
                     let b = Vector::<$d>::new(black_box(b_arr));
 
                     let solve_fn: fn(&Lu<$d>, Vector<$d>) -> Result<Vector<$d>, LaError> =
-                        black_box(Lu::<$d>::solve_vec);
+                        black_box(Lu::<$d>::solve);
                     let x = solve_fn(&lu, b).unwrap().into_array();
 
                     for &x_i in &x {
@@ -409,7 +406,7 @@ mod tests {
                     let a = Matrix::<$d>::from_rows(black_box(rows));
                     let lu_fn: fn(Matrix<$d>, Tolerance) -> Result<Lu<$d>, LaError> =
                         black_box(Matrix::<$d>::lu);
-                    let lu = lu_fn(a, DEFAULT_PIVOT_TOL).unwrap();
+                    let lu = lu_fn(a, DEFAULT_SINGULAR_TOL).unwrap();
 
                     let det_fn: fn(&Lu<$d>) -> Result<f64, LaError> =
                         black_box(Lu::<$d>::det);
@@ -419,18 +416,21 @@ mod tests {
         };
     }
 
-    gen_public_api_tridiagonal_smoke_solve_vec_and_det_tests!(16);
-    gen_public_api_tridiagonal_smoke_solve_vec_and_det_tests!(32);
-    gen_public_api_tridiagonal_smoke_solve_vec_and_det_tests!(64);
+    gen_public_api_tridiagonal_smoke_solve_and_det_tests!(16);
+    gen_public_api_tridiagonal_smoke_solve_and_det_tests!(32);
+    gen_public_api_tridiagonal_smoke_solve_and_det_tests!(64);
 
     #[test]
     fn solve_1x1() {
         let a = Matrix::<1>::from_rows(black_box([[2.0]]));
-        let lu = FiniteMatrix::new(a).unwrap().lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = FiniteMatrix::new(a)
+            .unwrap()
+            .lu(DEFAULT_SINGULAR_TOL)
+            .unwrap();
 
         let b = Vector::<1>::new(black_box([6.0]));
         let solve_fn: fn(&Lu<1>, Vector<1>) -> Result<Vector<1>, LaError> =
-            black_box(Lu::<1>::solve_vec);
+            black_box(Lu::<1>::solve);
         let x = solve_fn(&lu, b).unwrap().into_array();
         assert_abs_diff_eq!(x[0], 3.0, epsilon = 1e-12);
 
@@ -441,11 +441,14 @@ mod tests {
     #[test]
     fn solve_2x2_basic() {
         let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [3.0, 4.0]]));
-        let lu = FiniteMatrix::new(a).unwrap().lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = FiniteMatrix::new(a)
+            .unwrap()
+            .lu(DEFAULT_SINGULAR_TOL)
+            .unwrap();
         let b = Vector::<2>::new(black_box([5.0, 11.0]));
 
         let solve_fn: fn(&Lu<2>, Vector<2>) -> Result<Vector<2>, LaError> =
-            black_box(Lu::<2>::solve_vec);
+            black_box(Lu::<2>::solve);
         let x = solve_fn(&lu, b).unwrap().into_array();
 
         assert_abs_diff_eq!(x[0], 1.0, epsilon = 1e-12);
@@ -455,7 +458,7 @@ mod tests {
     #[test]
     fn det_2x2_basic() {
         let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [3.0, 4.0]]));
-        let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let det_fn: fn(&Lu<2>) -> Result<f64, LaError> = black_box(Lu::<2>::det);
         assert_abs_diff_eq!(det_fn(&lu).unwrap(), -2.0, epsilon = 1e-12);
@@ -465,7 +468,7 @@ mod tests {
     fn det_requires_pivot_sign() {
         // Row swap ⇒ determinant sign flip.
         let a = Matrix::<2>::from_rows(black_box([[0.0, 1.0], [1.0, 0.0]]));
-        let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let det_fn: fn(&Lu<2>) -> Result<f64, LaError> = black_box(Lu::<2>::det);
         assert_abs_diff_eq!(det_fn(&lu).unwrap(), -1.0, epsilon = 0.0);
@@ -474,11 +477,11 @@ mod tests {
     #[test]
     fn solve_requires_pivoting() {
         let a = Matrix::<2>::from_rows(black_box([[0.0, 1.0], [1.0, 0.0]]));
-        let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
         let b = Vector::<2>::new(black_box([1.0, 2.0]));
 
         let solve_fn: fn(&Lu<2>, Vector<2>) -> Result<Vector<2>, LaError> =
-            black_box(Lu::<2>::solve_vec);
+            black_box(Lu::<2>::solve);
         let x = solve_fn(&lu, b).unwrap().into_array();
 
         assert_abs_diff_eq!(x[0], 2.0, epsilon = 1e-12);
@@ -488,15 +491,15 @@ mod tests {
     #[test]
     fn singular_detected() {
         let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [2.0, 4.0]]));
-        let err = a.lu(DEFAULT_PIVOT_TOL).unwrap_err();
+        let err = a.lu(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(err, LaError::Singular { pivot_col: 1 });
     }
 
     #[test]
     fn singular_due_to_tolerance_at_first_pivot() {
-        // Not exactly singular, but below DEFAULT_PIVOT_TOL.
+        // Not exactly singular, but below DEFAULT_SINGULAR_TOL.
         let a = Matrix::<2>::from_rows(black_box([[1e-13, 0.0], [0.0, 1.0]]));
-        let err = a.lu(DEFAULT_PIVOT_TOL).unwrap_err();
+        let err = a.lu(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(err, LaError::Singular { pivot_col: 0 });
     }
 
@@ -529,7 +532,7 @@ mod tests {
         let a =
             Matrix::<3>::from_rows([[1.0, f64::MAX, 0.0], [-1.0, f64::MAX, 0.0], [0.0, 0.0, 1.0]]);
 
-        let err = a.lu(DEFAULT_PIVOT_TOL).unwrap_err();
+        let err = a.lu(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(
             err,
             LaError::NonFinite {
@@ -540,29 +543,29 @@ mod tests {
     }
 
     #[test]
-    fn solve_vec_nonfinite_forward_substitution_overflow() {
+    fn solve_nonfinite_forward_substitution_overflow() {
         // L has a -1 multiplier, and a large RHS makes forward substitution overflow.
         let a = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [-1.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
-        let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<3>::new([1.0e308, 1.0e308, 0.0]);
-        let err = lu.solve_vec(b).unwrap_err();
+        let err = lu.solve(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
 
     #[test]
-    fn solve_vec_nonfinite_back_substitution_overflow() {
+    fn solve_nonfinite_back_substitution_overflow() {
         // Make x[1] overflow during back substitution, then ensure it is detected on the next row.
         let a = Matrix::<2>::from_rows([[1.0, 1.0], [0.0, 2.0e-12]]);
-        let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<2>::new([0.0, 1.0e300]);
-        let err = lu.solve_vec(b).unwrap_err();
+        let err = lu.solve(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
 
     #[test]
-    fn solve_vec_nonfinite_back_substitution_sum_overflow() {
+    fn solve_nonfinite_back_substitution_sum_overflow() {
         // Upper-triangular U with a very large off-diagonal in row 1 and a
         // very large x[2] produced by the RHS.  The back-substitution
         // accumulator `sum = (-row[j]).mul_add(x[j], sum)` overflows while
@@ -570,10 +573,10 @@ mod tests {
         // branch of the combined diag/sum check (distinct from the
         // `q = sum / diag` overflow path covered above).
         let a = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 1.0, 1.0e200], [0.0, 0.0, 1.0]]);
-        let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<3>::new([0.0, 0.0, 1.0e200]);
-        let err = lu.solve_vec(b).unwrap_err();
+        let err = lu.solve(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
 
@@ -586,17 +589,17 @@ mod tests {
             [0.0, 0.0, 0.0, 1.0e100, 0.0],
             [0.0, 0.0, 0.0, 0.0, 1.0e100],
         ]);
-        let lu = a.lu(DEFAULT_PIVOT_TOL).unwrap();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
         assert_eq!(lu.det(), Err(LaError::NonFinite { row: None, col: 3 }));
     }
 
-    macro_rules! gen_solve_vec_boundary_tests {
+    macro_rules! gen_solve_boundary_tests {
         ($d:literal) => {
             paste! {
                 /// Raw non-finite right-hand sides are rejected before a
                 /// public caller can construct a `Vector`.
                 #[test]
-                fn [<solve_vec_rhs_boundary_rejects_non_finite_ $d d>]() {
+                fn [<solve_rhs_constructor_rejects_non_finite_ $d d>]() {
                     let mut rhs = [1.0; $d];
                     rhs[$d - 1] = f64::NAN;
 
@@ -608,35 +611,19 @@ mod tests {
                         })
                     );
                 }
-
-                #[test]
-                fn [<solve_vec_revalidates_unchecked_rhs_storage_ $d d>]() {
-                    let lu = Matrix::<$d>::identity().lu(DEFAULT_PIVOT_TOL).unwrap();
-                    let mut rhs = [1.0; $d];
-                    rhs[$d - 1] = f64::NAN;
-                    let rhs = Vector::<$d>::new_unchecked(rhs);
-
-                    assert_eq!(
-                        lu.solve_vec(rhs),
-                        Err(LaError::NonFinite {
-                            row: None,
-                            col: $d - 1,
-                        })
-                    );
-                }
             }
         };
     }
 
-    gen_solve_vec_boundary_tests!(2);
-    gen_solve_vec_boundary_tests!(3);
-    gen_solve_vec_boundary_tests!(4);
-    gen_solve_vec_boundary_tests!(5);
+    gen_solve_boundary_tests!(2);
+    gen_solve_boundary_tests!(3);
+    gen_solve_boundary_tests!(4);
+    gen_solve_boundary_tests!(5);
 
     // -----------------------------------------------------------------------
     // Const-evaluability tests.
     //
-    // These prove that `Lu::det` and `Lu::solve_vec` are truly `const fn` by
+    // These prove that `Lu::det` and `Lu::solve` are truly `const fn` by
     // forcing the compiler to evaluate them inside a `const` initializer.
     // `Lu::factor` is not (yet) `const fn` because it relies on `<[T]>::swap`,
     // which is not const-stable; we therefore construct `Lu<D>` directly.
@@ -646,9 +633,7 @@ mod tests {
     fn lu_det_const_eval_d2() {
         const DET: Result<f64, LaError> = {
             // Triangular factors with diag [2.0, 3.0] and no row swaps.
-            let mut factors = Matrix::<2>::identity();
-            factors.rows[0][0] = 2.0;
-            factors.rows[1][1] = 3.0;
+            let factors = Matrix::<2>::from_rows_unchecked([[2.0, 0.0], [0.0, 3.0]]);
             let lu = Lu::<2> {
                 factors: LuFactors::new_unchecked(factors),
                 piv: [0, 1],
@@ -675,8 +660,8 @@ mod tests {
     }
 
     #[test]
-    fn lu_solve_vec_const_eval_d2() {
-        // Identity LU ⇒ solve_vec returns the permuted RHS untouched.
+    fn lu_solve_const_eval_d2() {
+        // Identity LU ⇒ solve returns the permuted RHS untouched.
         const X: [f64; 2] = {
             let lu = Lu::<2> {
                 factors: LuFactors::new_unchecked(Matrix::<2>::identity()),
@@ -684,7 +669,7 @@ mod tests {
                 piv_sign: 1.0,
             };
             let b = Vector::<2>::new([1.0, 2.0]);
-            match lu.solve_vec(b) {
+            match lu.solve(b) {
                 Ok(v) => v.into_array(),
                 Err(_) => [0.0, 0.0],
             }

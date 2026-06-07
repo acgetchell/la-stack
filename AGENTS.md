@@ -36,11 +36,12 @@ invariant over the convenient edit.
 
 - Error enums are `#[non_exhaustive]`; public wrapper types are
   `#[must_use]`.
-- New functionality is additive: use the prelude for ergonomic re-exports;
-  never silently rename or remove a public item.
-- Pre-1.0 semver: `0.x.Y` is a patch-level additive bump, `0.X.y` is a
-  minor bump that may include breaking changes. Conventional-commit
-  types (`feat`, `fix`, `refactor`, …) mirror this convention.
+- New functionality is additive by default: use the prelude for ergonomic
+  re-exports, and avoid churn for its own sake.
+- Pre-1.0 semver: any `0.x.y` release may include breaking API changes when
+  they materially improve correctness, orthogonality, or long-term API clarity.
+  Do not keep compatibility aliases that weaken the public model; document
+  intentional breaks clearly in release notes and commit messages.
 - Do **not** automatically update the library version in `Cargo.toml`,
   `Cargo.lock`, README dependency snippets, or related docs during ordinary
   feature, fix, review, or hygiene work. Version bumps are maintainer-driven
@@ -68,7 +69,7 @@ invariant over the convenient edit.
   `Option` instead of relying on `panic!`, `assert!`, `unwrap`, or `expect`.
 - Borrow by default (`&T`, `&[T]`); return borrowed views when possible.
 - Type and function names match textbook vocabulary (`Matrix`, `Vector`,
-  `Lu`, `Ldlt`, `solve_vec`, `det`, `inf_norm`). Avoid Rust-ecosystem
+  `Lu`, `Ldlt`, `solve`, `det`, `inf_norm`). Avoid Rust-ecosystem
   abstractions that obscure the math.
 
 ### Scientific notation in docs
@@ -210,7 +211,7 @@ testable.
 #### Reference examples
 
 - `src/matrix.rs` — `gen_public_api_matrix_tests!`
-- `src/lu.rs` — `gen_public_api_pivoting_solve_vec_and_det_tests!`, `gen_public_api_tridiagonal_smoke_solve_vec_and_det_tests!`
+- `src/lu.rs` — `gen_public_api_pivoting_solve_and_det_tests!`, `gen_public_api_tridiagonal_smoke_solve_and_det_tests!`
 - `src/ldlt.rs` — `gen_public_api_ldlt_identity_tests!`, `gen_public_api_ldlt_diagonal_tests!`
 - `src/exact.rs` — `gen_det_exact_tests!`, `gen_det_exact_f64_tests!`, `gen_solve_exact_tests!`, `gen_solve_exact_f64_tests!`
 
@@ -354,11 +355,11 @@ When creating or updating issues:
 
 - This is a single Rust *library crate* (no `src/main.rs`). The crate root is `src/lib.rs`.
 - The linear algebra implementation is split across:
-  - `src/lib.rs`: crate root + shared items (`LaError`, `DEFAULT_SINGULAR_TOL`, `DEFAULT_PIVOT_TOL`) + re-exports
+  - `src/lib.rs`: crate root + shared items (`LaError`, `DEFAULT_SINGULAR_TOL`) + re-exports
   - `src/vector.rs`: `Vector<const D: usize>` (`[f64; D]`)
   - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `set`, `inf_norm`, `det`, `det_direct`)
-  - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve_vec`, `det`)
-  - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for symmetric SPD/PSD matrices (`solve_vec`, `det`)
+  - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve`, `det`)
+  - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for symmetric SPD/PSD matrices (`solve`, `det`)
   - `src/exact.rs`: exact arithmetic behind `features = ["exact"]`:
     - Determinants: `det_exact()`, `det_exact_f64()`, `det_sign_exact()` via integer-only
       Bareiss in `BigInt` (`bareiss_det_int`); `det_sign_exact()` adds a Shewchuk-style

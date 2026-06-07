@@ -25,8 +25,8 @@ fn main() -> Result<(), LaError> {
     let b = Vector::<3>::try_new([1.0, 2.0, 3.0])?;
 
     // f64 LU solve (using zero pivot tolerance since the matrix is nearly singular
-    // and would be rejected by DEFAULT_PIVOT_TOL).
-    let lu_x = a.lu(Tolerance::new(0.0)?)?.solve_vec(b)?.into_array();
+    // and would be rejected by DEFAULT_SINGULAR_TOL).
+    let lu_x = a.lu(Tolerance::new(0.0)?)?.solve(b)?.into_array();
 
     // Exact solve.
     let exact_x = a.solve_exact(b)?;
