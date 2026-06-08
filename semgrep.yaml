@@ -110,22 +110,6 @@ rules:
         - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
     pattern-regex: '(?ms)^\s*pub\s+struct\s+(?:Matrix|Vector)\s*(?:<[^>{]*>)?\s*\{(?:(?!^\s*\}).|\n)*^\s*pub(?:\([^)]*\))?\s+(?:rows|data)\s*:'
 
-  - id: la-stack.rust.no-public-finite-proof-reexports
-    languages:
-      - regex
-    severity: WARNING
-    message: "Do not publicly re-export FiniteMatrix/FiniteVector; Matrix/Vector are the public finite proof types."
-    metadata:
-      category: api
-      rationale: >-
-        Internal finite wrappers may exist to make algorithm boundaries explicit,
-        but downstream callers should not name or construct them directly.
-    paths:
-      include:
-        - "/src/**/*.rs"
-        - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
-    pattern-regex: '(?m)^\s*pub\s+use\s+(?:crate::)?(?:matrix|vector)::(?:\{[^;\n]*(?:FiniteMatrix|FiniteVector)[^;\n]*\}|(?:FiniteMatrix|FiniteVector)(?:\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?)\s*;'
-
   - id: la-stack.rust.no-public-raw-linear-algebra-modules
     languages:
       - regex
@@ -134,9 +118,9 @@ rules:
     metadata:
       category: api
       rationale: >-
-        The matrix and vector modules contain crate-internal proof wrappers and
-        unchecked helpers. Making the modules public would expose implementation
-        details that bypass the clean API surface.
+        The matrix and vector modules contain crate-internal unchecked helpers.
+        Making the modules public would expose implementation details that
+        bypass the clean API surface.
     paths:
       include:
         - "/src/**/*.rs"
@@ -230,7 +214,7 @@ rules:
       include:
         - "/src/lib.rs"
         - "/tests/semgrep/src/project_rules/readme_doctest_mirrors.rs"
-    pattern-regex: '(?ms)^\s*mod\s+readme_doctests\s*\{(?:(?!^\}).|\n)*(?:\.unwrap\s*\(|\.expect\s*\()'
+    pattern-regex: '(?ms)^\s*mod\s+readme_doctests(?:_[A-Za-z0-9_]+)?\s*\{(?:(?!^\}).|\n)*(?:\.unwrap\s*\(|\.expect\s*\()'
 
   - id: la-stack.rust.no-unwrap-expect-in-benches-examples
     languages:

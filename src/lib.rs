@@ -101,6 +101,19 @@ mod readme_doctests {
     /// let det_f64 = m.det_exact_f64()?;
     /// assert_eq!(det_f64, 0.0);
     ///
+    /// // If strict exact-to-f64 conversion would require rounding, opt in
+    /// // explicitly with the rounded API.
+    /// let inexact = Matrix::<2>::try_from_rows([
+    ///     [1.0 + f64::EPSILON, 0.0],
+    ///     [0.0, 1.0 - f64::EPSILON],
+    /// ])?;
+    /// let rounded_det = match inexact.det_exact_f64() {
+    ///     Ok(det) => det,
+    ///     Err(err) if err.requires_rounding() => inexact.det_exact_rounded_f64()?,
+    ///     Err(err) => return Err(err),
+    /// };
+    /// assert_eq!(rounded_det.to_bits(), 1.0f64.to_bits());
+    ///
     /// // If the exact determinant cannot fit in f64, keep the BigRational value.
     /// let big = f64::MAX / 2.0;
     /// let huge = Matrix::<3>::try_from_rows([
@@ -109,7 +122,12 @@ mod readme_doctests {
     ///     [0.0, big, 1.0],
     /// ])?;
     /// let huge_det = huge.det_exact()?;
-    /// assert_eq!(huge.det_exact_f64(), Err(LaError::Overflow { index: None }));
+    /// assert_eq!(
+    ///     huge.det_exact_f64()
+    ///         .err()
+    ///         .and_then(|err| err.unrepresentable_reason()),
+    ///     Some(UnrepresentableReason::NotFinite)
+    /// );
     /// println!("exact determinant = {huge_det}");
     ///
     /// // Exact linear system solve
@@ -124,21 +142,21 @@ mod readme_doctests {
     fn exact_arithmetic_example() {}
 }
 
+mod error;
 #[cfg(feature = "exact")]
 mod exact;
+mod ldlt;
+mod lu;
+mod matrix;
+mod tolerance;
+mod vector;
+
 #[cfg(feature = "exact")]
 pub use num_bigint::BigInt;
 #[cfg(feature = "exact")]
 pub use num_rational::BigRational;
 #[cfg(feature = "exact")]
 pub use num_traits::{FromPrimitive, Signed, ToPrimitive};
-
-mod ldlt;
-mod lu;
-mod matrix;
-mod vector;
-
-use core::fmt;
 
 // ---------------------------------------------------------------------------
 // Error-bound constants for `Matrix::det_errbound()`.
@@ -274,443 +292,12 @@ pub const ERR_COEFF_4: f64 = 12.0 * EPS + 128.0 * EPS * EPS;
 /// dispatch surface explicit.
 pub const MAX_STACK_MATRIX_DISPATCH_DIM: usize = 7;
 
-/// Finite, non-negative tolerance used by numerical predicates and factorizations.
-///
-/// Construct with [`Tolerance::new`] when accepting raw caller input. Once
-/// constructed, the stored value is guaranteed to be finite and `>= 0`, so
-/// downstream algorithms do not need to revalidate the tolerance.
-///
-/// This is the crate-wide tolerance contract: raw negative, NaN, and infinite
-/// values are rejected with [`LaError::InvalidTolerance`] at construction time.
-#[must_use]
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Tolerance {
-    value: f64,
-}
-
-impl Tolerance {
-    /// Construct a tolerance without checking the raw value.
-    ///
-    /// This crate-internal escape hatch is only for constants whose finite,
-    /// non-negative value is visible at the call site. Public callers should
-    /// use [`Tolerance::new`] so the returned value carries the validation
-    /// proof.
-    pub(crate) const fn new_unchecked(value: f64) -> Self {
-        Self { value }
-    }
-
-    /// Construct a finite, non-negative tolerance.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// # fn main() -> Result<(), LaError> {
-    /// let tol = Tolerance::new(1e-12)?;
-    /// assert_eq!(tol.get(), 1e-12);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    /// Returns [`LaError::InvalidTolerance`] when `value` is NaN, infinite, or
-    /// negative.
-    #[inline]
-    pub const fn new(value: f64) -> Result<Self, LaError> {
-        if value >= 0.0 && value.is_finite() {
-            Ok(Self::new_unchecked(value))
-        } else {
-            Err(LaError::invalid_tolerance(value))
-        }
-    }
-
-    /// Return the raw finite, non-negative tolerance value.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// # fn main() -> Result<(), LaError> {
-    /// let tol = Tolerance::new(0.0)?;
-    /// assert_eq!(tol.get(), 0.0);
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn get(self) -> f64 {
-        self.value
-    }
-}
-
-/// Default absolute threshold used for singularity/degeneracy detection.
-///
-/// This is intentionally conservative for geometric predicates and small systems.
-///
-/// Conceptually, this is an absolute bound for deciding when a scalar should be treated
-/// as "numerically zero" (e.g. LU pivots, LDLT diagonal entries).
-pub const DEFAULT_SINGULAR_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
-
-/// Relative tolerance used to validate matrices for LDLT factorization.
-pub(crate) const LDLT_SYMMETRY_REL_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
-
-/// Linear algebra errors.
-///
-/// This enum is `#[non_exhaustive]` — downstream `match` arms must include a
-/// wildcard (`_`) pattern to compile, allowing new variants to be added in
-/// future minor releases without breaking existing code.
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum LaError {
-    /// The matrix is (numerically) singular.
-    Singular {
-        /// The factorization column/step where a suitable pivot/diagonal could not be found.
-        pivot_col: usize,
-    },
-    /// A non-finite value (NaN/∞) was encountered.
-    ///
-    /// The `(row, col)` coordinate follows a consistent convention across the crate:
-    ///
-    /// - `row: Some(r), col: c` — the non-finite value is tied to a matrix/factor
-    ///   cell at `(r, c)`, either because a stored input/factor cell is already
-    ///   non-finite or because factorization computed a non-finite value for
-    ///   that cell before storing it.
-    /// - `row: None, col: c` — the non-finite value is tied to a vector entry,
-    ///   determinant product, tolerance-scale accumulator, solve accumulator, or
-    ///   other scalar/intermediate that has no matrix row coordinate.
-    NonFinite {
-        /// Row of the non-finite entry for a stored matrix cell, or `None` for
-        /// a vector-input entry or a computed intermediate. See the variant
-        /// docs for the full convention.
-        row: Option<usize>,
-        /// Column index (stored cell), vector index, or factorization/solve
-        /// step where the non-finite value was detected.
-        col: usize,
-    },
-    /// The exact result overflows the target representation (e.g. `f64`).
-    ///
-    /// Returned by `Matrix::det_exact_f64` and `Matrix::solve_exact_f64`
-    /// (requires `exact` feature) when an exact value is too large to
-    /// represent as a finite `f64`.
-    Overflow {
-        /// For vector results (e.g. `solve_exact_f64`), the index of the
-        /// component that overflowed.  `None` for scalar results.
-        index: Option<usize>,
-    },
-    /// Exact determinant scaling overflowed the internal exponent representation.
-    DeterminantScaleOverflow {
-        /// Matrix dimension `D`.
-        dim: usize,
-        /// Minimum decomposed f64 exponent among non-zero matrix entries.
-        min_exponent: i32,
-    },
-    /// A requested runtime matrix dimension has no stack-dispatch arm.
-    UnsupportedDimension {
-        /// Runtime dimension requested by the caller.
-        requested: usize,
-        /// Largest runtime dimension supported by the dispatch helper.
-        max: usize,
-    },
-    /// A matrix index is outside the `D×D` storage domain.
-    IndexOutOfBounds {
-        /// Requested row index.
-        row: usize,
-        /// Requested column index.
-        col: usize,
-        /// Matrix dimension `D`; valid row and column indices are `< dim`.
-        dim: usize,
-    },
-    /// A tolerance value is not finite and non-negative.
-    InvalidTolerance {
-        /// Raw tolerance supplied by the caller.
-        value: f64,
-    },
-    /// A matrix required to be symmetric has an asymmetric off-diagonal pair.
-    Asymmetric {
-        /// Row index of the first asymmetric pair.
-        row: usize,
-        /// Column index of the first asymmetric pair.
-        col: usize,
-        /// Matrix dimension `D`.
-        dim: usize,
-    },
-    /// A symmetric matrix failed the positive-semidefinite LDLT domain check.
-    NotPositiveSemidefinite {
-        /// Factorization column/step where a negative LDLT diagonal was found.
-        pivot_col: usize,
-        /// Negative diagonal value observed at that step.
-        value: f64,
-    },
-}
-
-impl LaError {
-    /// Construct a [`LaError::NonFinite`] pinpointing a stored matrix cell at `(row, col)`.
-    ///
-    /// Use this for non-finite values read from a stored `Matrix` entry or
-    /// factorization cell, and for non-finite factorization updates that would
-    /// be stored at `(row, col)` if accepted.  The resulting error has
-    /// `row: Some(row), col`, matching the matrix/factor-cell convention
-    /// documented on [`NonFinite`](Self::NonFinite).  For vector-input entries
-    /// or scalar intermediates without a matrix row coordinate, use
-    /// [`non_finite_at`](Self::non_finite_at).
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::non_finite_cell(1, 2),
-    ///     LaError::NonFinite {
-    ///         row: Some(1),
-    ///         col: 2,
-    ///     }
-    /// );
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn non_finite_cell(row: usize, col: usize) -> Self {
-        Self::NonFinite {
-            row: Some(row),
-            col,
-        }
-    }
-
-    /// Construct a [`LaError::NonFinite`] pinpointing a vector-input entry or
-    /// computed scalar/intermediate at index `col`.
-    ///
-    /// Use this for non-finite values in a `Vector` input, determinant scalar,
-    /// tolerance-scale accumulator, or solve accumulator that overflowed during
-    /// forward/back substitution.  The resulting error has `row: None, col`,
-    /// matching the vector/scalar-intermediate convention documented on
-    /// [`NonFinite`](Self::NonFinite).  For stored matrix cells or computed
-    /// factorization updates tied to a matrix cell, use
-    /// [`non_finite_cell`](Self::non_finite_cell).
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::non_finite_at(2),
-    ///     LaError::NonFinite { row: None, col: 2 }
-    /// );
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn non_finite_at(col: usize) -> Self {
-        Self::NonFinite { row: None, col }
-    }
-
-    /// Construct a [`LaError::DeterminantScaleOverflow`] for exact determinant scaling.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::determinant_scale_overflow(3, -1074),
-    ///     LaError::DeterminantScaleOverflow {
-    ///         dim: 3,
-    ///         min_exponent: -1074,
-    ///     }
-    /// );
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn determinant_scale_overflow(dim: usize, min_exponent: i32) -> Self {
-        Self::DeterminantScaleOverflow { dim, min_exponent }
-    }
-
-    /// Construct a [`LaError::UnsupportedDimension`] for runtime stack dispatch.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::unsupported_dimension(8, MAX_STACK_MATRIX_DISPATCH_DIM),
-    ///     LaError::UnsupportedDimension {
-    ///         requested: 8,
-    ///         max: MAX_STACK_MATRIX_DISPATCH_DIM,
-    ///     }
-    /// );
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn unsupported_dimension(requested: usize, max: usize) -> Self {
-        Self::UnsupportedDimension { requested, max }
-    }
-
-    /// Construct a [`LaError::IndexOutOfBounds`] for a `D×D` matrix index.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::index_out_of_bounds(2, 0, 2),
-    ///     LaError::IndexOutOfBounds {
-    ///         row: 2,
-    ///         col: 0,
-    ///         dim: 2,
-    ///     }
-    /// );
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn index_out_of_bounds(row: usize, col: usize, dim: usize) -> Self {
-        Self::IndexOutOfBounds { row, col, dim }
-    }
-
-    /// Construct a [`LaError::InvalidTolerance`] for a raw tolerance value.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::invalid_tolerance(-1.0),
-    ///     LaError::InvalidTolerance { value: -1.0 }
-    /// );
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn invalid_tolerance(value: f64) -> Self {
-        Self::InvalidTolerance { value }
-    }
-
-    /// Construct a [`LaError::Asymmetric`] for a `D×D` matrix.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::asymmetric(0, 1, 3),
-    ///     LaError::Asymmetric {
-    ///         row: 0,
-    ///         col: 1,
-    ///         dim: 3,
-    ///     }
-    /// );
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn asymmetric(row: usize, col: usize, dim: usize) -> Self {
-        Self::Asymmetric { row, col, dim }
-    }
-
-    /// Construct a [`LaError::NotPositiveSemidefinite`] for LDLT factorization.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::not_positive_semidefinite(1, -3.0),
-    ///     LaError::NotPositiveSemidefinite {
-    ///         pivot_col: 1,
-    ///         value: -3.0,
-    ///     }
-    /// );
-    /// ```
-    #[inline]
-    #[must_use]
-    pub const fn not_positive_semidefinite(pivot_col: usize, value: f64) -> Self {
-        Self::NotPositiveSemidefinite { pivot_col, value }
-    }
-
-    /// Parse a raw tolerance into a finite, non-negative [`Tolerance`].
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(LaError::validate_tolerance(1e-12)?.get(), 1e-12);
-    ///
-    /// let raw = 0.0;
-    /// let tol = LaError::validate_tolerance(raw)?;
-    /// let _lu = Matrix::<2>::identity().lu(tol)?;
-    ///
-    /// assert_eq!(
-    ///     LaError::validate_tolerance(-1.0),
-    ///     Err(LaError::InvalidTolerance { value: -1.0 })
-    /// );
-    /// # Ok::<(), LaError>(())
-    /// ```
-    ///
-    /// # Errors
-    /// Returns [`LaError::InvalidTolerance`] when `value` is NaN, infinite, or
-    /// negative.
-    #[inline]
-    pub const fn validate_tolerance(value: f64) -> Result<Tolerance, Self> {
-        Tolerance::new(value)
-    }
-}
-
-impl fmt::Display for LaError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Self::Singular { pivot_col } => {
-                write!(f, "singular matrix at pivot column {pivot_col}")
-            }
-            Self::NonFinite { row: Some(r), col } => {
-                write!(f, "non-finite value at ({r}, {col})")
-            }
-            Self::NonFinite { row: None, col } => {
-                write!(f, "non-finite value at index {col}")
-            }
-            Self::Overflow { index: Some(i) } => {
-                write!(
-                    f,
-                    "exact result overflows the target representation at index {i}"
-                )
-            }
-            Self::Overflow { index: None } => {
-                write!(f, "exact result overflows the target representation")
-            }
-            Self::DeterminantScaleOverflow { dim, min_exponent } => {
-                write!(
-                    f,
-                    "exact determinant scale exponent overflows for dimension {dim} with minimum entry exponent {min_exponent}"
-                )
-            }
-            Self::UnsupportedDimension { requested, max } => {
-                write!(
-                    f,
-                    "unsupported matrix dimension {requested}; maximum stack-dispatch dimension is {max}"
-                )
-            }
-            Self::IndexOutOfBounds { row, col, dim } => {
-                write!(
-                    f,
-                    "matrix index ({row}, {col}) is out of bounds for dimension {dim}"
-                )
-            }
-            Self::InvalidTolerance { value } => {
-                write!(f, "invalid tolerance {value}; expected finite value >= 0")
-            }
-            Self::Asymmetric { row, col, dim } => {
-                write!(
-                    f,
-                    "matrix is not symmetric for dimension {dim}: asymmetric pair ({row}, {col})"
-                )
-            }
-            Self::NotPositiveSemidefinite { pivot_col, value } => {
-                write!(
-                    f,
-                    "matrix is not positive semidefinite at LDLT pivot column {pivot_col}: diagonal value {value} < 0"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for LaError {}
-
+pub use error::{LaError, UnrepresentableReason};
 pub use ldlt::Ldlt;
 pub use lu::Lu;
 pub use matrix::Matrix;
+pub(crate) use tolerance::LDLT_SYMMETRY_REL_TOL;
+pub use tolerance::{DEFAULT_SINGULAR_TOL, Tolerance};
 pub use vector::Vector;
 
 /// Fallibly dispatch a runtime dimension to a concrete stack-allocated matrix.
@@ -798,9 +385,9 @@ macro_rules! try_with_stack_matrix {
 ///
 /// This prelude re-exports the primary types and constants: [`Matrix`],
 /// [`Vector`], [`Lu`], [`Ldlt`], [`Tolerance`], [`LaError`],
-/// [`DEFAULT_SINGULAR_TOL`], and the determinant error bound coefficients
-/// [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`]. It also re-exports
-/// [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
+/// [`UnrepresentableReason`], [`DEFAULT_SINGULAR_TOL`], and the determinant
+/// error bound coefficients [`ERR_COEFF_2`], [`ERR_COEFF_3`], and
+/// [`ERR_COEFF_4`]. It also re-exports [`MAX_STACK_MATRIX_DISPATCH_DIM`] and
 /// [`try_with_stack_matrix!`] for runtime-to-const matrix dispatch.
 ///
 /// When the `exact` feature is enabled, `BigInt` and `BigRational` are also
@@ -813,7 +400,8 @@ macro_rules! try_with_stack_matrix {
 pub mod prelude {
     pub use crate::{
         DEFAULT_SINGULAR_TOL, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError, Ldlt, Lu,
-        MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, Tolerance, Vector, try_with_stack_matrix,
+        MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, Tolerance, UnrepresentableReason, Vector,
+        try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]
@@ -822,215 +410,36 @@ pub mod prelude {
 
 #[cfg(test)]
 mod tests {
-    use core::assert_matches;
-
     use super::*;
 
     use approx::assert_abs_diff_eq;
 
-    #[test]
-    fn default_singular_tol_is_expected() {
-        assert_abs_diff_eq!(DEFAULT_SINGULAR_TOL.get(), 1e-12, epsilon = 0.0);
-    }
+    mod prelude_tests {
+        use approx::assert_abs_diff_eq;
 
-    #[test]
-    fn tolerance_new_accepts_finite_non_negative_values() {
-        assert_eq!(
-            Tolerance::new(0.0).unwrap().get().to_bits(),
-            0.0f64.to_bits()
-        );
-        assert_eq!(
-            Tolerance::new(1e-12).unwrap().get().to_bits(),
-            1e-12f64.to_bits()
-        );
-        assert_eq!(
-            Tolerance::new(f64::MAX).unwrap().get().to_bits(),
-            f64::MAX.to_bits()
-        );
-    }
-
-    #[test]
-    fn tolerance_new_rejects_negative_nan_and_infinity() {
-        assert_eq!(
-            Tolerance::new(-1.0),
-            Err(LaError::InvalidTolerance { value: -1.0 })
-        );
-        assert_matches!(
-            Tolerance::new(f64::NAN),
-            Err(LaError::InvalidTolerance { value }) if value.is_nan()
-        );
-        assert_eq!(
-            Tolerance::new(f64::INFINITY),
-            Err(LaError::InvalidTolerance {
-                value: f64::INFINITY,
-            })
-        );
-        assert_eq!(
-            Tolerance::new(f64::NEG_INFINITY),
-            Err(LaError::InvalidTolerance {
-                value: f64::NEG_INFINITY,
-            })
-        );
-    }
-
-    #[test]
-    fn validate_tolerance_matches_tolerance_new() {
-        for value in [0.0, 1e-12, f64::MAX] {
-            assert_eq!(LaError::validate_tolerance(value), Tolerance::new(value));
-        }
-
-        assert_eq!(
-            LaError::validate_tolerance(-1.0),
-            Err(LaError::InvalidTolerance { value: -1.0 })
-        );
-        assert_matches!(
-            LaError::validate_tolerance(f64::NAN),
-            Err(LaError::InvalidTolerance { value }) if value.is_nan()
-        );
-        assert_eq!(
-            LaError::validate_tolerance(f64::INFINITY),
-            Err(LaError::InvalidTolerance {
-                value: f64::INFINITY,
-            })
-        );
-        assert_eq!(
-            LaError::validate_tolerance(f64::NEG_INFINITY),
-            Err(LaError::InvalidTolerance {
-                value: f64::NEG_INFINITY,
-            })
-        );
-    }
-
-    #[test]
-    fn laerror_display_formats_singular() {
-        let err = LaError::Singular { pivot_col: 3 };
-        assert_eq!(err.to_string(), "singular matrix at pivot column 3");
-    }
-
-    #[test]
-    fn laerror_display_formats_nonfinite_with_row() {
-        let err = LaError::NonFinite {
-            row: Some(1),
-            col: 2,
-        };
-        assert_eq!(err.to_string(), "non-finite value at (1, 2)");
-    }
-
-    #[test]
-    fn laerror_display_formats_nonfinite_without_row() {
-        let err = LaError::NonFinite { row: None, col: 3 };
-        assert_eq!(err.to_string(), "non-finite value at index 3");
-    }
-
-    #[test]
-    fn laerror_display_formats_overflow() {
-        let err = LaError::Overflow { index: None };
-        assert_eq!(
-            err.to_string(),
-            "exact result overflows the target representation"
-        );
-    }
-
-    #[test]
-    fn laerror_display_formats_overflow_with_index() {
-        let err = LaError::Overflow { index: Some(2) };
-        assert_eq!(
-            err.to_string(),
-            "exact result overflows the target representation at index 2"
-        );
-    }
-
-    #[test]
-    fn laerror_display_formats_determinant_scale_overflow() {
-        let err = LaError::DeterminantScaleOverflow {
-            dim: 3,
-            min_exponent: -1074,
-        };
-        assert_eq!(
-            err.to_string(),
-            "exact determinant scale exponent overflows for dimension 3 with minimum entry exponent -1074"
-        );
-    }
-
-    #[test]
-    fn laerror_display_formats_unsupported_dimension() {
-        let err = LaError::UnsupportedDimension {
-            requested: 8,
-            max: MAX_STACK_MATRIX_DISPATCH_DIM,
-        };
-        assert_eq!(
-            err.to_string(),
-            "unsupported matrix dimension 8; maximum stack-dispatch dimension is 7"
-        );
-    }
-
-    #[test]
-    fn laerror_display_formats_index_out_of_bounds() {
-        let err = LaError::IndexOutOfBounds {
-            row: 3,
-            col: 0,
-            dim: 3,
-        };
-        assert_eq!(
-            err.to_string(),
-            "matrix index (3, 0) is out of bounds for dimension 3"
-        );
-    }
-
-    #[test]
-    fn laerror_display_formats_invalid_tolerance() {
-        let err = LaError::InvalidTolerance { value: -1.0 };
-        assert_eq!(
-            err.to_string(),
-            "invalid tolerance -1; expected finite value >= 0"
-        );
-    }
-
-    #[test]
-    fn laerror_display_formats_asymmetric() {
-        let err = LaError::Asymmetric {
-            row: 0,
-            col: 2,
-            dim: 3,
-        };
-        assert_eq!(
-            err.to_string(),
-            "matrix is not symmetric for dimension 3: asymmetric pair (0, 2)"
-        );
-    }
-
-    #[test]
-    fn laerror_display_formats_not_positive_semidefinite() {
-        let err = LaError::NotPositiveSemidefinite {
-            pivot_col: 1,
-            value: -3.0,
-        };
-        assert_eq!(
-            err.to_string(),
-            "matrix is not positive semidefinite at LDLT pivot column 1: diagonal value -3 < 0"
-        );
-    }
-
-    #[test]
-    fn laerror_is_std_error_with_no_source() {
-        let err = LaError::Singular { pivot_col: 0 };
-        let e: &dyn std::error::Error = &err;
-        assert!(e.source().is_none());
-    }
-
-    #[test]
-    fn prelude_reexports_compile_and_work() -> Result<(), LaError> {
         use crate::prelude::*;
 
-        // Use the items so we know they are in scope and usable.
-        let m = Matrix::<2>::identity();
-        let v = Vector::<2>::try_new([1.0, 2.0])?;
-        assert_abs_diff_eq!(m.inf_norm()?, 1.0, epsilon = 0.0);
-        assert_abs_diff_eq!(v.norm2_sq()?, 5.0, epsilon = 0.0);
-        let _ = m.lu(DEFAULT_SINGULAR_TOL)?.solve(v)?;
-        let _ = m.ldlt(DEFAULT_SINGULAR_TOL)?.solve(v)?;
-        assert_eq!(MAX_STACK_MATRIX_DISPATCH_DIM, 7);
-        Ok(())
+        #[test]
+        fn prelude_reexports_compile_and_work() -> Result<(), LaError> {
+            // Use the items so we know they are in scope and usable.
+            let m = Matrix::<2>::identity();
+            let v = Vector::<2>::try_new([1.0, 2.0])?;
+            let tol = Tolerance::new(0.0)?;
+            assert_abs_diff_eq!(tol.get(), 0.0, epsilon = 0.0);
+            assert_abs_diff_eq!(m.inf_norm()?, 1.0, epsilon = 0.0);
+            assert_abs_diff_eq!(v.norm2_sq()?, 5.0, epsilon = 0.0);
+            let _ = m.lu(DEFAULT_SINGULAR_TOL)?.solve(v)?;
+            let _ = m.ldlt(DEFAULT_SINGULAR_TOL)?.solve(v)?;
+            assert_eq!(
+                LaError::unrepresentable(None, UnrepresentableReason::RequiresRounding),
+                LaError::Unrepresentable {
+                    index: None,
+                    reason: UnrepresentableReason::RequiresRounding,
+                }
+            );
+            assert_eq!(MAX_STACK_MATRIX_DISPATCH_DIM, 7);
+            Ok(())
+        }
     }
 
     macro_rules! gen_stack_matrix_dispatch_tests {

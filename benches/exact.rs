@@ -19,6 +19,10 @@
 //!    a fixed-seed corpus of diagonally-dominant random matrices per
 //!    dimension.  Each operation is pre-timed across the corpus to select
 //!    p50/p95/p99 cumulative input subsets, then measured with Criterion.
+//!
+//! Fallible exact-to-f64 conversions use a `_result` suffix. Those rows measure
+//! the full `Result` path, including valid `Err(Unrepresentable)` outcomes for
+//! inputs whose exact answer cannot be represented as finite binary64.
 
 use std::array;
 use std::cell::Cell;
@@ -202,7 +206,8 @@ enum ExactRandomOperation {
     DetSignExact,
     DetExact,
     SolveExact,
-    SolveExactF64,
+    SolveExactF64Result,
+    SolveExactRoundedF64,
 }
 
 impl ExactRandomOperation {
@@ -212,7 +217,8 @@ impl ExactRandomOperation {
             Self::DetSignExact => "det_sign_exact",
             Self::DetExact => "det_exact",
             Self::SolveExact => "solve_exact",
-            Self::SolveExactF64 => "solve_exact_f64",
+            Self::SolveExactF64Result => "solve_exact_f64_result",
+            Self::SolveExactRoundedF64 => "solve_exact_rounded_f64",
         }
     }
 }
@@ -323,10 +329,14 @@ fn run_random_operation<const D: usize>(
             );
             let _ = black_box(x);
         }
-        ExactRandomOperation::SolveExactF64 => {
+        ExactRandomOperation::SolveExactF64Result => {
+            let x = black_box(input.matrix).solve_exact_f64(black_box(input.rhs));
+            let _ = black_box(x);
+        }
+        ExactRandomOperation::SolveExactRoundedF64 => {
             let x = require_ok(
-                black_box(input.matrix).solve_exact_f64(black_box(input.rhs)),
-                "exact linear solve converted to f64",
+                black_box(input.matrix).solve_exact_rounded_f64(black_box(input.rhs)),
+                "exact linear solve rounded to f64",
             );
             let _ = black_box(x);
         }
@@ -488,9 +498,10 @@ fn hilbert<const D: usize>() -> Matrix<D> {
     )
 }
 
-/// Populate a Criterion group with the four headline exact-arithmetic
+/// Populate a Criterion group with the five headline exact-arithmetic
 /// benches on a single `(matrix, rhs)` pair: `det_sign_exact`,
-/// `det_exact`, `solve_exact`, `solve_exact_f64`.
+/// `det_exact`, `solve_exact`, `solve_exact_f64_result`, and
+/// `solve_exact_rounded_f64`.
 ///
 /// Used by every adversarial-input group so each one measures the same
 /// operations, making the resulting tables directly comparable.
@@ -523,11 +534,18 @@ fn bench_extreme_group<const D: usize>(
         });
     });
 
-    group.bench_function("solve_exact_f64", |bencher| {
+    group.bench_function("solve_exact_f64_result", |bencher| {
+        bencher.iter(|| {
+            let x = black_box(m).solve_exact_f64(black_box(rhs));
+            let _ = black_box(x);
+        });
+    });
+
+    group.bench_function("solve_exact_rounded_f64", |bencher| {
         bencher.iter(|| {
             let x = require_ok(
-                black_box(m).solve_exact_f64(black_box(rhs)),
-                "exact linear solve converted to f64",
+                black_box(m).solve_exact_rounded_f64(black_box(rhs)),
+                "exact linear solve rounded to f64",
             );
             let _ = black_box(x);
         });
@@ -571,12 +589,20 @@ macro_rules! gen_exact_benches_for_dim {
                 });
             });
 
-            // === det_exact_f64 (exact → f64) ===
-            [<group_d $d>].bench_function("det_exact_f64", |bencher| {
+            // === det_exact_f64 (fallible exact → f64 Result) ===
+            [<group_d $d>].bench_function("det_exact_f64_result", |bencher| {
+                bencher.iter(|| {
+                    let det = black_box(a).det_exact_f64();
+                    black_box(det);
+                });
+            });
+
+            // === det_exact_rounded_f64 (lossy exact → f64) ===
+            [<group_d $d>].bench_function("det_exact_rounded_f64", |bencher| {
                 bencher.iter(|| {
                     let det = require_ok(
-                        black_box(a).det_exact_f64(),
-                        "exact determinant converted to f64",
+                        black_box(a).det_exact_rounded_f64(),
+                        "exact determinant rounded to f64",
                     );
                     black_box(det);
                 });
@@ -601,12 +627,20 @@ macro_rules! gen_exact_benches_for_dim {
                 });
             });
 
-            // === solve_exact_f64 (exact → f64) ===
-            [<group_d $d>].bench_function("solve_exact_f64", |bencher| {
+            // === solve_exact_f64 (fallible exact → f64 Result) ===
+            [<group_d $d>].bench_function("solve_exact_f64_result", |bencher| {
+                bencher.iter(|| {
+                    let x = black_box(a).solve_exact_f64(black_box(rhs));
+                    black_box(x);
+                });
+            });
+
+            // === solve_exact_rounded_f64 (lossy exact → f64) ===
+            [<group_d $d>].bench_function("solve_exact_rounded_f64", |bencher| {
                 bencher.iter(|| {
                     let x = require_ok(
-                        black_box(a).solve_exact_f64(black_box(rhs)),
-                        "exact linear solve converted to f64",
+                        black_box(a).solve_exact_rounded_f64(black_box(rhs)),
+                        "exact linear solve rounded to f64",
                     );
                     black_box(x);
                 });
@@ -642,7 +676,12 @@ macro_rules! gen_random_percentile_benches_for_dim {
             bench_random_percentile_operation(
                 &mut [<group_random_percentile_d $d>],
                 &corpus,
-                ExactRandomOperation::SolveExactF64,
+                ExactRandomOperation::SolveExactF64Result,
+            );
+            bench_random_percentile_operation(
+                &mut [<group_random_percentile_d $d>],
+                &corpus,
+                ExactRandomOperation::SolveExactRoundedF64,
             );
 
             [<group_random_percentile_d $d>].finish();
@@ -677,8 +716,9 @@ fn main() {
 
     // === Adversarial / extreme-input groups ===
     //
-    // Each group runs the same four exact-arithmetic benches
-    // (`det_sign_exact`, `det_exact`, `solve_exact`, `solve_exact_f64`)
+    // Each group runs the same five exact-arithmetic benches
+    // (`det_sign_exact`, `det_exact`, `solve_exact`, `solve_exact_f64_result`,
+    // `solve_exact_rounded_f64`)
     // via `bench_extreme_group`, so the resulting tables are directly
     // comparable across input classes.
 

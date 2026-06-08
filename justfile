@@ -169,6 +169,7 @@ bench:
 # This catches bench/release-profile-only warnings that won't show up in normal debug-profile runs.
 bench-compile:
     RUSTFLAGS='-D warnings' cargo bench --no-run --features bench
+    RUSTFLAGS='-D warnings' cargo bench --no-run --features bench,exact --bench exact
 
 # Run the cheaper latest measurements used for latest-vs-last reports.
 bench-latest: bench-vs-linalg-la-stack bench-exact

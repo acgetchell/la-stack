@@ -13,8 +13,8 @@
 
 use core::hint::cold_path;
 
-use crate::matrix::{FiniteMatrix, Matrix, SymmetricMatrix};
-use crate::vector::{FiniteVector, Vector};
+use crate::matrix::{Matrix, SymmetricMatrix};
+use crate::vector::Vector;
 use crate::{LaError, Tolerance};
 
 /// LDLT factorization (`A = L D Lᵀ`) for symmetric positive (semi)definite matrices.
@@ -128,7 +128,7 @@ impl<const D: usize> Ldlt<D> {
             }
         }
 
-        let f = FiniteMatrix::new(f)?.into_matrix();
+        let f = f.validate_finite()?;
 
         Ok(Self {
             factors: LdltFactors::new_unchecked(f),
@@ -200,10 +200,7 @@ impl<const D: usize> Ldlt<D> {
     /// overflows to NaN or infinity.
     #[inline]
     pub const fn solve(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        match self.solve_finite(FiniteVector::new_unchecked(b)) {
-            Ok(x) => Ok(x.into_vector()),
-            Err(err) => Err(err),
-        }
+        self.solve_finite(b)
     }
 
     /// Solve `A x = b` using this LDLT factorization and a finite right-hand side.
@@ -215,10 +212,7 @@ impl<const D: usize> Ldlt<D> {
     /// Returns [`LaError::NonFinite`] if a computed substitution intermediate
     /// overflows to NaN or infinity.
     #[inline]
-    pub(crate) const fn solve_finite(
-        &self,
-        b: FiniteVector<D>,
-    ) -> Result<FiniteVector<D>, LaError> {
+    pub(crate) const fn solve_finite(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
         let mut x = b.into_array();
 
         // Forward substitution: L y = b (L has unit diagonal).
@@ -271,7 +265,7 @@ impl<const D: usize> Ldlt<D> {
             ii += 1;
         }
 
-        Ok(FiniteVector::new_unchecked(Vector::new_unchecked(x)))
+        Ok(Vector::new_unchecked(x))
     }
 }
 
@@ -280,8 +274,6 @@ mod tests {
     use super::*;
 
     use crate::DEFAULT_SINGULAR_TOL;
-    use crate::matrix::FiniteMatrix;
-
     use core::hint::black_box;
 
     use approx::assert_abs_diff_eq;
@@ -340,7 +332,7 @@ mod tests {
                         rows[i][i] = diag[i];
                     }
 
-                    let a = Matrix::<$d>::from_rows(black_box(rows));
+                    let a = Matrix::<$d>::try_from_rows(black_box(rows)).unwrap();
                     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
                     let expected_det = {
@@ -379,11 +371,8 @@ mod tests {
 
     #[test]
     fn solve_2x2_known_spd() {
-        let a = Matrix::<2>::from_rows(black_box([[4.0, 2.0], [2.0, 3.0]]));
-        let ldlt = FiniteMatrix::new(a)
-            .unwrap()
-            .ldlt(DEFAULT_SINGULAR_TOL)
-            .unwrap();
+        let a = Matrix::<2>::try_from_rows(black_box([[4.0, 2.0], [2.0, 3.0]])).unwrap();
+        let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<2>::new(black_box([1.0, 2.0]));
         let x = ldlt.solve(b).unwrap().into_array();
@@ -395,11 +384,12 @@ mod tests {
 
     #[test]
     fn solve_3x3_spd_tridiagonal_smoke() {
-        let a = Matrix::<3>::from_rows(black_box([
+        let a = Matrix::<3>::try_from_rows(black_box([
             [2.0, -1.0, 0.0],
             [-1.0, 2.0, -1.0],
             [0.0, -1.0, 2.0],
-        ]));
+        ]))
+        .unwrap();
         let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
         // Choose x = 1 so b = A x is simple: [1, 0, 1].
@@ -414,14 +404,14 @@ mod tests {
     #[test]
     fn singular_detected_for_degenerate_psd() {
         // Rank-1 Gram-like matrix.
-        let a = Matrix::<2>::from_rows(black_box([[1.0, 1.0], [1.0, 1.0]]));
+        let a = Matrix::<2>::try_from_rows(black_box([[1.0, 1.0], [1.0, 1.0]])).unwrap();
         let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(err, LaError::Singular { pivot_col: 1 });
     }
 
     #[test]
     fn negative_initial_diagonal_reports_not_positive_semidefinite() {
-        let a = Matrix::<2>::from_rows(black_box([[-1.0, 0.0], [0.0, 1.0]]));
+        let a = Matrix::<2>::try_from_rows(black_box([[-1.0, 0.0], [0.0, 1.0]])).unwrap();
         let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(
             err,
@@ -434,7 +424,7 @@ mod tests {
 
     #[test]
     fn negative_updated_diagonal_reports_not_positive_semidefinite() {
-        let a = Matrix::<2>::from_rows(black_box([[1.0, 2.0], [2.0, 1.0]]));
+        let a = Matrix::<2>::try_from_rows(black_box([[1.0, 2.0], [2.0, 1.0]])).unwrap();
         let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(
             err,
@@ -472,7 +462,7 @@ mod tests {
     #[test]
     fn nonfinite_l_multiplier_overflow() {
         // d = 1e-11 > tol, but l = 1e300 / 1e-11 = 1e311 overflows f64.
-        let a = Matrix::<2>::from_rows([[1e-11, 1e300], [1e300, 1.0]]);
+        let a = Matrix::<2>::try_from_rows([[1e-11, 1e300], [1e300, 1.0]]).unwrap();
         let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(
             err,
@@ -487,7 +477,7 @@ mod tests {
     fn nonfinite_trailing_submatrix_overflow() {
         // L multiplier is finite (1e200), but the rank-1 update
         // (-1e200 * 1.0) * 1e200 + 1.0 overflows.
-        let a = Matrix::<2>::from_rows([[1.0, 1e200], [1e200, 1.0]]);
+        let a = Matrix::<2>::try_from_rows([[1.0, 1e200], [1e200, 1.0]]).unwrap();
         let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
         assert_eq!(
             err,
@@ -502,11 +492,12 @@ mod tests {
     fn nonfinite_solve_forward_substitution_overflow() {
         // SPD matrix with large L multiplier: L[1,0] = 1e153.
         // Forward substitution overflows: y[1] = 0 - 1e153 * 1e156 = -inf.
-        let a = Matrix::<3>::from_rows([
+        let a = Matrix::<3>::try_from_rows([
             [1.0, 1e153, 0.0],
             [1e153, 1e306 + 1.0, 0.0],
             [0.0, 0.0, 1.0],
-        ]);
+        ])
+        .unwrap();
         let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<3>::new([1e156, 0.0, 0.0]);
@@ -520,7 +511,8 @@ mod tests {
         // D=[1,1,1], L[2,1]=2.  Forward sub and diagonal solve produce
         // z=[0,0,1e308].  Back-substitution: x[2]=1e308 then
         // x[1] = 0 - 2*1e308 = -inf (overflows f64).
-        let a = Matrix::<3>::from_rows([[1.0, 0.0, 0.0], [0.0, 1.0, 2.0], [0.0, 2.0, 5.0]]);
+        let a = Matrix::<3>::try_from_rows([[1.0, 0.0, 0.0], [0.0, 1.0, 2.0], [0.0, 2.0, 5.0]])
+            .unwrap();
         let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<3>::new([0.0, 0.0, 1e308]);
@@ -535,7 +527,7 @@ mod tests {
         // large RHS unchanged, then the diagonal solve z[1] = y[1] / D[1]
         // = 1e300 / 1e-11 = 1e311 overflows f64, exercising the
         // `!v.is_finite()` branch of the diagonal solve.
-        let a = Matrix::<2>::from_rows([[1.0, 0.0], [0.0, 1.0e-11]]);
+        let a = Matrix::<2>::try_from_rows([[1.0, 0.0], [0.0, 1.0e-11]]).unwrap();
         let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<2>::new([0.0, 1.0e300]);
@@ -545,13 +537,14 @@ mod tests {
 
     #[test]
     fn det_rejects_product_overflow() {
-        let a = Matrix::<5>::from_rows([
+        let a = Matrix::<5>::try_from_rows([
             [1.0e100, 0.0, 0.0, 0.0, 0.0],
             [0.0, 1.0e100, 0.0, 0.0, 0.0],
             [0.0, 0.0, 1.0e100, 0.0, 0.0],
             [0.0, 0.0, 0.0, 1.0e100, 0.0],
             [0.0, 0.0, 0.0, 0.0, 1.0e100],
-        ]);
+        ])
+        .unwrap();
         let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
         assert_eq!(ldlt.det(), Err(LaError::NonFinite { row: None, col: 3 }));
     }
@@ -559,7 +552,8 @@ mod tests {
     #[test]
     fn asymmetric_input_returns_typed_error() {
         // a[0][1] = 2.0 but a[1][0] = -2.0 → clearly asymmetric.
-        let a = Matrix::<3>::from_rows([[4.0, 2.0, 0.0], [-2.0, 5.0, 1.0], [0.0, 1.0, 3.0]]);
+        let a = Matrix::<3>::try_from_rows([[4.0, 2.0, 0.0], [-2.0, 5.0, 1.0], [0.0, 1.0, 3.0]])
+            .unwrap();
         assert_eq!(
             a.ldlt(DEFAULT_SINGULAR_TOL),
             Err(LaError::Asymmetric {

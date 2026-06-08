@@ -43,16 +43,35 @@ from subprocess_utils import ExecutableNotFoundError, run_git_command
 #
 # Mirrors the structure of `benches/exact.rs`: general-case per-dimension
 # groups (`exact_d{2..5}`), fixed-seed random percentile groups, plus
-# adversarial/extreme-input groups that share a fixed four-bench layout
-# (`det_sign_exact`, `det_exact`, `solve_exact`, `solve_exact_f64`).
-_EXTREME_BENCHES: list[str] = ["det_sign_exact", "det_exact", "solve_exact", "solve_exact_f64"]
+# adversarial/extreme-input groups that share a fixed five-bench layout
+# (`det_sign_exact`, `det_exact`, `solve_exact`, `solve_exact_f64_result`,
+# `solve_exact_rounded_f64`).
+_EXTREME_BENCHES: list[str] = [
+    "det_sign_exact",
+    "det_exact",
+    "solve_exact",
+    "solve_exact_f64_result",
+    "solve_exact_rounded_f64",
+]
 _RANDOM_PERCENTILE_BENCHES: list[str] = [f"{operation}_{percentile}" for operation in _EXTREME_BENCHES for percentile in ("p50", "p95", "p99")]
 
+_EXACT_DIMENSION_BENCHES: list[str] = [
+    "det",
+    "det_direct",
+    "det_exact",
+    "det_exact_f64_result",
+    "det_exact_rounded_f64",
+    "det_sign_exact",
+    "solve_exact",
+    "solve_exact_f64_result",
+    "solve_exact_rounded_f64",
+]
+
 EXACT_GROUPS: dict[str, list[str]] = {
-    "exact_d2": ["det", "det_direct", "det_exact", "det_exact_f64", "det_sign_exact", "solve_exact", "solve_exact_f64"],
-    "exact_d3": ["det", "det_direct", "det_exact", "det_exact_f64", "det_sign_exact", "solve_exact", "solve_exact_f64"],
-    "exact_d4": ["det", "det_direct", "det_exact", "det_exact_f64", "det_sign_exact", "solve_exact", "solve_exact_f64"],
-    "exact_d5": ["det", "det_direct", "det_exact", "det_exact_f64", "det_sign_exact", "solve_exact", "solve_exact_f64"],
+    "exact_d2": _EXACT_DIMENSION_BENCHES,
+    "exact_d3": _EXACT_DIMENSION_BENCHES,
+    "exact_d4": _EXACT_DIMENSION_BENCHES,
+    "exact_d5": _EXACT_DIMENSION_BENCHES,
     "exact_random_percentile_d2": _RANDOM_PERCENTILE_BENCHES,
     "exact_random_percentile_d3": _RANDOM_PERCENTILE_BENCHES,
     "exact_random_percentile_d4": _RANDOM_PERCENTILE_BENCHES,
@@ -62,6 +81,25 @@ EXACT_GROUPS: dict[str, list[str]] = {
     "exact_hilbert_4x4": _EXTREME_BENCHES,
     "exact_hilbert_5x5": _EXTREME_BENCHES,
 }
+
+EXACT_RELEASE_SIGNAL_GROUPS: frozenset[str] = frozenset(group for group in EXACT_GROUPS if not group.startswith("exact_random_percentile_d"))
+
+# v0.4.2 and earlier named the lossy exact-to-f64 benches after the public
+# `*_exact_f64` API. Current benches split that behavior into strict `*_result`
+# and lossy `*_rounded_f64` variants. Use the old baseline when present so
+# release reports show both compatibility-successor performance and strict
+# conversion overhead instead of silently dropping the new rows.
+EXACT_LEGACY_BASELINE_BENCHES: dict[str, str] = {
+    "det_exact_f64_result": "det_exact_f64",
+    "det_exact_rounded_f64": "det_exact_f64",
+    "solve_exact_f64_result": "solve_exact_f64",
+    "solve_exact_rounded_f64": "solve_exact_f64",
+}
+
+_EXACT_LEGACY_PREFIX_BASELINE_BENCHES: tuple[tuple[str, str], ...] = (
+    ("solve_exact_f64_result_", "solve_exact_f64_"),
+    ("solve_exact_rounded_f64_", "solve_exact_f64_"),
+)
 
 VS_LINALG_LA_STACK_ONLY_BENCHES_BY_METRIC: dict[str, list[str]] = {
     "det_via_lu": ["la_stack_det"],
@@ -123,6 +161,7 @@ class Comparison:
     current_ns: float
     speedup: float  # baseline / current (>1 = faster)
     pct_change: float  # signed percent change (negative = faster)
+    baseline_bench: str | None = None
     baseline_nalgebra_ns: float | None = None
     baseline_faer_ns: float | None = None
 
@@ -231,6 +270,36 @@ def _collect_exact_results(criterion_dir: Path, sample: str, stat: str) -> list[
     return results
 
 
+def _legacy_exact_baseline_bench(bench: str) -> str | None:
+    """Return the legacy exact benchmark name for renamed rows."""
+    legacy_bench = EXACT_LEGACY_BASELINE_BENCHES.get(bench)
+    if legacy_bench is not None:
+        return legacy_bench
+
+    for current_prefix, legacy_prefix in _EXACT_LEGACY_PREFIX_BASELINE_BENCHES:
+        if bench.startswith(current_prefix):
+            return f"{legacy_prefix}{bench.removeprefix(current_prefix)}"
+
+    return None
+
+
+def _exact_baseline_path(group_dir: Path, bench: str, baseline_name: str) -> tuple[str, Path]:
+    """Return the exact benchmark baseline path, falling back to legacy names."""
+    base_path = group_dir / bench / baseline_name / "estimates.json"
+    if base_path.exists():
+        return (bench, base_path)
+
+    legacy_bench = _legacy_exact_baseline_bench(bench)
+    if legacy_bench is None:
+        return (bench, base_path)
+
+    legacy_path = group_dir / legacy_bench / baseline_name / "estimates.json"
+    if legacy_path.exists():
+        return (legacy_bench, legacy_path)
+
+    return (bench, base_path)
+
+
 def _ordered_vs_linalg_benches(group_dir: Path, sample: str) -> list[str]:
     """Return present vs_linalg benches in a stable, metric-aware order."""
     present = {child.name for child in group_dir.iterdir() if child.is_dir() and (child / sample / "estimates.json").exists()}
@@ -275,18 +344,22 @@ def _collect_exact_comparisons(
     criterion_dir: Path,
     baseline_name: str,
     stat: str,
+    scope: str,
 ) -> list[Comparison]:
     """Compare current exact-arithmetic results against a named baseline."""
     comparisons: list[Comparison] = []
 
     for group, benches in EXACT_GROUPS.items():
+        if scope == "release-signal" and group not in EXACT_RELEASE_SIGNAL_GROUPS:
+            continue
+
         group_dir = criterion_dir / group
         if not group_dir.is_dir():
             continue
 
         for bench in benches:
             new_path = group_dir / bench / "new" / "estimates.json"
-            base_path = group_dir / bench / baseline_name / "estimates.json"
+            baseline_bench, base_path = _exact_baseline_path(group_dir, bench, baseline_name)
 
             if not new_path.exists() or not base_path.exists():
                 continue
@@ -306,6 +379,7 @@ def _collect_exact_comparisons(
                     current_ns=new_point,
                     speedup=speedup,
                     pct_change=pct_change,
+                    baseline_bench=baseline_bench if baseline_bench != bench else None,
                 )
             )
 
@@ -344,6 +418,13 @@ def _baseline_peer_times(group_dir: Path, bench: str, baseline_name: str, stat: 
     nalgebra_ns = _read_optional_point(group_dir / nalgebra_bench / baseline_name / "estimates.json", stat)
     faer_ns = _read_optional_point(group_dir / faer_bench / baseline_name / "estimates.json", stat)
     return (nalgebra_ns, faer_ns)
+
+
+def _comparison_bench_label(comparison: Comparison) -> str:
+    """Return the display label for a comparison table row."""
+    if comparison.baseline_bench is None:
+        return comparison.bench
+    return f"{comparison.bench} (vs {comparison.baseline_bench})"
 
 
 def _collect_vs_linalg_comparisons(
@@ -403,7 +484,7 @@ def _collect_comparisons(
     """Compare current (new) results against a named baseline."""
     comparisons: list[Comparison] = []
     if suite in ("all", "exact"):
-        comparisons.extend(_collect_exact_comparisons(criterion_dir, baseline_name, stat))
+        comparisons.extend(_collect_exact_comparisons(criterion_dir, baseline_name, stat, scope))
     if suite in ("all", "vs_linalg"):
         comparisons.extend(_collect_vs_linalg_comparisons(criterion_dir, baseline_name, stat, scope))
     return comparisons
@@ -542,7 +623,7 @@ def _comparison_tables(comparisons: list[Comparison], baseline_name: str) -> str
                 )
             for c in items:
                 cells = [
-                    c.bench,
+                    _comparison_bench_label(c),
                     _format_time(c.baseline_ns),
                     _format_time(c.current_ns),
                     _format_pct(c.pct_change),
