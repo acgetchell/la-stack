@@ -317,7 +317,8 @@ impl<const D: usize> Matrix<D> {
     /// # Non-finite handling
     /// Public constructors and setters reject raw non-finite entries, but
     /// `Matrix` values are finite by construction. `inf_norm` returns
-    /// [`LaError::NonFinite`] if a row sum overflows to a non-finite value.
+    /// [`LaError::NonFinite`] with the matrix cell whose addition first makes a
+    /// row sum non-finite.
     ///
     /// Row sums are accumulated in `f64` with ordinary addition.  This method
     /// checks for overflowed accumulators, but it does not provide a certified
@@ -344,7 +345,8 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when a row sum overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] with matrix coordinates when a row sum
+    /// overflows to NaN or infinity.
     #[inline]
     pub const fn inf_norm(&self) -> Result<f64, LaError> {
         let mut max_row_sum: f64 = 0.0;
@@ -356,11 +358,11 @@ impl<const D: usize> Matrix<D> {
             let mut c = 0;
             while c < D {
                 row_sum += row[c].abs();
+                if !row_sum.is_finite() {
+                    cold_path();
+                    return Err(LaError::non_finite_cell(r, c));
+                }
                 c += 1;
-            }
-            if !row_sum.is_finite() {
-                cold_path();
-                return Err(LaError::non_finite_at(r));
             }
             if row_sum > max_row_sum {
                 max_row_sum = row_sum;
@@ -389,10 +391,10 @@ impl<const D: usize> Matrix<D> {
     /// [`LaError::InvalidTolerance`].
     ///
     /// # Overflow handling
-    /// A finite matrix can return [`LaError::NonFinite`] if computing the scaled
-    /// symmetry tolerance overflows to NaN or infinity.  If both stored entries
-    /// are finite but their difference overflows to ±∞, the pair is reported as
-    /// asymmetric.
+    /// A finite matrix can return [`LaError::NonFinite`] with matrix coordinates
+    /// if computing the scaled symmetry tolerance overflows to NaN or infinity.
+    /// If both stored entries are finite but their difference overflows to ±∞,
+    /// the pair is reported as asymmetric.
     ///
     /// # Examples
     /// ```
@@ -410,8 +412,8 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when computing the scaled symmetry
-    /// tolerance overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] with matrix coordinates when computing the
+    /// scaled symmetry tolerance overflows to NaN or infinity.
     #[inline]
     pub fn is_symmetric(&self, rel_tol: Tolerance) -> Result<bool, LaError> {
         Ok(self.first_asymmetry(rel_tol)?.is_none())
@@ -426,10 +428,10 @@ impl<const D: usize> Matrix<D> {
     /// predicate is the same as [`is_symmetric`](Self::is_symmetric):
     /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, inf_norm(self))`.
     ///
-    /// A finite matrix can return [`LaError::NonFinite`] if computing the scaled
-    /// symmetry tolerance overflows to NaN or infinity. If both stored entries
-    /// are finite but their difference overflows to ±∞, the pair is reported as
-    /// asymmetric.
+    /// A finite matrix can return [`LaError::NonFinite`] with matrix coordinates
+    /// if computing the scaled symmetry tolerance overflows to NaN or infinity.
+    /// If both stored entries are finite but their difference overflows to ±∞,
+    /// the pair is reported as asymmetric.
     ///
     /// The `rel_tol` argument is a [`Tolerance`], so raw caller input must be
     /// finite and non-negative before it can reach this predicate. Use
@@ -455,8 +457,8 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when computing the scaled symmetry
-    /// tolerance overflows to NaN or infinity.
+    /// Returns [`LaError::NonFinite`] with matrix coordinates when computing the
+    /// scaled symmetry tolerance overflows to NaN or infinity.
     #[inline]
     pub fn first_asymmetry(&self, rel_tol: Tolerance) -> Result<Option<(usize, usize)>, LaError> {
         let eps = self.symmetry_epsilon(rel_tol)?;
@@ -595,6 +597,11 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Compute the symmetry tolerance scale for a finite matrix.
+    ///
+    /// This helper protects the public [`is_symmetric`](Self::is_symmetric),
+    /// [`first_asymmetry`](Self::first_asymmetry), and [`ldlt`](Self::ldlt)
+    /// error contracts: an overflowed row-scale accumulator is reported with
+    /// the matrix cell whose contribution made it non-finite.
     fn symmetry_epsilon(&self, rel_tol: Tolerance) -> Result<f64, LaError> {
         let rel_tol = rel_tol.get();
         let mut eps = rel_tol;
@@ -605,7 +612,7 @@ impl<const D: usize> Matrix<D> {
                 row_eps = rel_tol.mul_add(self.rows[r][c].abs(), row_eps);
                 if !row_eps.is_finite() {
                     cold_path();
-                    return Err(LaError::non_finite_at(c));
+                    return Err(LaError::non_finite_cell(r, c));
                 }
             }
             if row_eps > eps {
@@ -650,14 +657,14 @@ impl<const D: usize> Matrix<D> {
     pub const fn det_direct(&self) -> Result<Option<f64>, LaError> {
         match D {
             0 => Ok(Some(1.0)),
-            1 => Self::computed_scalar_result(Some(self.rows[0][0])),
+            1 => Self::computed_scalar_result(self.rows[0][0]),
             2 => {
                 let det = if self.rows[0][1] == 0.0 {
                     self.rows[0][0] * self.rows[1][1]
                 } else {
                     self.rows[0][0].mul_add(self.rows[1][1], -(self.rows[0][1] * self.rows[1][0]))
                 };
-                Self::computed_scalar_result(Some(det))
+                Self::computed_scalar_result(det)
             }
             3 => {
                 let det = Self::det3_elements(
@@ -665,7 +672,7 @@ impl<const D: usize> Matrix<D> {
                     [self.rows[1][0], self.rows[1][1], self.rows[1][2]],
                     [self.rows[2][0], self.rows[2][1], self.rows[2][2]],
                 );
-                Self::computed_scalar_result(Some(det))
+                Self::computed_scalar_result(det)
             }
             4 => {
                 let r = &self.rows;
@@ -705,7 +712,7 @@ impl<const D: usize> Matrix<D> {
                     det = r[0][0].mul_add(c00, det);
                 }
 
-                Self::computed_scalar_result(Some(det))
+                Self::computed_scalar_result(det)
             }
             _ => {
                 cold_path();
@@ -822,11 +829,11 @@ impl<const D: usize> Matrix<D> {
     #[inline]
     pub const fn det_errbound(&self) -> Result<Option<f64>, LaError> {
         match D {
-            0 | 1 => Self::computed_scalar_result(Some(0.0)),
+            0 | 1 => Self::computed_scalar_result(0.0),
             2 => {
                 let r = &self.rows;
                 let permanent = (r[0][0] * r[1][1]).abs() + (r[0][1] * r[1][0]).abs();
-                Self::computed_scalar_result(Some(ERR_COEFF_2 * permanent))
+                Self::computed_scalar_result(ERR_COEFF_2 * permanent)
             }
             3 => {
                 let r = &self.rows;
@@ -835,7 +842,7 @@ impl<const D: usize> Matrix<D> {
                     [r[1][0], r[1][1], r[1][2]],
                     [r[2][0], r[2][1], r[2][2]],
                 );
-                Self::computed_scalar_result(Some(ERR_COEFF_3 * permanent))
+                Self::computed_scalar_result(ERR_COEFF_3 * permanent)
             }
             4 => {
                 let r = &self.rows;
@@ -873,7 +880,7 @@ impl<const D: usize> Matrix<D> {
                     );
                     permanent = r[0][0].abs().mul_add(pc0, permanent);
                 }
-                Self::computed_scalar_result(Some(ERR_COEFF_4 * permanent))
+                Self::computed_scalar_result(ERR_COEFF_4 * permanent)
             }
             _ => {
                 cold_path();
@@ -930,11 +937,11 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Return a computed scalar result for a matrix with finite stored entries.
-    const fn computed_scalar_result(value: Option<f64>) -> Result<Option<f64>, LaError> {
-        match value {
-            Some(value) if value.is_finite() => Ok(Some(value)),
-            Some(_) => Err(LaError::non_finite_at(0)),
-            None => Ok(None),
+    const fn computed_scalar_result(value: f64) -> Result<Option<f64>, LaError> {
+        if value.is_finite() {
+            Ok(Some(value))
+        } else {
+            Err(LaError::non_finite_at(0))
         }
     }
 }
@@ -1868,13 +1875,19 @@ mod tests {
     #[test]
     fn first_asymmetry_strict_tol_survives_row_sum_overflow() {
         let a = Matrix::<3>::try_from_rows([
-            [f64::MAX, 1.0, f64::MAX],
-            [2.0, f64::MAX, 0.0],
-            [f64::MAX, 0.0, f64::MAX],
+            [1.0, 1.0, 0.0],
+            [2.0, f64::MAX, f64::MAX],
+            [0.0, 0.0, 1.0],
         ])
         .unwrap();
 
-        assert_eq!(a.inf_norm(), Err(LaError::NonFinite { row: None, col: 0 }));
+        assert_eq!(
+            a.inf_norm(),
+            Err(LaError::NonFinite {
+                row: Some(1),
+                col: 2
+            })
+        );
         assert_eq!(
             a.first_asymmetry(Tolerance::new(0.0).unwrap()).unwrap(),
             Some((0, 1))
@@ -1884,16 +1897,22 @@ mod tests {
 
     #[test]
     fn first_asymmetry_rejects_scaled_epsilon_overflow() {
-        let a = Matrix::<2>::try_from_rows([[2.0, 0.0], [0.0, 1.0]]).unwrap();
+        let a = Matrix::<2>::try_from_rows([[0.0, 0.0], [2.0, 1.0]]).unwrap();
         let tol = Tolerance::new(f64::MAX).unwrap();
 
         assert_eq!(
             a.first_asymmetry(tol),
-            Err(LaError::NonFinite { row: None, col: 0 })
+            Err(LaError::NonFinite {
+                row: Some(1),
+                col: 0
+            })
         );
         assert_eq!(
             a.is_symmetric(tol),
-            Err(LaError::NonFinite { row: None, col: 0 })
+            Err(LaError::NonFinite {
+                row: Some(1),
+                col: 0
+            })
         );
     }
 

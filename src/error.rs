@@ -71,8 +71,8 @@ pub enum LaError {
     ///   non-finite or because factorization computed a non-finite value for
     ///   that cell before storing it.
     /// - `row: None, col: c` — the non-finite value is tied to a vector entry,
-    ///   determinant product, tolerance-scale accumulator, solve accumulator, or
-    ///   other scalar/intermediate that has no matrix row coordinate.
+    ///   determinant product, solve accumulator, or other scalar/intermediate
+    ///   that has no matrix row coordinate.
     NonFinite {
         /// Row of the non-finite entry for a stored matrix cell, or `None` for
         /// a vector-input entry or a computed intermediate. See the variant

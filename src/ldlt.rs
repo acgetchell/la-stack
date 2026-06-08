@@ -200,10 +200,7 @@ impl<const D: usize> Ldlt<D> {
     /// overflows to NaN or infinity.
     #[inline]
     pub const fn solve(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        match Vector::try_new(b.into_array()) {
-            Ok(b) => self.solve_finite(b),
-            Err(err) => Err(err),
-        }
+        self.solve_finite(b)
     }
 
     /// Solve `A x = b` using this LDLT factorization and a finite right-hand side.

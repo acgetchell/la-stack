@@ -3,6 +3,8 @@
 //!
 //! Covers:
 //! - `det_sign_exact` on diagonal and full small-integer matrices
+//! - `det_exact` on full small-integer matrices against an independent
+//!   `BigRational` Leibniz-expansion oracle
 //! - `solve_exact` round-trip with integer inputs (`A · x0` in f64 is
 //!   exact for small integers, so `solve(A, A · x0) == x0`)
 //! - `solve_exact` residual property (`A · solve(A, b) == b` in
@@ -66,6 +68,73 @@ fn bigrational_matvec<const D: usize>(a: &[[f64; D]; D], x: &[BigRational; D]) -
         }
         sum
     })
+}
+
+/// Compute an exact determinant via the Leibniz permutation expansion.
+///
+/// This is intentionally independent from the production Bareiss core. It is
+/// factorial-time, but the proptests only use D=2..=5, so it stays tiny while
+/// giving `det_exact` a separate dense-matrix oracle.
+fn bigrational_det_leibniz<const D: usize>(a: &[[f64; D]; D]) -> BigRational {
+    let mut det = BigRational::from_integer(BigInt::from(0));
+    let mut perm: [usize; D] = from_fn(|i| i);
+
+    loop {
+        let mut term = BigRational::from_integer(BigInt::from(1));
+        for (row, &col) in perm.iter().enumerate() {
+            let entry = BigRational::from_f64(a[row][col]).expect("small int fits in BigRational");
+            term *= entry;
+        }
+
+        if permutation_is_even(&perm) {
+            det += term;
+        } else {
+            det -= term;
+        }
+
+        if !next_permutation(&mut perm) {
+            break;
+        }
+    }
+
+    det
+}
+
+fn permutation_is_even(perm: &[usize]) -> bool {
+    let mut inversions = 0usize;
+    for i in 0..perm.len() {
+        for j in (i + 1)..perm.len() {
+            if perm[i] > perm[j] {
+                inversions += 1;
+            }
+        }
+    }
+    inversions.is_multiple_of(2)
+}
+
+fn next_permutation(values: &mut [usize]) -> bool {
+    if values.len() < 2 {
+        return false;
+    }
+
+    let mut pivot = values.len() - 2;
+    loop {
+        if values[pivot] < values[pivot + 1] {
+            break;
+        }
+        if pivot == 0 {
+            return false;
+        }
+        pivot -= 1;
+    }
+
+    let mut successor = values.len() - 1;
+    while values[successor] <= values[pivot] {
+        successor -= 1;
+    }
+    values.swap(pivot, successor);
+    values[(pivot + 1)..].reverse();
+    true
 }
 
 /// Build a strictly diagonally-dominant f64 matrix from:
@@ -254,6 +323,36 @@ gen_solve_exact_residual_proptests!(2);
 gen_solve_exact_residual_proptests!(3);
 gen_solve_exact_residual_proptests!(4);
 gen_solve_exact_residual_proptests!(5);
+
+/// Dense determinant value oracle: random small-integer matrices should match
+/// an independent `BigRational` Leibniz expansion, not just the sign read back
+/// from the same Bareiss determinant core.
+macro_rules! gen_det_exact_leibniz_oracle_proptests {
+    ($d:literal) => {
+        paste! {
+            proptest! {
+                #![proptest_config(ProptestConfig::with_cases(32))]
+
+                #[test]
+                fn [<det_exact_agrees_with_leibniz_oracle_ $d d>](
+                    entries in proptest::array::[<uniform $d>](
+                        proptest::array::[<uniform $d>](small_int_f64()),
+                    ),
+                ) {
+                    let m = Matrix::<$d>::try_from_rows(entries).unwrap();
+                    let expected = bigrational_det_leibniz::<$d>(&entries);
+
+                    prop_assert_eq!(m.det_exact().unwrap(), expected);
+                }
+            }
+        }
+    };
+}
+
+gen_det_exact_leibniz_oracle_proptests!(2);
+gen_det_exact_leibniz_oracle_proptests!(3);
+gen_det_exact_leibniz_oracle_proptests!(4);
+gen_det_exact_leibniz_oracle_proptests!(5);
 
 /// On full (non-diagonal) random small-integer matrices,
 /// `det_sign_exact()` must agree with `det_exact().signum()`.  This
