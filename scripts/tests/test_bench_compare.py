@@ -375,9 +375,10 @@ def test_main_snapshot_writes_output(tmp_path: Path) -> None:
     assert "### D=2" in text
     assert "### Random percentile D=3" in text
     assert "### Near-singular 3x3" in text
+    assert "just performance-local" in text
+    assert "just performance-release" in text
+    assert "just performance-github-assets" in text
     assert "just performance-release <current-tag> <previous-tag>" in text
-    assert "just performance-archive-published" in text
-    assert "just performance-archive-published <current-tag> <previous-tag>" in text
     assert "git checkout" not in text
 
 

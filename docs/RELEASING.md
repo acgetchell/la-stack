@@ -104,20 +104,19 @@ accuracy.
 5. Update the release performance comparison
 
 ```bash
-# Runs the release-signal benchmark set in a temporary worktree, compares TAG
-# against PREVIOUS_TAG, writes docs/PERFORMANCE.md, and archives the previous
-# docs/PERFORMANCE.md under docs/archive/performance/.
-just performance-release "$TAG" "$PREVIOUS_TAG"
+# Infers TAG from Cargo.toml, compares it against the previous stable published
+# release, writes docs/PERFORMANCE.md, and archives the previous docs/PERFORMANCE.md
+# under docs/archive/performance/.
+just performance-release
 ```
 
 Review `docs/PERFORMANCE.md` for the latest release-to-release comparison. Older
 committed comparisons are archived under `docs/archive/performance/` with
 lexicographically sorted filenames such as `v0.4.2-vs-v0.4.1.md`. Iterative
-local reports still live under `target/bench-reports/`. To regenerate the
-latest published release comparison, use `just performance-archive-published`;
-it discovers the latest stable published GitHub release and its previous stable
-release automatically, then runs inside a temporary worktree. For explicit
-historical repair, pass both tags.
+local reports still live under `target/bench-reports/`. For an explicit release
+repair, run `just performance-release <current-tag> <previous-tag>`. To compare
+the stored GitHub Actions release assets instead of running cargo locally, use
+`just performance-github-assets`.
 
 6. Save benchmark baselines for this release
 

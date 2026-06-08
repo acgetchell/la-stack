@@ -35,21 +35,28 @@ Use `uv run bench-compare --snapshot` for a no-baseline snapshot, or
 
 For release PRs, promote one curated release-to-release comparison into
 committed docs and archive the previous committed report. Benchmark generation
-runs in a temporary worktree:
+runs locally in temporary worktrees:
 
 ```bash
-just performance-release v0.4.3 v0.4.2
+just performance-release
 ```
 
-To regenerate the latest published-tag comparison without changing the current
-checkout:
+For local development regression checks, compare the current in-tree code
+against the latest published release:
 
 ```bash
-just performance-archive-published
+just performance-local
 ```
 
-For explicit historical repair, pass both tags:
-`just performance-archive-published v0.4.2 v0.4.1`.
+To compare stored GitHub Actions release benchmark assets without local cargo
+runs:
+
+```bash
+just performance-github-assets
+```
+
+For explicit release repair, pass both tags:
+`just performance-release v0.4.3 v0.4.2`.
 
 ### Plotting Criterion benchmarks (la-stack vs nalgebra/faer)
 

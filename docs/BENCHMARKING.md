@@ -151,17 +151,18 @@ benchmarks on every iteration.
 ### Workflow
 
 ```bash
-# Latest published release vs previous stable release
-just performance-archive-published
+# Current in-tree code vs latest published release, all measured locally
+just performance-local
 
-# Explicit historical repair
-just performance-archive-published v0.4.2 v0.4.1
+# Stored GitHub Actions release assets, no local cargo runs
+just performance-github-assets
 ```
 
-These recipes create isolated temporary worktrees, restore release baselines
-from GitHub Release assets when available, and fall back to generating a missing
-baseline in a second temporary worktree. They do not require changing the current
-checkout.
+`performance-local` creates isolated temporary worktrees, generates the latest
+published release baseline locally, then benchmarks the current in-tree code on
+the same machine. It uses the current checkout's Rust toolchain for both sides
+unless `RUSTUP_TOOLCHAIN` is already set. `performance-github-assets` compares
+stored GitHub Actions release artifacts and does not run cargo locally.
 
 For local scratch comparisons, you can save multiple baselines and compare
 against any of them. If the release baseline is already present in
@@ -183,26 +184,27 @@ matching `vs_linalg` peer exists.
 Release PRs promote one curated comparison into committed docs:
 
 ```bash
-just performance-release v0.4.3 v0.4.2
+just performance-release
 ```
 
-This runs the release-signal benchmark set, renders the comparison into
-an isolated temporary worktree, copies the finished report to
-`docs/PERFORMANCE.md`, and archives the previous committed report under
-`docs/archive/performance/`. Archive filenames are release-pair names such as
-`v0.4.2-vs-v0.4.1.md`, so the directory and generated index stay
-lexicographically sorted.
+This infers the current release tag from `Cargo.toml`, discovers the previous
+stable published release, generates both sides locally in temporary worktrees,
+copies the finished report to `docs/PERFORMANCE.md`, and archives the previous
+committed report under `docs/archive/performance/`. Archive filenames are
+release-pair names such as `v0.4.2-vs-v0.4.1.md`, so the directory and generated
+index stay lexicographically sorted. For explicit release repair, pass both
+tags: `just performance-release v0.4.3 v0.4.2`.
 
-To regenerate and archive the latest published release comparison without
-touching the current checkout:
+To compare the latest stored GitHub Actions release assets without touching the
+current checkout:
 
 ```bash
-just performance-archive-published
+just performance-github-assets
 ```
 
 The recipe discovers the latest stable published GitHub release and its previous
 stable release automatically. For explicit historical repair, pass both tags:
-`just performance-archive-published v0.4.2 v0.4.1`.
+`just performance-github-assets v0.4.2 v0.4.1`.
 
 For exact-arithmetic comparisons against v0.4.2 or older baselines, rows such
 as `det_exact_rounded_f64 (vs det_exact_f64)` mean the current rounded API is
@@ -245,7 +247,7 @@ See `scripts/criterion_dim_plot.py --help` for options.
 At release time, save a local baseline so future work can compare against it:
 
 ```bash
-just bench-save-baseline $TAG
+just bench-save-baseline <tag>
 just bench-save-last
 ```
 

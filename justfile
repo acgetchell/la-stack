@@ -186,12 +186,12 @@ bench-compare baseline="last" suite="all" scope="release-signal": python-sync
     baseline="{{baseline}}"
     uv run bench-compare "$baseline" --suite "{{suite}}" --scope "{{scope}}"
 
-# Generate release-signal measurements in a temp worktree, then promote/archive docs.
-performance-release current_tag baseline_tag: python-sync
-    uv run archive-performance "{{current_tag}}" "{{baseline_tag}}" --generate-in-temp-worktree --worktree-ref HEAD
+# Backward-compatible alias for the GitHub Actions release-asset comparison.
+performance-archive-published current_tag="" baseline_tag="":
+    just performance-github-assets "{{current_tag}}" "{{baseline_tag}}"
 
-# Generate a published-tag comparison in a temp worktree, then promote/archive docs.
-performance-archive-published current_tag="" baseline_tag="": python-sync
+# Compare stored GitHub Actions release benchmark assets without local cargo runs.
+performance-github-assets current_tag="" baseline_tag="": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     current_tag="{{current_tag}}"
@@ -201,9 +201,29 @@ performance-archive-published current_tag="" baseline_tag="": python-sync
             echo "current_tag and baseline_tag must be provided together" >&2
             exit 2
         fi
-        uv run archive-performance "$current_tag" "$baseline_tag" --generate-in-temp-worktree --worktree-ref "$current_tag" --no-apply-current-diff
+        uv run archive-performance "$current_tag" "$baseline_tag" --github-assets --generate-in-temp-worktree --worktree-ref "$current_tag" --output-only --output target/bench-reports/github-assets-performance.md
     else
-        uv run archive-performance --published-latest --generate-in-temp-worktree --no-apply-current-diff
+        uv run archive-performance --published-latest --github-assets --generate-in-temp-worktree --output-only --output target/bench-reports/github-assets-performance.md
+    fi
+
+# Compare the current tree against the latest published release locally.
+performance-local: python-sync
+    uv run archive-performance --current-vs-latest --generate-in-temp-worktree --output-only --output target/bench-reports/performance.md
+
+# Generate local release-signal measurements in a temp worktree, then promote/archive docs.
+performance-release current_tag="" baseline_tag="": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    current_tag="{{current_tag}}"
+    baseline_tag="{{baseline_tag}}"
+    if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
+        if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
+            echo "current_tag and baseline_tag must be provided together" >&2
+            exit 2
+        fi
+        uv run archive-performance "$current_tag" "$baseline_tag" --generate-in-temp-worktree --worktree-ref HEAD
+    else
+        uv run archive-performance --infer-release --generate-in-temp-worktree --worktree-ref HEAD
     fi
 
 # Run the exact-arithmetic benchmark suite.
@@ -410,8 +430,9 @@ help-workflows:
     @echo "  just bench-compile          # Compile benches with warnings-as-errors"
     @echo "  just bench-latest           # Run cheap latest measurements"
     @echo "  just bench-latest-vs-last   # Run latest and compare against last"
-    @echo "  just performance-release    # Promote release performance docs"
-    @echo "  just performance-archive-published # Archive published release comparison"
+    @echo "  just performance-github-assets # Compare stored GitHub Actions release assets"
+    @echo "  just performance-local      # Compare current tree against latest release locally"
+    @echo "  just performance-release    # Promote local release performance docs"
     @echo "  just bench-save-last        # Save full baseline as 'last'"
     @echo "  just bench-vs-linalg        # Run vs_linalg bench (optional filter)"
     @echo "  just bench-vs-linalg-la-stack # Run la-stack rows from vs_linalg"

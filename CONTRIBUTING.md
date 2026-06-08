@@ -22,6 +22,20 @@ to an explicit allowlist, and kept with readable version comments for review.
 CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
 aligned with the local comprehensive validation path.
 
+## Performance checks
+
+Performance-sensitive changes should compare the current tree against the
+latest published release:
+
+```bash
+just performance-local
+```
+
+This writes `target/bench-reports/performance.md` without changing committed
+release docs. Regressions are worth treating as design feedback: if a slowdown
+is intentional, document the correctness, API clarity, or composability benefit
+that justifies it.
+
 For coverage commands and report locations, see [`docs/COVERAGE.md`](docs/COVERAGE.md).
 For benchmark methodology, see [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md).
 For the full set of developer commands, run `just --list`.
