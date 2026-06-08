@@ -151,38 +151,26 @@ benchmarks on every iteration.
 ### Workflow
 
 ```bash
-# 1. Check out the old release and save its full baseline
-git checkout v0.2.0
-just bench-save-baseline v0.2.0
+# Current in-tree code vs latest published release, all measured locally
+just performance-local
 
-# 2. Switch to current code and run latest la-stack measurements
-git checkout main   # or your feature branch
-just bench-latest   # populates target/criterion/*/new/
-
-# 3. Generate a local comparison report
-just bench-compare v0.2.0
+# Stored GitHub Actions release assets, no local cargo runs
+just performance-github-assets
 ```
 
-You can save multiple baselines and compare against any of them.
+`performance-local` creates isolated temporary worktrees, generates the latest
+published release baseline locally, then benchmarks the current in-tree code on
+the same machine. It uses the current checkout's Rust toolchain for both sides
+unless `RUSTUP_TOOLCHAIN` is already set. `performance-github-assets` compares
+stored GitHub Actions release artifacts and does not run cargo locally.
 
-If the release baseline is already present in `target/criterion/`, skip the
-checkout step and compare directly. For example, to compare current code against
-the saved `v0.4.2` release baseline:
+For local scratch comparisons, you can save multiple baselines and compare
+against any of them. If the release baseline is already present in
+`target/criterion/`, compare directly:
 
 ```bash
 just bench-latest          # gather latest la-stack measurements
 just bench-compare v0.4.2  # compare latest measurements against v0.4.2
-```
-
-If the release baseline is not present locally, download and restore the release
-asset first:
-
-```bash
-gh release download v0.4.2 --pattern "la-stack-v0.4.2-criterion-baseline.tar.gz"  # fetch archived release baseline
-mkdir -p target                                                                    # ensure Criterion parent directory exists
-tar -C target -xzf la-stack-v0.4.2-criterion-baseline.tar.gz                       # restore target/criterion baseline data
-just bench-latest                                                                  # gather latest la-stack measurements
-just bench-compare v0.4.2                                                          # compare latest measurements against v0.4.2
 ```
 
 ### Output
@@ -192,6 +180,31 @@ default. The file contains machine-specific timings and is intentionally
 local. The report includes per-dimension tables showing median times,
 percent change, speedup, and last-release nalgebra/faer context where a
 matching `vs_linalg` peer exists.
+
+Release PRs promote one curated comparison into committed docs:
+
+```bash
+just performance-release
+```
+
+This infers the current release tag from `Cargo.toml`, discovers the previous
+stable published release, generates both sides locally in temporary worktrees,
+copies the finished report to `docs/PERFORMANCE.md`, and archives the previous
+committed report under `docs/archive/performance/`. Archive filenames are
+release-pair names such as `v0.4.2-vs-v0.4.1.md`, so the directory and generated
+index stay lexicographically sorted. For explicit release repair, pass both
+tags: `just performance-release v0.4.3 v0.4.2`.
+
+To compare the latest stored GitHub Actions release assets without touching the
+current checkout:
+
+```bash
+just performance-github-assets
+```
+
+The recipe discovers the latest stable published GitHub release and its previous
+stable release automatically. For explicit historical repair, pass both tags:
+`just performance-github-assets v0.4.2 v0.4.1`.
 
 For exact-arithmetic comparisons against v0.4.2 or older baselines, rows such
 as `det_exact_rounded_f64 (vs det_exact_f64)` mean the current rounded API is
@@ -234,11 +247,12 @@ See `scripts/criterion_dim_plot.py --help` for options.
 At release time, save a local baseline so future work can compare against it:
 
 ```bash
-just bench-save-baseline $TAG
+just bench-save-baseline <tag>
 just bench-save-last
 ```
 
 When the GitHub Release is published, `.github/workflows/release-benchmarks.yml`
 saves a full release baseline and attaches
 `la-stack-$TAG-criterion-baseline.tar.gz` to the release as the durable archive.
-See `docs/RELEASING.md` step 5 for where this fits in the release process.
+See the `just performance-release` step in `docs/RELEASING.md` for where the
+curated `docs/PERFORMANCE.md` comparison fits in the release process.

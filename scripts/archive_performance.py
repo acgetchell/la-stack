@@ -1,0 +1,980 @@
+#!/usr/bin/env -S uv run
+"""Promote a benchmark report into docs/PERFORMANCE.md and archive the old one.
+
+Release performance docs have two different lifetimes:
+
+  - ``target/bench-reports/performance.md`` is local scratch output for the
+    current machine and branch.
+  - ``docs/PERFORMANCE.md`` is the latest curated release-to-release comparison.
+  - ``docs/archive/performance/*.md`` stores older curated comparisons.
+
+This script copies a freshly generated local report into ``docs/PERFORMANCE.md``
+and archives the previous committed report under a filename derived from the
+report metadata, such as ``v0.4.2-vs-v0.4.1.md``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import tomllib
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Literal, cast
+
+from subprocess_utils import run_git_command, run_git_command_with_input, run_safe_command
+
+_VERSION_RE = re.compile(r"^\*\*la-stack\*\* v(?P<version>[^\s`]+)", re.MULTILINE)
+_BASELINE_RE = re.compile(r"^Comparison against baseline \*\*(?P<baseline>[^*]+)\*\*:", re.MULTILINE)
+_SEMVER_IDENTIFIER_RE = r"(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+_TAG_RE = re.compile(
+    rf"^v?(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+    rf"(?:-{_SEMVER_IDENTIFIER_RE}(?:\.{_SEMVER_IDENTIFIER_RE})*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
+_SEMVER_PARTS_RE = re.compile(r"^v?(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)$")
+
+_DEFAULT_SOURCE = "target/bench-reports/performance.md"
+_DEFAULT_CURRENT = "docs/PERFORMANCE.md"
+_DEFAULT_ARCHIVE_DIR = "docs/archive/performance"
+_DEFAULT_SUITE = "all"
+_DEFAULT_SCOPE = "release-signal"
+_BENCH_TIMEOUT_SECONDS = 7200
+_COMMAND_TIMEOUT_SECONDS = 600
+_HOW_TO_UPDATE_RE = re.compile(r"(?ms)^## How to Update\n.*\Z")
+type BaselineSource = Literal["local", "github-assets"]
+
+
+@dataclass(frozen=True)
+class ReportId:
+    """Release-pair identity parsed from a benchmark report."""
+
+    current_tag: str
+    baseline_tag: str
+
+    @property
+    def archive_name(self) -> str:
+        """Return the canonical archive filename for this report."""
+        return f"{self.current_tag}-vs-{self.baseline_tag}.md"
+
+
+@dataclass(frozen=True)
+class GenerationConfig:
+    """Configuration for benchmark report generation in a temp worktree."""
+
+    repo_root: Path
+    current_tag: str
+    baseline_tag: str
+    worktree_ref: str
+    suite: str = _DEFAULT_SUITE
+    scope: str = _DEFAULT_SCOPE
+    apply_current_diff: bool = True
+    baseline_source: BaselineSource = "local"
+
+
+@dataclass(frozen=True)
+class ResolvedArchiveRequest:
+    """Release pair and worktree ref resolved from CLI arguments."""
+
+    current_tag: str
+    baseline_tag: str
+    worktree_ref: str
+    tags_to_fetch: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ArchiveRequestOptions:
+    """CLI options used to resolve release tags."""
+
+    current_tag: str | None
+    baseline_tag: str | None
+    published_latest: bool
+    infer_release: bool
+    current_vs_latest: bool
+    worktree_ref: str
+    repo_root: Path
+
+
+@dataclass(frozen=True)
+class ArchivePaths:
+    """Filesystem paths used by the archive CLI."""
+
+    source: Path
+    current: Path
+    output: Path
+    archive_dir: Path
+
+
+@dataclass(frozen=True)
+class ArchiveResult:
+    """Result and destination metadata for a completed archive operation."""
+
+    report_id: ReportId
+    action: Literal["output", "promote-generated", "promote-source"]
+
+
+@dataclass(frozen=True)
+class PublishedRelease:
+    """Stable GitHub release metadata used to infer release pairs."""
+
+    tag: str
+    published_at: str
+
+
+def normalize_tag(tag: str) -> str:
+    """Return *tag* with a leading ``v`` and no surrounding whitespace."""
+    normalized = tag.strip()
+    if not normalized:
+        msg = "tag must not be empty"
+        raise ValueError(msg)
+    if not normalized.startswith("v"):
+        normalized = f"v{normalized}"
+    if not _TAG_RE.fullmatch(normalized):
+        msg = f"expected a semver tag like v0.4.2, got {tag!r}"
+        raise ValueError(msg)
+    return normalized
+
+
+def parse_report_id(text: str) -> ReportId:
+    """Parse the current version and baseline tag from a benchmark report."""
+    version_match = _VERSION_RE.search(text)
+    if version_match is None:
+        msg = "could not find la-stack version line in benchmark report"
+        raise ValueError(msg)
+
+    baseline_match = _BASELINE_RE.search(text)
+    if baseline_match is None:
+        msg = "could not find comparison baseline line in benchmark report"
+        raise ValueError(msg)
+
+    return ReportId(
+        current_tag=normalize_tag(version_match.group("version")),
+        baseline_tag=normalize_tag(baseline_match.group("baseline")),
+    )
+
+
+def _semver_sort_key(tag: str) -> tuple[int, int, int]:
+    match = _SEMVER_PARTS_RE.fullmatch(normalize_tag(tag))
+    if match is None:
+        msg = f"expected a stable semver tag like v0.4.2, got {tag!r}"
+        raise ValueError(msg)
+    return (int(match.group("major")), int(match.group("minor")), int(match.group("patch")))
+
+
+def _stable_published_releases(releases: object) -> list[PublishedRelease]:
+    if not isinstance(releases, list):
+        msg = "expected GitHub release list to be a JSON array"
+        raise TypeError(msg)
+
+    stable_releases: dict[str, PublishedRelease] = {}
+    for release in releases:
+        if not isinstance(release, Mapping):
+            continue
+        release = cast("Mapping[str, Any]", release)
+        if release.get("isDraft") or release.get("isPrerelease"):
+            continue
+        tag_name = release.get("tagName")
+        published_at = release.get("publishedAt")
+        if not isinstance(tag_name, str) or not isinstance(published_at, str) or not published_at:
+            continue
+        try:
+            normalized = normalize_tag(tag_name)
+            _semver_sort_key(normalized)
+        except ValueError:
+            continue
+        stable_releases[normalized] = PublishedRelease(tag=normalized, published_at=published_at)
+
+    return list(stable_releases.values())
+
+
+def _github_release_list(repo_root: Path) -> object:
+    command = [
+        "release",
+        "list",
+        "--json",
+        "tagName,isDraft,isPrerelease,publishedAt",
+        "--limit",
+        "100",
+    ]
+    try:
+        result = run_safe_command(
+            "gh",
+            command,
+            cwd=repo_root,
+            timeout=_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(_format_command_failure(["gh", *command], exc)) from exc
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        msg = "could not parse GitHub release list JSON"
+        raise RuntimeError(msg) from exc
+
+
+def _published_stable_releases(repo_root: Path) -> list[PublishedRelease]:
+    return _stable_published_releases(_github_release_list(repo_root))
+
+
+def _latest_published_release(repo_root: Path) -> PublishedRelease:
+    stable_releases = _published_stable_releases(repo_root)
+    if not stable_releases:
+        msg = "expected at least one published stable semver release"
+        raise RuntimeError(msg)
+    return max(stable_releases, key=lambda release: release.published_at)
+
+
+def _previous_release_from_list(stable_releases: list[PublishedRelease], current_tag: str) -> PublishedRelease:
+    current_key = _semver_sort_key(current_tag)
+    previous_releases = sorted(
+        (release for release in stable_releases if _semver_sort_key(release.tag) < current_key),
+        key=lambda release: _semver_sort_key(release.tag),
+    )
+    if not previous_releases:
+        msg = f"could not find a previous stable semver release before {current_tag}"
+        raise RuntimeError(msg)
+    return previous_releases[-1]
+
+
+def _previous_published_release(repo_root: Path, current_tag: str) -> PublishedRelease:
+    return _previous_release_from_list(_published_stable_releases(repo_root), current_tag)
+
+
+def _normalize_worktree_ref_for_tag(worktree_ref: str, current_tag: str) -> str:
+    try:
+        normalized_ref = normalize_tag(worktree_ref)
+    except ValueError:
+        return worktree_ref
+    return current_tag if normalized_ref == current_tag else worktree_ref
+
+
+def _current_package_tag(repo_root: Path) -> str:
+    cargo_toml = repo_root / "Cargo.toml"
+    data = tomllib.loads(_read_text(cargo_toml))
+    package = data.get("package")
+    if not isinstance(package, dict):
+        msg = f"could not find [package] in {cargo_toml}"
+        raise TypeError(msg)
+    version = package.get("version")
+    if not isinstance(version, str):
+        msg = f"could not find package.version in {cargo_toml}"
+        raise TypeError(msg)
+    return normalize_tag(version)
+
+
+def _published_release_pair(repo_root: Path) -> ReportId:
+    stable_releases = _published_stable_releases(repo_root)
+    if len(stable_releases) < 2:
+        msg = "expected at least two published stable semver releases"
+        raise RuntimeError(msg)
+
+    current = max(stable_releases, key=lambda release: release.published_at)
+    previous = _previous_release_from_list(stable_releases, current.tag)
+    return ReportId(current_tag=current.tag, baseline_tag=previous.tag)
+
+
+def _read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _how_to_update_section() -> str:
+    lines = [
+        "## How to Update",
+        "",
+        "Local performance reports are generated in isolated temporary worktrees:",
+        "",
+        "```bash",
+        "# Local development: compare the current tree with the latest release",
+        "just performance-local",
+        "",
+        "# Release PR: update docs/PERFORMANCE.md and archive the previous report",
+        "just performance-release",
+        "",
+        "# GitHub Actions release assets",
+        "just performance-github-assets",
+        "",
+        "# Explicit repair",
+        "just performance-release <current-tag> <previous-tag>",
+        "```",
+        "",
+        "`just performance-local` writes `target/bench-reports/performance.md`.",
+        "`just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.",
+        "",
+        "See `docs/BENCHMARKING.md` for the full comparison workflow.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _normalize_how_to_update(text: str) -> str:
+    section = _how_to_update_section()
+    if _HOW_TO_UPDATE_RE.search(text):
+        return _HOW_TO_UPDATE_RE.sub(section, text)
+    return f"{text.rstrip()}\n\n{section}"
+
+
+def _replace_file(src: Path, dst: Path) -> None:
+    src.replace(dst)
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(text)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        _replace_file(tmp_path, path)
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
+
+
+def _archive_readme(archive_dir: Path) -> str:
+    reports = sorted(path.name for path in archive_dir.glob("*.md") if path.name != "README.md")
+    lines = [
+        "# Archived Performance Reports",
+        "",
+        "Older release-to-release benchmark comparisons are archived here.",
+        "`docs/PERFORMANCE.md` contains the latest curated comparison.",
+        "",
+    ]
+    if reports:
+        lines.extend(f"- [{name.removesuffix('.md')}]({name})" for name in reports)
+    else:
+        lines.append("- No archived performance reports yet.")
+    return "\n".join(lines) + "\n"
+
+
+def update_archive_index(archive_dir: Path) -> None:
+    """Write a lexicographically sorted archive index."""
+    _write_text(archive_dir / "README.md", _archive_readme(archive_dir))
+
+
+def _format_command_failure(command: list[str], exc: subprocess.CalledProcessError) -> str:
+    parts = [f"command failed ({exc.returncode}): {' '.join(command)}"]
+    if exc.stdout:
+        parts.append(f"stdout:\n{exc.stdout.strip()}")
+    if exc.stderr:
+        parts.append(f"stderr:\n{exc.stderr.strip()}")
+    return "\n".join(parts)
+
+
+def _run_git(args: list[str], *, cwd: Path, timeout: int = _COMMAND_TIMEOUT_SECONDS) -> None:
+    try:
+        run_git_command(args, cwd=cwd, timeout=timeout)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(_format_command_failure(["git", *args], exc)) from exc
+
+
+def _fetch_release_tags(*, repo_root: Path, tags: list[str]) -> None:
+    refspecs = [f"refs/tags/{tag}:refs/tags/{tag}" for tag in tags]
+    _run_git(["fetch", "origin", *refspecs], cwd=repo_root)
+
+
+def _run_tool(command: str, args: list[str], *, cwd: Path, timeout: int = _COMMAND_TIMEOUT_SECONDS, env: dict[str, str] | None = None) -> None:
+    try:
+        run_safe_command(command, args, cwd=cwd, timeout=timeout, env=env)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(_format_command_failure([command, *args], exc)) from exc
+
+
+def _current_rust_toolchain(checkout: Path) -> str | None:
+    rust_toolchain = checkout / "rust-toolchain.toml"
+    if not rust_toolchain.exists():
+        return None
+    data = tomllib.loads(_read_text(rust_toolchain))
+    toolchain = data.get("toolchain")
+    if not isinstance(toolchain, dict):
+        return None
+    channel = toolchain.get("channel")
+    return channel if isinstance(channel, str) else None
+
+
+def _benchmark_env(checkout: Path) -> dict[str, str] | None:
+    if "RUSTUP_TOOLCHAIN" in os.environ:
+        return None
+    toolchain = _current_rust_toolchain(checkout)
+    if toolchain is None:
+        return None
+    env = os.environ.copy()
+    env["RUSTUP_TOOLCHAIN"] = toolchain
+    return env
+
+
+def _safe_extract_tar(archive: Path, target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_root = target_dir.resolve()
+    with tarfile.open(archive, "r:gz") as tar:
+        for member in tar.getmembers():
+            member_path = (target_dir / member.name).resolve()
+            if not member_path.is_relative_to(target_root):
+                msg = f"refusing to extract unsafe archive member {member.name!r}"
+                raise ValueError(msg)
+        tar.extractall(target_dir, filter="data")
+
+
+def _download_release_baseline(*, baseline_tag: str, download_dir: Path, repo_root: Path) -> Path:
+    artifact = download_dir / f"la-stack-{baseline_tag}-criterion-baseline.tar.gz"
+    _run_tool(
+        "gh",
+        [
+            "release",
+            "download",
+            baseline_tag,
+            "--pattern",
+            artifact.name,
+            "--dir",
+            str(download_dir),
+        ],
+        cwd=repo_root,
+    )
+    if not artifact.exists():
+        msg = f"release baseline asset was not downloaded: {artifact}"
+        raise FileNotFoundError(msg)
+    return artifact
+
+
+def _copy_criterion_sample(*, criterion_dir: Path, source_sample: str, target_sample: str) -> None:
+    copied = 0
+    for source in list(criterion_dir.rglob(source_sample)):
+        if not source.is_dir() or not (source / "estimates.json").exists():
+            continue
+        target = source.parent / target_sample
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(source, target)
+        copied += 1
+    if copied == 0:
+        msg = f"could not find Criterion sample {source_sample!r} under {criterion_dir}"
+        raise FileNotFoundError(msg)
+
+
+def _generate_release_baseline(*, baseline_tag: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> None:
+    baseline_worktree = tmp_dir / "baseline-worktree"
+    _run_git(["worktree", "add", "--detach", str(baseline_worktree), baseline_tag], cwd=repo_root)
+    try:
+        _run_tool("just", ["bench-save-baseline", baseline_tag], cwd=baseline_worktree, timeout=_BENCH_TIMEOUT_SECONDS, env=_benchmark_env(repo_root))
+        baseline_criterion = baseline_worktree / "target" / "criterion"
+        if not baseline_criterion.is_dir():
+            msg = f"generated baseline Criterion results were not found: {baseline_criterion}"
+            raise FileNotFoundError(msg)
+        target_criterion = target_worktree / "target" / "criterion"
+        target_criterion.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(baseline_criterion, target_criterion, dirs_exist_ok=True)
+    finally:
+        try:
+            _run_git(["worktree", "remove", "--force", str(baseline_worktree)], cwd=repo_root)
+        except RuntimeError as exc:
+            print(f"archive-performance: failed to remove baseline worktree: {exc}", file=sys.stderr)
+
+
+def _prepare_local_release_baseline(*, baseline_tag: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> None:
+    _generate_release_baseline(
+        baseline_tag=baseline_tag,
+        repo_root=repo_root,
+        target_worktree=target_worktree,
+        tmp_dir=tmp_dir,
+    )
+
+
+def _prepare_github_release_assets(*, current_tag: str, baseline_tag: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> None:
+    baseline_archive = _download_release_baseline(
+        baseline_tag=baseline_tag,
+        download_dir=tmp_dir,
+        repo_root=repo_root,
+    )
+    current_archive = _download_release_baseline(
+        baseline_tag=current_tag,
+        download_dir=tmp_dir,
+        repo_root=repo_root,
+    )
+    target_dir = target_worktree / "target"
+    _safe_extract_tar(baseline_archive, target_dir)
+    _safe_extract_tar(current_archive, target_dir)
+    _copy_criterion_sample(criterion_dir=target_dir / "criterion", source_sample=current_tag, target_sample="new")
+
+
+def _apply_current_diff_to_worktree(*, repo_root: Path, worktree: Path) -> None:
+    diff = run_git_command(["diff", "--binary", "HEAD"], cwd=repo_root).stdout
+    if diff.strip():
+        try:
+            run_git_command_with_input(["apply", "--binary"], diff, cwd=worktree)
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(_format_command_failure(["git", "apply", "--binary"], exc)) from exc
+
+
+def _has_current_release_signal_tooling(worktree: Path) -> bool:
+    justfile = worktree / "justfile"
+    bench_compare = worktree / "scripts" / "bench_compare.py"
+    if not justfile.exists() or not bench_compare.exists():
+        return False
+
+    justfile_text = _read_text(justfile)
+    bench_compare_text = _read_text(bench_compare)
+    return re.search(r"(?m)^bench-latest(?:[ :]|$)", justfile_text) is not None and '"--suite"' in bench_compare_text and '"--scope"' in bench_compare_text
+
+
+def _render_report(*, worktree: Path, report: Path, config: GenerationConfig) -> None:
+    if _has_current_release_signal_tooling(worktree):
+        _run_tool(
+            "uv",
+            [
+                "run",
+                "bench-compare",
+                config.baseline_tag,
+                "--suite",
+                config.suite,
+                "--scope",
+                config.scope,
+                "--output",
+                str(report),
+            ],
+            cwd=worktree,
+            timeout=_COMMAND_TIMEOUT_SECONDS,
+        )
+    else:
+        _run_tool(
+            "uv",
+            [
+                "run",
+                "bench-compare",
+                config.baseline_tag,
+                "--output",
+                str(report),
+            ],
+            cwd=worktree,
+            timeout=_COMMAND_TIMEOUT_SECONDS,
+        )
+
+
+def _run_benchmarks_and_render_report(*, worktree: Path, report: Path, config: GenerationConfig) -> None:
+    benchmark_env = _benchmark_env(config.repo_root)
+    if _has_current_release_signal_tooling(worktree):
+        _run_tool("just", ["bench-latest"], cwd=worktree, timeout=_BENCH_TIMEOUT_SECONDS, env=benchmark_env)
+    else:
+        _run_tool("just", ["bench-exact"], cwd=worktree, timeout=_BENCH_TIMEOUT_SECONDS, env=benchmark_env)
+    _render_report(worktree=worktree, report=report, config=config)
+
+
+def _generate_report_in_temp_worktree(
+    *,
+    config: GenerationConfig,
+) -> str:
+    with tempfile.TemporaryDirectory(prefix="la-stack-performance-") as tmp:
+        tmp_dir = Path(tmp)
+        worktree = tmp_dir / "worktree"
+        report = tmp_dir / f"{config.current_tag}-vs-{config.baseline_tag}.md"
+
+        _run_git(["worktree", "add", "--detach", str(worktree), config.worktree_ref], cwd=config.repo_root)
+        try:
+            if config.apply_current_diff:
+                _apply_current_diff_to_worktree(repo_root=config.repo_root, worktree=worktree)
+            if config.baseline_source == "github-assets":
+                _prepare_github_release_assets(
+                    current_tag=config.current_tag,
+                    baseline_tag=config.baseline_tag,
+                    repo_root=config.repo_root,
+                    target_worktree=worktree,
+                    tmp_dir=tmp_dir,
+                )
+                _render_report(worktree=worktree, report=report, config=config)
+            else:
+                _prepare_local_release_baseline(
+                    baseline_tag=config.baseline_tag,
+                    repo_root=config.repo_root,
+                    target_worktree=worktree,
+                    tmp_dir=tmp_dir,
+                )
+                _run_benchmarks_and_render_report(worktree=worktree, report=report, config=config)
+            return _read_text(report)
+        finally:
+            try:
+                _run_git(["worktree", "remove", "--force", str(worktree)], cwd=config.repo_root)
+            except RuntimeError as exc:
+                print(f"archive-performance: failed to remove temporary worktree: {exc}", file=sys.stderr)
+
+
+def promote_report(
+    *,
+    source: Path,
+    current: Path,
+    archive_dir: Path,
+    expected_current_tag: str,
+    expected_baseline_tag: str,
+) -> ReportId:
+    """Archive the old committed report and promote *source* as the current one."""
+    source_text = _normalize_how_to_update(_read_text(source))
+    source_id = parse_report_id(source_text)
+    expected_source_id = ReportId(
+        current_tag=normalize_tag(expected_current_tag),
+        baseline_tag=normalize_tag(expected_baseline_tag),
+    )
+    if source_id != expected_source_id:
+        msg = (
+            "benchmark report does not match requested release pair: "
+            f"found {source_id.current_tag} vs {source_id.baseline_tag}, "
+            f"expected {expected_source_id.current_tag} vs {expected_source_id.baseline_tag}"
+        )
+        raise ValueError(msg)
+
+    if current.exists():
+        current_text = _normalize_how_to_update(_read_text(current))
+        current_id = parse_report_id(current_text)
+        if current_id != source_id:
+            archive_path = archive_dir / current_id.archive_name
+            if not archive_path.exists():
+                _write_text(archive_path, current_text)
+
+    _write_text(current, source_text)
+    update_archive_index(archive_dir)
+    return source_id
+
+
+def generate_and_promote_worktree_report(
+    *,
+    current: Path,
+    archive_dir: Path,
+    config: GenerationConfig,
+) -> ReportId:
+    """Generate a comparison in a temp worktree, then promote it."""
+    current_tag = normalize_tag(config.current_tag)
+    baseline_tag = normalize_tag(config.baseline_tag)
+    config = GenerationConfig(
+        repo_root=config.repo_root,
+        current_tag=current_tag,
+        baseline_tag=baseline_tag,
+        worktree_ref=config.worktree_ref,
+        suite=config.suite,
+        scope=config.scope,
+        apply_current_diff=config.apply_current_diff,
+        baseline_source=config.baseline_source,
+    )
+    report_text = _generate_report_in_temp_worktree(
+        config=config,
+    )
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as tmp:
+        source = Path(tmp.name)
+        tmp.write(report_text)
+    try:
+        return promote_report(
+            source=source,
+            current=current,
+            archive_dir=archive_dir,
+            expected_current_tag=current_tag,
+            expected_baseline_tag=baseline_tag,
+        )
+    finally:
+        if source.exists():
+            source.unlink()
+
+
+def generate_worktree_report(
+    *,
+    output: Path,
+    config: GenerationConfig,
+) -> ReportId:
+    """Generate a comparison in a temp worktree and write it to *output*."""
+    current_tag = normalize_tag(config.current_tag)
+    baseline_tag = normalize_tag(config.baseline_tag)
+    config = GenerationConfig(
+        repo_root=config.repo_root,
+        current_tag=current_tag,
+        baseline_tag=baseline_tag,
+        worktree_ref=config.worktree_ref,
+        suite=config.suite,
+        scope=config.scope,
+        apply_current_diff=config.apply_current_diff,
+        baseline_source=config.baseline_source,
+    )
+    report_text = _normalize_how_to_update(_generate_report_in_temp_worktree(config=config))
+    report_id = parse_report_id(report_text)
+    expected = ReportId(current_tag=current_tag, baseline_tag=baseline_tag)
+    if report_id != expected:
+        msg = (
+            "benchmark report does not match requested release pair: "
+            f"found {report_id.current_tag} vs {report_id.baseline_tag}, "
+            f"expected {expected.current_tag} vs {expected.baseline_tag}"
+        )
+        raise ValueError(msg)
+    _write_text(output, report_text)
+    return report_id
+
+
+def resolve_archive_request(options: ArchiveRequestOptions) -> ResolvedArchiveRequest:
+    """Resolve explicit, package-inferred, or latest-published release arguments."""
+    current_tag = options.current_tag
+    baseline_tag = options.baseline_tag
+    worktree_ref = options.worktree_ref
+    repo_root = options.repo_root
+    published_latest = options.published_latest
+    infer_release = options.infer_release
+    current_vs_latest = options.current_vs_latest
+    requested_modes = sum((published_latest, infer_release, current_vs_latest))
+    if requested_modes > 1:
+        msg = "choose only one of --published-latest, --infer-release, or --current-vs-latest"
+        raise ValueError(msg)
+
+    if published_latest:
+        if current_tag is not None or baseline_tag is not None:
+            msg = "do not pass current_tag or baseline_tag with --published-latest"
+            raise ValueError(msg)
+        published_pair = _published_release_pair(repo_root)
+        resolved_worktree_ref = published_pair.current_tag if worktree_ref == "HEAD" else worktree_ref
+        return ResolvedArchiveRequest(
+            current_tag=published_pair.current_tag,
+            baseline_tag=published_pair.baseline_tag,
+            worktree_ref=resolved_worktree_ref,
+            tags_to_fetch=(published_pair.current_tag, published_pair.baseline_tag),
+        )
+
+    if infer_release:
+        if current_tag is not None or baseline_tag is not None:
+            msg = "do not pass current_tag or baseline_tag with --infer-release"
+            raise ValueError(msg)
+        inferred_current = _current_package_tag(repo_root)
+        inferred_baseline = _previous_published_release(repo_root, inferred_current).tag
+        return ResolvedArchiveRequest(
+            current_tag=inferred_current,
+            baseline_tag=inferred_baseline,
+            worktree_ref=worktree_ref,
+            tags_to_fetch=(inferred_baseline,),
+        )
+
+    if current_vs_latest:
+        if current_tag is not None or baseline_tag is not None:
+            msg = "do not pass current_tag or baseline_tag with --current-vs-latest"
+            raise ValueError(msg)
+        inferred_current = _current_package_tag(repo_root)
+        latest = _latest_published_release(repo_root).tag
+        return ResolvedArchiveRequest(
+            current_tag=inferred_current,
+            baseline_tag=latest,
+            worktree_ref=worktree_ref,
+            tags_to_fetch=(latest,),
+        )
+
+    if current_tag is None or baseline_tag is None:
+        msg = "current_tag and baseline_tag are required unless an inference mode is used"
+        raise ValueError(msg)
+    normalized_current = normalize_tag(current_tag)
+    normalized_baseline = normalize_tag(baseline_tag)
+    return ResolvedArchiveRequest(
+        current_tag=normalized_current,
+        baseline_tag=normalized_baseline,
+        worktree_ref=_normalize_worktree_ref_for_tag(worktree_ref, normalized_current),
+        tags_to_fetch=(normalized_baseline,),
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser."""
+    parser = argparse.ArgumentParser(
+        description="Promote a benchmark comparison into docs/PERFORMANCE.md and archive the previous report.",
+    )
+    parser.add_argument("current_tag", nargs="?", help="Release tag for the new report, e.g. v0.4.3")
+    parser.add_argument("baseline_tag", nargs="?", help="Previous release tag used as the comparison baseline, e.g. v0.4.2")
+    parser.add_argument(
+        "--source",
+        default=_DEFAULT_SOURCE,
+        help=f"Generated benchmark report to promote (default: {_DEFAULT_SOURCE})",
+    )
+    parser.add_argument(
+        "--current",
+        default=_DEFAULT_CURRENT,
+        help=f"Committed performance report path (default: {_DEFAULT_CURRENT})",
+    )
+    parser.add_argument(
+        "--output",
+        default=_DEFAULT_SOURCE,
+        help=f"Generated report path for --output-only (default: {_DEFAULT_SOURCE})",
+    )
+    parser.add_argument(
+        "--archive-dir",
+        default=_DEFAULT_ARCHIVE_DIR,
+        help=f"Archive directory for older reports (default: {_DEFAULT_ARCHIVE_DIR})",
+    )
+    parser.add_argument(
+        "--generate-in-temp-worktree",
+        action="store_true",
+        help="Generate the comparison in a temporary detached worktree before promoting it.",
+    )
+    parser.add_argument(
+        "--published-latest",
+        action="store_true",
+        help="Infer the latest stable published GitHub release and its previous stable release.",
+    )
+    parser.add_argument(
+        "--infer-release",
+        action="store_true",
+        help="Infer current_tag from Cargo.toml and baseline_tag from the previous stable published release.",
+    )
+    parser.add_argument(
+        "--current-vs-latest",
+        action="store_true",
+        help="Infer current_tag from Cargo.toml and baseline_tag from the latest stable published release.",
+    )
+    parser.add_argument(
+        "--github-assets",
+        action="store_true",
+        help="Compare stored GitHub Release benchmark assets instead of generating the baseline locally.",
+    )
+    parser.add_argument(
+        "--output-only",
+        action="store_true",
+        help="Write the generated report to --output without promoting docs/PERFORMANCE.md.",
+    )
+    parser.add_argument(
+        "--worktree-ref",
+        default="HEAD",
+        help="Git ref to check out in the temporary worktree (default: HEAD).",
+    )
+    parser.add_argument(
+        "--no-apply-current-diff",
+        action="store_true",
+        help="Do not apply the current checkout's tracked diff to the temporary worktree.",
+    )
+    parser.add_argument(
+        "--suite",
+        default=_DEFAULT_SUITE,
+        help=f"Benchmark suite for --generate-in-temp-worktree (default: {_DEFAULT_SUITE})",
+    )
+    parser.add_argument(
+        "--scope",
+        default=_DEFAULT_SCOPE,
+        help=f"Comparison scope for --generate-in-temp-worktree (default: {_DEFAULT_SCOPE})",
+    )
+    return parser
+
+
+def _resolve_cli_paths(root: Path, args: argparse.Namespace) -> ArchivePaths:
+    source = Path(args.source)
+    current = Path(args.current)
+    output = Path(args.output)
+    archive_dir = Path(args.archive_dir)
+    if not source.is_absolute():
+        source = root / source
+    if not current.is_absolute():
+        current = root / current
+    if not output.is_absolute():
+        output = root / output
+    if not archive_dir.is_absolute():
+        archive_dir = root / archive_dir
+    return ArchivePaths(source=source, current=current, output=output, archive_dir=archive_dir)
+
+
+def _fetch_required_tags(*, request: ResolvedArchiveRequest, repo_root: Path, include_current: bool) -> None:
+    tags_to_fetch = request.tags_to_fetch
+    if include_current and request.current_tag not in tags_to_fetch:
+        tags_to_fetch = (*tags_to_fetch, request.current_tag)
+    if tags_to_fetch:
+        _fetch_release_tags(repo_root=repo_root, tags=list(dict.fromkeys(tags_to_fetch)))
+
+
+def _generation_config(*, args: argparse.Namespace, request: ResolvedArchiveRequest, repo_root: Path) -> GenerationConfig:
+    return GenerationConfig(
+        repo_root=repo_root,
+        current_tag=request.current_tag,
+        baseline_tag=request.baseline_tag,
+        worktree_ref=request.worktree_ref,
+        suite=args.suite,
+        scope=args.scope,
+        apply_current_diff=not args.no_apply_current_diff and not args.github_assets,
+        baseline_source="github-assets" if args.github_assets else "local",
+    )
+
+
+def _run_archive_request(*, args: argparse.Namespace, paths: ArchivePaths, request: ResolvedArchiveRequest, repo_root: Path) -> ArchiveResult:
+    if args.generate_in_temp_worktree:
+        _fetch_required_tags(request=request, repo_root=repo_root, include_current=args.github_assets)
+        config = _generation_config(args=args, request=request, repo_root=repo_root)
+        if args.output_only:
+            return ArchiveResult(
+                report_id=generate_worktree_report(
+                    output=paths.output,
+                    config=config,
+                ),
+                action="output",
+            )
+        return ArchiveResult(
+            report_id=generate_and_promote_worktree_report(
+                current=paths.current,
+                archive_dir=paths.archive_dir,
+                config=config,
+            ),
+            action="promote-generated",
+        )
+
+    if args.output_only:
+        msg = "--output-only requires --generate-in-temp-worktree"
+        raise ValueError(msg)
+    if args.github_assets:
+        msg = "--github-assets requires --generate-in-temp-worktree"
+        raise ValueError(msg)
+    return ArchiveResult(
+        report_id=promote_report(
+            source=paths.source,
+            current=paths.current,
+            archive_dir=paths.archive_dir,
+            expected_current_tag=request.current_tag,
+            expected_baseline_tag=request.baseline_tag,
+        ),
+        action="promote-source",
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point."""
+    args = build_parser().parse_args(argv)
+    root = Path.cwd()
+    paths = _resolve_cli_paths(root, args)
+
+    try:
+        request = resolve_archive_request(
+            ArchiveRequestOptions(
+                current_tag=args.current_tag,
+                baseline_tag=args.baseline_tag,
+                published_latest=args.published_latest,
+                infer_release=args.infer_release,
+                current_vs_latest=args.current_vs_latest,
+                worktree_ref=args.worktree_ref,
+                repo_root=root,
+            )
+        )
+        result = _run_archive_request(args=args, paths=paths, request=request, repo_root=root)
+    except (ValueError, RuntimeError, FileNotFoundError, subprocess.CalledProcessError) as exc:
+        print(f"archive-performance: {exc}", file=sys.stderr)
+        return 1
+    except Exception:
+        raise
+
+    if result.action == "output":
+        print(f"Generated benchmark report in a temporary worktree and wrote it to {paths.output}")
+    elif result.action == "promote-generated":
+        print(f"Generated benchmark report in a temporary worktree and promoted it to {paths.current}")
+    else:
+        print(f"Promoted {paths.source} to {paths.current}")
+    print(f"Current performance report: {result.report_id.current_tag} vs {result.report_id.baseline_tag}")
+    print(f"Archive directory: {paths.archive_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -20,6 +20,7 @@ Set these variables to avoid repeating the version string:
 # tag has the leading v, version does not
 TAG=vX.Y.Z
 VERSION=${TAG#v}
+PREVIOUS_TAG=vA.B.C
 ```
 
 Verify your git remotes:
@@ -100,7 +101,24 @@ just plot-vs-linalg-readme
 Review the updated table in `README.md` and the plot in `docs/assets/` for
 accuracy.
 
-5. Save benchmark baselines for this release
+5. Update the release performance comparison
+
+```bash
+# Infers TAG from Cargo.toml, compares it against the previous stable published
+# release, writes docs/PERFORMANCE.md, and archives the previous docs/PERFORMANCE.md
+# under docs/archive/performance/.
+just performance-release
+```
+
+Review `docs/PERFORMANCE.md` for the latest release-to-release comparison. Older
+committed comparisons are archived under `docs/archive/performance/` with
+lexicographically sorted filenames such as `v0.4.2-vs-v0.4.1.md`. Iterative
+local reports still live under `target/bench-reports/`. For an explicit release
+repair, run `just performance-release <current-tag> <previous-tag>`. To compare
+the stored GitHub Actions release assets instead of running cargo locally, use
+`just performance-github-assets`.
+
+6. Save benchmark baselines for this release
 
 ```bash
 # Save a named full baseline for this release
@@ -125,7 +143,7 @@ uploads a short-lived Actions artifact for debugging the run.
 
 See `docs/BENCHMARKING.md` for the full comparison workflow.
 
-6. Validate the release branch
+7. Validate the release branch
 
 ```bash
 just ci
@@ -133,7 +151,7 @@ just citation-check
 cargo publish --locked --dry-run
 ```
 
-7. Stage and commit release artifacts
+8. Stage and commit release artifacts
 
 ```bash
 git add Cargo.toml Cargo.lock CITATION.cff pyproject.toml CHANGELOG.md README.md docs/
@@ -143,11 +161,11 @@ git commit -m "chore(release): release $TAG
 - Bump version to $TAG
 - Update citation and utility package metadata
 - Update changelog with latest changes
-- Update benchmark comparison table
+- Update benchmark comparison table and release performance report
 - Update documentation for release"
 ```
 
-8. Push the branch and open a PR
+9. Push the branch and open a PR
 
 ```bash
 git push -u origin "release/$TAG"

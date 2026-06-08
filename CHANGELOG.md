@@ -43,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Move error and tolerance contracts into first-class modules with prelude exports
   - Update exact benchmarks to distinguish strict Result paths from rounded f64 paths
   - Document and exercise the rounded fallback pattern for RequiresRounding errors
+- [**breaking**] Make exact f64 conversions strict [`89f3720`](https://github.com/acgetchell/la-stack/commit/89f3720ecde9f12d7a0f42e79394836615e8fd97)
+  - Make Matrix and Vector the finite-by-construction public types for exact arithmetic.
+  - Add rounded exact-to-f64 APIs for determinant and solve callers that want explicit lossy conversion.
+  - Return typed Unrepresentable reasons when strict exact-to-f64 conversion would round or become non-finite.
+  - Specialize D4 exact determinants and keep determinant/error-bound zero coefficients from evaluating overflowing absent terms.
+  - Update exact benchmark comparison reporting to compare strict and rounded APIs against legacy v0.4.2 rows.
 
 ### Changed
 
@@ -72,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Use a literal regex pattern for the malformed Criterion JSON diagnostic so
   Windows paths with backslashes do not break pytest's match expression.
 - Align ty with Python 3.13 [`b9e0ba0`](https://github.com/acgetchell/la-stack/commit/b9e0ba08e54a15d8eddd5c5c53edc37bbc03939a)
+- Preserve coordinates for overflowed accumulators [`1d976b3`](https://github.com/acgetchell/la-stack/commit/1d976b346172ad4eca37c68a3ec31817eeca8529)
+
+  - Return matrix-cell metadata when inf-norm row sums or symmetry tolerance scaling overflow.
+  - Avoid reparsing finite-by-construction RHS vectors in LU and LDLT solves.
 
 ## [0.4.2] - 2026-06-04
 
