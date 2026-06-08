@@ -186,6 +186,14 @@ bench-compare baseline="last" suite="all" scope="release-signal": python-sync
     baseline="{{baseline}}"
     uv run bench-compare "$baseline" --suite "{{suite}}" --scope "{{scope}}"
 
+# Generate release-signal measurements in a temp worktree, then promote/archive docs.
+performance-release current_tag baseline_tag: python-sync
+    uv run archive-performance "{{current_tag}}" "{{baseline_tag}}" --generate-in-temp-worktree --worktree-ref HEAD
+
+# Generate a published-tag comparison in a temp worktree, then promote/archive docs.
+performance-archive-published current_tag baseline_tag: python-sync
+    uv run archive-performance "{{current_tag}}" "{{baseline_tag}}" --generate-in-temp-worktree --worktree-ref "{{current_tag}}" --no-apply-current-diff
+
 # Run the exact-arithmetic benchmark suite.
 bench-exact:
     cargo bench --features bench,exact --bench exact
@@ -390,6 +398,8 @@ help-workflows:
     @echo "  just bench-compile          # Compile benches with warnings-as-errors"
     @echo "  just bench-latest           # Run cheap latest measurements"
     @echo "  just bench-latest-vs-last   # Run latest and compare against last"
+    @echo "  just performance-release    # Promote release performance docs"
+    @echo "  just performance-archive-published # Archive published release comparison"
     @echo "  just bench-save-last        # Save full baseline as 'last'"
     @echo "  just bench-vs-linalg        # Run vs_linalg bench (optional filter)"
     @echo "  just bench-vs-linalg-la-stack # Run la-stack rows from vs_linalg"

@@ -193,6 +193,26 @@ local. The report includes per-dimension tables showing median times,
 percent change, speedup, and last-release nalgebra/faer context where a
 matching `vs_linalg` peer exists.
 
+Release PRs promote one curated comparison into committed docs:
+
+```bash
+just performance-release v0.4.3 v0.4.2
+```
+
+This runs the release-signal benchmark set, renders the comparison into
+an isolated temporary worktree, copies the finished report to
+`docs/PERFORMANCE.md`, and archives the previous committed report under
+`docs/archive/performance/`. Archive filenames are release-pair names such as
+`v0.4.2-vs-v0.4.1.md`, so the directory and generated index stay
+lexicographically sorted.
+
+To regenerate and archive a historical published release comparison without
+touching the current checkout:
+
+```bash
+just performance-archive-published v0.4.2 v0.4.1
+```
+
 For exact-arithmetic comparisons against v0.4.2 or older baselines, rows such
 as `det_exact_rounded_f64 (vs det_exact_f64)` mean the current rounded API is
 being compared to the historical lossy `*_exact_f64` benchmark. Rows such as

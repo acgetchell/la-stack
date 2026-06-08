@@ -33,6 +33,21 @@ just bench-compare
 Use `uv run bench-compare --snapshot` for a no-baseline snapshot, or
 `uv run bench-compare <baseline>` to compare against a named saved baseline.
 
+For release PRs, promote one curated release-to-release comparison into
+committed docs and archive the previous committed report. Benchmark generation
+runs in a temporary worktree:
+
+```bash
+just performance-release v0.4.3 v0.4.2
+```
+
+To regenerate a historical published-tag comparison without changing the current
+checkout:
+
+```bash
+just performance-archive-published v0.4.2 v0.4.1
+```
+
 ### Plotting Criterion benchmarks (la-stack vs nalgebra/faer)
 
 The plotter reads Criterion output under:
@@ -169,6 +184,8 @@ tag-annotation size limit.
 
 | Script | Purpose |
 |---|---|
+| `archive_performance.py` | Promote release performance docs and archive older comparisons |
+| `bench_compare.py` | Compare Criterion benchmark baselines and render Markdown reports |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
 | `tag_release.py` | Create annotated git tags from CHANGELOG.md sections |
 | `postprocess_changelog.py` | Strip trailing blank lines from git-cliff output |
