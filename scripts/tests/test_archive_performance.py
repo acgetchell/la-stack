@@ -423,6 +423,18 @@ def test_main_reports_release_pair_mismatch_to_stderr(tmp_path: Path, capsys: py
     assert not current.exists()
 
 
+def test_main_reraises_unexpected_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_unexpected(*, args: object, paths: object, request: object, repo_root: Path) -> archive_performance.ArchiveResult:
+        msg = "unexpected test failure"
+        raise AssertionError(msg)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(archive_performance, "_run_archive_request", fail_unexpected)
+
+    with pytest.raises(AssertionError, match="unexpected test failure"):
+        main(["v0.4.3", "v0.4.2"])
+
+
 def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"

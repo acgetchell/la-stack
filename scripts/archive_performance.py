@@ -959,9 +959,11 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         result = _run_archive_request(args=args, paths=paths, request=request, repo_root=root)
-    except Exception as exc:
+    except (ValueError, RuntimeError, FileNotFoundError, subprocess.CalledProcessError) as exc:
         print(f"archive-performance: {exc}", file=sys.stderr)
         return 1
+    except Exception:
+        raise
 
     if result.action == "output":
         print(f"Generated benchmark report in a temporary worktree and wrote it to {paths.output}")
