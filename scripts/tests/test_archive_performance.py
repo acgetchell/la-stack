@@ -6,11 +6,22 @@ import io
 import subprocess
 import tarfile
 from pathlib import Path
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 import archive_performance
 from archive_performance import GenerationConfig, generate_and_promote_worktree_report, main, normalize_tag, parse_report_id, promote_report
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+type RunnerCall = tuple[str, tuple[str, ...], Path | None]
+
+
+def _result(stdout: str = "") -> SimpleNamespace:
+    return SimpleNamespace(stdout=stdout)
 
 
 def _report(version: str, baseline: str) -> str:
@@ -27,6 +38,24 @@ def _report(version: str, baseline: str) -> str:
         "| Benchmark | Baseline | Latest | Change | Speedup |\n"
         "|-----------|---------:|-------:|-------:|--------:|\n"
         "| det_exact | 1.0 ns | 0.9 ns | -10.0% | 1.11x |\n"
+    )
+
+
+def _normalized_report(version: str, baseline: str) -> str:
+    return archive_performance._normalize_how_to_update(_report(version, baseline))
+
+
+def _legacy_report(version: str, baseline: str) -> str:
+    return (
+        _report(version, baseline)
+        + "\n"
+        + "## How to Update\n\n"
+        + "```bash\n"
+        + "git checkout v0.2.0\n"
+        + "just bench-save-baseline v0.2.0\n"
+        + "git checkout main\n"
+        + "just bench-compare v0.2.0\n"
+        + "```\n"
     )
 
 
@@ -78,7 +107,75 @@ def test_parse_report_id_reads_current_and_baseline_tags() -> None:
     assert report_id.archive_name == "v0.4.2-vs-v0.4.1.md"
 
 
-def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path) -> None:
+def test_published_release_pair_discovers_latest_stable_semver_pair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+        assert command == "gh"
+        assert args == [
+            "release",
+            "list",
+            "--json",
+            "tagName,isDraft,isPrerelease,publishedAt",
+            "--limit",
+            "100",
+        ]
+        assert cwd == tmp_path
+        return _result(
+            "["
+            '{"tagName":"v0.4.2","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
+            '{"tagName":"v0.4.10","isDraft":false,"isPrerelease":false,"publishedAt":"2026-04-01T00:00:00Z"},'
+            '{"tagName":"v0.4.11-rc.1","isDraft":false,"isPrerelease":true,"publishedAt":"2026-06-01T00:00:00Z"},'
+            '{"tagName":"v0.4.11","isDraft":true,"isPrerelease":false,"publishedAt":"2026-06-02T00:00:00Z"},'
+            '{"tagName":"not-semver","isDraft":false,"isPrerelease":false,"publishedAt":"2026-06-03T00:00:00Z"},'
+            '{"tagName":"v0.4.3","isDraft":false,"isPrerelease":false,"publishedAt":"2026-03-01T00:00:00Z"}'
+            "]"
+        )
+
+    monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
+
+    report_id = archive_performance._published_release_pair(tmp_path)
+
+    assert report_id.current_tag == "v0.4.10"
+    assert report_id.baseline_tag == "v0.4.3"
+
+
+def test_published_release_pair_uses_latest_published_release_not_highest_semver(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+        assert command == "gh"
+        assert cwd == tmp_path
+        return _result(
+            "["
+            '{"tagName":"v0.5.0","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
+            '{"tagName":"v0.4.9","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"},'
+            '{"tagName":"v0.4.8","isDraft":false,"isPrerelease":false,"publishedAt":"2025-12-01T00:00:00Z"}'
+            "]"
+        )
+
+    monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
+
+    report_id = archive_performance._published_release_pair(tmp_path)
+
+    assert report_id.current_tag == "v0.4.9"
+    assert report_id.baseline_tag == "v0.4.8"
+
+
+def test_benchmark_env_uses_current_repo_toolchain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
+    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.96.0"\n', encoding="utf-8")
+
+    env = archive_performance._benchmark_env(tmp_path)
+
+    assert env is not None
+    assert env["RUSTUP_TOOLCHAIN"] == "1.96.0"
+
+
+def test_benchmark_env_respects_existing_toolchain_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RUSTUP_TOOLCHAIN", "nightly")
+    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.96.0"\n', encoding="utf-8")
+
+    assert archive_performance._benchmark_env(tmp_path) is None
+
+
+def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path: Path) -> None:
     source = tmp_path / "target" / "bench-reports" / "performance.md"
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
@@ -99,8 +196,8 @@ def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path) -> 
     )
 
     assert promoted.archive_name == "v0.4.2-vs-v0.4.1.md"
-    assert current.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
-    assert (archive_dir / "v0.4.1-vs-v0.4.0.md").read_text(encoding="utf-8") == _report("0.4.1", "v0.4.0")
+    assert current.read_text(encoding="utf-8") == _normalized_report("0.4.2", "v0.4.1")
+    assert (archive_dir / "v0.4.1-vs-v0.4.0.md").read_text(encoding="utf-8") == _normalized_report("0.4.1", "v0.4.0")
     assert (archive_dir / "README.md").read_text(encoding="utf-8") == (
         "# Archived Performance Reports\n\n"
         "Older release-to-release benchmark comparisons are archived here.\n"
@@ -110,7 +207,7 @@ def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path) -> 
     )
 
 
-def test_promote_report_is_idempotent_for_same_release_pair(tmp_path) -> None:
+def test_promote_report_is_idempotent_for_same_release_pair(tmp_path: Path) -> None:
     source = tmp_path / "performance-new.md"
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
@@ -131,7 +228,30 @@ def test_promote_report_is_idempotent_for_same_release_pair(tmp_path) -> None:
     assert "- No archived performance reports yet." in (archive_dir / "README.md").read_text(encoding="utf-8")
 
 
-def test_promote_report_rejects_unexpected_release_pair(tmp_path) -> None:
+def test_promote_report_does_not_overwrite_existing_archive(tmp_path: Path) -> None:
+    source = tmp_path / "performance-new.md"
+    current = tmp_path / "docs" / "PERFORMANCE.md"
+    archive_dir = tmp_path / "docs" / "archive" / "performance"
+    archived = archive_dir / "v0.4.1-vs-v0.4.0.md"
+
+    source.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    current.parent.mkdir(parents=True)
+    current.write_text(_report("0.4.1", "v0.4.0"), encoding="utf-8")
+    archive_dir.mkdir(parents=True)
+    archived.write_text("already archived\n", encoding="utf-8")
+
+    promote_report(
+        source=source,
+        current=current,
+        archive_dir=archive_dir,
+        expected_current_tag="v0.4.2",
+        expected_baseline_tag="v0.4.1",
+    )
+
+    assert archived.read_text(encoding="utf-8") == "already archived\n"
+
+
+def test_promote_report_rejects_unexpected_release_pair(tmp_path: Path) -> None:
     source = tmp_path / "performance-new.md"
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
@@ -147,7 +267,33 @@ def test_promote_report_rejects_unexpected_release_pair(tmp_path) -> None:
         )
 
 
-def test_main_promotes_generated_report_to_docs_performance(tmp_path, capsys) -> None:
+def test_promote_report_rewrites_legacy_update_instructions(tmp_path: Path) -> None:
+    source = tmp_path / "performance-new.md"
+    current = tmp_path / "docs" / "PERFORMANCE.md"
+    archive_dir = tmp_path / "docs" / "archive" / "performance"
+    source.write_text(_legacy_report("0.4.3", "v0.4.2"), encoding="utf-8")
+    current.parent.mkdir(parents=True)
+    current.write_text(_legacy_report("0.4.2", "v0.4.1"), encoding="utf-8")
+
+    promote_report(
+        source=source,
+        current=current,
+        archive_dir=archive_dir,
+        expected_current_tag="v0.4.3",
+        expected_baseline_tag="v0.4.2",
+    )
+
+    current_text = current.read_text(encoding="utf-8")
+    archived_text = (archive_dir / "v0.4.2-vs-v0.4.1.md").read_text(encoding="utf-8")
+    assert "just performance-release <current-tag> <previous-tag>" in current_text
+    assert "just performance-archive-published" in current_text
+    assert "just performance-archive-published <current-tag> <previous-tag>" in current_text
+    assert "git checkout" not in current_text
+    assert "just performance-release <current-tag> <previous-tag>" in archived_text
+    assert "git checkout" not in archived_text
+
+
+def test_main_promotes_generated_report_to_docs_performance(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     source = tmp_path / "target" / "bench-reports" / "performance.md"
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
@@ -172,12 +318,12 @@ def test_main_promotes_generated_report_to_docs_performance(tmp_path, capsys) ->
     )
 
     assert rc == 0
-    assert current.read_text(encoding="utf-8") == generated
+    assert current.read_text(encoding="utf-8") == archive_performance._normalize_how_to_update(generated)
     assert (archive_dir / "v0.4.2-vs-v0.4.1.md").exists()
     assert "Current performance report: v0.4.3 vs v0.4.2" in capsys.readouterr().out
 
 
-def test_main_reports_release_pair_mismatch_to_stderr(tmp_path, capsys) -> None:
+def test_main_reports_release_pair_mismatch_to_stderr(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     source = tmp_path / "target" / "bench-reports" / "performance.md"
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
@@ -203,24 +349,24 @@ def test_main_reports_release_pair_mismatch_to_stderr(tmp_path, capsys) -> None:
     assert not current.exists()
 
 
-def test_main_generates_report_in_temp_worktree(tmp_path, monkeypatch, capsys) -> None:
+def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    calls: list[tuple[str, tuple[str, ...], Path | None]] = []
+    calls: list[RunnerCall] = []
 
-    def fake_run_git(args, cwd=None, **kwargs):
+    def fake_run_git(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git", tuple(args), cwd))
         if args[:3] == ["worktree", "add", "--detach"]:
             worktree = Path(args[3])
             worktree.mkdir(parents=True)
             _write_current_benchmark_tooling(worktree)
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
-    def fake_run_git_with_input(args, input_data, cwd=None, **kwargs):
+    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
-    def fake_run_safe(command, args, cwd=None, **kwargs):
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
         if command == "gh":
             download_dir = Path(args[args.index("--dir") + 1])
@@ -228,7 +374,7 @@ def test_main_generates_report_in_temp_worktree(tmp_path, monkeypatch, capsys) -
         if command == "uv":
             output = Path(args[args.index("--output") + 1])
             output.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
@@ -256,7 +402,7 @@ def test_main_generates_report_in_temp_worktree(tmp_path, monkeypatch, capsys) -
 
     captured = capsys.readouterr()
     assert rc == 0
-    assert current.read_text(encoding="utf-8") == _report("0.4.3", "v0.4.2")
+    assert current.read_text(encoding="utf-8") == _normalized_report("0.4.3", "v0.4.2")
     assert "Generated benchmark report in a temporary worktree" in captured.out
     assert "target/bench-reports/performance.md" not in captured.out
     assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.3" for kind, args, _ in calls)
@@ -265,31 +411,33 @@ def test_main_generates_report_in_temp_worktree(tmp_path, monkeypatch, capsys) -
     assert not any(kind == "git-stdin" for kind, _, _ in calls)
 
 
-def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path, monkeypatch, capsys) -> None:
+def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    calls: list[tuple[str, tuple[str, ...], Path | None]] = []
+    calls: list[RunnerCall] = []
 
-    def fake_run_git(args, cwd=None, **kwargs):
+    def fake_run_git(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git", tuple(args), cwd))
+        if args[:2] == ["fetch", "origin"]:
+            return _result()
         if args[:3] == ["worktree", "add", "--detach"]:
             worktree = Path(args[3])
             worktree.mkdir(parents=True)
             _write_current_benchmark_tooling(worktree)
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
-    def fake_run_git_with_input(args, input_data, cwd=None, **kwargs):
+    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
-    def fake_run_safe(command, args, cwd=None, **kwargs):
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
         if command == "gh":
             download_dir = Path(args[args.index("--dir") + 1])
             _write_baseline_archive(download_dir / "la-stack-v0.4.2-criterion-baseline.tar.gz")
         if command == "just" and args == ["bench-latest"]:
             raise subprocess.CalledProcessError(42, [command, *args], output="bench stdout", stderr="bench stderr")
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
@@ -319,29 +467,29 @@ def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path, monkeyp
     assert any(kind == "git" and args[:3] == ("worktree", "remove", "--force") for kind, args, _ in calls)
 
 
-def test_generate_report_rejects_unsafe_baseline_archive(tmp_path, monkeypatch, capsys) -> None:
+def test_generate_report_rejects_unsafe_baseline_archive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    calls: list[tuple[str, tuple[str, ...], Path | None]] = []
+    calls: list[RunnerCall] = []
 
-    def fake_run_git(args, cwd=None, **kwargs):
+    def fake_run_git(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git", tuple(args), cwd))
         if args[:3] == ["worktree", "add", "--detach"]:
             worktree = Path(args[3])
             worktree.mkdir(parents=True)
             _write_current_benchmark_tooling(worktree)
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
-    def fake_run_git_with_input(args, input_data, cwd=None, **kwargs):
+    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
-    def fake_run_safe(command, args, cwd=None, **kwargs):
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
         if command == "gh":
             download_dir = Path(args[args.index("--dir") + 1])
             _write_unsafe_baseline_archive(download_dir / "la-stack-v0.4.2-criterion-baseline.tar.gz")
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
@@ -372,26 +520,39 @@ def test_generate_report_rejects_unsafe_baseline_archive(tmp_path, monkeypatch, 
     assert any(kind == "git" and args[:3] == ("worktree", "remove", "--force") for kind, args, _ in calls)
 
 
-def test_generate_report_fails_when_release_baseline_asset_missing(tmp_path, monkeypatch, capsys) -> None:
+def test_generate_report_falls_back_when_release_baseline_asset_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    calls: list[tuple[str, tuple[str, ...], Path | None]] = []
+    calls: list[RunnerCall] = []
 
-    def fake_run_git(args, cwd=None, **kwargs):
+    def fake_run_git(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git", tuple(args), cwd))
         if args[:3] == ["worktree", "add", "--detach"]:
             worktree = Path(args[3])
             worktree.mkdir(parents=True)
-            _write_current_benchmark_tooling(worktree)
-        return type("Result", (), {"stdout": ""})()
+            if worktree.name == "baseline-worktree":
+                _write_legacy_benchmark_tooling(worktree)
+            else:
+                _write_current_benchmark_tooling(worktree)
+        return _result()
 
-    def fake_run_git_with_input(args, input_data, cwd=None, **kwargs):
+    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
-    def fake_run_safe(command, args, cwd=None, **kwargs):
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
-        return type("Result", (), {"stdout": ""})()
+        if command == "just" and args == ["bench-save-baseline", "v0.4.2"]:
+            assert cwd is not None
+            criterion_dir = cwd / "target" / "criterion"
+            criterion_dir.mkdir(parents=True)
+            (criterion_dir / "baseline.txt").write_text("baseline\n", encoding="utf-8")
+        if command == "uv":
+            output = Path(args[args.index("--output") + 1])
+            output.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
+        return _result()
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
@@ -414,14 +575,143 @@ def test_generate_report_fails_when_release_baseline_asset_missing(tmp_path, mon
     )
 
     captured = capsys.readouterr()
+    assert rc == 0
+    assert "release baseline asset unavailable; generating v0.4.2 locally" in captured.err
+    assert current.read_text(encoding="utf-8") == _normalized_report("0.4.3", "v0.4.2")
+    assert any(kind == "just" and args == ("bench-save-baseline", "v0.4.2") for kind, args, _ in calls)
+    assert any(kind == "just" and args == ("bench-latest",) for kind, args, _ in calls)
+    assert any(kind == "uv" and "--suite" in args for kind, args, _ in calls)
+    assert sum(1 for kind, args, _ in calls if kind == "git" and args[:3] == ("worktree", "remove", "--force")) == 2
+
+
+def test_main_generates_latest_published_report_from_github_releases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    current = tmp_path / "docs" / "PERFORMANCE.md"
+    archive_dir = tmp_path / "docs" / "archive" / "performance"
+    calls: list[RunnerCall] = []
+
+    def fake_run_git(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+        calls.append(("git", tuple(args), cwd))
+        if args[:3] == ["worktree", "add", "--detach"]:
+            worktree = Path(args[3])
+            worktree.mkdir(parents=True)
+            _write_current_benchmark_tooling(worktree)
+        return _result()
+
+    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+        calls.append(("git-stdin", tuple(args), cwd))
+        return _result()
+
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+        calls.append((command, tuple(args), cwd))
+        if command == "gh" and args[:2] == ["release", "list"]:
+            return _result(
+                "["
+                '{"tagName":"v0.4.2","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
+                '{"tagName":"v0.4.3","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"}'
+                "]"
+            )
+        if command == "gh":
+            download_dir = Path(args[args.index("--dir") + 1])
+            _write_baseline_archive(download_dir / "la-stack-v0.4.2-criterion-baseline.tar.gz")
+        if command == "uv":
+            output = Path(args[args.index("--output") + 1])
+            output.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
+        return _result()
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
+    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
+
+    rc = main(
+        [
+            "--current",
+            str(current),
+            "--archive-dir",
+            str(archive_dir),
+            "--published-latest",
+            "--generate-in-temp-worktree",
+            "--no-apply-current-diff",
+        ]
+    )
+
+    assert rc == 0
+    assert current.read_text(encoding="utf-8") == _normalized_report("0.4.3", "v0.4.2")
+    assert any(
+        kind == "git"
+        and args
+        == (
+            "fetch",
+            "origin",
+            "refs/tags/v0.4.3:refs/tags/v0.4.3",
+            "refs/tags/v0.4.2:refs/tags/v0.4.2",
+        )
+        for kind, args, _ in calls
+    )
+    fetch_index = next(index for index, (kind, args, _) in enumerate(calls) if kind == "git" and args[:2] == ("fetch", "origin"))
+    worktree_index = next(index for index, (kind, args, _) in enumerate(calls) if kind == "git" and args[:3] == ("worktree", "add", "--detach"))
+    assert fetch_index < worktree_index
+    assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.3" for kind, args, _ in calls)
+
+
+def test_main_published_latest_fetch_failure_stops_before_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    current = tmp_path / "docs" / "PERFORMANCE.md"
+    archive_dir = tmp_path / "docs" / "archive" / "performance"
+    calls: list[RunnerCall] = []
+
+    def fake_run_git(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+        calls.append(("git", tuple(args), cwd))
+        if args[:2] == ["fetch", "origin"]:
+            raise subprocess.CalledProcessError(128, ["git", *args], output="fetch stdout", stderr="missing tag")
+        if args[:3] == ["worktree", "add", "--detach"]:
+            worktree = Path(args[3])
+            worktree.mkdir(parents=True)
+            _write_current_benchmark_tooling(worktree)
+        return _result()
+
+    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+        calls.append(("git-stdin", tuple(args), cwd))
+        return _result()
+
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+        calls.append((command, tuple(args), cwd))
+        if command == "gh" and args[:2] == ["release", "list"]:
+            return _result(
+                "["
+                '{"tagName":"v0.4.2","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
+                '{"tagName":"v0.4.3","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"}'
+                "]"
+            )
+        return _result()
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
+    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
+
+    rc = main(
+        [
+            "--current",
+            str(current),
+            "--archive-dir",
+            str(archive_dir),
+            "--published-latest",
+            "--generate-in-temp-worktree",
+            "--no-apply-current-diff",
+        ]
+    )
+
+    captured = capsys.readouterr()
     assert rc == 1
-    assert "release baseline asset was not downloaded" in captured.err
+    assert "command failed (128): git fetch origin" in captured.err
+    assert "missing tag" in captured.err
     assert not current.exists()
+    assert not any(kind == "git" and args[:3] == ("worktree", "add", "--detach") for kind, args, _ in calls)
     assert not any(kind in {"just", "uv"} for kind, _, _ in calls)
-    assert any(kind == "git" and args[:3] == ("worktree", "remove", "--force") for kind, args, _ in calls)
+    assert not any(kind == "git-stdin" for kind, _, _ in calls)
 
 
-def test_failed_atomic_replace_preserves_existing_report(tmp_path, monkeypatch) -> None:
+def test_failed_atomic_replace_preserves_existing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source = tmp_path / "performance-new.md"
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
@@ -431,7 +721,7 @@ def test_failed_atomic_replace_preserves_existing_report(tmp_path, monkeypatch) 
     current.parent.mkdir(parents=True)
     current.write_text(original, encoding="utf-8")
 
-    def fail_replace(src, dst) -> None:
+    def fail_replace(src: Path, dst: Path) -> None:
         msg = f"simulated replace failure for {dst}"
         raise OSError(msg)
 
@@ -450,29 +740,29 @@ def test_failed_atomic_replace_preserves_existing_report(tmp_path, monkeypatch) 
     assert not list(current.parent.glob(".PERFORMANCE.md.*.tmp"))
 
 
-def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path, monkeypatch) -> None:
+def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     current.parent.mkdir(parents=True)
     current.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
-    calls: list[tuple[str, tuple[str, ...], Path | None]] = []
+    calls: list[RunnerCall] = []
 
-    def fake_run_git(args, cwd=None, **kwargs):
+    def fake_run_git(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git", tuple(args), cwd))
         if args[:3] == ["worktree", "add", "--detach"]:
             worktree = Path(args[3])
             worktree.mkdir(parents=True)
             _write_current_benchmark_tooling(worktree)
         if args == ["diff", "--binary", "HEAD"]:
-            return type("Result", (), {"stdout": "diff --git a/README.md b/README.md\n"})()
-        return type("Result", (), {"stdout": ""})()
+            return _result("diff --git a/README.md b/README.md\n")
+        return _result()
 
-    def fake_run_git_with_input(args, input_data, cwd=None, **kwargs):
+    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         assert "diff --git" in input_data
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
-    def fake_run_safe(command, args, cwd=None, **kwargs):
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
         if command == "gh":
             download_dir = Path(args[args.index("--dir") + 1])
@@ -480,7 +770,7 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path, monk
         if command == "uv":
             output = Path(args[args.index("--output") + 1])
             output.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
     monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
@@ -499,7 +789,7 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path, monk
     )
 
     assert report_id.archive_name == "v0.4.3-vs-v0.4.2.md"
-    assert current.read_text(encoding="utf-8") == _report("0.4.3", "v0.4.2")
+    assert current.read_text(encoding="utf-8") == _normalized_report("0.4.3", "v0.4.2")
     assert (archive_dir / "v0.4.2-vs-v0.4.1.md").exists()
     assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "HEAD" for kind, args, _ in calls)
     assert any(kind == "git-stdin" and args == ("apply", "--binary") for kind, args, _ in calls)
@@ -507,24 +797,24 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path, monk
     assert any(kind == "git" and args[:3] == ("worktree", "remove", "--force") for kind, args, _ in calls)
 
 
-def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path, monkeypatch) -> None:
+def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    calls: list[tuple[str, tuple[str, ...], Path | None]] = []
+    calls: list[RunnerCall] = []
 
-    def fake_run_git(args, cwd=None, **kwargs):
+    def fake_run_git(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git", tuple(args), cwd))
         if args[:3] == ["worktree", "add", "--detach"]:
             worktree = Path(args[3])
             worktree.mkdir(parents=True)
             _write_legacy_benchmark_tooling(worktree)
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
-    def fake_run_git_with_input(args, input_data, cwd=None, **kwargs):
+    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
-    def fake_run_safe(command, args, cwd=None, **kwargs):
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
         if command == "gh":
             download_dir = Path(args[args.index("--dir") + 1])
@@ -532,7 +822,7 @@ def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path
         if command == "uv":
             output = Path(args[args.index("--output") + 1])
             output.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
-        return type("Result", (), {"stdout": ""})()
+        return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
     monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
@@ -551,7 +841,7 @@ def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path
     )
 
     assert report_id.archive_name == "v0.4.2-vs-v0.4.1.md"
-    assert current.read_text(encoding="utf-8") == _report("0.4.2", "v0.4.1")
+    assert current.read_text(encoding="utf-8") == _normalized_report("0.4.2", "v0.4.1")
     assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.2" for kind, args, _ in calls)
     assert any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
     assert not any(kind == "just" and args == ("bench-latest",) for kind, args, _ in calls)

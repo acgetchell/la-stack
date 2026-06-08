@@ -151,38 +151,25 @@ benchmarks on every iteration.
 ### Workflow
 
 ```bash
-# 1. Check out the old release and save its full baseline
-git checkout v0.2.0
-just bench-save-baseline v0.2.0
+# Latest published release vs previous stable release
+just performance-archive-published
 
-# 2. Switch to current code and run latest la-stack measurements
-git checkout main   # or your feature branch
-just bench-latest   # populates target/criterion/*/new/
-
-# 3. Generate a local comparison report
-just bench-compare v0.2.0
+# Explicit historical repair
+just performance-archive-published v0.4.2 v0.4.1
 ```
 
-You can save multiple baselines and compare against any of them.
+These recipes create isolated temporary worktrees, restore release baselines
+from GitHub Release assets when available, and fall back to generating a missing
+baseline in a second temporary worktree. They do not require changing the current
+checkout.
 
-If the release baseline is already present in `target/criterion/`, skip the
-checkout step and compare directly. For example, to compare current code against
-the saved `v0.4.2` release baseline:
+For local scratch comparisons, you can save multiple baselines and compare
+against any of them. If the release baseline is already present in
+`target/criterion/`, compare directly:
 
 ```bash
 just bench-latest          # gather latest la-stack measurements
 just bench-compare v0.4.2  # compare latest measurements against v0.4.2
-```
-
-If the release baseline is not present locally, download and restore the release
-asset first:
-
-```bash
-gh release download v0.4.2 --pattern "la-stack-v0.4.2-criterion-baseline.tar.gz"  # fetch archived release baseline
-mkdir -p target                                                                    # ensure Criterion parent directory exists
-tar -C target -xzf la-stack-v0.4.2-criterion-baseline.tar.gz                       # restore target/criterion baseline data
-just bench-latest                                                                  # gather latest la-stack measurements
-just bench-compare v0.4.2                                                          # compare latest measurements against v0.4.2
 ```
 
 ### Output
@@ -206,12 +193,16 @@ an isolated temporary worktree, copies the finished report to
 `v0.4.2-vs-v0.4.1.md`, so the directory and generated index stay
 lexicographically sorted.
 
-To regenerate and archive a historical published release comparison without
+To regenerate and archive the latest published release comparison without
 touching the current checkout:
 
 ```bash
-just performance-archive-published v0.4.2 v0.4.1
+just performance-archive-published
 ```
+
+The recipe discovers the latest stable published GitHub release and its previous
+stable release automatically. For explicit historical repair, pass both tags:
+`just performance-archive-published v0.4.2 v0.4.1`.
 
 For exact-arithmetic comparisons against v0.4.2 or older baselines, rows such
 as `det_exact_rounded_f64 (vs det_exact_f64)` mean the current rounded API is
@@ -261,4 +252,5 @@ just bench-save-last
 When the GitHub Release is published, `.github/workflows/release-benchmarks.yml`
 saves a full release baseline and attaches
 `la-stack-$TAG-criterion-baseline.tar.gz` to the release as the durable archive.
-See `docs/RELEASING.md` step 5 for where this fits in the release process.
+See the `just performance-release` step in `docs/RELEASING.md` for where the
+curated `docs/PERFORMANCE.md` comparison fits in the release process.

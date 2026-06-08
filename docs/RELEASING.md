@@ -113,10 +113,11 @@ just performance-release "$TAG" "$PREVIOUS_TAG"
 Review `docs/PERFORMANCE.md` for the latest release-to-release comparison. Older
 committed comparisons are archived under `docs/archive/performance/` with
 lexicographically sorted filenames such as `v0.4.2-vs-v0.4.1.md`. Iterative
-local reports still live under `target/bench-reports/`. To regenerate a
-historical published release comparison, use
-`just performance-archive-published <current-tag> <baseline-tag>`; it also runs
-inside a temporary worktree.
+local reports still live under `target/bench-reports/`. To regenerate the
+latest published release comparison, use `just performance-archive-published`;
+it discovers the latest stable published GitHub release and its previous stable
+release automatically, then runs inside a temporary worktree. For explicit
+historical repair, pass both tags.
 
 6. Save benchmark baselines for this release
 

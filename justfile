@@ -191,8 +191,20 @@ performance-release current_tag baseline_tag: python-sync
     uv run archive-performance "{{current_tag}}" "{{baseline_tag}}" --generate-in-temp-worktree --worktree-ref HEAD
 
 # Generate a published-tag comparison in a temp worktree, then promote/archive docs.
-performance-archive-published current_tag baseline_tag: python-sync
-    uv run archive-performance "{{current_tag}}" "{{baseline_tag}}" --generate-in-temp-worktree --worktree-ref "{{current_tag}}" --no-apply-current-diff
+performance-archive-published current_tag="" baseline_tag="": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    current_tag="{{current_tag}}"
+    baseline_tag="{{baseline_tag}}"
+    if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
+        if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
+            echo "current_tag and baseline_tag must be provided together" >&2
+            exit 2
+        fi
+        uv run archive-performance "$current_tag" "$baseline_tag" --generate-in-temp-worktree --worktree-ref "$current_tag" --no-apply-current-diff
+    else
+        uv run archive-performance --published-latest --generate-in-temp-worktree --no-apply-current-diff
+    fi
 
 # Run the exact-arithmetic benchmark suite.
 bench-exact:

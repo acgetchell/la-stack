@@ -41,12 +41,15 @@ runs in a temporary worktree:
 just performance-release v0.4.3 v0.4.2
 ```
 
-To regenerate a historical published-tag comparison without changing the current
+To regenerate the latest published-tag comparison without changing the current
 checkout:
 
 ```bash
-just performance-archive-published v0.4.2 v0.4.1
+just performance-archive-published
 ```
+
+For explicit historical repair, pass both tags:
+`just performance-archive-published v0.4.2 v0.4.1`.
 
 ### Plotting Criterion benchmarks (la-stack vs nalgebra/faer)
 
