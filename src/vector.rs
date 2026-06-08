@@ -9,8 +9,9 @@ use crate::LaError;
 /// Public construction rejects NaN and infinity through [`try_new`](Self::try_new),
 /// and the storage field is private, so a `Vector` value carries the invariant
 /// that every stored entry is finite. Algorithms therefore do not re-scan stored
-/// entries before using a `Vector`; they only report non-finite values computed
-/// during arithmetic, such as overflowed accumulators.
+/// entries at every use; user-visible non-finite errors come from construction
+/// boundaries or from values computed during arithmetic, such as overflowed
+/// accumulators.
 ///
 /// Direct field construction is intentionally unavailable to downstream callers:
 ///

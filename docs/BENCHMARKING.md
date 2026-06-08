@@ -193,6 +193,23 @@ local. The report includes per-dimension tables showing median times,
 percent change, speedup, and last-release nalgebra/faer context where a
 matching `vs_linalg` peer exists.
 
+For exact-arithmetic comparisons against v0.4.2 or older baselines, rows such
+as `det_exact_rounded_f64 (vs det_exact_f64)` mean the current rounded API is
+being compared to the historical lossy `*_exact_f64` benchmark. Rows such as
+`det_exact_f64_result (vs det_exact_f64)` intentionally show the overhead of
+the new strict conversion contract against that same historical baseline.
+
+The default `release-signal` scope reports exact-arithmetic rows whose inputs
+are fixed across versions: deterministic D=2..=5 cases plus adversarial fixed
+matrices. Random percentile groups are exploratory tail probes; each benchmark
+run selects p50/p95/p99 input sets by timing the implementation under test, so
+those rows can measure different corpus subsets across versions. Include them
+when investigating tails with:
+
+```bash
+uv run bench-compare v0.4.2 --suite exact --scope all-benches
+```
+
 To generate a current snapshot without a saved baseline:
 
 ```bash

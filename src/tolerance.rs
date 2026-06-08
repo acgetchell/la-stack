@@ -96,7 +96,7 @@ pub const DEFAULT_SINGULAR_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
 /// tolerance separately; the symmetry tolerance is a fixed domain check used to
 /// parse a public [`Matrix`](crate::Matrix) into the internal symmetric proof
 /// type before factorization.
-pub(crate) const LDLT_SYMMETRY_REL_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
+pub const LDLT_SYMMETRY_REL_TOL: Tolerance = Tolerance::new_unchecked(1e-12);
 
 #[cfg(test)]
 mod tests {

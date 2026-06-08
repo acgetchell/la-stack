@@ -18,9 +18,10 @@ use crate::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LDLT_SYMMETRY_REL_TOL, LaErro
 /// [`try_from_rows`](Self::try_from_rows), [`set`](Self::set), and
 /// [`set_checked`](Self::set_checked). The storage field is private, so a
 /// `Matrix` value carries the invariant that every stored entry is finite.
-/// Algorithms therefore do not re-scan stored entries before using a `Matrix`;
-/// they only report non-finite values computed during arithmetic, such as
-/// overflowed elimination or determinant intermediates.
+/// Algorithms therefore do not re-scan stored entries at every use; user-visible
+/// non-finite errors come from construction/mutation boundaries or from values
+/// computed during arithmetic, such as overflowed elimination or determinant
+/// intermediates.
 ///
 /// Direct field construction is intentionally unavailable to downstream callers:
 ///
@@ -650,40 +651,61 @@ impl<const D: usize> Matrix<D> {
         match D {
             0 => Ok(Some(1.0)),
             1 => Self::computed_scalar_result(Some(self.rows[0][0])),
-            2 => Self::computed_scalar_result(Some(
-                self.rows[0][0].mul_add(self.rows[1][1], -(self.rows[0][1] * self.rows[1][0])),
-            )),
+            2 => {
+                let det = if self.rows[0][1] == 0.0 {
+                    self.rows[0][0] * self.rows[1][1]
+                } else {
+                    self.rows[0][0].mul_add(self.rows[1][1], -(self.rows[0][1] * self.rows[1][0]))
+                };
+                Self::computed_scalar_result(Some(det))
+            }
             3 => {
-                let m00 =
-                    self.rows[1][1].mul_add(self.rows[2][2], -(self.rows[1][2] * self.rows[2][1]));
-                let m01 =
-                    self.rows[1][0].mul_add(self.rows[2][2], -(self.rows[1][2] * self.rows[2][0]));
-                let m02 =
-                    self.rows[1][0].mul_add(self.rows[2][1], -(self.rows[1][1] * self.rows[2][0]));
-                Self::computed_scalar_result(Some(
-                    self.rows[0][0]
-                        .mul_add(m00, (-self.rows[0][1]).mul_add(m01, self.rows[0][2] * m02)),
-                ))
+                let det = Self::det3_elements(
+                    [self.rows[0][0], self.rows[0][1], self.rows[0][2]],
+                    [self.rows[1][0], self.rows[1][1], self.rows[1][2]],
+                    [self.rows[2][0], self.rows[2][1], self.rows[2][2]],
+                );
+                Self::computed_scalar_result(Some(det))
             }
             4 => {
                 let r = &self.rows;
 
-                let s23 = r[2][2].mul_add(r[3][3], -(r[2][3] * r[3][2]));
-                let s13 = r[2][1].mul_add(r[3][3], -(r[2][3] * r[3][1]));
-                let s12 = r[2][1].mul_add(r[3][2], -(r[2][2] * r[3][1]));
-                let s03 = r[2][0].mul_add(r[3][3], -(r[2][3] * r[3][0]));
-                let s02 = r[2][0].mul_add(r[3][2], -(r[2][2] * r[3][0]));
-                let s01 = r[2][0].mul_add(r[3][1], -(r[2][1] * r[3][0]));
+                let mut det = if r[0][3] == 0.0 {
+                    0.0
+                } else {
+                    let c03 = Self::det3_elements(
+                        [r[1][0], r[1][1], r[1][2]],
+                        [r[2][0], r[2][1], r[2][2]],
+                        [r[3][0], r[3][1], r[3][2]],
+                    );
+                    -(r[0][3] * c03)
+                };
+                if r[0][2] != 0.0 {
+                    let c02 = Self::det3_elements(
+                        [r[1][0], r[1][1], r[1][3]],
+                        [r[2][0], r[2][1], r[2][3]],
+                        [r[3][0], r[3][1], r[3][3]],
+                    );
+                    det = r[0][2].mul_add(c02, det);
+                }
+                if r[0][1] != 0.0 {
+                    let c01 = Self::det3_elements(
+                        [r[1][0], r[1][2], r[1][3]],
+                        [r[2][0], r[2][2], r[2][3]],
+                        [r[3][0], r[3][2], r[3][3]],
+                    );
+                    det = (-r[0][1]).mul_add(c01, det);
+                }
+                if r[0][0] != 0.0 {
+                    let c00 = Self::det3_elements(
+                        [r[1][1], r[1][2], r[1][3]],
+                        [r[2][1], r[2][2], r[2][3]],
+                        [r[3][1], r[3][2], r[3][3]],
+                    );
+                    det = r[0][0].mul_add(c00, det);
+                }
 
-                let c00 = r[1][1].mul_add(s23, (-r[1][2]).mul_add(s13, r[1][3] * s12));
-                let c01 = r[1][0].mul_add(s23, (-r[1][2]).mul_add(s03, r[1][3] * s02));
-                let c02 = r[1][0].mul_add(s13, (-r[1][1]).mul_add(s03, r[1][3] * s01));
-                let c03 = r[1][0].mul_add(s12, (-r[1][1]).mul_add(s02, r[1][2] * s01));
-
-                Self::computed_scalar_result(Some(r[0][0].mul_add(
-                    c00,
-                    (-r[0][1]).mul_add(c01, r[0][2].mul_add(c02, -(r[0][3] * c03))),
-                )))
+                Self::computed_scalar_result(Some(det))
             }
             _ => {
                 cold_path();
@@ -808,40 +830,49 @@ impl<const D: usize> Matrix<D> {
             }
             3 => {
                 let r = &self.rows;
-                let pm00 = (r[1][1] * r[2][2]).abs() + (r[1][2] * r[2][1]).abs();
-                let pm01 = (r[1][0] * r[2][2]).abs() + (r[1][2] * r[2][0]).abs();
-                let pm02 = (r[1][0] * r[2][1]).abs() + (r[1][1] * r[2][0]).abs();
-                let permanent = r[0][2]
-                    .abs()
-                    .mul_add(pm02, r[0][1].abs().mul_add(pm01, r[0][0].abs() * pm00));
+                let permanent = Self::det3_abs_permanent_elements(
+                    [r[0][0], r[0][1], r[0][2]],
+                    [r[1][0], r[1][1], r[1][2]],
+                    [r[2][0], r[2][1], r[2][2]],
+                );
                 Self::computed_scalar_result(Some(ERR_COEFF_3 * permanent))
             }
             4 => {
                 let r = &self.rows;
-                let sp23 = (r[2][2] * r[3][3]).abs() + (r[2][3] * r[3][2]).abs();
-                let sp13 = (r[2][1] * r[3][3]).abs() + (r[2][3] * r[3][1]).abs();
-                let sp12 = (r[2][1] * r[3][2]).abs() + (r[2][2] * r[3][1]).abs();
-                let sp03 = (r[2][0] * r[3][3]).abs() + (r[2][3] * r[3][0]).abs();
-                let sp02 = (r[2][0] * r[3][2]).abs() + (r[2][2] * r[3][0]).abs();
-                let sp01 = (r[2][0] * r[3][1]).abs() + (r[2][1] * r[3][0]).abs();
-                let pc0 = r[1][3]
-                    .abs()
-                    .mul_add(sp12, r[1][2].abs().mul_add(sp13, r[1][1].abs() * sp23));
-                let pc1 = r[1][3]
-                    .abs()
-                    .mul_add(sp02, r[1][2].abs().mul_add(sp03, r[1][0].abs() * sp23));
-                let pc2 = r[1][3]
-                    .abs()
-                    .mul_add(sp01, r[1][1].abs().mul_add(sp03, r[1][0].abs() * sp13));
-                let pc3 = r[1][2]
-                    .abs()
-                    .mul_add(sp01, r[1][1].abs().mul_add(sp02, r[1][0].abs() * sp12));
-                let permanent = r[0][3].abs().mul_add(
-                    pc3,
-                    r[0][2]
-                        .abs()
-                        .mul_add(pc2, r[0][1].abs().mul_add(pc1, r[0][0].abs() * pc0)),
-                );
+                let mut permanent = if r[0][3] == 0.0 {
+                    0.0
+                } else {
+                    let pc3 = Self::det3_abs_permanent_elements(
+                        [r[1][0], r[1][1], r[1][2]],
+                        [r[2][0], r[2][1], r[2][2]],
+                        [r[3][0], r[3][1], r[3][2]],
+                    );
+                    r[0][3].abs() * pc3
+                };
+                if r[0][2] != 0.0 {
+                    let pc2 = Self::det3_abs_permanent_elements(
+                        [r[1][0], r[1][1], r[1][3]],
+                        [r[2][0], r[2][1], r[2][3]],
+                        [r[3][0], r[3][1], r[3][3]],
+                    );
+                    permanent = r[0][2].abs().mul_add(pc2, permanent);
+                }
+                if r[0][1] != 0.0 {
+                    let pc1 = Self::det3_abs_permanent_elements(
+                        [r[1][0], r[1][2], r[1][3]],
+                        [r[2][0], r[2][2], r[2][3]],
+                        [r[3][0], r[3][2], r[3][3]],
+                    );
+                    permanent = r[0][1].abs().mul_add(pc1, permanent);
+                }
+                if r[0][0] != 0.0 {
+                    let pc0 = Self::det3_abs_permanent_elements(
+                        [r[1][1], r[1][2], r[1][3]],
+                        [r[2][1], r[2][2], r[2][3]],
+                        [r[3][1], r[3][2], r[3][3]],
+                    );
+                    permanent = r[0][0].abs().mul_add(pc0, permanent);
+                }
                 Self::computed_scalar_result(Some(ERR_COEFF_4 * permanent))
             }
             _ => {
@@ -849,6 +880,53 @@ impl<const D: usize> Matrix<D> {
                 Ok(None)
             }
         }
+    }
+
+    /// Evaluate a 3×3 determinant expansion while skipping zero coefficients.
+    ///
+    /// This helper protects the public [`det_direct`](Self::det_direct)
+    /// contract: a mathematically absent term must not compute an overflowing
+    /// minor and poison the determinant with `0.0 * inf == NaN`. Nonzero terms
+    /// keep the same fused multiply-add ordering as the closed-form expansion.
+    const fn det3_elements(r0: [f64; 3], r1: [f64; 3], r2: [f64; 3]) -> f64 {
+        let mut det = if r0[2] == 0.0 {
+            0.0
+        } else {
+            let m02 = r1[0].mul_add(r2[1], -(r1[1] * r2[0]));
+            r0[2] * m02
+        };
+        if r0[1] != 0.0 {
+            let m01 = r1[0].mul_add(r2[2], -(r1[2] * r2[0]));
+            det = (-r0[1]).mul_add(m01, det);
+        }
+        if r0[0] != 0.0 {
+            let m00 = r1[1].mul_add(r2[2], -(r1[2] * r2[1]));
+            det = r0[0].mul_add(m00, det);
+        }
+        det
+    }
+
+    /// Evaluate a 3×3 absolute permanent while skipping zero coefficients.
+    ///
+    /// This mirrors [`det3_elements`](Self::det3_elements) for error-bound
+    /// computation: absent determinant terms should not force evaluation of an
+    /// overflowing absolute minor.
+    const fn det3_abs_permanent_elements(r0: [f64; 3], r1: [f64; 3], r2: [f64; 3]) -> f64 {
+        let mut permanent = if r0[2] == 0.0 {
+            0.0
+        } else {
+            let pm02 = (r1[0] * r2[1]).abs() + (r1[1] * r2[0]).abs();
+            r0[2].abs() * pm02
+        };
+        if r0[1] != 0.0 {
+            let pm01 = (r1[0] * r2[2]).abs() + (r1[2] * r2[0]).abs();
+            permanent = r0[1].abs().mul_add(pm01, permanent);
+        }
+        if r0[0] != 0.0 {
+            let pm00 = (r1[1] * r2[2]).abs() + (r1[2] * r2[1]).abs();
+            permanent = r0[0].abs().mul_add(pm00, permanent);
+        }
+        permanent
     }
 
     /// Return a computed scalar result for a matrix with finite stored entries.
@@ -1073,6 +1151,19 @@ mod tests {
     }
 
     #[test]
+    fn det_direct_d3_skips_zero_coefficient_minor_that_would_overflow() {
+        let m = black_box(
+            Matrix::<3>::try_from_rows([
+                [1.0, 0.0, 0.0],
+                [1.0e300, 1.0, 1.0e300],
+                [1.0e300, 0.0, 1.0e300],
+            ])
+            .unwrap(),
+        );
+        assert_eq!(m.det_direct(), Ok(Some(1.0e300)));
+    }
+
+    #[test]
     fn det_direct_d4_identity() {
         let m = black_box(Matrix::<4>::identity());
         assert_abs_diff_eq!(m.det_direct().unwrap().unwrap(), 1.0, epsilon = 1e-15);
@@ -1088,6 +1179,34 @@ mod tests {
         rows[3][3] = 7.0;
         let m = black_box(Matrix::<4>::try_from_rows(rows).unwrap());
         assert_abs_diff_eq!(m.det_direct().unwrap().unwrap(), 210.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn det_direct_d4_dense_known_value() {
+        let m = black_box(
+            Matrix::<4>::try_from_rows([
+                [4.0, 1.0, 3.0, 2.0],
+                [0.0, 5.0, 2.0, 1.0],
+                [7.0, 2.0, 6.0, 3.0],
+                [1.0, 8.0, 4.0, 9.0],
+            ])
+            .unwrap(),
+        );
+        assert_abs_diff_eq!(m.det_direct().unwrap().unwrap(), 92.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn det_direct_d4_skips_zero_coefficient_cofactors_that_would_overflow() {
+        let m = black_box(
+            Matrix::<4>::try_from_rows([
+                [0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0],
+                [1.0e300, 0.0, 1.0e300, 1.0e300],
+                [1.0e300, 0.0, 1.0e300, -1.0e300],
+            ])
+            .unwrap(),
+        );
+        assert_eq!(m.det_direct(), Ok(Some(0.0)));
     }
 
     #[test]
@@ -1380,6 +1499,31 @@ mod tests {
             ERR_COEFF_4,
             epsilon = 0.0
         );
+    }
+
+    #[test]
+    fn det_errbound_d3_skips_zero_coefficient_minor_that_would_overflow() {
+        let m = Matrix::<3>::try_from_rows([
+            [1.0, 0.0, 0.0],
+            [1.0e300, 1.0, 1.0e300],
+            [1.0e300, 0.0, 1.0e300],
+        ])
+        .unwrap();
+
+        assert_eq!(m.det_errbound(), Ok(Some(ERR_COEFF_3 * 1.0e300)));
+    }
+
+    #[test]
+    fn det_errbound_d4_skips_zero_coefficient_cofactors_that_would_overflow() {
+        let m = Matrix::<4>::try_from_rows([
+            [0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [1.0e300, 0.0, 1.0e300, 1.0e300],
+            [1.0e300, 0.0, 1.0e300, -1.0e300],
+        ])
+        .unwrap();
+
+        assert_eq!(m.det_errbound(), Ok(Some(0.0)));
     }
 
     #[test]

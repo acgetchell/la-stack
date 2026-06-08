@@ -7,18 +7,18 @@
 //! ## Determinants
 //!
 //! All determinant methods (`det_exact`, `det_exact_f64`,
-//! `det_exact_rounded_f64`, and `det_sign_exact`) share the same integer-only
-//! Bareiss core (`bareiss_det_int`).  Each f64
-//! entry is decomposed via `f64_decompose` into `mantissa × 2^exponent`,
-//! all entries are scaled to a common `BigInt` matrix (shifting by
-//! `e - e_min`), and Bareiss elimination runs entirely in `BigInt`
-//! arithmetic — no `BigRational`, no GCD, no denominator tracking.
-//! The result is `(det_int, total_exp)` where `det = det_int × 2^(D × e_min)`.
-//! `det_exact` wraps this with `bigint_exp_to_bigrational` to reconstruct a
-//! reduced `BigRational`; `det_exact_f64` converts the same pair only when the
-//! exact value is representable as finite binary64; `det_exact_rounded_f64`
-//! rounds the same exact value to finite binary64; and `det_sign_exact` reads
-//! the sign directly from `det_int` (the scale factor is always positive).
+//! `det_exact_rounded_f64`, and `det_sign_exact`) share the same integer-scaled
+//! determinant core. Each f64 entry is decomposed via `f64_decompose` into
+//! `mantissa × 2^exponent`, then all entries are scaled to a common `BigInt`
+//! matrix (shifting by `e - e_min`). D≤4 uses direct integer expansions; larger
+//! matrices use fraction-free Bareiss elimination entirely in `BigInt`
+//! arithmetic — no `BigRational`, no GCD, no denominator tracking. The result
+//! is `(det_int, total_exp)` where `det = det_int × 2^(D × e_min)`. `det_exact`
+//! wraps this with `bigint_exp_to_bigrational` to reconstruct a reduced
+//! `BigRational`; `det_exact_f64` converts the same pair only when the exact
+//! value is representable as finite binary64; `det_exact_rounded_f64` rounds
+//! the same exact value to finite binary64; and `det_sign_exact` reads the sign
+//! directly from `det_int` (the scale factor is always positive).
 //!
 //! `det_sign_exact` adds a two-stage adaptive-precision optimisation inspired
 //! by Shewchuk's robust geometric predicates:
@@ -459,6 +459,77 @@ fn build_bigint_vec<const D: usize>(components: &[Component; D], e_min: i32) -> 
     from_fn(|i| component_to_bigint(components[i], e_min))
 }
 
+/// Compute a 2×2 determinant from a scaled integer matrix.
+#[inline]
+fn det2_bigint<const D: usize>(a: &[[BigInt; D]; D]) -> BigInt {
+    &a[0][0] * &a[1][1] - &a[0][1] * &a[1][0]
+}
+
+/// Compute a 3×3 determinant from scaled integer entries.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn det3_bigint_entries(
+    a00: &BigInt,
+    a01: &BigInt,
+    a02: &BigInt,
+    a10: &BigInt,
+    a11: &BigInt,
+    a12: &BigInt,
+    a20: &BigInt,
+    a21: &BigInt,
+    a22: &BigInt,
+) -> BigInt {
+    let m00 = a11 * a22 - a12 * a21;
+    let m01 = a10 * a22 - a12 * a20;
+    let m02 = a10 * a21 - a11 * a20;
+    a00 * m00 - a01 * m01 + a02 * m02
+}
+
+/// Compute a 3×3 determinant from a scaled integer matrix.
+#[inline]
+fn det3_bigint<const D: usize>(a: &[[BigInt; D]; D]) -> BigInt {
+    det3_bigint_entries(
+        &a[0][0], &a[0][1], &a[0][2], &a[1][0], &a[1][1], &a[1][2], &a[2][0], &a[2][1], &a[2][2],
+    )
+}
+
+/// Compute a 4×4 determinant from a scaled integer matrix.
+#[inline]
+fn det4_bigint<const D: usize>(a: &[[BigInt; D]; D]) -> BigInt {
+    let mut det = BigInt::from(0);
+
+    if a[0][0].sign() != Sign::NoSign {
+        let c00 = det3_bigint_entries(
+            &a[1][1], &a[1][2], &a[1][3], &a[2][1], &a[2][2], &a[2][3], &a[3][1], &a[3][2],
+            &a[3][3],
+        );
+        det += &a[0][0] * c00;
+    }
+    if a[0][1].sign() != Sign::NoSign {
+        let c01 = det3_bigint_entries(
+            &a[1][0], &a[1][2], &a[1][3], &a[2][0], &a[2][2], &a[2][3], &a[3][0], &a[3][2],
+            &a[3][3],
+        );
+        det -= &a[0][1] * c01;
+    }
+    if a[0][2].sign() != Sign::NoSign {
+        let c02 = det3_bigint_entries(
+            &a[1][0], &a[1][1], &a[1][3], &a[2][0], &a[2][1], &a[2][3], &a[3][0], &a[3][1],
+            &a[3][3],
+        );
+        det += &a[0][2] * c02;
+    }
+    if a[0][3].sign() != Sign::NoSign {
+        let c03 = det3_bigint_entries(
+            &a[1][0], &a[1][1], &a[1][2], &a[2][0], &a[2][1], &a[2][2], &a[3][0], &a[3][1],
+            &a[3][2],
+        );
+        det -= &a[0][3] * c03;
+    }
+
+    det
+}
+
 /// Outcome of a Bareiss forward-elimination pass.
 #[derive(Debug)]
 enum BareissResult {
@@ -563,7 +634,7 @@ fn determinant_scale_exp<const D: usize>(e_min: i32) -> Result<i32, LaError> {
     Ok(total_exp)
 }
 
-/// Compute the exact determinant using integer-only Bareiss elimination.
+/// Compute the exact determinant from integer-scaled entries.
 ///
 /// Returns `(det_int, scale_exp)` where the true determinant is
 /// `det_int × 2^scale_exp`.  Since the scale factor `2^scale_exp` is always
@@ -571,8 +642,9 @@ fn determinant_scale_exp<const D: usize>(e_min: i32) -> Result<i32, LaError> {
 ///
 /// All arithmetic is in `BigInt` — no `BigRational`, no GCD, no denominator
 /// tracking.  Each f64 entry is decomposed into `mantissa × 2^exponent` and
-/// scaled to a common base `2^e_min` so every entry becomes an integer.
-/// The Bareiss inner-loop division is exact (guaranteed by the algorithm).
+/// scaled to a common base `2^e_min` so every entry becomes an integer. D≤4
+/// uses direct determinant expansions; larger matrices use Bareiss elimination
+/// whose inner-loop division is exact (guaranteed by the algorithm).
 ///
 fn bareiss_det_int_finite<const D: usize>(m: &Matrix<D>) -> Result<(BigInt, i32), LaError> {
     // D == 0 has no `a[D-1][D-1]` to read; shortcut to the empty-product
@@ -589,18 +661,26 @@ fn bareiss_det_int_finite<const D: usize>(m: &Matrix<D>) -> Result<(BigInt, i32)
     }
 
     let mut a = build_bigint_matrix(&components, e_min);
-    let sign = match bareiss_forward_eliminate(&mut a, None) {
-        BareissResult::Upper { sign } => sign,
-        BareissResult::Singular { .. } => {
-            cold_path();
-            return Ok((BigInt::from(0), 0));
-        }
-    };
+    let det_int = match D {
+        1 => a[0][0].clone(),
+        2 => det2_bigint(&a),
+        3 => det3_bigint(&a),
+        4 => det4_bigint(&a),
+        _ => {
+            let sign = match bareiss_forward_eliminate(&mut a, None) {
+                BareissResult::Upper { sign } => sign,
+                BareissResult::Singular { .. } => {
+                    cold_path();
+                    return Ok((BigInt::from(0), 0));
+                }
+            };
 
-    let det_int = if sign < 0 {
-        -&a[D - 1][D - 1]
-    } else {
-        a[D - 1][D - 1].clone()
+            if sign < 0 {
+                -&a[D - 1][D - 1]
+            } else {
+                a[D - 1][D - 1].clone()
+            }
+        }
     };
 
     let total_exp = determinant_scale_exp::<D>(e_min)?;
@@ -682,11 +762,12 @@ fn gauss_solve_components<const D: usize>(
     Ok(x)
 }
 
-/// Exact determinant for a matrix whose finite-storage invariant has been revalidated.
+/// Exact determinant for a finite-by-construction matrix.
 ///
 /// This is the private implementation target for [`Matrix::det_exact`]. Keeping
-/// the helper separate from the public method makes the public entry point own
-/// boundary reparsing while the exact core can assume finite entries.
+/// the helper separate from the public method keeps the exact core focused on
+/// the Bareiss computation while relying on the public [`Matrix`] finite-storage
+/// invariant.
 ///
 /// # Errors
 /// Returns [`LaError::DeterminantScaleOverflow`] if determinant scaling
@@ -737,7 +818,7 @@ fn det_exact_rounded_f64_finite<const D: usize>(m: &Matrix<D>) -> Result<f64, La
 /// Exact linear solve for finite inputs.
 ///
 /// This is the private implementation target for [`Matrix::solve_exact`].
-/// Public callers pass through `Matrix` and `Vector` reparsing first; this
+/// Public [`Matrix`] and [`Vector`] values are finite by construction, so this
 /// helper can focus on the exact Bareiss/rational solve.
 ///
 /// # Errors
@@ -870,8 +951,7 @@ impl<const D: usize> Matrix<D> {
     /// overflows the internal exponent representation.
     #[inline]
     pub fn det_exact(&self) -> Result<BigRational, LaError> {
-        let finite_m = (*self).validate_finite()?;
-        det_exact_finite(&finite_m)
+        det_exact_finite(self)
     }
 
     /// Exact determinant converted to `f64`.
@@ -903,8 +983,7 @@ impl<const D: usize> Matrix<D> {
     /// represented exactly as a finite `f64`.
     #[inline]
     pub fn det_exact_f64(&self) -> Result<f64, LaError> {
-        let finite_m = (*self).validate_finite()?;
-        det_exact_f64_finite(&finite_m)
+        det_exact_f64_finite(self)
     }
 
     /// Exact determinant rounded to `f64`.
@@ -947,8 +1026,7 @@ impl<const D: usize> Matrix<D> {
     /// NaN or infinite.
     #[inline]
     pub fn det_exact_rounded_f64(&self) -> Result<f64, LaError> {
-        let finite_m = (*self).validate_finite()?;
-        det_exact_rounded_f64_finite(&finite_m)
+        det_exact_rounded_f64_finite(self)
     }
 
     /// Exact linear system solve using hybrid integer/rational arithmetic.
@@ -997,9 +1075,7 @@ impl<const D: usize> Matrix<D> {
     /// Returns [`LaError::Singular`] if the matrix is exactly singular.
     #[inline]
     pub fn solve_exact(&self, b: Vector<D>) -> Result<[BigRational; D], LaError> {
-        let finite_m = (*self).validate_finite()?;
-        let finite_b = Vector::try_new(b.into_array())?;
-        solve_exact_finite(&finite_m, finite_b)
+        solve_exact_finite(self, b)
     }
 
     /// Exact linear system solve converted to `f64`.
@@ -1031,9 +1107,7 @@ impl<const D: usize> Matrix<D> {
     /// cannot be represented exactly as a finite `f64`.
     #[inline]
     pub fn solve_exact_f64(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        let finite_m = (*self).validate_finite()?;
-        let finite_b = Vector::try_new(b.into_array())?;
-        solve_exact_f64_finite(&finite_m, finite_b)
+        solve_exact_f64_finite(self, b)
     }
 
     /// Exact linear system solve rounded to `f64`.
@@ -1072,9 +1146,7 @@ impl<const D: usize> Matrix<D> {
     /// NaN or infinite.
     #[inline]
     pub fn solve_exact_rounded_f64(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
-        let finite_m = (*self).validate_finite()?;
-        let finite_b = Vector::try_new(b.into_array())?;
-        solve_exact_rounded_f64_finite(&finite_m, finite_b)
+        solve_exact_rounded_f64_finite(self, b)
     }
 
     /// Exact determinant sign using adaptive-precision arithmetic.
@@ -1118,8 +1190,7 @@ impl<const D: usize> Matrix<D> {
     /// overflows the internal exponent representation.
     #[inline]
     pub fn det_sign_exact(&self) -> Result<i8, LaError> {
-        let finite_m = (*self).validate_finite()?;
-        det_sign_exact_finite(&finite_m)
+        det_sign_exact_finite(self)
     }
 }
 
@@ -1919,6 +1990,22 @@ mod tests {
         let m = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]]).unwrap();
         let det = m.det_exact().unwrap();
         assert_eq!(det, BigRational::from_integer(BigInt::from(-2)));
+    }
+
+    #[test]
+    fn det_exact_known_dense_4x4() {
+        let m = Matrix::<4>::try_from_rows([
+            [4.0, 1.0, 3.0, 2.0],
+            [0.0, 5.0, 2.0, 1.0],
+            [7.0, 2.0, 6.0, 3.0],
+            [1.0, 8.0, 4.0, 9.0],
+        ])
+        .unwrap();
+
+        assert_eq!(
+            m.det_exact(),
+            Ok(BigRational::from_integer(BigInt::from(92)))
+        );
     }
 
     #[test]

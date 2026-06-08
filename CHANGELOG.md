@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Breaking Changes
+
+- Make exact f64 conversions strict
+
 ### Added
 
 - Guard README dependency snippets [`7137fee`](https://github.com/acgetchell/la-stack/commit/7137fee16ab33e08f4dc6a60e02417e3e7c4e020)
@@ -32,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Keep the regular benchmark workflow focused on PR and main-branch comparison runs.
   - Document how to restore archived release baselines for future performance comparisons.
 - Feat!(api): make Matrix and Vector finite by construction [`1fa2f55`](https://github.com/acgetchell/la-stack/commit/1fa2f55cfac6f249a7e2bf30922901539e580dd8)
+- [**breaking**] Make exact f64 conversions strict [`8e33f1a`](https://github.com/acgetchell/la-stack/commit/8e33f1a8ec291bfcb6312375969efce076421e96)
+  - Add explicit rounded exact-to-f64 APIs for determinant and solve results
+  - Report exact conversion failures with typed Unrepresentable reasons
+  - Remove finite proof wrapper APIs now that Matrix and Vector carry finiteness directly
+  - Move error and tolerance contracts into first-class modules with prelude exports
+  - Update exact benchmarks to distinguish strict Result paths from rounded f64 paths
+  - Document and exercise the rounded fallback pattern for RequiresRounding errors
 
 ### Changed
 

@@ -34,12 +34,20 @@ def _build_criterion_tree(criterion_dir: Path, stat: str = "median") -> None:
         group = criterion_dir / f"exact_d{d}"
         _write_estimates(group / "det" / "new" / "estimates.json", stat, det)
         _write_estimates(group / "det_exact" / "new" / "estimates.json", stat, det_exact)
+        _write_estimates(group / "det_exact_f64_result" / "new" / "estimates.json", stat, det_exact * 1.1)
+        _write_estimates(group / "det_exact_rounded_f64" / "new" / "estimates.json", stat, det_exact * 1.2)
+        _write_estimates(group / "solve_exact_f64_result" / "new" / "estimates.json", stat, det_exact * 1.3)
+        _write_estimates(group / "solve_exact_rounded_f64" / "new" / "estimates.json", stat, det_exact * 1.4)
 
     ns_group = criterion_dir / "exact_near_singular_3x3"
     _write_estimates(ns_group / "det_sign_exact" / "new" / "estimates.json", stat, 12000.0)
+    _write_estimates(ns_group / "solve_exact_f64_result" / "new" / "estimates.json", stat, 51000.0)
+    _write_estimates(ns_group / "solve_exact_rounded_f64" / "new" / "estimates.json", stat, 52000.0)
 
     random_group = criterion_dir / "exact_random_percentile_d3"
     _write_estimates(random_group / "det_exact_p95" / "new" / "estimates.json", stat, 33000.0)
+    _write_estimates(random_group / "solve_exact_f64_result_p95" / "new" / "estimates.json", stat, 54000.0)
+    _write_estimates(random_group / "solve_exact_rounded_f64_p95" / "new" / "estimates.json", stat, 55000.0)
 
 
 def _build_vs_linalg_tree(criterion_dir: Path, stat: str = "median") -> None:
@@ -196,7 +204,7 @@ def test_read_estimate_non_numeric_ci_bound_names_field(tmp_path: Path) -> None:
 def test_collect_results(tmp_path: Path) -> None:
     _build_criterion_tree(tmp_path)
     results = bench_compare._collect_results(tmp_path, "new", "median")
-    assert len(results) == 6  # 2 benches x 2 dims + 1 near-singular + 1 random percentile
+    assert len(results) == 18  # 6 benches x 2 dims + 3 near-singular + 3 random percentile
     groups = {r.group for r in results}
     assert "exact_d2" in groups
     assert "exact_d3" in groups
@@ -216,11 +224,37 @@ def test_collect_comparisons(tmp_path: Path) -> None:
         group = tmp_path / f"exact_d{d}"
         _write_estimates(group / "det" / "v0.3.0" / "estimates.json", "median", det)
         _write_estimates(group / "det_exact" / "v0.3.0" / "estimates.json", "median", det_exact)
+        _write_estimates(group / "det_exact_f64" / "v0.3.0" / "estimates.json", "median", det_exact * 1.1)
+        _write_estimates(group / "solve_exact_f64" / "v0.3.0" / "estimates.json", "median", det_exact * 1.3)
+    random_group = tmp_path / "exact_random_percentile_d3"
+    _write_estimates(random_group / "det_exact_p95" / "v0.3.0" / "estimates.json", "median", 66000.0)
+    _write_estimates(random_group / "solve_exact_f64_p95" / "v0.3.0" / "estimates.json", "median", 108000.0)
 
     comparisons = bench_compare._collect_comparisons(tmp_path, "v0.3.0", "median")
-    assert len(comparisons) == 4  # 2 benches x 2 dims (near-singular has no baseline)
+    assert len(comparisons) == 12  # 6 benches x 2 dims (near-singular has no baseline)
+    assert {c.group for c in comparisons} == {"exact_d2", "exact_d3"}
     for c in comparisons:
         assert c.speedup == pytest.approx(c.baseline_ns / c.current_ns)
+    assert {(c.bench, c.baseline_bench) for c in comparisons if c.baseline_bench is not None} == {
+        ("det_exact_f64_result", "det_exact_f64"),
+        ("det_exact_rounded_f64", "det_exact_f64"),
+        ("solve_exact_f64_result", "solve_exact_f64"),
+        ("solve_exact_rounded_f64", "solve_exact_f64"),
+    }
+
+    all_comparisons = bench_compare._collect_comparisons(
+        tmp_path,
+        "v0.3.0",
+        "median",
+        scope="all-benches",
+    )
+    assert len(all_comparisons) == 15
+    random_comparisons = [c for c in all_comparisons if c.group == "exact_random_percentile_d3"]
+    assert {(c.bench, c.baseline_bench) for c in random_comparisons} == {
+        ("det_exact_p95", None),
+        ("solve_exact_f64_result_p95", "solve_exact_f64_p95"),
+        ("solve_exact_rounded_f64_p95", "solve_exact_f64_p95"),
+    }
 
 
 def test_collect_comparisons_zero_current(tmp_path: Path) -> None:
@@ -301,12 +335,16 @@ def test_comparison_tables_per_dimension(tmp_path: Path) -> None:
         group = tmp_path / f"exact_d{d}"
         _write_estimates(group / "det" / "v0.3.0" / "estimates.json", "median", det)
         _write_estimates(group / "det_exact" / "v0.3.0" / "estimates.json", "median", det_exact)
+        _write_estimates(group / "det_exact_f64" / "v0.3.0" / "estimates.json", "median", det_exact * 1.1)
+        _write_estimates(group / "solve_exact_f64" / "v0.3.0" / "estimates.json", "median", det_exact * 1.3)
 
     comparisons = bench_compare._collect_comparisons(tmp_path, "v0.3.0", "median")
     tables = bench_compare._comparison_tables(comparisons, "v0.3.0")
     assert "### D=2" in tables
     assert "### D=3" in tables
     assert "| Benchmark | v0.3.0 | Latest | Change | Speedup |" in tables
+    assert "det_exact_rounded_f64 (vs det_exact_f64)" in tables
+    assert "solve_exact_f64_result (vs solve_exact_f64)" in tables
 
 
 def test_comparison_tables_include_vs_linalg_peer_context(tmp_path: Path) -> None:
