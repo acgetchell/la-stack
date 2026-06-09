@@ -4,8 +4,17 @@
 // ruleid: la-stack.rust.no-unwrap-expect-in-doctests
 //! let value = Ok::<u32, la_stack::LaError>(1).expect("doctest should not panic");
 
+// ruleid: la-stack.rust.no-unwrap-expect-in-doctests
+/// # let value = Some(1_u32).unwrap();
+
+// ruleid: la-stack.rust.no-unwrap-expect-in-doctests
+//! # let value = Ok::<u32, la_stack::LaError>(1).expect("hidden doctest setup should not panic");
+
 // ok: la-stack.rust.no-unwrap-expect-in-doctests
 /// # fn main() -> Result<(), la_stack::LaError> { Ok(()) }
+
+// ok: la-stack.rust.no-unwrap-expect-in-doctests
+/// # let value = Ok::<u32, la_stack::LaError>(1)?;
 
 // ok: la-stack.rust.no-unwrap-expect-in-doctests
 /// Do not use `.unwrap()` in public examples.

@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! LU decomposition and solves.
 
 use core::hint::cold_path;
@@ -7,6 +9,9 @@ use crate::vector::Vector;
 use crate::{LaError, Tolerance};
 
 /// LU decomposition (PA = LU) with partial pivoting.
+///
+/// `Lu<0>` represents the empty factorization. Its determinant is the empty
+/// product `1.0`, and solving against [`Vector<0>`] returns [`Vector<0>`].
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Lu<const D: usize> {
@@ -435,6 +440,20 @@ mod tests {
     gen_public_api_tridiagonal_smoke_solve_and_det_tests!(16);
     gen_public_api_tridiagonal_smoke_solve_and_det_tests!(32);
     gen_public_api_tridiagonal_smoke_solve_and_det_tests!(64);
+
+    #[test]
+    fn solve_0x0_returns_empty_vector_and_unit_det() {
+        let a = Matrix::<0>::zero();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
+
+        assert_eq!(lu.det(), Ok(1.0));
+        assert!(
+            lu.solve(Vector::<0>::zero())
+                .unwrap()
+                .into_array()
+                .is_empty()
+        );
+    }
 
     #[test]
     fn solve_1x1() {

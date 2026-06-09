@@ -62,8 +62,8 @@ features = [ "exact" ]
 
 [lints.rust]
 unsafe_code = "forbid"
-missing_docs = "warn"
-dead_code = "warn"
+missing_docs = "deny"
+dead_code = "deny"
 
 [lints.rustdoc]
 broken_intra_doc_links = "deny"

@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(dead_code)]
 
 #[must_use]
 pub struct Matrix<const D: usize> {

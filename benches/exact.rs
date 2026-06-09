@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Benchmarks for exact arithmetic operations.
 //!
 //! These benchmarks measure the performance of the `exact` feature's
@@ -26,7 +28,7 @@
 
 use std::array;
 use std::cell::Cell;
-use std::fmt::{self, Display};
+use std::fmt::Display;
 use std::hint::black_box;
 use std::num::NonZeroUsize;
 use std::time::Instant;
@@ -35,6 +37,12 @@ use criterion::{BatchSize, BenchmarkGroup, Criterion, measurement::WallTime};
 use pastey::paste;
 
 use la_stack::{Matrix, Vector};
+
+mod common {
+    pub mod exact;
+}
+
+use common::exact::{ExactBenchConfigError, I16Range, SplitMix64};
 
 const RANDOM_INPUTS_PER_DIM: SampleCount = SampleCount::new_unchecked(50);
 const RANDOM_INPUT_ARRAY_LEN: usize = RANDOM_INPUTS_PER_DIM.get();
@@ -51,24 +59,6 @@ fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
     match result {
         Ok(value) => value,
         Err(err) => panic!("{operation} failed: {err}"),
-    }
-}
-
-/// Configuration errors for exact-arithmetic benchmark input generation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ExactBenchConfigError {
-    EmptyCorpus,
-    UnorderedRange { min: i16, max: i16 },
-}
-
-impl Display for ExactBenchConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Self::EmptyCorpus => f.write_str("random input corpus must be nonempty"),
-            Self::UnorderedRange { min, max } => {
-                write!(f, "random integer range must be ordered: {min}..={max}")
-            }
-        }
     }
 }
 
@@ -99,29 +89,6 @@ impl SampleCount {
     /// Return the proven nonzero sample count as a raw `usize`.
     const fn get(self) -> usize {
         self.len.get()
-    }
-}
-
-/// Inclusive integer range used by the fixed-seed exact benchmark generator.
-#[derive(Clone, Copy)]
-struct I16Range {
-    min: i16,
-    width: u64,
-}
-
-impl I16Range {
-    /// Validate an inclusive `i16` range and cache its sampling width.
-    fn new(min: i16, max: i16) -> Result<Self, ExactBenchConfigError> {
-        if min > max {
-            return Err(ExactBenchConfigError::UnorderedRange { min, max });
-        }
-
-        let width = i32::from(max) - i32::from(min) + 1;
-        Ok(Self {
-            min,
-            width: u64::try_from(width)
-                .map_err(|_| ExactBenchConfigError::UnorderedRange { min, max })?,
-        })
     }
 }
 
@@ -205,6 +172,8 @@ struct ExactRandomInput<const D: usize> {
 enum ExactRandomOperation {
     DetSignExact,
     DetExact,
+    DetExactF64Result,
+    DetExactRoundedF64,
     SolveExact,
     SolveExactF64Result,
     SolveExactRoundedF64,
@@ -216,39 +185,12 @@ impl ExactRandomOperation {
         match self {
             Self::DetSignExact => "det_sign_exact",
             Self::DetExact => "det_exact",
+            Self::DetExactF64Result => "det_exact_f64_result",
+            Self::DetExactRoundedF64 => "det_exact_rounded_f64",
             Self::SolveExact => "solve_exact",
             Self::SolveExactF64Result => "solve_exact_f64_result",
             Self::SolveExactRoundedF64 => "solve_exact_rounded_f64",
         }
-    }
-}
-
-/// Deterministic `SplitMix64` generator for reproducible benchmark corpora.
-struct SplitMix64 {
-    state: u64,
-}
-
-impl SplitMix64 {
-    /// Initialize the generator with a fixed state.
-    const fn new(state: u64) -> Self {
-        Self { state }
-    }
-
-    /// Advance the generator and return the next 64 random bits.
-    const fn next_u64(&mut self) -> u64 {
-        self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    /// Draw a random `i16` inside a validated inclusive range.
-    fn next_i16(&mut self, range: I16Range) -> i16 {
-        let offset = (self.next_u64() % range.width) as i32;
-        let value = i32::from(range.min) + offset;
-        value as i16
     }
 }
 
@@ -322,6 +264,17 @@ fn run_random_operation<const D: usize>(
             let det = require_ok(black_box(input.matrix).det_exact(), "exact determinant");
             black_box(det);
         }
+        ExactRandomOperation::DetExactF64Result => {
+            let det = black_box(input.matrix).det_exact_f64();
+            let _ = black_box(det);
+        }
+        ExactRandomOperation::DetExactRoundedF64 => {
+            let det = require_ok(
+                black_box(input.matrix).det_exact_rounded_f64(),
+                "exact determinant rounded to f64",
+            );
+            let _ = black_box(det);
+        }
         ExactRandomOperation::SolveExact => {
             let x = require_ok(
                 black_box(input.matrix).solve_exact(black_box(input.rhs)),
@@ -341,6 +294,20 @@ fn run_random_operation<const D: usize>(
             let _ = black_box(x);
         }
     }
+}
+
+/// Add one exact-arithmetic operation benchmark over a fixed input pair.
+fn bench_exact_operation<const D: usize>(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    operation: ExactRandomOperation,
+    matrix: Matrix<D>,
+    rhs: Vector<D>,
+) {
+    group.bench_function(operation.name(), |bencher| {
+        bencher.iter(|| {
+            run_random_operation(operation, ExactRandomInput { matrix, rhs });
+        });
+    });
 }
 
 /// Time one exact operation on one random input in nanoseconds.
@@ -385,13 +352,11 @@ fn percentile_input_indices<const D: usize>(
     RANDOM_PERCENTILES.map(|percentile| {
         let timing_idx = percentile_index(input_count, percentile);
         let threshold = timings[timing_idx].0;
-        let mut indices = Vec::new();
-        for &(elapsed, input_idx) in &timings {
-            if elapsed <= threshold {
-                indices.push(input_idx);
-            }
-        }
-        indices
+        let selected_len = timings.partition_point(|&(elapsed, _)| elapsed <= threshold);
+        timings[..selected_len]
+            .iter()
+            .map(|&(_, input_idx)| input_idx)
+            .collect()
     })
 }
 
@@ -510,46 +475,11 @@ fn bench_extreme_group<const D: usize>(
     m: Matrix<D>,
     rhs: Vector<D>,
 ) {
-    group.bench_function("det_sign_exact", |bencher| {
-        bencher.iter(|| {
-            let sign = require_ok(black_box(m).det_sign_exact(), "exact determinant sign");
-            black_box(sign);
-        });
-    });
-
-    group.bench_function("det_exact", |bencher| {
-        bencher.iter(|| {
-            let det = require_ok(black_box(m).det_exact(), "exact determinant");
-            black_box(det);
-        });
-    });
-
-    group.bench_function("solve_exact", |bencher| {
-        bencher.iter(|| {
-            let x = require_ok(
-                black_box(m).solve_exact(black_box(rhs)),
-                "exact linear solve",
-            );
-            let _ = black_box(x);
-        });
-    });
-
-    group.bench_function("solve_exact_f64_result", |bencher| {
-        bencher.iter(|| {
-            let x = black_box(m).solve_exact_f64(black_box(rhs));
-            let _ = black_box(x);
-        });
-    });
-
-    group.bench_function("solve_exact_rounded_f64", |bencher| {
-        bencher.iter(|| {
-            let x = require_ok(
-                black_box(m).solve_exact_rounded_f64(black_box(rhs)),
-                "exact linear solve rounded to f64",
-            );
-            let _ = black_box(x);
-        });
-    });
+    bench_exact_operation(group, ExactRandomOperation::DetSignExact, m, rhs);
+    bench_exact_operation(group, ExactRandomOperation::DetExact, m, rhs);
+    bench_exact_operation(group, ExactRandomOperation::SolveExact, m, rhs);
+    bench_exact_operation(group, ExactRandomOperation::SolveExactF64Result, m, rhs);
+    bench_exact_operation(group, ExactRandomOperation::SolveExactRoundedF64, m, rhs);
 }
 
 macro_rules! gen_exact_benches_for_dim {
@@ -581,70 +511,13 @@ macro_rules! gen_exact_benches_for_dim {
                 });
             });
 
-            // === det_exact (BigRational result) ===
-            [<group_d $d>].bench_function("det_exact", |bencher| {
-                bencher.iter(|| {
-                    let det = require_ok(black_box(a).det_exact(), "exact determinant");
-                    black_box(det);
-                });
-            });
-
-            // === det_exact_f64 (fallible exact → f64 Result) ===
-            [<group_d $d>].bench_function("det_exact_f64_result", |bencher| {
-                bencher.iter(|| {
-                    let det = black_box(a).det_exact_f64();
-                    black_box(det);
-                });
-            });
-
-            // === det_exact_rounded_f64 (lossy exact → f64) ===
-            [<group_d $d>].bench_function("det_exact_rounded_f64", |bencher| {
-                bencher.iter(|| {
-                    let det = require_ok(
-                        black_box(a).det_exact_rounded_f64(),
-                        "exact determinant rounded to f64",
-                    );
-                    black_box(det);
-                });
-            });
-
-            // === det_sign_exact (adaptive: fast filter + exact fallback) ===
-            [<group_d $d>].bench_function("det_sign_exact", |bencher| {
-                bencher.iter(|| {
-                    let sign = require_ok(black_box(a).det_sign_exact(), "exact determinant sign");
-                    black_box(sign);
-                });
-            });
-
-            // === solve_exact (BigRational result) ===
-            [<group_d $d>].bench_function("solve_exact", |bencher| {
-                bencher.iter(|| {
-                    let x = require_ok(
-                        black_box(a).solve_exact(black_box(rhs)),
-                        "exact linear solve",
-                    );
-                    black_box(x);
-                });
-            });
-
-            // === solve_exact_f64 (fallible exact → f64 Result) ===
-            [<group_d $d>].bench_function("solve_exact_f64_result", |bencher| {
-                bencher.iter(|| {
-                    let x = black_box(a).solve_exact_f64(black_box(rhs));
-                    black_box(x);
-                });
-            });
-
-            // === solve_exact_rounded_f64 (lossy exact → f64) ===
-            [<group_d $d>].bench_function("solve_exact_rounded_f64", |bencher| {
-                bencher.iter(|| {
-                    let x = require_ok(
-                        black_box(a).solve_exact_rounded_f64(black_box(rhs)),
-                        "exact linear solve rounded to f64",
-                    );
-                    black_box(x);
-                });
-            });
+            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::DetExact, a, rhs);
+            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::DetExactF64Result, a, rhs);
+            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::DetExactRoundedF64, a, rhs);
+            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::DetSignExact, a, rhs);
+            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::SolveExact, a, rhs);
+            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::SolveExactF64Result, a, rhs);
+            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::SolveExactRoundedF64, a, rhs);
 
             [<group_d $d>].finish();
         }};

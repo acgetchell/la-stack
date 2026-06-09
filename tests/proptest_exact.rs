@@ -450,6 +450,58 @@ gen_det_sign_fast_filter_boundary_proptests!(2);
 gen_det_sign_fast_filter_boundary_proptests!(3);
 gen_det_sign_fast_filter_boundary_proptests!(4);
 
+/// Error-bound invariant: for every dense D≤4 matrix in this corpus,
+/// `det_errbound()` must bound the absolute error of `det_direct()` against an
+/// independent exact Leibniz expansion.  The entries include decimal fractions
+/// that are not generally exactly representable in binary64, so this exercises
+/// non-trivial rounding in the closed-form determinant path while keeping the
+/// magnitudes far from overflow.
+macro_rules! gen_det_errbound_leibniz_oracle_proptests {
+    ($d:literal) => {
+        paste! {
+            proptest! {
+                #![proptest_config(ProptestConfig::with_cases(64))]
+
+                #[test]
+                fn [<det_errbound_bounds_det_direct_error_ $d d>](
+                    entries in proptest::array::[<uniform $d>](
+                        proptest::array::[<uniform $d>](
+                            (-50i16..=50i16).prop_map(|x| f64::from(x) / 10.0)
+                        ),
+                    ),
+                ) {
+                    let m = Matrix::<$d>::try_from_rows(entries).unwrap();
+                    let det_direct = m
+                        .det_direct()
+                        .unwrap()
+                        .expect("D<=4 has closed-form det_direct");
+                    let bound = m
+                        .det_errbound()
+                        .unwrap()
+                        .expect("D<=4 has a det_errbound");
+
+                    let exact = bigrational_det_leibniz::<$d>(&entries);
+                    let direct_exact = BigRational::from_f64(det_direct)
+                        .expect("det_direct returned finite f64");
+                    let bound_exact = BigRational::from_f64(bound)
+                        .expect("det_errbound returned finite f64");
+                    let error = (direct_exact - exact).abs();
+
+                    prop_assert!(
+                        error <= bound_exact,
+                        "det_direct error exceeded det_errbound for D={}: error={error}, bound={bound_exact}",
+                        $d
+                    );
+                }
+            }
+        }
+    };
+}
+
+gen_det_errbound_leibniz_oracle_proptests!(2);
+gen_det_errbound_leibniz_oracle_proptests!(3);
+gen_det_errbound_leibniz_oracle_proptests!(4);
+
 /// Mixed-scale diagonal matrices stress the shared-exponent conversion path:
 /// zeros, subnormals, tiny normal values, ordinary values, and very large
 /// finite values can all appear in the same determinant.  The independent

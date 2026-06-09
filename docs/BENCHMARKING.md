@@ -116,6 +116,9 @@ just bench-compare
 
 # Run latest measurements and compare against "last"
 just bench-latest-vs-last
+
+# Run only non-exact la-stack rows from vs_linalg and compare against "last"
+just bench-vs-linalg-latest-vs
 ```
 
 ## Comparing performance across releases
@@ -148,11 +151,25 @@ and faer timings for matching rows, so you can see whether a la-stack
 change improves or weakens the release signal without rerunning third-party
 benchmarks on every iteration.
 
+For a faster non-exact check, run:
+
+```bash
+just performance-local-vs-linalg v0.4.3 v0.4.2
+```
+
+This generates a local `v0.4.2` baseline for `vs_linalg`, measures only the
+current la-stack rows from `vs_linalg`, then compares them using `--suite
+vs_linalg`. The report shows saved baseline nalgebra/faer timings as context
+without rerunning the peer crates on the current checkout.
+
 ### Workflow
 
 ```bash
 # Current in-tree code vs latest published release, all measured locally
 just performance-local
+
+# Current in-tree non-exact kernels vs a release baseline
+just performance-local-vs-linalg v0.4.3 v0.4.2
 
 # Stored GitHub Actions release assets, no local cargo runs
 just performance-github-assets

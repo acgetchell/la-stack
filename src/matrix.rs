@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Fixed-size, stack-allocated square matrices.
 
 use core::hint::cold_path;
@@ -479,6 +481,10 @@ impl<const D: usize> Matrix<D> {
 
     /// Compute an LU decomposition with partial pivoting.
     ///
+    /// `D = 0` follows the empty-matrix convention: factorization succeeds,
+    /// [`Lu::det`](crate::Lu::det) returns `1.0`, and solving a length-zero
+    /// right-hand side returns a length-zero [`Vector`](crate::Vector).
+    ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
@@ -492,6 +498,20 @@ impl<const D: usize> Matrix<D> {
     ///
     /// assert!((x[0] - 1.0).abs() <= 1e-12);
     /// assert!((x[1] - 2.0).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Empty matrices use the standard empty-product convention:
+    ///
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let lu = Matrix::<0>::zero().lu(DEFAULT_SINGULAR_TOL)?;
+    ///
+    /// assert_eq!(lu.det()?, 1.0);
+    /// assert!(lu.solve(Vector::<0>::zero())?.into_array().is_empty());
     /// # Ok(())
     /// # }
     /// ```
@@ -513,6 +533,10 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Compute an LDLT factorization (`A = L D Lᵀ`) without pivoting.
+    ///
+    /// `D = 0` follows the empty-matrix convention: factorization succeeds,
+    /// [`Ldlt::det`](crate::Ldlt::det) returns `1.0`, and solving a length-zero
+    /// right-hand side returns a length-zero [`Vector`](crate::Vector).
     ///
     /// This is intended for symmetric positive definite (SPD) and positive semi-definite (PSD)
     /// matrices such as Gram matrices.
@@ -549,6 +573,20 @@ impl<const D: usize> Matrix<D> {
     /// let x = ldlt.solve(b)?.into_array();
     /// assert!((x[0] - (-0.125)).abs() <= 1e-12);
     /// assert!((x[1] - 0.75).abs() <= 1e-12);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Empty matrices use the standard empty-product convention:
+    ///
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let ldlt = Matrix::<0>::zero().ldlt(DEFAULT_SINGULAR_TOL)?;
+    ///
+    /// assert_eq!(ldlt.det()?, 1.0);
+    /// assert!(ldlt.solve(Vector::<0>::zero())?.into_array().is_empty());
     /// # Ok(())
     /// # }
     /// ```
@@ -960,7 +998,6 @@ mod tests {
     use crate::vector::Vector;
 
     use approx::assert_abs_diff_eq;
-    use core::assert_matches;
     use pastey::paste;
     use std::hint::black_box;
 
@@ -1924,45 +1961,5 @@ mod tests {
             Some((0, 1))
         );
         assert!(!a.is_symmetric(Tolerance::new(1e-12).unwrap()).unwrap());
-    }
-
-    #[test]
-    fn is_symmetric_rejects_invalid_tol() {
-        assert_eq!(
-            Tolerance::new(-1.0),
-            Err(LaError::InvalidTolerance { value: -1.0 })
-        );
-        assert_matches!(
-            Tolerance::new(f64::NAN),
-            Err(LaError::InvalidTolerance { value }) if value.is_nan()
-        );
-        assert_eq!(
-            Tolerance::new(f64::INFINITY),
-            Err(LaError::InvalidTolerance {
-                value: f64::INFINITY,
-            })
-        );
-    }
-
-    #[test]
-    fn first_asymmetry_rejects_negative_tol() {
-        assert_eq!(
-            Tolerance::new(-1.0),
-            Err(LaError::InvalidTolerance { value: -1.0 })
-        );
-    }
-
-    #[test]
-    fn first_asymmetry_rejects_nonfinite_tol() {
-        assert_matches!(
-            Tolerance::new(f64::NAN),
-            Err(LaError::InvalidTolerance { value }) if value.is_nan()
-        );
-        assert_eq!(
-            Tolerance::new(f64::INFINITY),
-            Err(LaError::InvalidTolerance {
-                value: f64::INFINITY,
-            })
-        );
     }
 }

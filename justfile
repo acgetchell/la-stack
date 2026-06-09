@@ -190,6 +190,10 @@ bench-latest: bench-vs-linalg-la-stack bench-exact
 bench-latest-vs-last baseline="last": bench-latest python-sync
     uv run bench-compare {{baseline}}
 
+# Run only la-stack vs_linalg measurements and render a non-exact performance report.
+bench-vs-linalg-latest-vs baseline="last": bench-vs-linalg-la-stack python-sync
+    uv run bench-compare {{baseline}} --suite vs_linalg --scope release-signal
+
 # Save a Criterion baseline. Defaults to all release-signal benchmark suites.
 bench-save-baseline tag suite="all":
     #!/usr/bin/env bash
@@ -394,8 +398,10 @@ help-workflows:
     @echo "  just bench-compile          # Compile benches with warnings-as-errors"
     @echo "  just bench-latest           # Run cheap latest measurements"
     @echo "  just bench-latest-vs-last   # Run latest and compare against last"
+    @echo "  just bench-vs-linalg-latest-vs # Run non-exact latest and compare against last"
     @echo "  just performance-github-assets # Compare stored GitHub Actions release assets"
     @echo "  just performance-local      # Compare current tree against latest release locally"
+    @echo "  just performance-local-vs-linalg # Compare current non-exact kernels locally"
     @echo "  just performance-release    # Promote local release performance docs"
     @echo "  just bench-save-last        # Save full baseline as 'last'"
     @echo "  just bench-vs-linalg        # Run vs_linalg bench (optional filter)"
@@ -489,6 +495,23 @@ performance-github-assets current_tag="" baseline_tag="": python-sync
 # Compare the current tree against the latest published release locally.
 performance-local: python-sync
     uv run archive-performance --current-vs-latest --generate-in-temp-worktree --output-only --output target/bench-reports/performance.md
+
+# Compare current non-exact kernels locally without rerunning current peer crates.
+performance-local-vs-linalg current_tag="" baseline_tag="": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    current_tag="{{current_tag}}"
+    baseline_tag="{{baseline_tag}}"
+    if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
+        if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
+            echo "current_tag and baseline_tag must be provided together" >&2
+            exit 2
+        fi
+        uv run archive-performance "$current_tag" "$baseline_tag" --suite vs_linalg --generate-in-temp-worktree --worktree-ref HEAD --output-only --output target/bench-reports/performance.md
+    else
+        uv run archive-performance --current-vs-latest --suite vs_linalg --generate-in-temp-worktree --output-only --output target/bench-reports/performance.md
+    fi
+
 
 # Generate local release-signal measurements in a temp worktree, then promote/archive docs.
 performance-release current_tag="" baseline_tag="": python-sync

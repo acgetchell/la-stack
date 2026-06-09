@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! LDLT factorization and solves.
 //!
 //! This module provides a stack-allocated LDLT factorization (`A = L D Lᵀ`) intended for
@@ -18,6 +20,9 @@ use crate::vector::Vector;
 use crate::{LaError, Tolerance};
 
 /// LDLT factorization (`A = L D Lᵀ`) for symmetric positive (semi)definite matrices.
+///
+/// `Ldlt<0>` represents the empty factorization. Its determinant is the empty
+/// product `1.0`, and solving against [`Vector<0>`] returns [`Vector<0>`].
 ///
 /// This factorization is **not** a general-purpose symmetric-indefinite LDLT (no pivoting).
 /// It assumes the input matrix is symmetric and (numerically) SPD/PSD.
@@ -413,6 +418,20 @@ mod tests {
     gen_public_api_ldlt_diagonal_tests!(3);
     gen_public_api_ldlt_diagonal_tests!(4);
     gen_public_api_ldlt_diagonal_tests!(5);
+
+    #[test]
+    fn solve_0x0_returns_empty_vector_and_unit_det() {
+        let a = Matrix::<0>::zero();
+        let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
+
+        assert_eq!(ldlt.det(), Ok(1.0));
+        assert!(
+            ldlt.solve(Vector::<0>::zero())
+                .unwrap()
+                .into_array()
+                .is_empty()
+        );
+    }
 
     #[test]
     fn solve_2x2_known_spd() {

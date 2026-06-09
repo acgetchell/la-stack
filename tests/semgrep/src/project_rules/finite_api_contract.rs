@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(dead_code)]
 
 // ruleid: la-stack.rust.no-public-raw-linear-algebra-modules
 pub mod matrix;

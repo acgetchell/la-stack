@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Benchmark comparison between la-stack and other Rust linear algebra crates.
 //!
 //! Goal: like-for-like comparisons of the operations la-stack supports across several

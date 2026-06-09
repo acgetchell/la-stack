@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Error types and helpers for linear algebra operations.
 
 use core::fmt;
