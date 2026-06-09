@@ -726,6 +726,8 @@ def _generate_markdown(
             "`just performance-local` writes `target/bench-reports/performance.md`.",
             "`just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.",
             "",
+            "Older curated release-to-release reports are archived in `docs/archive/performance/`.",
+            "",
             "See `docs/BENCHMARKING.md` for the full comparison workflow.",
         ]
     )

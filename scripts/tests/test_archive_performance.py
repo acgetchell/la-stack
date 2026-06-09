@@ -53,6 +53,11 @@ def _normalized_report(version: str, baseline: str) -> str:
     return archive_performance._normalize_how_to_update(_report(version, baseline))
 
 
+def test_normalized_report_links_archived_performance_reports() -> None:
+    text = _normalized_report("0.4.3", "v0.4.2")
+    assert "Older curated release-to-release reports are archived in `docs/archive/performance/`." in text
+
+
 def _legacy_report(version: str, baseline: str) -> str:
     return (
         _report(version, baseline)

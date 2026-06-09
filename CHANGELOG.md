@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.3] - 2026-06-09
 
 ### ⚠️ Breaking Changes
 
@@ -49,6 +49,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Return typed Unrepresentable reasons when strict exact-to-f64 conversion would round or become non-finite.
   - Specialize D4 exact determinants and keep determinant/error-bound zero coefficients from evaluating overflowing absent terms.
   - Update exact benchmark comparison reporting to compare strict and rounded APIs against legacy v0.4.2 rows.
+- Archive release performance reports [`2817d01`](https://github.com/acgetchell/la-stack/commit/2817d01374ad0aeab98d6f48a3dae9b30f878a8a)
+  - Add an archive-performance utility that promotes curated benchmark reports into docs/PERFORMANCE.md while archiving prior release comparisons
+  - Generate release comparisons in isolated temporary worktrees, including legacy command fallback for published tags
+  - Wire release and historical archive recipes into just, Python packaging, and release documentation
+- Automate published performance report archiving [`d31e26a`](https://github.com/acgetchell/la-stack/commit/d31e26a9d7a47a6c3089028630640bcff5afe7c0)
+  - Track the latest curated release comparison in docs/PERFORMANCE.md and archive older comparisons under docs/archive/performance/
+  - Let performance-archive-published discover the latest stable GitHub release and previous stable baseline automatically
+  - Generate release comparisons in isolated temporary worktrees, with release-asset restore and local baseline fallback paths
+  - Update benchmark and release docs to use the scripted workflow instead of manual checkout steps
+- Split local and release performance comparisons [`7258525`](https://github.com/acgetchell/la-stack/commit/7258525590f2ed68d41879e71c833010e408e7f7)
+  - Add default performance-local and performance-release workflows that infer the relevant release tags and run in temporary worktrees.
+  - Add a performance-github-assets workflow for comparing stored GitHub Actions release benchmark assets without local cargo runs.
+  - Normalize release tags before fetching, downloading assets, or checking out detached worktrees.
+  - Update performance docs, release guidance, and generated report instructions to use the new benchmark workflows.
+- Add vs_linalg-only performance checks [`d7c1487`](https://github.com/acgetchell/la-stack/commit/d7c1487115e1a8e5bb1ec4fcc7592786e300e2ce)
+  - Add local workflows for comparing current non-exact la-stack kernels against a release baseline without rerunning current nalgebra/faer or exact benchmarks.
+  - Route archive-performance baseline and current benchmark commands by suite, with legacy fallback support for older release worktrees.
+  - Document the faster release-signal workflow and expand Semgrep fixtures for benchmark, example, doctest, and public panic-path rules.
 
 ### Changed
 
@@ -61,6 +79,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replace mypy with strict Ty checking in the Python workflow.
   - Parse TOML, JSON, argparse, and Semgrep inputs into typed boundary objects before downstream use.
   - Reject malformed Criterion estimates, non-finite timings, invalid confidence intervals, and malformed Semgrep result shapes.
+- Harden Rust release hygiene [`8e12c93`](https://github.com/acgetchell/la-stack/commit/8e12c935fe54e265e8ceb640702267ec0e71b7b1)
+  - Promote missing documentation and dead code lints to deny-level checks.
+  - Forbid unsafe code explicitly across Rust modules and benchmark targets.
+  - Document the LU/LDLT empty-matrix convention for D=0.
+  - Move exact benchmark input generation into typed helpers and consolidate exact benchmark operation dispatch.
 
 ### Documentation
 
@@ -82,6 +105,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   - Return matrix-cell metadata when inf-norm row sums or symmetry tolerance scaling overflow.
   - Avoid reparsing finite-by-construction RHS vectors in LU and LDLT solves.
+- Re-raise unexpected archive failures [`7938386`](https://github.com/acgetchell/la-stack/commit/7938386166f1f3f5cf594c5def67458d48e19a98)
+  - Limit archive-performance CLI error handling to expected validation, filesystem, subprocess, and runtime failures.
+  - Let unexpected exceptions propagate so benchmark archiving bugs surface during development.
+
+### Performance
+
+- Improve factorization kernel [`8837df1`](https://github.com/acgetchell/la-stack/commit/8837df1f54a9fa2c20abc1487cfce4de8c8e09c5)
+
+  - Preserve the tiny-dimension update shape for D2-D5 to avoid regressing the core fixed-size path
+  - Fuse multiplier computation with trailing updates for larger dimensions to reduce extra column walks
+  - Rely on the LDLT factorization proof instead of a redundant final finite-storage scan
+- Optimize exact and factorized solve kernels [`1690355`](https://github.com/acgetchell/la-stack/commit/1690355bf27c2cbba685ba0cd70486275c7620b8)
+  - Split LU and LDLT solve paths so tiny matrices keep the direct kernels while larger fixed dimensions avoid extra substitution work.
+  - Convert dyadic exact solve results directly to finite f64 and preserve UnrepresentableReason recovery semantics on strict conversion failures.
+  - Modernize release branch commands and keep just recipes sorted.
 
 ## [0.4.2] - 2026-06-04
 
@@ -634,7 +672,7 @@ Older releases are archived by minor series:
 - [0.2.x](docs/archive/changelog/0.2.md)
 - [0.1.x](docs/archive/changelog/0.1.md)
 
-[Unreleased]: https://github.com/acgetchell/la-stack/compare/v0.4.2...HEAD
+[0.4.3]: https://github.com/acgetchell/la-stack/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/acgetchell/la-stack/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/acgetchell/la-stack/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/acgetchell/la-stack/compare/v0.3.0...v0.4.0

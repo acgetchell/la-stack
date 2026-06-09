@@ -379,6 +379,7 @@ def test_main_snapshot_writes_output(tmp_path: Path) -> None:
     assert "just performance-release" in text
     assert "just performance-github-assets" in text
     assert "just performance-release <current-tag> <previous-tag>" in text
+    assert "Older curated release-to-release reports are archived in `docs/archive/performance/`." in text
     assert "git checkout" not in text
 
 

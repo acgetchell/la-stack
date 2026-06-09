@@ -409,7 +409,7 @@ wheels = [
 
 [[package]]
 name = "la-stack-scripts"
-version = "0.4.2"
+version = "0.4.3"
 source = { editable = "." }
 
 [package.dev-dependencies]

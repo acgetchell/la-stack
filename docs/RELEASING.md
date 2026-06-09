@@ -118,40 +118,24 @@ repair, run `just performance-release <current-tag> <previous-tag>`. To compare
 the stored GitHub Actions release assets instead of running cargo locally, use
 `just performance-github-assets`.
 
-6. Save benchmark baselines for this release
-
-```bash
-# Save a named full baseline for this release
-just bench-save-baseline $TAG
-
-# Also refresh the conventional "last" baseline used by local
-# latest-vs-last performance checks
-just bench-save-last
-```
-
-These baselines can be compared against in future optimization work on the
-release branch. The default local report command, `just bench-compare`, compares
-latest measurements against `last` and writes
-`target/bench-reports/performance.md`; it does not update README benchmark
-tables or committed release artifacts.
-
 After the GitHub Release is published, the `Release Benchmarks` workflow checks
 out the release tag, saves a full Criterion baseline, and attaches
 `la-stack-$TAG-criterion-baseline.tar.gz` to the release. That release asset is
 the durable archive for historical baseline comparisons; the workflow also
 uploads a short-lived Actions artifact for debugging the run.
 
-See `docs/BENCHMARKING.md` for the full comparison workflow.
+See `docs/BENCHMARKING.md` for local saved-baseline workflows and the full
+comparison command reference.
 
-7. Validate the release branch
+6. Validate the release branch
 
 ```bash
 just ci
 just citation-check
-cargo publish --locked --dry-run
+cargo publish --locked --allow-dirty --dry-run
 ```
 
-8. Stage and commit release artifacts
+7. Stage and commit release artifacts
 
 ```bash
 git add Cargo.toml Cargo.lock CITATION.cff pyproject.toml CHANGELOG.md README.md docs/
@@ -165,7 +149,7 @@ git commit -m "chore(release): release $TAG
 - Update documentation for release"
 ```
 
-9. Push the branch and open a PR
+8. Push the branch and open a PR
 
 ```bash
 git push -u origin "release/$TAG"

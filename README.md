@@ -78,7 +78,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-la-stack = "0.4.2"
+la-stack = "0.4.3"
 ```
 
 ### Feature flags
@@ -207,7 +207,7 @@ rationals (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
 
 ```toml
 [dependencies]
-la-stack = { version = "0.4.2", features = ["exact"] }
+la-stack = { version = "0.4.3", features = ["exact"] }
 ```
 
 **Determinants:**
@@ -383,19 +383,21 @@ operations.
 
 For the full per-kernel comparison methodology, input construction, and
 release-comparison workflow details, see [docs/BENCHMARKING.md](docs/BENCHMARKING.md).
+For the current release-to-release performance snapshot, see
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
 
 | D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | la-stack vs nalgebra | la-stack vs faer |
 |---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|
-| 2 | 2.585 | 4.486 | 137.653 | +42.4% | +98.1% |
-| 3 | 12.204 | 22.990 | 182.618 | +46.9% | +93.3% |
-| 4 | 27.228 | 51.660 | 208.181 | +47.3% | +86.9% |
-| 5 | 53.141 | 68.714 | 272.117 | +22.7% | +80.5% |
-| 8 | 141.279 | 162.225 | 348.216 | +12.9% | +59.4% |
-| 16 | 626.561 | 574.115 | 854.941 | -9.1% | +26.7% |
-| 32 | 2,862.795 | 2,709.532 | 2,806.698 | -5.7% | -2.0% |
-| 64 | 19,703.239 | 14,388.285 | 12,085.453 | -36.9% | -63.0% |
+| 2 | 2.044 | 4.542 | 143.958 | +55.0% | +98.6% |
+| 3 | 9.596 | 23.599 | 185.466 | +59.3% | +94.8% |
+| 4 | 23.338 | 50.717 | 210.976 | +54.0% | +88.9% |
+| 5 | 45.368 | 69.065 | 277.564 | +34.3% | +83.7% |
+| 8 | 127.861 | 164.412 | 364.864 | +22.2% | +65.0% |
+| 16 | 631.997 | 663.822 | 882.674 | +4.8% | +28.4% |
+| 32 | 2,745.604 | 2,424.540 | 2,867.431 | -13.2% | +4.2% |
+| 64 | 17,543.034 | 14,747.731 | 12,266.271 | -19.0% | -43.0% |
 
 <!-- BENCH_TABLE:lu_solve:median:new:END -->
 
