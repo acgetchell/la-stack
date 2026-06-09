@@ -28,6 +28,20 @@ pub async fn expects_on_input(value: Option<usize>) -> usize {
     value.expect("value is required")
 }
 
+// ruleid: la-stack.rust.no-public-api-panic-paths
+pub fn debug_asserts_on_input(value: usize) -> usize {
+    debug_assert!(value > 0);
+    value
+}
+
+// ruleid: la-stack.rust.no-public-api-panic-paths
+pub fn marks_input_unreachable(value: usize) -> usize {
+    if value == 0 {
+        unreachable!("zero is not a valid public API path");
+    }
+    value
+}
+
 // ok: la-stack.rust.no-public-api-panic-paths
 pub fn fallible_result(value: usize) -> Result<usize, Error> {
     if value == 0 {

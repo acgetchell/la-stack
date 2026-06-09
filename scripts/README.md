@@ -26,6 +26,9 @@ just bench-save-last
 # Run exact benches plus la-stack rows from vs_linalg, then compare to last
 just bench-latest-vs-last
 
+# Run only non-exact la-stack rows from vs_linalg, then compare to last
+just bench-vs-linalg-latest-vs
+
 # Re-render from existing Criterion output
 just bench-compare
 ```
@@ -46,6 +49,14 @@ against the latest published release:
 
 ```bash
 just performance-local
+```
+
+For a faster non-exact kernel check that skips current nalgebra/faer and exact
+benchmark runs, compare current la-stack `vs_linalg` rows against a release
+baseline:
+
+```bash
+just performance-local-vs-linalg v0.4.3 v0.4.2
 ```
 
 To compare stored GitHub Actions release benchmark assets without local cargo

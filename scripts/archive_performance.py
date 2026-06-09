@@ -47,6 +47,7 @@ _DEFAULT_CURRENT = "docs/PERFORMANCE.md"
 _DEFAULT_ARCHIVE_DIR = "docs/archive/performance"
 _DEFAULT_SUITE = "all"
 _DEFAULT_SCOPE = "release-signal"
+_SUPPORTED_SUITES = ("all", "exact", "vs_linalg")
 _BENCH_TIMEOUT_SECONDS = 7200
 _COMMAND_TIMEOUT_SECONDS = 600
 _HOW_TO_UPDATE_RE = re.compile(r"(?ms)^## How to Update\n.*\Z")
@@ -467,11 +468,55 @@ def _copy_criterion_sample(*, criterion_dir: Path, source_sample: str, target_sa
         raise FileNotFoundError(msg)
 
 
-def _generate_release_baseline(*, baseline_tag: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> None:
+def _has_suite_aware_baseline_recipe(worktree: Path) -> bool:
+    justfile = worktree / "justfile"
+    return justfile.exists() and re.search(r'(?m)^bench-save-baseline\s+tag\s+suite(?:=|"|:|\s)', _read_text(justfile)) is not None
+
+
+def _baseline_tool_args(*, baseline_tag: str, suite: str, baseline_worktree: Path) -> tuple[str, list[str]]:
+    if suite == _DEFAULT_SUITE:
+        return ("just", ["bench-save-baseline", baseline_tag])
+    if _has_suite_aware_baseline_recipe(baseline_worktree):
+        return ("just", ["bench-save-baseline", baseline_tag, suite])
+    match suite:
+        case "exact":
+            return ("cargo", ["bench", "--features", "bench,exact", "--bench", "exact", "--", "--save-baseline", baseline_tag])
+        case "vs_linalg":
+            return ("cargo", ["bench", "--features", "bench", "--bench", "vs_linalg", "--", "--save-baseline", baseline_tag])
+        case _:
+            msg = f"unsupported benchmark suite: {suite}"
+            raise ValueError(msg)
+
+
+def _latest_recipe_args(*, suite: str) -> list[str]:
+    match suite:
+        case "all":
+            return ["bench-latest"]
+        case "exact":
+            return ["bench-exact"]
+        case "vs_linalg":
+            return ["bench-vs-linalg-la-stack"]
+        case _:
+            msg = f"unsupported benchmark suite: {suite}"
+            raise ValueError(msg)
+
+
+def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> None:
     baseline_worktree = tmp_dir / "baseline-worktree"
     _run_git(["worktree", "add", "--detach", str(baseline_worktree), baseline_tag], cwd=repo_root)
     try:
-        _run_tool("just", ["bench-save-baseline", baseline_tag], cwd=baseline_worktree, timeout=_BENCH_TIMEOUT_SECONDS, env=_benchmark_env(repo_root))
+        baseline_command, baseline_args = _baseline_tool_args(
+            baseline_tag=baseline_tag,
+            suite=suite,
+            baseline_worktree=baseline_worktree,
+        )
+        _run_tool(
+            baseline_command,
+            baseline_args,
+            cwd=baseline_worktree,
+            timeout=_BENCH_TIMEOUT_SECONDS,
+            env=_benchmark_env(repo_root),
+        )
         baseline_criterion = baseline_worktree / "target" / "criterion"
         if not baseline_criterion.is_dir():
             msg = f"generated baseline Criterion results were not found: {baseline_criterion}"
@@ -486,9 +531,10 @@ def _generate_release_baseline(*, baseline_tag: str, repo_root: Path, target_wor
             print(f"archive-performance: failed to remove baseline worktree: {exc}", file=sys.stderr)
 
 
-def _prepare_local_release_baseline(*, baseline_tag: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> None:
+def _prepare_local_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> None:
     _generate_release_baseline(
         baseline_tag=baseline_tag,
+        suite=suite,
         repo_root=repo_root,
         target_worktree=target_worktree,
         tmp_dir=tmp_dir,
@@ -568,7 +614,7 @@ def _render_report(*, worktree: Path, report: Path, config: GenerationConfig) ->
 def _run_benchmarks_and_render_report(*, worktree: Path, report: Path, config: GenerationConfig) -> None:
     benchmark_env = _benchmark_env(config.repo_root)
     if _has_current_release_signal_tooling(worktree):
-        _run_tool("just", ["bench-latest"], cwd=worktree, timeout=_BENCH_TIMEOUT_SECONDS, env=benchmark_env)
+        _run_tool("just", _latest_recipe_args(suite=config.suite), cwd=worktree, timeout=_BENCH_TIMEOUT_SECONDS, env=benchmark_env)
     else:
         _run_tool("just", ["bench-exact"], cwd=worktree, timeout=_BENCH_TIMEOUT_SECONDS, env=benchmark_env)
     _render_report(worktree=worktree, report=report, config=config)
@@ -599,6 +645,7 @@ def _generate_report_in_temp_worktree(
             else:
                 _prepare_local_release_baseline(
                     baseline_tag=config.baseline_tag,
+                    suite=config.suite,
                     repo_root=config.repo_root,
                     target_worktree=worktree,
                     tmp_dir=tmp_dir,
@@ -854,6 +901,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--suite",
         default=_DEFAULT_SUITE,
+        choices=_SUPPORTED_SUITES,
         help=f"Benchmark suite for --generate-in-temp-worktree (default: {_DEFAULT_SUITE})",
     )
     parser.add_argument(
