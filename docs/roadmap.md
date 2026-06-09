@@ -100,6 +100,35 @@ a modern typed baseline.
 - [#142](https://github.com/acgetchell/la-stack/issues/142) - Update Python
   tooling to 3.13 and parse scripts at boundaries.
 
+Release posture:
+
+- Release `v0.4.3` before starting another performance-focused implementation
+  branch. The current release-signal comparison against `v0.4.2` shows broad
+  improvement across LU, solve, determinant-via-LU, and vector helper rows.
+- Treat the remaining `D=4` direct determinant regression as a tracked
+  performance note rather than a release blocker because the LU-backed
+  determinant and solve paths improved.
+- Defer `Matrix::inf_norm` optimization to follow-up work after `v0.4.3`.
+  Larger-dimension `vs_linalg` measurements suggest it is the most interesting
+  leaf-kernel target, but it is not required for the release.
+
+### v0.4.4 Focused Leaf-Kernel Performance
+
+After `v0.4.3`, use the improved benchmark workflow to investigate narrow
+leaf-kernel performance gaps without broadening the crate's scope or weakening
+the small fixed-dimension API model.
+
+- [#154](https://github.com/acgetchell/la-stack/issues/154) - Investigate
+  `Matrix::inf_norm` performance against `nalgebra` and `faer`.
+- [#155](https://github.com/acgetchell/la-stack/issues/155) - Investigate
+  `Vector::dot` and `Vector::norm2_sq` performance against `nalgebra` and
+  `faer`.
+
+The goal is targeted profiling and implementation cleanup for operations where
+`vs_linalg` shows a meaningful peer-crate gap. Release scope should stay limited
+to changes that preserve numerical behavior, allocation-free fixed-size storage,
+and clear const-generic code.
+
 ### v0.5.0 Generic Const Expressions
 
 `v0.5.0` is reserved for the post-stabilization const-generic API revision.
