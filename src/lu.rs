@@ -162,29 +162,51 @@ impl<const D: usize> Lu<D> {
     #[inline]
     pub(crate) const fn solve_finite(&self, b: Vector<D>) -> Result<Vector<D>, LaError> {
         let mut x = [0.0; D];
-        let mut i = 0;
         let b = b.as_array();
-        while i < D {
-            x[i] = b[self.piv[i]];
-            i += 1;
-        }
-
-        // Forward substitution for L (unit diagonal).
         let mut i = 0;
-        while i < D {
-            let mut sum = x[i];
-            let row = self.factors.row(i);
-            let mut j = 0;
-            while j < i {
-                sum = (-row[j]).mul_add(x[j], sum);
-                j += 1;
+
+        if D <= 4 {
+            while i < D {
+                x[i] = b[self.piv[i]];
+                i += 1;
             }
-            if !sum.is_finite() {
-                cold_path();
-                return Err(LaError::non_finite_at(i));
+
+            // Tiny matrices benchmark better when pivoted RHS materialization
+            // stays separate from forward substitution.
+            i = 0;
+            while i < D {
+                let mut sum = x[i];
+                let row = self.factors.row(i);
+                let mut j = 0;
+                while j < i {
+                    sum = (-row[j]).mul_add(x[j], sum);
+                    j += 1;
+                }
+                if !sum.is_finite() {
+                    cold_path();
+                    return Err(LaError::non_finite_at(i));
+                }
+                x[i] = sum;
+                i += 1;
             }
-            x[i] = sum;
-            i += 1;
+        } else {
+            // Larger fixed dimensions avoid an extra pass by reading the
+            // pivoted right-hand side directly into forward substitution.
+            while i < D {
+                let mut sum = b[self.piv[i]];
+                let row = self.factors.row(i);
+                let mut j = 0;
+                while j < i {
+                    sum = (-row[j]).mul_add(x[j], sum);
+                    j += 1;
+                }
+                if !sum.is_finite() {
+                    cold_path();
+                    return Err(LaError::non_finite_at(i));
+                }
+                x[i] = sum;
+                i += 1;
+            }
         }
 
         // Back substitution for U.
@@ -542,6 +564,25 @@ mod tests {
         let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         let b = Vector::<3>::new([1.0e308, 1.0e308, 0.0]);
+        let err = lu.solve(b).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
+    }
+
+    #[test]
+    fn solve_nonfinite_forward_substitution_overflow_fused_branch_5d() {
+        // Exercises the D >= 5 fused pivot/forward-substitution branch with the
+        // same overflowing L multiplier as the D3 test.
+        let a = Matrix::<5>::try_from_rows([
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [-1.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0],
+        ])
+        .unwrap();
+        let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
+
+        let b = Vector::<5>::new([1.0e308, 1.0e308, 0.0, 0.0, 0.0]);
         let err = lu.solve(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
     }
