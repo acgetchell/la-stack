@@ -165,19 +165,6 @@ action-lint: _ensure-actionlint
 bench:
     cargo bench --features bench
 
-# Compile benchmarks without running them, treating warnings as errors.
-# This catches bench/release-profile-only warnings that won't show up in normal debug-profile runs.
-bench-compile:
-    RUSTFLAGS='-D warnings' cargo bench --no-run --features bench
-    RUSTFLAGS='-D warnings' cargo bench --no-run --features bench,exact --bench exact
-
-# Run the cheaper latest measurements used for latest-vs-last reports.
-bench-latest: bench-vs-linalg-la-stack bench-exact
-
-# Run latest measurements and render the latest-vs-last performance report.
-bench-latest-vs-last baseline="last": bench-latest python-sync
-    uv run bench-compare {{baseline}}
-
 # Compare latest measurements against a saved baseline.
 # Defaults to the `last` full-release baseline.
 bench-compare baseline="last" suite="all" scope="release-signal": python-sync
@@ -186,53 +173,22 @@ bench-compare baseline="last" suite="all" scope="release-signal": python-sync
     baseline="{{baseline}}"
     uv run bench-compare "$baseline" --suite "{{suite}}" --scope "{{scope}}"
 
-# Backward-compatible alias for the GitHub Actions release-asset comparison.
-performance-archive-published current_tag="" baseline_tag="":
-    just performance-github-assets "{{current_tag}}" "{{baseline_tag}}"
-
-# Compare stored GitHub Actions release benchmark assets without local cargo runs.
-performance-github-assets current_tag="" baseline_tag="": python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    current_tag="{{current_tag}}"
-    baseline_tag="{{baseline_tag}}"
-    if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
-        if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
-            echo "current_tag and baseline_tag must be provided together" >&2
-            exit 2
-        fi
-        uv run archive-performance "$current_tag" "$baseline_tag" --github-assets --generate-in-temp-worktree --worktree-ref "$current_tag" --output-only --output target/bench-reports/github-assets-performance.md
-    else
-        uv run archive-performance --published-latest --github-assets --generate-in-temp-worktree --output-only --output target/bench-reports/github-assets-performance.md
-    fi
-
-# Compare the current tree against the latest published release locally.
-performance-local: python-sync
-    uv run archive-performance --current-vs-latest --generate-in-temp-worktree --output-only --output target/bench-reports/performance.md
-
-# Generate local release-signal measurements in a temp worktree, then promote/archive docs.
-performance-release current_tag="" baseline_tag="": python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    current_tag="{{current_tag}}"
-    baseline_tag="{{baseline_tag}}"
-    if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
-        if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
-            echo "current_tag and baseline_tag must be provided together" >&2
-            exit 2
-        fi
-        uv run archive-performance "$current_tag" "$baseline_tag" --generate-in-temp-worktree --worktree-ref HEAD
-    else
-        uv run archive-performance --infer-release --generate-in-temp-worktree --worktree-ref HEAD
-    fi
+# Compile benchmarks without running them, treating warnings as errors.
+# This catches bench/release-profile-only warnings that won't show up in normal debug-profile runs.
+bench-compile:
+    RUSTFLAGS='-D warnings' cargo bench --no-run --features bench
+    RUSTFLAGS='-D warnings' cargo bench --no-run --features bench,exact --bench exact
 
 # Run the exact-arithmetic benchmark suite.
 bench-exact:
     cargo bench --features bench,exact --bench exact
 
-# Save a full Criterion baseline for the previous release signal.
-bench-save-last:
-    just bench-save-baseline last
+# Run the cheaper latest measurements used for latest-vs-last reports.
+bench-latest: bench-vs-linalg-la-stack bench-exact
+
+# Run latest measurements and render the latest-vs-last performance report.
+bench-latest-vs-last baseline="last": bench-latest python-sync
+    uv run bench-compare {{baseline}}
 
 # Save a Criterion baseline. Defaults to all release-signal benchmark suites.
 bench-save-baseline tag suite="all":
@@ -255,6 +211,10 @@ bench-save-baseline tag suite="all":
             exit 2
             ;;
     esac
+
+# Save a full Criterion baseline for the previous release signal.
+bench-save-last:
+    just bench-save-baseline last
 
 # Bench the la-stack vs nalgebra/faer comparison suite.
 bench-vs-linalg filter="":
@@ -339,6 +299,10 @@ check-fast:
 # Runs: checks + all tests (Rust + Python) + examples + bench compile
 ci: check bench-compile test-all examples
     @echo "🎯 CI checks complete!"
+
+# Validate CITATION.cff against the Citation File Format schema.
+citation-check: _ensure-uv
+    uvx --from cffconvert==2.0.0 cffconvert --validate -i CITATION.cff
 
 # Clean build artifacts
 clean:
@@ -501,6 +465,46 @@ markdown-fix: _ensure-rumdl
     fi
 
 markdown-lint: markdown-check
+
+# Backward-compatible alias for the GitHub Actions release-asset comparison.
+performance-archive-published current_tag="" baseline_tag="":
+    just performance-github-assets "{{current_tag}}" "{{baseline_tag}}"
+
+# Compare stored GitHub Actions release benchmark assets without local cargo runs.
+performance-github-assets current_tag="" baseline_tag="": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    current_tag="{{current_tag}}"
+    baseline_tag="{{baseline_tag}}"
+    if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
+        if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
+            echo "current_tag and baseline_tag must be provided together" >&2
+            exit 2
+        fi
+        uv run archive-performance "$current_tag" "$baseline_tag" --github-assets --generate-in-temp-worktree --worktree-ref "$current_tag" --output-only --output target/bench-reports/github-assets-performance.md
+    else
+        uv run archive-performance --published-latest --github-assets --generate-in-temp-worktree --output-only --output target/bench-reports/github-assets-performance.md
+    fi
+
+# Compare the current tree against the latest published release locally.
+performance-local: python-sync
+    uv run archive-performance --current-vs-latest --generate-in-temp-worktree --output-only --output target/bench-reports/performance.md
+
+# Generate local release-signal measurements in a temp worktree, then promote/archive docs.
+performance-release current_tag="" baseline_tag="": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    current_tag="{{current_tag}}"
+    baseline_tag="{{baseline_tag}}"
+    if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
+        if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
+            echo "current_tag and baseline_tag must be provided together" >&2
+            exit 2
+        fi
+        uv run archive-performance "$current_tag" "$baseline_tag" --generate-in-temp-worktree --worktree-ref HEAD
+    else
+        uv run archive-performance --infer-release --generate-in-temp-worktree --worktree-ref HEAD
+    fi
 
 # Plot: generate a single time-vs-dimension SVG from Criterion results.
 plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
@@ -690,6 +694,8 @@ shell-check:
         echo "No shell files found to check."
     fi
 
+shell-fix: shell-fmt
+
 shell-fmt: _ensure-shfmt
     #!/usr/bin/env bash
     set -euo pipefail
@@ -705,8 +711,6 @@ shell-fmt: _ensure-shfmt
     fi
 
 shell-lint: shell-check
-
-shell-fix: shell-fmt
 
 # Spell check (typos)
 spell-check: _ensure-typos
@@ -777,6 +781,10 @@ test-python: python-sync
     uv run pytest -q
 
 # TOML
+toml-check: toml-fmt-check toml-lint
+
+toml-fix: toml-fmt
+
 toml-fmt: _ensure-taplo
     #!/usr/bin/env bash
     set -euo pipefail
@@ -815,10 +823,6 @@ toml-lint: _ensure-taplo
     else
         echo "No TOML files found to lint."
     fi
-
-toml-check: toml-fmt-check toml-lint
-
-toml-fix: toml-fmt
 
 # File validation
 validate-json: _ensure-jq
@@ -862,10 +866,6 @@ yaml-fix: _ensure-dprint
     fi
 
 yaml-lint: yaml-check
-
-# Validate CITATION.cff against the Citation File Format schema.
-citation-check: _ensure-uv
-    uvx --from cffconvert==2.0.0 cffconvert --validate -i CITATION.cff
 
 # GitHub Actions security analysis
 zizmor: _ensure-zizmor

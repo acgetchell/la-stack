@@ -32,7 +32,7 @@ git remote -v
 Ensure your local `main` is up to date before beginning:
 
 ```bash
-git checkout main
+git switch main
 git pull --ff-only
 ```
 
@@ -50,7 +50,7 @@ but keep them minimal and release-critical.
 1. Create the release branch
 
 ```bash
-git checkout -b "release/$TAG"
+git switch -c "release/$TAG"
 ```
 
 2. Bump versions
@@ -200,7 +200,7 @@ If you discover issues after generating the changelog:
 1. Sync your local `main` to the merge commit
 
 ```bash
-git checkout main
+git switch main
 git pull --ff-only
 ```
 

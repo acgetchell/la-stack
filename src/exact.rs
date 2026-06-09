@@ -172,42 +172,59 @@ fn bigint_exp_to_bigrational(mut value: BigInt, mut exp: i32) -> BigRational {
     }
 }
 
-/// Convert a finite `f64` back to the exact rational value it represents.
-fn finite_f64_to_bigrational(value: f64) -> Result<BigRational, LaError> {
-    let Some((mantissa, exponent, is_negative)) = f64_decompose(value)? else {
-        return Ok(BigRational::from_integer(BigInt::from(0)));
-    };
-
-    let value = BigInt::from(mantissa.get());
-    let value = if is_negative { -value } else { value };
-    Ok(bigint_exp_to_bigrational(value, exponent))
-}
-
 /// Convert an exact rational result to `f64` only when the conversion is exact.
+///
+/// This supports the strict `*_exact_f64` public APIs by accepting only dyadic
+/// rational values that fit in finite binary64. The optional `index` is attached
+/// to [`LaError::Unrepresentable`] for vector-valued solve components.
+///
+/// # Errors
+/// Returns [`LaError::Unrepresentable`] with
+/// [`UnrepresentableReason::RequiresRounding`] when the rational denominator is
+/// not a power of two and the rounded value would still be finite.
 fn exact_rational_to_finite_f64(exact: &BigRational, index: Option<usize>) -> Result<f64, LaError> {
-    let Some(value) = exact.to_f64() else {
+    let numerator = exact.numer();
+    if numerator.sign() == Sign::NoSign {
+        return Ok(0.0);
+    }
+
+    let denominator = exact.denom();
+    let Some(denominator_exp) = denominator.trailing_zeros() else {
         cold_path();
         return Err(LaError::unrepresentable(
             index,
-            UnrepresentableReason::NotFinite,
+            rounded_rational_unrepresentable_reason(exact),
         ));
     };
-    if !value.is_finite() {
+
+    if denominator.bits().checked_sub(1) != Some(denominator_exp) {
         cold_path();
         return Err(LaError::unrepresentable(
             index,
-            UnrepresentableReason::NotFinite,
+            rounded_rational_unrepresentable_reason(exact),
         ));
     }
 
-    if finite_f64_to_bigrational(value)? == *exact {
-        Ok(value)
-    } else {
+    let Ok(denominator_exp) = i32::try_from(denominator_exp) else {
         cold_path();
-        Err(LaError::unrepresentable(
+        return Err(LaError::unrepresentable(
             index,
-            UnrepresentableReason::RequiresRounding,
-        ))
+            rounded_rational_unrepresentable_reason(exact),
+        ));
+    };
+
+    bigint_exp_to_finite_f64(numerator.clone(), -denominator_exp, index)
+}
+
+/// Classify a failed exact-rational-to-`f64` conversion by the rounded result.
+///
+/// Strict exact conversion has already failed when this helper is called. It
+/// preserves the [`UnrepresentableReason`] recovery contract: callers may retry
+/// with a rounded API only when that rounded result would still be finite.
+fn rounded_rational_unrepresentable_reason(exact: &BigRational) -> UnrepresentableReason {
+    match exact.to_f64() {
+        Some(value) if value.is_finite() => UnrepresentableReason::RequiresRounding,
+        _ => UnrepresentableReason::NotFinite,
     }
 }
 
@@ -234,9 +251,26 @@ fn exact_rational_to_rounded_f64(
     }
 }
 
-/// Convert a `BigInt × 2^exp` determinant pair to an exactly represented finite
-/// `f64` without allocating a `BigRational`.
-fn bigint_exp_to_finite_f64(mut value: BigInt, exp: i32) -> Result<f64, LaError> {
+/// Convert a `BigInt × 2^exp` pair to an exactly represented finite `f64`.
+///
+/// This avoids allocating a [`BigRational`] when determinant and solve paths
+/// already have an integer significand plus binary exponent. The optional
+/// `index` is forwarded to [`LaError::Unrepresentable`] for vector-valued solve
+/// components; determinant callers pass `None`.
+///
+/// # Errors
+/// Returns [`LaError::Unrepresentable`] with
+/// [`UnrepresentableReason::RequiresRounding`] when the exact nonzero value
+/// would need rounding or underflows below the smallest positive subnormal.
+///
+/// Returns [`LaError::Unrepresentable`] with
+/// [`UnrepresentableReason::NotFinite`] when the exact value cannot be
+/// represented by any finite `f64`.
+fn bigint_exp_to_finite_f64(
+    mut value: BigInt,
+    exp: i32,
+    index: Option<usize>,
+) -> Result<f64, LaError> {
     if value == BigInt::from(0) {
         return Ok(0.0);
     }
@@ -252,14 +286,14 @@ fn bigint_exp_to_finite_f64(mut value: BigInt, exp: i32) -> Result<f64, LaError>
         let Ok(tz) = i64::try_from(tz) else {
             cold_path();
             return Err(LaError::unrepresentable(
-                None,
+                index,
                 UnrepresentableReason::NotFinite,
             ));
         };
         let Some(updated_exp) = exp.checked_add(tz) else {
             cold_path();
             return Err(LaError::unrepresentable(
-                None,
+                index,
                 UnrepresentableReason::NotFinite,
             ));
         };
@@ -270,35 +304,35 @@ fn bigint_exp_to_finite_f64(mut value: BigInt, exp: i32) -> Result<f64, LaError>
     let Ok(bit_len) = i64::try_from(bit_len) else {
         cold_path();
         return Err(LaError::unrepresentable(
-            None,
+            index,
             UnrepresentableReason::NotFinite,
         ));
     };
     let Some(top_bit_exp) = exp.checked_add(bit_len - 1) else {
         cold_path();
         return Err(LaError::unrepresentable(
-            None,
+            index,
             UnrepresentableReason::NotFinite,
         ));
     };
     if exp < F64_MIN_BINARY_EXPONENT {
         cold_path();
         return Err(LaError::unrepresentable(
-            None,
+            index,
             UnrepresentableReason::RequiresRounding,
         ));
     }
     if top_bit_exp > F64_MAX_BINARY_EXPONENT {
         cold_path();
         return Err(LaError::unrepresentable(
-            None,
+            index,
             UnrepresentableReason::NotFinite,
         ));
     }
     if bit_len > F64_SIGNIFICAND_BITS {
         cold_path();
         return Err(LaError::unrepresentable(
-            None,
+            index,
             UnrepresentableReason::RequiresRounding,
         ));
     }
@@ -306,7 +340,7 @@ fn bigint_exp_to_finite_f64(mut value: BigInt, exp: i32) -> Result<f64, LaError>
     let Some(mantissa) = value.to_u64() else {
         cold_path();
         return Err(LaError::unrepresentable(
-            None,
+            index,
             UnrepresentableReason::NotFinite,
         ));
     };
@@ -316,7 +350,7 @@ fn bigint_exp_to_finite_f64(mut value: BigInt, exp: i32) -> Result<f64, LaError>
         let Ok(shift) = u32::try_from(exp - F64_MIN_BINARY_EXPONENT) else {
             cold_path();
             return Err(LaError::unrepresentable(
-                None,
+                index,
                 UnrepresentableReason::RequiresRounding,
             ));
         };
@@ -325,14 +359,14 @@ fn bigint_exp_to_finite_f64(mut value: BigInt, exp: i32) -> Result<f64, LaError>
         let Ok(biased_exp) = u64::try_from(top_bit_exp + F64_EXPONENT_BIAS) else {
             cold_path();
             return Err(LaError::unrepresentable(
-                None,
+                index,
                 UnrepresentableReason::NotFinite,
             ));
         };
         let Ok(shift) = u32::try_from(F64_FRACTION_BITS - (bit_len - 1)) else {
             cold_path();
             return Err(LaError::unrepresentable(
-                None,
+                index,
                 UnrepresentableReason::RequiresRounding,
             ));
         };
@@ -794,7 +828,7 @@ fn det_exact_finite<const D: usize>(m: &Matrix<D>) -> Result<BigRational, LaErro
 #[inline]
 fn det_exact_f64_finite<const D: usize>(m: &Matrix<D>) -> Result<f64, LaError> {
     let (det_int, total_exp) = bareiss_det_int_finite(m)?;
-    bigint_exp_to_finite_f64(det_int, total_exp)
+    bigint_exp_to_finite_f64(det_int, total_exp, None)
 }
 
 /// Exact determinant rounded to finite `f64`.
@@ -2932,6 +2966,20 @@ mod tests {
     }
 
     #[test]
+    fn solve_exact_f64_huge_non_dyadic_component_returns_not_finite() {
+        let a = Matrix::<1>::try_from_rows([[3.0 * f64::MIN_POSITIVE]]).unwrap();
+        let b = Vector::<1>::new([f64::MAX]);
+
+        assert_eq!(
+            a.solve_exact_f64(b),
+            Err(LaError::Unrepresentable {
+                index: Some(0),
+                reason: UnrepresentableReason::NotFinite,
+            })
+        );
+    }
+
+    #[test]
     fn solve_exact_rounded_f64_overflow_returns_err() {
         let big = f64::MAX / 2.0;
         let a = Matrix::<2>::try_from_rows([[1.0 / big, 0.0], [0.0, 1.0 / big]]).unwrap();
@@ -2958,6 +3006,18 @@ mod tests {
                 index: Some(0),
                 reason: UnrepresentableReason::RequiresRounding,
             })
+        );
+    }
+
+    #[test]
+    fn solve_exact_f64_accepts_smallest_subnormal_result() {
+        let tiny = f64::from_bits(1);
+        let a = Matrix::<1>::identity();
+        let b = Vector::<1>::new([tiny]);
+
+        assert_eq!(
+            a.solve_exact_f64(b).unwrap().into_array()[0].to_bits(),
+            tiny.to_bits()
         );
     }
 

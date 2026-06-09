@@ -268,22 +268,46 @@ impl<const D: usize> Ldlt<D> {
             i += 1;
         }
 
-        // Back substitution: Lᵀ x = z.
-        let mut ii = 0;
-        while ii < D {
-            let i = D - 1 - ii;
-            let mut sum = x[i];
-            let mut j = i + 1;
-            while j < D {
-                sum = (-self.factors.entry(j, i)).mul_add(x[j], sum);
-                j += 1;
+        if D <= 4 {
+            // Tiny matrices benchmark better with the direct textbook dot
+            // product for each row of Lᵀ.
+            let mut ii = 0;
+            while ii < D {
+                let i = D - 1 - ii;
+                let mut sum = x[i];
+                let mut j = i + 1;
+                while j < D {
+                    sum = (-self.factors.entry(j, i)).mul_add(x[j], sum);
+                    j += 1;
+                }
+                if !sum.is_finite() {
+                    cold_path();
+                    return Err(LaError::non_finite_at(i));
+                }
+                x[i] = sum;
+                ii += 1;
             }
-            if !sum.is_finite() {
-                cold_path();
-                return Err(LaError::non_finite_at(i));
+        } else {
+            // Larger fixed dimensions benchmark better by walking finalized
+            // rows downward and scattering contributions into the remaining
+            // contiguous lower-triangular row prefix.
+            let mut jj = D;
+            while jj > 0 {
+                jj -= 1;
+
+                let x_j = x[jj];
+                if !x_j.is_finite() {
+                    cold_path();
+                    return Err(LaError::non_finite_at(jj));
+                }
+
+                let row = self.factors.row(jj);
+                let mut i = 0;
+                while i < jj {
+                    x[i] = (-row[i]).mul_add(x_j, x[i]);
+                    i += 1;
+                }
             }
-            x[i] = sum;
-            ii += 1;
         }
 
         Ok(Vector::new_unchecked(x))
@@ -584,6 +608,25 @@ mod tests {
         let b = Vector::<3>::new([0.0, 0.0, 1e308]);
         let err = ldlt.solve(b).unwrap_err();
         assert_eq!(err, LaError::NonFinite { row: None, col: 1 });
+    }
+
+    #[test]
+    fn nonfinite_solve_back_substitution_overflow_scatter_branch_5d() {
+        // Exercises the D >= 5 row-prefix scatter branch with the same
+        // bottom-right 2x2 SPD block used by the D3 back-substitution test.
+        let a = Matrix::<5>::try_from_rows([
+            [1.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 2.0],
+            [0.0, 0.0, 0.0, 2.0, 5.0],
+        ])
+        .unwrap();
+        let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
+
+        let b = Vector::<5>::new([0.0, 0.0, 0.0, 0.0, 1e308]);
+        let err = ldlt.solve(b).unwrap_err();
+        assert_eq!(err, LaError::NonFinite { row: None, col: 3 });
     }
 
     #[test]
