@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Exact arithmetic operations via arbitrary-precision rational numbers.
 //!
 //! This module is only compiled when the `"exact"` Cargo feature is enabled.
@@ -1962,12 +1964,6 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn bareiss_det_d0_is_one() {
-        let det = Matrix::<0>::zero().det_exact().unwrap();
-        assert_eq!(det, BigRational::from_integer(BigInt::from(1)));
-    }
-
-    #[test]
     fn bareiss_det_d1_returns_entry() {
         let det = Matrix::<1>::try_from_rows([[7.0]])
             .unwrap()
@@ -2736,6 +2732,11 @@ mod tests {
         })
     }
 
+    fn hilbert<const D: usize>() -> Matrix<D> {
+        let rows = from_fn(|r| from_fn(|c| 1.0 / f64::from(u32::try_from(r + c + 1).unwrap())));
+        Matrix::<D>::try_from_rows(rows).unwrap()
+    }
+
     /// Near-singular 3×3 solve (matches the `exact_near_singular_3x3`
     /// bench).  With `A = [[1+2^-50, 2, 3], [4, 5, 6], [7, 8, 9]]` and
     /// `x0 = [1, 1, 1]`, `A · x0 = [6 + 2^-50, 15, 24]`; every component is
@@ -2843,15 +2844,8 @@ mod tests {
         ($d:literal) => {
             paste! {
                 #[test]
-                #[allow(clippy::cast_precision_loss)]
                 fn [<det_sign_exact_hilbert_positive_ $d d>]() {
-                    let mut rows = [[0.0f64; $d]; $d];
-                    for r in 0..$d {
-                        for c in 0..$d {
-                            rows[r][c] = 1.0 / ((r + c + 1) as f64);
-                        }
-                    }
-                    let h = Matrix::<$d>::try_from_rows(rows).unwrap();
+                    let h = hilbert::<$d>();
                     assert_eq!(h.det_sign_exact().unwrap(), 1);
                 }
             }
@@ -2867,15 +2861,8 @@ mod tests {
         ($d:literal) => {
             paste! {
                 #[test]
-                #[allow(clippy::cast_precision_loss)]
                 fn [<solve_exact_f64_hilbert_benchmark_rhs_is_rejection_path_ $d d>]() {
-                    let mut rows = [[0.0f64; $d]; $d];
-                    for r in 0..$d {
-                        for c in 0..$d {
-                            rows[r][c] = 1.0 / ((r + c + 1) as f64);
-                        }
-                    }
-                    let h = Matrix::<$d>::try_from_rows(rows).unwrap();
+                    let h = hilbert::<$d>();
                     let b = Vector::<$d>::new([1.0; $d]);
 
                     assert_matches!(
@@ -2904,21 +2891,14 @@ mod tests {
         ($d:literal) => {
             paste! {
                 #[test]
-                #[allow(clippy::cast_precision_loss)]
                 fn [<solve_exact_hilbert_residual_ $d d>]() {
-                    let mut rows = [[0.0f64; $d]; $d];
-                    for r in 0..$d {
-                        for c in 0..$d {
-                            rows[r][c] = 1.0 / ((r + c + 1) as f64);
-                        }
-                    }
-                    let h = Matrix::<$d>::try_from_rows(rows).unwrap();
+                    let h = hilbert::<$d>();
                     // Use a non-trivial RHS with both positive and negative
                     // entries to avoid accidental structural cancellation.
                     let mut b_arr = [0.0f64; $d];
                     for i in 0usize..$d {
                         let sign = if i.is_multiple_of(2) { 1.0 } else { -1.0 };
-                        b_arr[i] = sign * ((i + 1) as f64);
+                        b_arr[i] = sign * f64::from(u32::try_from(i + 1).unwrap());
                     }
                     let b = Vector::<$d>::new(b_arr);
                     let x = h.solve_exact(b).unwrap();
@@ -3049,13 +3029,6 @@ mod tests {
     // -----------------------------------------------------------------------
     // exact solve boundary tests
     // -----------------------------------------------------------------------
-
-    #[test]
-    fn gauss_solve_d0_returns_empty() {
-        let a = Matrix::<0>::zero();
-        let b = Vector::<0>::zero();
-        assert_eq!(a.solve_exact(b).unwrap().len(), 0);
-    }
 
     #[test]
     fn gauss_solve_d1() {

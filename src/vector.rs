@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Fixed-size, stack-allocated vectors.
 
 use core::hint::cold_path;

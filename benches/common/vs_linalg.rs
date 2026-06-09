@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Shared helpers for the `vs_linalg` benchmark and its smoke tests.
 
 use faer::linalg::solvers::{Ldlt as FaerLdlt, PartialPivLu};

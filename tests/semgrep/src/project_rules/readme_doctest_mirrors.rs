@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![allow(dead_code)]
 
 // ruleid: la-stack.rust.no-unwrap-expect-in-readme-doctest-mirrors
 mod readme_doctests_unwrap {

@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Finite tolerance values used by numerical predicates and factorizations.
 
 use crate::LaError;
