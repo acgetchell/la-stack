@@ -138,7 +138,7 @@ impl<const D: usize> Matrix<D> {
     /// Mutably borrow raw row-major storage without preserving the finite invariant.
     ///
     /// This is reserved for internal factorization temporaries whose results are
-    /// validated before becoming observable API values.
+    /// validated or otherwise proven finite before becoming observable API values.
     #[inline]
     pub(crate) const fn rows_mut_unchecked(&mut self) -> &mut [[f64; D]; D] {
         &mut self.rows
