@@ -14,21 +14,12 @@ uv sync --group dev
 
 ## How to use it
 
-### Comparing latest performance against the last release
+### Comparing performance
 
 The comparison script reads Criterion output and writes a local report to
 `target/bench-reports/performance.md` by default:
 
 ```bash
-# Save a full release baseline named "last"
-just bench-save-last
-
-# Run exact benches plus la-stack rows from vs_linalg, then compare to last
-just bench-latest-vs-last
-
-# Run only non-exact la-stack rows from vs_linalg, then compare to last
-just bench-vs-linalg-latest-vs
-
 # Re-render from existing Criterion output
 just bench-compare
 ```
@@ -36,38 +27,22 @@ just bench-compare
 Use `uv run bench-compare --snapshot` for a no-baseline snapshot, or
 `uv run bench-compare <baseline>` to compare against a named saved baseline.
 
-For release PRs, promote one curated release-to-release comparison into
-committed docs and archive the previous committed report. Benchmark generation
-runs locally in temporary worktrees:
+Use the top-level `just` workflows for routine release and local comparisons:
 
 ```bash
-just performance-release
-```
-
-For local development regression checks, compare the current in-tree code
-against the latest published release:
-
-```bash
+# Local development: compare the current tree with the latest release
 just performance-local
-```
 
-For a faster non-exact kernel check that skips current nalgebra/faer and exact
-benchmark runs, compare current la-stack `vs_linalg` rows against a release
-baseline:
+# Release PR: update docs/PERFORMANCE.md and archive the previous report
+just performance-release
 
-```bash
-just performance-local-vs-linalg v0.4.3 v0.4.2
-```
-
-To compare stored GitHub Actions release benchmark assets without local cargo
-runs:
-
-```bash
+# GitHub Actions release assets, without local cargo benchmark runs
 just performance-github-assets
 ```
 
-For explicit release repair, pass both tags:
-`just performance-release v0.4.3 v0.4.2`.
+See `docs/BENCHMARKING.md` for the current command matrix, local saved-baseline
+workflow, explicit tag arguments, output locations, and release-artifact
+comparison details.
 
 ### Plotting Criterion benchmarks (la-stack vs nalgebra/faer)
 

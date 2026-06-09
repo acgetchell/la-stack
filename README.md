@@ -39,8 +39,10 @@ while keeping the API intentionally small and explicit.
 - ✅ Stack storage only (no heap allocation in core types)
 - ✅ `unsafe` forbidden
 
-See [CHANGELOG.md](CHANGELOG.md) for release history and
-[docs/roadmap.md](docs/roadmap.md) for current release planning.
+See [CHANGELOG.md](https://github.com/acgetchell/la-stack/blob/v0.4.3/CHANGELOG.md)
+for release history and
+[docs/roadmap.md](https://github.com/acgetchell/la-stack/blob/v0.4.3/docs/roadmap.md)
+for current release planning.
 
 ## 🚫 Anti-goals
 
@@ -371,9 +373,10 @@ finite-storage invariant directly, so kernels do not revalidate stored entries.
 
 ## 📊 Benchmarks (vs nalgebra/faer)
 
-![LU solve (factor + solve): median time vs dimension](docs/assets/bench/vs_linalg_lu_solve_median.svg)
+![LU solve (factor + solve): median time vs dimension](https://raw.githubusercontent.com/acgetchell/la-stack/v0.4.3/docs/assets/bench/vs_linalg_lu_solve_median.svg)
 
-Raw data: [docs/assets/bench/vs_linalg_lu_solve_median.csv](docs/assets/bench/vs_linalg_lu_solve_median.csv)
+Raw data:
+[docs/assets/bench/vs_linalg_lu_solve_median.csv](https://github.com/acgetchell/la-stack/blob/v0.4.3/docs/assets/bench/vs_linalg_lu_solve_median.csv)
 
 Representative benchmark: `lu_solve` factors the matrix and solves one
 right-hand side. Median time is lower-is-better, and the “la-stack vs
@@ -382,9 +385,10 @@ nalgebra/faer” columns show the % time reduction relative to each baseline
 operations.
 
 For the full per-kernel comparison methodology, input construction, and
-release-comparison workflow details, see [docs/BENCHMARKING.md](docs/BENCHMARKING.md).
+release-comparison workflow details, see
+[docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/v0.4.3/docs/BENCHMARKING.md).
 For the current release-to-release performance snapshot, see
-[docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+[docs/PERFORMANCE.md](https://github.com/acgetchell/la-stack/blob/v0.4.3/docs/PERFORMANCE.md).
 
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
 
@@ -445,23 +449,30 @@ to an explicit allowlist, and kept with readable version comments for review.
 CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
 aligned with the local comprehensive validation path.
 
-For coverage commands and report locations, see [`docs/COVERAGE.md`](docs/COVERAGE.md).
-For the full contributor workflow, see [CONTRIBUTING.md](CONTRIBUTING.md).
+For coverage commands and report locations, see
+[`docs/COVERAGE.md`](https://github.com/acgetchell/la-stack/blob/v0.4.3/docs/COVERAGE.md).
+For the full contributor workflow, see
+[CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.3/CONTRIBUTING.md).
 
 ## 📝 Citation
 
-If you use this library in academic work, please cite it using [CITATION.cff](CITATION.cff) (or GitHub's
-"Cite this repository" feature). Tagged releases are archived on Zenodo.
+If you use this library in academic work, please cite it using
+[CITATION.cff](https://github.com/acgetchell/la-stack/blob/v0.4.3/CITATION.cff)
+(or GitHub's "Cite this repository" feature). Tagged releases are archived on
+Zenodo.
 
 ## 📚 References
 
-For canonical references to the algorithms used by this crate, see [REFERENCES.md](REFERENCES.md).
+For canonical references to the algorithms used by this crate, see
+[REFERENCES.md](https://github.com/acgetchell/la-stack/blob/v0.4.3/REFERENCES.md).
 
 ## 🤖 AI Agents
 
-AI coding assistants should read [AGENTS.md](AGENTS.md) before proposing or
-applying changes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository's
-AI-assisted development note.
+AI coding assistants should read
+[AGENTS.md](https://github.com/acgetchell/la-stack/blob/v0.4.3/AGENTS.md)
+before proposing or applying changes. See
+[CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.3/CONTRIBUTING.md)
+for the repository's AI-assisted development note.
 
 ## 📄 License
 
