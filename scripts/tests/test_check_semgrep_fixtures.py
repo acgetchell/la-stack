@@ -1,3 +1,5 @@
+"""Tests for Semgrep fixture-annotation validation."""
+
 from __future__ import annotations
 
 import json
@@ -35,13 +37,7 @@ def test_semgrep_results_rejects_malformed_result_objects(monkeypatch: pytest.Mo
 def test_main_accepts_matching_annotations(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     fixture = tmp_path / "fixture.rs"
     fixture.write_text(
-        "\n".join(
-            [
-                "// ruleid: rust.foo, rust.bar",
-                "// ruleid: rust.foo",
-                "",
-            ]
-        ),
+        "// ruleid: rust.foo, rust.bar\n// ruleid: rust.foo\n",
         encoding="utf-8",
     )
     monkeypatch.setenv(

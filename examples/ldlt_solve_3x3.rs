@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Solve a 3×3 symmetric positive definite system via LDLT factorization.
 //!
 //! LDLT is the natural choice for SPD matrices (e.g. Gram matrices, covariance
@@ -20,13 +22,13 @@ fn main() -> Result<(), LaError> {
     let det = ldlt.det()?;
 
     println!("A (3×3 SPD tridiagonal):");
-    for r in 0..3 {
+    for row in a.as_rows() {
         print!("  [");
-        for c in 0..3 {
-            if c > 0 {
+        for (col, value) in row.iter().enumerate() {
+            if col > 0 {
                 print!(", ");
             }
-            print!("{:5.1}", a.get_checked(r, c)?);
+            print!("{value:5.1}");
         }
         println!("]");
     }

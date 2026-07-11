@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Exact determinant sign for a near-singular 3×3 matrix.
 //!
 //! This example demonstrates `det_sign_exact()`, which uses adaptive-precision
@@ -23,23 +25,23 @@ fn main() -> Result<(), LaError> {
         [7.0, 8.0, 9.0],
     ])?;
 
-    let sign = m.det_sign_exact()?;
+    let sign = m.det_sign_exact();
     let det_f64 = m.det()?;
 
     println!("Near-singular 3×3 matrix (perturbation = 2^-50 ≈ {perturbation:.2e}):");
-    for r in 0..3 {
+    for row in m.as_rows() {
         print!("  [");
-        for c in 0..3 {
-            if c > 0 {
+        for (col, value) in row.iter().enumerate() {
+            if col > 0 {
                 print!(", ");
             }
-            print!("{:22.18}", m.get_checked(r, c)?);
+            print!("{value:22.18}");
         }
         println!("]");
     }
     println!();
     println!("f64 det()          = {det_f64:+.6e}");
-    println!("det_sign_exact()   = {sign}");
+    println!("det_sign_exact()   = {}", sign.as_i8());
     println!();
     println!("The exact sign is −1 (negative), matching the analytical result.");
 

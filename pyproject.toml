@@ -7,7 +7,7 @@ name = "la-stack-scripts"
 version = "0.4.3"
 description = "Python utility scripts for the la-stack Rust library"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 license = { text = "BSD-3-Clause" }
 authors = [
     { name = "Adam Getchell", email = "adam@adamgetchell.org" },
@@ -20,7 +20,7 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: System :: Benchmarking",
 ]
@@ -50,11 +50,10 @@ py-modules = [ "archive_changelog", "archive_performance", "bench_compare", "che
 
 [tool.ruff]
 line-length = 160
-target-version = "py313"
 src = [ "scripts" ]
 
 [tool.ruff.lint]
-select = [ "E", "F", "W", "I", "N", "UP", "YTT", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "EM", "EXE", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "TID", "TCH", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "RUF" ]
+select = [ "E", "F", "W", "ANN201", "ANN202", "ANN204", "C90", "I", "N", "UP", "YTT", "ASYNC", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "FA", "T10", "EM", "EXE", "FIX", "FLY", "FURB", "ISC", "ICN", "LOG", "G", "INP", "PERF", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "SLOT", "TC", "TID", "TD", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "RUF", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107" ]
 fixable = [ "ALL" ]
 unfixable = [  ]
 ignore = [
@@ -66,7 +65,6 @@ ignore = [
     "PLR2004", # Magic value used in comparison - OK for CLI constants and thresholds
     "FBT001", # Boolean-typed positional argument - OK for CLI flags
     "FBT002", # Boolean default positional argument - OK for CLI flags
-    "BLE001", # Do not catch blind exception - OK for CLI robustness
     "T201", # print found - OK for CLI output
     "TRY300", # Consider moving statement to else block - OK for CLI control flow
     "TRY301", # Abstract raise to inner function - OK for straightforward CLI error handling
@@ -76,15 +74,16 @@ ignore = [
     "PTH123", # open() should be replaced by Path.open() - OK for some call sites
     "EM102", # Exception must not use f-string - OK for CLI error messages
     "TRY003", # Avoid specifying long messages outside exception class - OK for CLI reporting
+    "N806", # Uppercase local names are acceptable for constants and ANSI color codes
+    "F841", # Color constants may be assigned conditionally for CLI output
+    "PLW2901", # Loop-variable replacement is acceptable for line-processing transforms
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/tests/**/*.py" = [
-    "S101", # asserts are fine in tests
-    "SLF001", # tests may call internal helpers
-    "PT019", # @patch decorator params are not pytest fixtures
-    "PLC0415", # test helpers may import inside functions
-]
+"**/tests/test_*.py" = [ "S101", "SLF001", "D101", "D102", "D103" ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.ruff.lint.isort]
 known-first-party = [
@@ -123,14 +122,33 @@ python_files = [ "test_*.py", "*_test.py" ]
 python_classes = [ "Test*" ]
 python_functions = [ "test_*" ]
 
+[tool.rumdl]
+line-length = 160
+disable = [
+    "MD018",
+    "MD024",
+    "MD029",
+    "MD033",
+    "MD037",
+    "MD038",
+    "MD041",
+    "MD060",
+]
+
+[tool.rumdl.MD013]
+line-length = 160
+
 [tool.uv]
 package = true
 
 [dependency-groups]
 dev = [
     "actionlint-py==1.7.12.24",
-    "pytest==9.0.3",
-    "ruff>=0.15.14",
-    "semgrep==1.164.0",
-    "ty>=0.0.40",
+    "pytest==9.1.1",
+    "ruff==0.15.21",
+    "semgrep==1.169.0",
+    "shellcheck-py==0.11.0.1",
+    "shfmt-py==4.0.0",
+    "ty==0.0.58",
+    "yamllint==1.38.0",
 ]

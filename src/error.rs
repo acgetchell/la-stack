@@ -1,16 +1,245 @@
 #![forbid(unsafe_code)]
 
-//! Error types and helpers for linear algebra operations.
+//! Typed error categories and helpers for linear algebra operations.
 
 use core::fmt;
 
-use crate::Tolerance;
+/// Floating-point operation that produced a non-finite intermediate or result.
+///
+/// # Examples
+/// ```
+/// use la_stack::ArithmeticOperation;
+///
+/// assert_eq!(ArithmeticOperation::LuSolve.to_string(), "LU solve");
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ArithmeticOperation {
+    /// Matrix infinity-norm calculation.
+    MatrixInfinityNorm,
+    /// Matrix symmetry validation.
+    SymmetryCheck,
+    /// LU factorization.
+    LuFactorization,
+    /// LDLT factorization.
+    LdltFactorization,
+    /// Forward or backward substitution with an LU factorization.
+    LuSolve,
+    /// Forward, diagonal, or backward substitution with an LDLT factorization.
+    LdltSolve,
+    /// Determinant calculation.
+    Determinant,
+    /// Determinant error-bound calculation.
+    DeterminantErrorBound,
+    /// Vector dot-product calculation.
+    VectorDotProduct,
+    /// Vector squared-norm calculation.
+    VectorSquaredNorm,
+}
+
+impl fmt::Display for ArithmeticOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::MatrixInfinityNorm => "matrix infinity norm",
+            Self::SymmetryCheck => "symmetry check",
+            Self::LuFactorization => "LU factorization",
+            Self::LdltFactorization => "LDLT factorization",
+            Self::LuSolve => "LU solve",
+            Self::LdltSolve => "LDLT solve",
+            Self::Determinant => "determinant",
+            Self::DeterminantErrorBound => "determinant error bound",
+            Self::VectorDotProduct => "vector dot product",
+            Self::VectorSquaredNorm => "vector squared norm",
+        })
+    }
+}
+
+/// Factorization whose pivot policy rejected a matrix as numerically singular.
+///
+/// # Examples
+/// ```
+/// use la_stack::FactorizationKind;
+///
+/// assert_eq!(FactorizationKind::Ldlt.to_string(), "LDLT");
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FactorizationKind {
+    /// LU factorization with partial pivoting.
+    Lu,
+    /// LDLT factorization without pivoting.
+    Ldlt,
+}
+
+impl fmt::Display for FactorizationKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Lu => "LU",
+            Self::Ldlt => "LDLT",
+        })
+    }
+}
+
+/// Reason a raw tolerance cannot become a [`crate::Tolerance`].
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+///
+/// match LaError::invalid_tolerance(-1.0) {
+///     LaError::InvalidTolerance {
+///         reason: InvalidToleranceReason::Negative,
+///         ..
+///     } => {}
+///     _ => unreachable!("a finite negative tolerance has a negative reason"),
+/// }
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InvalidToleranceReason {
+    /// The tolerance is finite but negative.
+    Negative,
+    /// The tolerance is NaN or positive/negative infinity.
+    NotFinite,
+}
+
+/// Location at which a non-finite value was observed.
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+///
+/// match LaError::non_finite_input_matrix(1, 2) {
+///     LaError::NonFinite {
+///         location: NonFiniteLocation::MatrixCell { row, col, .. },
+///         ..
+///     } => assert_eq!((row, col), (1, 2)),
+///     _ => unreachable!("constructor returns a matrix-cell location"),
+/// }
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NonFiniteLocation {
+    /// Cell `(row, col)` in matrix-shaped storage or computation.
+    #[non_exhaustive]
+    MatrixCell {
+        /// Matrix row.
+        row: usize,
+        /// Matrix column.
+        col: usize,
+    },
+    /// Entry in a vector input.
+    #[non_exhaustive]
+    VectorEntry {
+        /// Vector index.
+        index: usize,
+    },
+    /// Indexed step in a factorization, solve, or reduction.
+    #[non_exhaustive]
+    Step {
+        /// Step index.
+        index: usize,
+    },
+    /// Scalar value without a meaningful matrix or vector coordinate.
+    Scalar,
+}
+
+/// Provenance of a non-finite value.
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+///
+/// let err = LaError::non_finite_computation_scalar(ArithmeticOperation::Determinant);
+/// match err {
+///     LaError::NonFinite {
+///         origin: NonFiniteOrigin::Computation { operation, .. },
+///         ..
+///     } => assert_eq!(operation, ArithmeticOperation::Determinant),
+///     _ => unreachable!("constructor preserves computation provenance"),
+/// }
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NonFiniteOrigin {
+    /// The caller supplied a non-finite input.
+    Input,
+    /// Finite inputs produced a non-finite arithmetic result.
+    #[non_exhaustive]
+    Computation {
+        /// Operation that produced the value.
+        operation: ArithmeticOperation,
+    },
+}
+
+/// Reason a symmetric matrix is outside the positive-semidefinite LDLT domain.
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+///
+/// match LaError::not_positive_semidefinite_negative(1, -3.0) {
+///     LaError::NotPositiveSemidefinite {
+///         violation: PositiveSemidefiniteViolation::NegativePivot { value, .. },
+///         ..
+///     } => assert_eq!(value, -3.0),
+///     _ => unreachable!("constructor preserves the PSD violation"),
+/// }
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum PositiveSemidefiniteViolation {
+    /// LDLT produced a strictly negative diagonal pivot.
+    #[non_exhaustive]
+    NegativePivot {
+        /// Observed negative pivot value.
+        value: f64,
+    },
+    /// A zero diagonal pivot still has a non-zero coupling below it.
+    #[non_exhaustive]
+    ZeroPivotCoupling {
+        /// Row containing the non-zero coupling.
+        row: usize,
+        /// Observed coupling value.
+        value: f64,
+    },
+}
+
+/// Mathematical or numerical reason a matrix was classified as singular.
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+///
+/// match LaError::singular_numerical(1, FactorizationKind::Lu, 0.0, 1e-12) {
+///     LaError::Singular {
+///         reason: SingularityReason::Numerical { factorization, .. }, ..
+///     } => assert_eq!(factorization, FactorizationKind::Lu),
+///     _ => unreachable!("constructor preserves the singularity reason"),
+/// }
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum SingularityReason {
+    /// The algorithm proved that the pivot is exactly zero.
+    Exact,
+    /// A finite pivot was rejected by the factorization tolerance.
+    #[non_exhaustive]
+    Numerical {
+        /// Factorization applying the tolerance policy.
+        factorization: FactorizationKind,
+        /// Absolute magnitude of the rejected pivot.
+        pivot_magnitude: f64,
+        /// Tolerance against which the magnitude was compared.
+        tolerance: f64,
+    },
+}
 
 /// Reason an exact result cannot satisfy an exact-to-`f64` conversion contract.
 ///
 /// `RequiresRounding` is recoverable when the caller is willing to opt into a
-/// rounded exact-to-`f64` API. `NotFinite` means even the rounded result would
-/// not be a finite `f64`.
+/// rounded exact-to-`f64` API. `NotFinite` means no finite `f64` can represent
+/// the result even after rounding.
 ///
 /// # Examples
 /// ```
@@ -31,214 +260,228 @@ pub enum UnrepresentableReason {
     /// A finite `f64` exists only after rounding, but the requested conversion
     /// requires an exact binary64 representation.
     RequiresRounding,
-    /// The exact value would convert to NaN or infinity rather than a finite
-    /// `f64`.
+    /// No finite `f64` can represent the exact value after rounding.
     NotFinite,
 }
 
 /// Linear algebra errors.
 ///
-/// This enum is `#[non_exhaustive]` — downstream `match` arms must include a
-/// wildcard (`_`) pattern to compile, allowing new variants to be added in
-/// future minor releases without breaking existing code.
+/// This enum and each struct-style variant are `#[non_exhaustive]` so downstream
+/// matches must retain a wildcard for future error categories and fields.
 ///
 /// # Examples
 /// ```
 /// use la_stack::prelude::*;
 ///
-/// let err = LaError::unrepresentable(None, UnrepresentableReason::RequiresRounding);
-/// assert!(err.requires_rounding());
-///
-/// match LaError::unsupported_dimension(8, MAX_STACK_MATRIX_DISPATCH_DIM) {
-///     LaError::UnsupportedDimension { requested, max } => {
-///         assert_eq!((requested, max), (8, MAX_STACK_MATRIX_DISPATCH_DIM));
-///     }
-///     _ => unreachable!("constructor returns the requested variant"),
+/// match LaError::singular_exact(2) {
+///     LaError::Singular {
+///         pivot_col,
+///         reason: SingularityReason::Exact,
+///         ..
+///     } => assert_eq!(pivot_col, 2),
+///     _ => unreachable!("constructor returns an exact singularity"),
 /// }
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum LaError {
-    /// The matrix is (numerically) singular.
+    /// A matrix is exactly or numerically singular.
+    #[non_exhaustive]
     Singular {
-        /// The factorization column/step where a suitable pivot/diagonal could not be found.
+        /// Factorization column or step where a usable pivot was unavailable.
         pivot_col: usize,
+        /// Typed reason for the singularity classification.
+        reason: SingularityReason,
     },
-    /// A non-finite value (NaN/∞) was encountered.
-    ///
-    /// The `(row, col)` coordinate follows a consistent convention across the crate:
-    ///
-    /// - `row: Some(r), col: c` — the non-finite value is tied to a matrix/factor
-    ///   cell at `(r, c)`, either because a stored input/factor cell is already
-    ///   non-finite or because factorization computed a non-finite value for
-    ///   that cell before storing it.
-    /// - `row: None, col: c` — the non-finite value is tied to a vector entry,
-    ///   determinant product, solve accumulator, or other scalar/intermediate
-    ///   that has no matrix row coordinate.
+    /// A caller input or arithmetic result is NaN or infinite.
+    #[non_exhaustive]
     NonFinite {
-        /// Row of the non-finite entry for a stored matrix cell, or `None` for
-        /// a vector-input entry or a computed intermediate. See the variant
-        /// docs for the full convention.
-        row: Option<usize>,
-        /// Column index (stored cell), vector index, or factorization/solve
-        /// step where the non-finite value was detected.
-        col: usize,
+        /// Typed location of the value.
+        location: NonFiniteLocation,
+        /// Whether the value came from input or a particular computation.
+        origin: NonFiniteOrigin,
     },
-    /// An exact result cannot satisfy the requested finite `f64` conversion.
-    ///
-    /// Returned by [`Matrix::det_exact_f64`](crate::Matrix::det_exact_f64) and
-    /// [`Matrix::solve_exact_f64`](crate::Matrix::solve_exact_f64) (requires the
-    /// `exact` feature) when the exact rational value is too large, too small,
-    /// or would require rounding in binary64. Also returned by the rounded
-    /// exact-to-`f64` APIs when the rounded result would be NaN or infinite.
+    /// An exact result cannot satisfy the requested finite-`f64` conversion.
+    #[non_exhaustive]
     Unrepresentable {
-        /// For vector results (e.g. `solve_exact_f64`), the index of the
-        /// component that failed conversion. `None` for scalar results.
+        /// Failed vector component, or `None` for a scalar result.
         index: Option<usize>,
-        /// Why the requested conversion cannot return a finite `f64`.
+        /// Reason the conversion contract cannot be satisfied.
         reason: UnrepresentableReason,
     },
     /// Exact determinant scaling overflowed the internal exponent representation.
+    #[non_exhaustive]
     DeterminantScaleOverflow {
         /// Matrix dimension `D`.
         dim: usize,
-        /// Minimum decomposed f64 exponent among non-zero matrix entries.
+        /// Minimum decomposed binary64 exponent among non-zero entries.
         min_exponent: i32,
     },
-    /// A requested runtime matrix dimension has no stack-dispatch arm.
+    /// A runtime matrix dimension has no stack-dispatch arm.
+    #[non_exhaustive]
     UnsupportedDimension {
         /// Runtime dimension requested by the caller.
         requested: usize,
-        /// Largest runtime dimension supported by the dispatch helper.
+        /// Largest dimension supported by the dispatch helper.
         max: usize,
     },
     /// A matrix index is outside the `D×D` storage domain.
+    #[non_exhaustive]
     IndexOutOfBounds {
-        /// Requested row index.
+        /// Requested row.
         row: usize,
-        /// Requested column index.
+        /// Requested column.
         col: usize,
-        /// Matrix dimension `D`; valid row and column indices are `< dim`.
+        /// Matrix dimension `D`; valid indices are less than this value.
         dim: usize,
     },
-    /// A tolerance value is not finite and non-negative.
+    /// A raw tolerance is negative or non-finite.
+    #[non_exhaustive]
     InvalidTolerance {
-        /// Raw tolerance supplied by the caller.
+        /// Raw value supplied by the caller.
         value: f64,
+        /// Typed reason the value violates the tolerance invariant.
+        reason: InvalidToleranceReason,
     },
     /// A matrix required to be symmetric has an asymmetric off-diagonal pair.
+    #[non_exhaustive]
     Asymmetric {
-        /// Row index of the first asymmetric pair.
+        /// Row of the upper-triangular entry.
         row: usize,
-        /// Column index of the first asymmetric pair.
+        /// Column of the upper-triangular entry.
         col: usize,
         /// Matrix dimension `D`.
         dim: usize,
+        /// Observed entry at `(row, col)`.
+        upper: f64,
+        /// Observed entry at `(col, row)`.
+        lower: f64,
+        /// Maximum absolute difference allowed by the symmetry check.
+        allowed_abs_diff: f64,
     },
-    /// A symmetric matrix failed the positive-semidefinite LDLT domain check.
+    /// A symmetric matrix is outside the positive-semidefinite LDLT domain.
+    #[non_exhaustive]
     NotPositiveSemidefinite {
-        /// Factorization column/step where a negative LDLT diagonal was found.
+        /// LDLT pivot column or step where the violation was detected.
         pivot_col: usize,
-        /// Negative diagonal value observed at that step.
-        value: f64,
+        /// Typed PSD-domain violation.
+        violation: PositiveSemidefiniteViolation,
     },
 }
 
 impl LaError {
-    /// Construct a [`LaError::NonFinite`] pinpointing a stored matrix cell at `(row, col)`.
-    ///
-    /// Use this for non-finite values read from a stored [`Matrix`](crate::Matrix)
-    /// entry or factorization cell, and for non-finite factorization updates
-    /// that would be stored at `(row, col)` if accepted.  The resulting error has
-    /// `row: Some(row), col`, matching the matrix/factor-cell convention
-    /// documented on [`NonFinite`](Self::NonFinite).  For vector-input entries
-    /// or scalar intermediates without a matrix row coordinate, use
-    /// [`non_finite_at`](Self::non_finite_at).
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::non_finite_cell(1, 2),
-    ///     LaError::NonFinite {
-    ///         row: Some(1),
-    ///         col: 2,
-    ///     }
-    /// );
-    /// ```
+    /// Construct a [`LaError::Singular`] error proving that the pivot at
+    /// `pivot_col` is exactly zero.
     #[inline]
     #[must_use]
-    pub const fn non_finite_cell(row: usize, col: usize) -> Self {
-        Self::NonFinite {
-            row: Some(row),
-            col,
+    pub const fn singular_exact(pivot_col: usize) -> Self {
+        Self::Singular {
+            pivot_col,
+            reason: SingularityReason::Exact,
         }
     }
 
-    /// Construct a [`LaError::NonFinite`] pinpointing a vector-input entry or
-    /// computed scalar/intermediate at index `col`.
-    ///
-    /// Use this for non-finite values in a [`Vector`](crate::Vector) input,
-    /// determinant scalar, tolerance-scale accumulator, or solve accumulator
-    /// that overflowed during forward/back substitution.  The resulting error
-    /// has `row: None, col`, matching the vector/scalar-intermediate convention
-    /// documented on [`NonFinite`](Self::NonFinite).  For stored matrix cells or
-    /// computed factorization updates tied to a matrix cell, use
-    /// [`non_finite_cell`](Self::non_finite_cell).
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::non_finite_at(2),
-    ///     LaError::NonFinite { row: None, col: 2 }
-    /// );
-    /// ```
+    /// Construct a [`LaError::Singular`] error for a pivot rejected by a
+    /// factorization tolerance, preserving the factorization, pivot magnitude,
+    /// and tolerance in [`SingularityReason::Numerical`].
     #[inline]
     #[must_use]
-    pub const fn non_finite_at(col: usize) -> Self {
-        Self::NonFinite { row: None, col }
+    pub const fn singular_numerical(
+        pivot_col: usize,
+        factorization: FactorizationKind,
+        pivot_magnitude: f64,
+        tolerance: f64,
+    ) -> Self {
+        Self::Singular {
+            pivot_col,
+            reason: SingularityReason::Numerical {
+                factorization,
+                pivot_magnitude,
+                tolerance,
+            },
+        }
     }
 
-    /// Construct a [`LaError::Unrepresentable`] for exact-to-`f64` conversion.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::unrepresentable(Some(2), UnrepresentableReason::RequiresRounding),
-    ///     LaError::Unrepresentable {
-    ///         index: Some(2),
-    ///         reason: UnrepresentableReason::RequiresRounding,
-    ///     }
-    /// );
-    /// ```
+    /// Construct a [`LaError::NonFinite`] input error located at matrix cell
+    /// `(row, col)`.
+    #[inline]
+    #[must_use]
+    pub const fn non_finite_input_matrix(row: usize, col: usize) -> Self {
+        Self::NonFinite {
+            location: NonFiniteLocation::MatrixCell { row, col },
+            origin: NonFiniteOrigin::Input,
+        }
+    }
+
+    /// Construct a [`LaError::NonFinite`] input error located at vector entry
+    /// `index`.
+    #[inline]
+    #[must_use]
+    pub const fn non_finite_input_vector(index: usize) -> Self {
+        Self::NonFinite {
+            location: NonFiniteLocation::VectorEntry { index },
+            origin: NonFiniteOrigin::Input,
+        }
+    }
+
+    /// Construct a [`LaError::NonFinite`] input error for a scalar without an
+    /// index or matrix coordinate.
+    #[inline]
+    #[must_use]
+    pub const fn non_finite_input_scalar() -> Self {
+        Self::NonFinite {
+            location: NonFiniteLocation::Scalar,
+            origin: NonFiniteOrigin::Input,
+        }
+    }
+
+    /// Construct a [`LaError::NonFinite`] computation error at matrix cell
+    /// `(row, col)`, retaining the originating `operation`.
+    #[inline]
+    #[must_use]
+    pub const fn non_finite_computation_matrix(
+        operation: ArithmeticOperation,
+        row: usize,
+        col: usize,
+    ) -> Self {
+        Self::NonFinite {
+            location: NonFiniteLocation::MatrixCell { row, col },
+            origin: NonFiniteOrigin::Computation { operation },
+        }
+    }
+
+    /// Construct a [`LaError::NonFinite`] computation error at `index`,
+    /// retaining the originating `operation`.
+    #[inline]
+    #[must_use]
+    pub const fn non_finite_computation_step(operation: ArithmeticOperation, index: usize) -> Self {
+        Self::NonFinite {
+            location: NonFiniteLocation::Step { index },
+            origin: NonFiniteOrigin::Computation { operation },
+        }
+    }
+
+    /// Construct a scalar [`LaError::NonFinite`] computation error retaining
+    /// the originating `operation`.
+    #[inline]
+    #[must_use]
+    pub const fn non_finite_computation_scalar(operation: ArithmeticOperation) -> Self {
+        Self::NonFinite {
+            location: NonFiniteLocation::Scalar,
+            origin: NonFiniteOrigin::Computation { operation },
+        }
+    }
+
+    /// Construct a [`LaError::Unrepresentable`] conversion failure for a scalar
+    /// (`index = None`) or vector component (`index = Some(_)`).
     #[inline]
     #[must_use]
     pub const fn unrepresentable(index: Option<usize>, reason: UnrepresentableReason) -> Self {
         Self::Unrepresentable { index, reason }
     }
 
-    /// Return the reason for an exact-to-`f64` conversion failure.
-    ///
-    /// This is a concise alternative to matching the full
-    /// [`LaError::Unrepresentable`] variant when callers only need the
-    /// conversion reason.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// let err = LaError::unrepresentable(None, UnrepresentableReason::RequiresRounding);
-    /// assert_eq!(
-    ///     err.unrepresentable_reason(),
-    ///     Some(UnrepresentableReason::RequiresRounding)
-    /// );
-    /// assert_eq!(LaError::Singular { pivot_col: 0 }.unrepresentable_reason(), None);
-    /// ```
+    /// Return the typed exact-to-`f64` conversion reason, or `None` for every
+    /// other error variant.
     #[inline]
     #[must_use]
     pub const fn unrepresentable_reason(&self) -> Option<UnrepresentableReason> {
@@ -248,23 +491,8 @@ impl LaError {
         }
     }
 
-    /// Return `true` when strict exact-to-`f64` conversion only failed because
-    /// rounding would be required.
-    ///
-    /// This is useful at the call site that wants to retry with an explicit
-    /// rounded exact-to-`f64` API while still propagating non-finite conversion
-    /// failures.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// let err = LaError::unrepresentable(None, UnrepresentableReason::RequiresRounding);
-    /// assert!(err.requires_rounding());
-    ///
-    /// let err = LaError::unrepresentable(None, UnrepresentableReason::NotFinite);
-    /// assert!(!err.requires_rounding());
-    /// ```
+    /// Return whether this is a `RequiresRounding` conversion failure for which
+    /// retrying with an explicit rounded API may succeed.
     #[inline]
     #[must_use]
     pub const fn requires_rounding(&self) -> bool {
@@ -277,217 +505,228 @@ impl LaError {
         )
     }
 
-    /// Construct a [`LaError::DeterminantScaleOverflow`] for exact determinant scaling.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::determinant_scale_overflow(3, -1074),
-    ///     LaError::DeterminantScaleOverflow {
-    ///         dim: 3,
-    ///         min_exponent: -1074,
-    ///     }
-    /// );
-    /// ```
+    /// Construct a [`LaError::DeterminantScaleOverflow`] retaining the matrix
+    /// dimension and minimum decomposed entry exponent.
     #[inline]
     #[must_use]
     pub const fn determinant_scale_overflow(dim: usize, min_exponent: i32) -> Self {
         Self::DeterminantScaleOverflow { dim, min_exponent }
     }
 
-    /// Construct a [`LaError::UnsupportedDimension`] for runtime stack dispatch.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::unsupported_dimension(8, MAX_STACK_MATRIX_DISPATCH_DIM),
-    ///     LaError::UnsupportedDimension {
-    ///         requested: 8,
-    ///         max: MAX_STACK_MATRIX_DISPATCH_DIM,
-    ///     }
-    /// );
-    /// ```
+    /// Construct a [`LaError::UnsupportedDimension`] retaining the requested
+    /// and maximum supported dimensions.
     #[inline]
     #[must_use]
     pub const fn unsupported_dimension(requested: usize, max: usize) -> Self {
         Self::UnsupportedDimension { requested, max }
     }
 
-    /// Construct a [`LaError::IndexOutOfBounds`] for a `D×D` matrix index.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::index_out_of_bounds(2, 0, 2),
-    ///     LaError::IndexOutOfBounds {
-    ///         row: 2,
-    ///         col: 0,
-    ///         dim: 2,
-    ///     }
-    /// );
-    /// ```
+    /// Construct a [`LaError::IndexOutOfBounds`] retaining the requested matrix
+    /// coordinates and dimension.
     #[inline]
     #[must_use]
     pub const fn index_out_of_bounds(row: usize, col: usize, dim: usize) -> Self {
         Self::IndexOutOfBounds { row, col, dim }
     }
 
-    /// Construct a [`LaError::InvalidTolerance`] for a raw tolerance value.
+    /// Construct an invalid-tolerance error and classify its typed reason.
     ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::invalid_tolerance(-1.0),
-    ///     LaError::InvalidTolerance { value: -1.0 }
-    /// );
-    /// ```
+    /// This low-level constructor assumes `value` has already failed the
+    /// tolerance invariant; raw caller input should normally be parsed through
+    /// [`crate::Tolerance::try_new`].
+    /// Non-finiteness takes precedence over negativity, so negative infinity is
+    /// classified as [`InvalidToleranceReason::NotFinite`].
     #[inline]
     #[must_use]
     pub const fn invalid_tolerance(value: f64) -> Self {
-        Self::InvalidTolerance { value }
+        let reason = if value.is_finite() {
+            InvalidToleranceReason::Negative
+        } else {
+            InvalidToleranceReason::NotFinite
+        };
+        Self::InvalidTolerance { value, reason }
     }
 
-    /// Construct a [`LaError::Asymmetric`] for a `D×D` matrix.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::asymmetric(0, 1, 3),
-    ///     LaError::Asymmetric {
-    ///         row: 0,
-    ///         col: 1,
-    ///         dim: 3,
-    ///     }
-    /// );
-    /// ```
+    /// Construct a [`LaError::Asymmetric`] error for the pair `(row, col)` and
+    /// `(col, row)`, retaining both observed values and the effective absolute
+    /// difference bound.
     #[inline]
     #[must_use]
-    pub const fn asymmetric(row: usize, col: usize, dim: usize) -> Self {
-        Self::Asymmetric { row, col, dim }
+    pub const fn asymmetric(
+        row: usize,
+        col: usize,
+        dim: usize,
+        upper: f64,
+        lower: f64,
+        allowed_abs_diff: f64,
+    ) -> Self {
+        Self::Asymmetric {
+            row,
+            col,
+            dim,
+            upper,
+            lower,
+            allowed_abs_diff,
+        }
     }
 
-    /// Construct a [`LaError::NotPositiveSemidefinite`] for LDLT factorization.
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(
-    ///     LaError::not_positive_semidefinite(1, -3.0),
-    ///     LaError::NotPositiveSemidefinite {
-    ///         pivot_col: 1,
-    ///         value: -3.0,
-    ///     }
-    /// );
-    /// ```
+    /// Construct a [`LaError::NotPositiveSemidefinite`] error for a negative
+    /// LDLT diagonal pivot.
     #[inline]
     #[must_use]
-    pub const fn not_positive_semidefinite(pivot_col: usize, value: f64) -> Self {
-        Self::NotPositiveSemidefinite { pivot_col, value }
+    pub const fn not_positive_semidefinite_negative(pivot_col: usize, value: f64) -> Self {
+        Self::NotPositiveSemidefinite {
+            pivot_col,
+            violation: PositiveSemidefiniteViolation::NegativePivot { value },
+        }
     }
 
-    /// Parse a raw tolerance into a finite, non-negative [`Tolerance`].
-    ///
-    /// # Examples
-    /// ```
-    /// use la_stack::prelude::*;
-    ///
-    /// assert_eq!(LaError::validate_tolerance(1e-12)?.get(), 1e-12);
-    ///
-    /// let raw = 0.0;
-    /// let tol = LaError::validate_tolerance(raw)?;
-    /// let _lu = Matrix::<2>::identity().lu(tol)?;
-    ///
-    /// assert_eq!(
-    ///     LaError::validate_tolerance(-1.0),
-    ///     Err(LaError::InvalidTolerance { value: -1.0 })
-    /// );
-    /// # Ok::<(), LaError>(())
-    /// ```
-    ///
-    /// # Errors
-    /// Returns [`LaError::InvalidTolerance`] when `value` is NaN, infinite, or
-    /// negative.
+    /// Construct a [`LaError::NotPositiveSemidefinite`] error for a zero LDLT
+    /// diagonal with a non-zero coupling at `row`, distinguishing the observed
+    /// positive-semidefinite violation from an uncoupled singular pivot.
     #[inline]
-    pub const fn validate_tolerance(value: f64) -> Result<Tolerance, Self> {
-        Tolerance::new(value)
+    #[must_use]
+    pub const fn not_positive_semidefinite_zero_coupling(
+        pivot_col: usize,
+        row: usize,
+        value: f64,
+    ) -> Self {
+        Self::NotPositiveSemidefinite {
+            pivot_col,
+            violation: PositiveSemidefiniteViolation::ZeroPivotCoupling { row, value },
+        }
+    }
+}
+
+/// Write the structured location portion of [`LaError::NonFinite`]'s public
+/// display contract without allocating an intermediate string.
+///
+fn write_non_finite_location(
+    f: &mut fmt::Formatter<'_>,
+    location: NonFiniteLocation,
+) -> fmt::Result {
+    match location {
+        NonFiniteLocation::MatrixCell { row, col } => {
+            write!(f, "matrix cell ({row}, {col})")
+        }
+        NonFiniteLocation::VectorEntry { index } => write!(f, "vector entry {index}"),
+        NonFiniteLocation::Step { index } => write!(f, "step {index}"),
+        NonFiniteLocation::Scalar => f.write_str("scalar value"),
+    }
+}
+
+/// Write a [`LaError::NonFinite`] message from its structured location and
+/// origin while distinguishing scalar input from a computed scalar result.
+fn write_non_finite(
+    f: &mut fmt::Formatter<'_>,
+    location: NonFiniteLocation,
+    origin: NonFiniteOrigin,
+) -> fmt::Result {
+    match (location, origin) {
+        (NonFiniteLocation::Scalar, NonFiniteOrigin::Input) => {
+            f.write_str("non-finite scalar input")
+        }
+        (NonFiniteLocation::Scalar, NonFiniteOrigin::Computation { operation }) => {
+            write!(f, "non-finite scalar result computed during {operation}")
+        }
+        (location, NonFiniteOrigin::Input) => {
+            f.write_str("non-finite input value at ")?;
+            write_non_finite_location(f, location)
+        }
+        (location, NonFiniteOrigin::Computation { operation }) => {
+            write!(f, "non-finite value computed during {operation} at ")?;
+            write_non_finite_location(f, location)
+        }
     }
 }
 
 impl fmt::Display for LaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Self::Singular { pivot_col } => {
-                write!(f, "singular matrix at pivot column {pivot_col}")
-            }
-            Self::NonFinite { row: Some(r), col } => {
-                write!(f, "non-finite value at ({r}, {col})")
-            }
-            Self::NonFinite { row: None, col } => {
-                write!(f, "non-finite value at index {col}")
-            }
+            Self::Singular {
+                pivot_col,
+                reason: SingularityReason::Exact,
+            } => write!(f, "matrix is exactly singular at pivot column {pivot_col}"),
+            Self::Singular {
+                pivot_col,
+                reason:
+                    SingularityReason::Numerical {
+                        factorization,
+                        pivot_magnitude,
+                        tolerance,
+                    },
+            } => write!(
+                f,
+                "matrix is numerically singular during {factorization} factorization at pivot column {pivot_col}: pivot magnitude {pivot_magnitude} <= tolerance {tolerance}"
+            ),
+            Self::NonFinite { location, origin } => write_non_finite(f, location, origin),
             Self::Unrepresentable {
-                index: Some(i),
+                index: Some(index),
                 reason: UnrepresentableReason::RequiresRounding,
             } => write!(
                 f,
-                "exact result requires rounding to fit finite f64 at index {i}"
+                "exact result requires rounding to fit finite f64 at index {index}"
             ),
             Self::Unrepresentable {
                 index: None,
                 reason: UnrepresentableReason::RequiresRounding,
-            } => write!(f, "exact result requires rounding to fit finite f64"),
+            } => f.write_str("exact result requires rounding to fit finite f64"),
             Self::Unrepresentable {
-                index: Some(i),
+                index: Some(index),
                 reason: UnrepresentableReason::NotFinite,
-            } => write!(f, "exact result does not round to finite f64 at index {i}"),
+            } => write!(
+                f,
+                "exact result has no finite f64 representation after rounding at index {index}"
+            ),
             Self::Unrepresentable {
                 index: None,
                 reason: UnrepresentableReason::NotFinite,
-            } => write!(f, "exact result does not round to finite f64"),
-            Self::DeterminantScaleOverflow { dim, min_exponent } => {
-                write!(
-                    f,
-                    "exact determinant scale exponent overflows for dimension {dim} with minimum entry exponent {min_exponent}"
-                )
-            }
-            Self::UnsupportedDimension { requested, max } => {
-                write!(
-                    f,
-                    "unsupported matrix dimension {requested}; maximum stack-dispatch dimension is {max}"
-                )
-            }
-            Self::IndexOutOfBounds { row, col, dim } => {
-                write!(
-                    f,
-                    "matrix index ({row}, {col}) is out of bounds for dimension {dim}"
-                )
-            }
-            Self::InvalidTolerance { value } => {
-                write!(f, "invalid tolerance {value}; expected finite value >= 0")
-            }
-            Self::Asymmetric { row, col, dim } => {
-                write!(
-                    f,
-                    "matrix is not symmetric for dimension {dim}: asymmetric pair ({row}, {col})"
-                )
-            }
-            Self::NotPositiveSemidefinite { pivot_col, value } => {
-                write!(
-                    f,
-                    "matrix is not positive semidefinite at LDLT pivot column {pivot_col}: diagonal value {value} < 0"
-                )
-            }
+            } => f.write_str("exact result has no finite f64 representation after rounding"),
+            Self::DeterminantScaleOverflow { dim, min_exponent } => write!(
+                f,
+                "exact determinant scale exponent overflows for dimension {dim} with minimum entry exponent {min_exponent}"
+            ),
+            Self::UnsupportedDimension { requested, max } => write!(
+                f,
+                "unsupported matrix dimension {requested}; maximum stack-dispatch dimension is {max}"
+            ),
+            Self::IndexOutOfBounds { row, col, dim } => write!(
+                f,
+                "matrix index ({row}, {col}) is out of bounds for dimension {dim}"
+            ),
+            Self::InvalidTolerance {
+                value,
+                reason: InvalidToleranceReason::Negative,
+            } => write!(f, "invalid tolerance {value}; expected value >= 0"),
+            Self::InvalidTolerance {
+                value,
+                reason: InvalidToleranceReason::NotFinite,
+            } => write!(f, "invalid tolerance {value}; expected a finite value"),
+            Self::Asymmetric {
+                row,
+                col,
+                dim,
+                upper,
+                lower,
+                allowed_abs_diff,
+            } => write!(
+                f,
+                "matrix is not symmetric for dimension {dim}: entry ({row}, {col}) = {upper} and entry ({col}, {row}) = {lower} differ by more than allowed absolute difference {allowed_abs_diff}"
+            ),
+            Self::NotPositiveSemidefinite {
+                pivot_col,
+                violation: PositiveSemidefiniteViolation::NegativePivot { value },
+            } => write!(
+                f,
+                "matrix is not positive semidefinite at LDLT pivot column {pivot_col}: diagonal value {value} < 0"
+            ),
+            Self::NotPositiveSemidefinite {
+                pivot_col,
+                violation: PositiveSemidefiniteViolation::ZeroPivotCoupling { row, value },
+            } => write!(
+                f,
+                "matrix is not positive semidefinite at LDLT pivot column {pivot_col}: zero diagonal has non-zero coupling at row {row} with value {value}"
+            ),
         }
     }
 }
@@ -496,223 +735,224 @@ impl std::error::Error for LaError {}
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
+
     use super::*;
-
-    use core::assert_matches;
-
-    #[test]
-    fn laerror_display_formats_singular() {
-        let err = LaError::Singular { pivot_col: 3 };
-        assert_eq!(err.to_string(), "singular matrix at pivot column 3");
-    }
+    use crate::MAX_STACK_MATRIX_DISPATCH_DIM;
 
     #[test]
-    fn laerror_display_formats_nonfinite_with_row() {
-        let err = LaError::NonFinite {
-            row: Some(1),
-            col: 2,
-        };
-        assert_eq!(err.to_string(), "non-finite value at (1, 2)");
-    }
-
-    #[test]
-    fn laerror_display_formats_nonfinite_without_row() {
-        let err = LaError::NonFinite { row: None, col: 3 };
-        assert_eq!(err.to_string(), "non-finite value at index 3");
-    }
-
-    #[test]
-    fn laerror_display_formats_unrepresentable_requires_rounding() {
-        let err = LaError::Unrepresentable {
-            index: None,
-            reason: UnrepresentableReason::RequiresRounding,
-        };
+    fn category_displays_are_concise() {
+        assert_eq!(FactorizationKind::Lu.to_string(), "LU");
+        assert_eq!(FactorizationKind::Ldlt.to_string(), "LDLT");
         assert_eq!(
-            err.to_string(),
-            "exact result requires rounding to fit finite f64"
+            ArithmeticOperation::MatrixInfinityNorm.to_string(),
+            "matrix infinity norm"
+        );
+        assert_eq!(
+            ArithmeticOperation::SymmetryCheck.to_string(),
+            "symmetry check"
+        );
+        assert_eq!(
+            ArithmeticOperation::LuFactorization.to_string(),
+            "LU factorization"
+        );
+        assert_eq!(
+            ArithmeticOperation::LdltFactorization.to_string(),
+            "LDLT factorization"
+        );
+        assert_eq!(ArithmeticOperation::LuSolve.to_string(), "LU solve");
+        assert_eq!(ArithmeticOperation::LdltSolve.to_string(), "LDLT solve");
+        assert_eq!(ArithmeticOperation::Determinant.to_string(), "determinant");
+        assert_eq!(
+            ArithmeticOperation::DeterminantErrorBound.to_string(),
+            "determinant error bound"
+        );
+        assert_eq!(
+            ArithmeticOperation::VectorDotProduct.to_string(),
+            "vector dot product"
+        );
+        assert_eq!(
+            ArithmeticOperation::VectorSquaredNorm.to_string(),
+            "vector squared norm"
         );
     }
 
     #[test]
-    fn laerror_display_formats_unrepresentable_requires_rounding_with_index() {
-        let err = LaError::Unrepresentable {
-            index: Some(2),
-            reason: UnrepresentableReason::RequiresRounding,
-        };
+    fn singular_constructors_and_displays_preserve_reason() {
+        let exact = LaError::singular_exact(3);
         assert_eq!(
-            err.to_string(),
-            "exact result requires rounding to fit finite f64 at index 2"
+            exact,
+            LaError::Singular {
+                pivot_col: 3,
+                reason: SingularityReason::Exact,
+            }
+        );
+        assert_eq!(
+            exact.to_string(),
+            "matrix is exactly singular at pivot column 3"
+        );
+
+        let numerical = LaError::singular_numerical(2, FactorizationKind::Lu, 1e-14, 1e-12);
+        assert_eq!(
+            numerical,
+            LaError::Singular {
+                pivot_col: 2,
+                reason: SingularityReason::Numerical {
+                    factorization: FactorizationKind::Lu,
+                    pivot_magnitude: 1e-14,
+                    tolerance: 1e-12,
+                },
+            }
+        );
+        assert_eq!(
+            numerical.to_string(),
+            "matrix is numerically singular during LU factorization at pivot column 2: pivot magnitude 0.00000000000001 <= tolerance 0.000000000001"
         );
     }
 
     #[test]
-    fn laerror_display_formats_unrepresentable_not_finite() {
-        let err = LaError::Unrepresentable {
-            index: None,
-            reason: UnrepresentableReason::NotFinite,
-        };
-        assert_eq!(err.to_string(), "exact result does not round to finite f64");
-    }
-
-    #[test]
-    fn laerror_display_formats_unrepresentable_not_finite_with_index() {
-        let err = LaError::Unrepresentable {
-            index: Some(2),
-            reason: UnrepresentableReason::NotFinite,
-        };
+    fn non_finite_constructors_preserve_location_and_origin() {
         assert_eq!(
-            err.to_string(),
-            "exact result does not round to finite f64 at index 2"
+            LaError::non_finite_input_matrix(1, 2),
+            LaError::NonFinite {
+                location: NonFiniteLocation::MatrixCell { row: 1, col: 2 },
+                origin: NonFiniteOrigin::Input,
+            }
+        );
+        assert_eq!(
+            LaError::non_finite_input_vector(3).to_string(),
+            "non-finite input value at vector entry 3"
+        );
+        assert_eq!(
+            LaError::non_finite_input_scalar().to_string(),
+            "non-finite scalar input"
+        );
+        assert_eq!(
+            LaError::non_finite_computation_matrix(ArithmeticOperation::LuFactorization, 2, 1)
+                .to_string(),
+            "non-finite value computed during LU factorization at matrix cell (2, 1)"
+        );
+        assert_eq!(
+            LaError::non_finite_computation_step(ArithmeticOperation::LuSolve, 1).to_string(),
+            "non-finite value computed during LU solve at step 1"
+        );
+        assert_eq!(
+            LaError::non_finite_computation_scalar(ArithmeticOperation::Determinant).to_string(),
+            "non-finite scalar result computed during determinant"
         );
     }
 
     #[test]
-    fn laerror_unrepresentable_reason_reports_typed_reason() {
-        let rounding = LaError::Unrepresentable {
-            index: Some(2),
-            reason: UnrepresentableReason::RequiresRounding,
-        };
-        let not_finite = LaError::Unrepresentable {
-            index: None,
-            reason: UnrepresentableReason::NotFinite,
-        };
-
+    fn unrepresentable_helpers_preserve_recovery_reason() {
+        let rounding = LaError::unrepresentable(Some(2), UnrepresentableReason::RequiresRounding);
+        let scalar_rounding =
+            LaError::unrepresentable(None, UnrepresentableReason::RequiresRounding);
+        let indexed_not_finite =
+            LaError::unrepresentable(Some(2), UnrepresentableReason::NotFinite);
+        let not_finite = LaError::unrepresentable(None, UnrepresentableReason::NotFinite);
         assert_eq!(
             rounding.unrepresentable_reason(),
             Some(UnrepresentableReason::RequiresRounding)
         );
+        assert!(rounding.requires_rounding());
         assert_eq!(
-            not_finite.unrepresentable_reason(),
-            Some(UnrepresentableReason::NotFinite)
+            rounding.to_string(),
+            "exact result requires rounding to fit finite f64 at index 2"
         );
         assert_eq!(
-            LaError::Singular { pivot_col: 0 }.unrepresentable_reason(),
-            None
+            scalar_rounding.to_string(),
+            "exact result requires rounding to fit finite f64"
+        );
+        assert_eq!(
+            indexed_not_finite.to_string(),
+            "exact result has no finite f64 representation after rounding at index 2"
+        );
+        assert_eq!(
+            not_finite.to_string(),
+            "exact result has no finite f64 representation after rounding"
+        );
+        assert!(!not_finite.requires_rounding());
+        assert_eq!(LaError::singular_exact(0).unrepresentable_reason(), None);
+    }
+
+    #[test]
+    fn invalid_tolerance_classifies_non_finite_before_negative() {
+        assert_eq!(
+            LaError::invalid_tolerance(-1.0),
+            LaError::InvalidTolerance {
+                value: -1.0,
+                reason: InvalidToleranceReason::Negative,
+            }
+        );
+        assert_eq!(
+            LaError::invalid_tolerance(f64::NEG_INFINITY),
+            LaError::InvalidTolerance {
+                value: f64::NEG_INFINITY,
+                reason: InvalidToleranceReason::NotFinite,
+            }
+        );
+        assert_eq!(
+            LaError::invalid_tolerance(-1.0).to_string(),
+            "invalid tolerance -1; expected value >= 0"
+        );
+        assert_eq!(
+            LaError::invalid_tolerance(f64::NEG_INFINITY).to_string(),
+            "invalid tolerance -inf; expected a finite value"
         );
     }
 
     #[test]
-    fn laerror_requires_rounding_only_matches_rounding_reason() {
-        assert!(
-            LaError::Unrepresentable {
-                index: Some(2),
-                reason: UnrepresentableReason::RequiresRounding,
+    fn asymmetric_error_retains_observed_values_and_bound() {
+        let err = LaError::asymmetric(0, 2, 3, 1.0, 1.5, 1e-12);
+        assert_eq!(
+            err,
+            LaError::Asymmetric {
+                row: 0,
+                col: 2,
+                dim: 3,
+                upper: 1.0,
+                lower: 1.5,
+                allowed_abs_diff: 1e-12,
             }
-            .requires_rounding()
         );
-        assert!(
-            !LaError::Unrepresentable {
-                index: None,
-                reason: UnrepresentableReason::NotFinite,
-            }
-            .requires_rounding()
-        );
-        assert!(!LaError::Singular { pivot_col: 0 }.requires_rounding());
-    }
-
-    #[test]
-    fn laerror_display_formats_determinant_scale_overflow() {
-        let err = LaError::DeterminantScaleOverflow {
-            dim: 3,
-            min_exponent: -1074,
-        };
         assert_eq!(
             err.to_string(),
+            "matrix is not symmetric for dimension 3: entry (0, 2) = 1 and entry (2, 0) = 1.5 differ by more than allowed absolute difference 0.000000000001"
+        );
+    }
+
+    #[test]
+    fn positive_semidefinite_errors_preserve_distinct_violations() {
+        assert_eq!(
+            LaError::not_positive_semidefinite_negative(1, -3.0).to_string(),
+            "matrix is not positive semidefinite at LDLT pivot column 1: diagonal value -3 < 0"
+        );
+        assert_eq!(
+            LaError::not_positive_semidefinite_zero_coupling(0, 1, 2.0).to_string(),
+            "matrix is not positive semidefinite at LDLT pivot column 0: zero diagonal has non-zero coupling at row 1 with value 2"
+        );
+    }
+
+    #[test]
+    fn remaining_helpers_and_displays_preserve_fields() {
+        assert_eq!(
+            LaError::determinant_scale_overflow(3, -1074).to_string(),
             "exact determinant scale exponent overflows for dimension 3 with minimum entry exponent -1074"
         );
-    }
-
-    #[test]
-    fn laerror_display_formats_unsupported_dimension() {
-        let err = LaError::UnsupportedDimension {
-            requested: 8,
-            max: crate::MAX_STACK_MATRIX_DISPATCH_DIM,
-        };
         assert_eq!(
-            err.to_string(),
+            LaError::unsupported_dimension(8, MAX_STACK_MATRIX_DISPATCH_DIM).to_string(),
             "unsupported matrix dimension 8; maximum stack-dispatch dimension is 7"
         );
-    }
-
-    #[test]
-    fn laerror_display_formats_index_out_of_bounds() {
-        let err = LaError::IndexOutOfBounds {
-            row: 3,
-            col: 0,
-            dim: 3,
-        };
         assert_eq!(
-            err.to_string(),
+            LaError::index_out_of_bounds(3, 0, 3).to_string(),
             "matrix index (3, 0) is out of bounds for dimension 3"
         );
     }
 
     #[test]
-    fn laerror_display_formats_invalid_tolerance() {
-        let err = LaError::InvalidTolerance { value: -1.0 };
-        assert_eq!(
-            err.to_string(),
-            "invalid tolerance -1; expected finite value >= 0"
-        );
-    }
-
-    #[test]
-    fn validate_tolerance_matches_tolerance_new() {
-        for value in [0.0, 1e-12, f64::MAX] {
-            assert_eq!(LaError::validate_tolerance(value), Tolerance::new(value));
-        }
-
-        assert_eq!(
-            LaError::validate_tolerance(-1.0),
-            Err(LaError::InvalidTolerance { value: -1.0 })
-        );
-        assert_matches!(
-            LaError::validate_tolerance(f64::NAN),
-            Err(LaError::InvalidTolerance { value }) if value.is_nan()
-        );
-        assert_eq!(
-            LaError::validate_tolerance(f64::INFINITY),
-            Err(LaError::InvalidTolerance {
-                value: f64::INFINITY,
-            })
-        );
-        assert_eq!(
-            LaError::validate_tolerance(f64::NEG_INFINITY),
-            Err(LaError::InvalidTolerance {
-                value: f64::NEG_INFINITY,
-            })
-        );
-    }
-
-    #[test]
-    fn laerror_display_formats_asymmetric() {
-        let err = LaError::Asymmetric {
-            row: 0,
-            col: 2,
-            dim: 3,
-        };
-        assert_eq!(
-            err.to_string(),
-            "matrix is not symmetric for dimension 3: asymmetric pair (0, 2)"
-        );
-    }
-
-    #[test]
-    fn laerror_display_formats_not_positive_semidefinite() {
-        let err = LaError::NotPositiveSemidefinite {
-            pivot_col: 1,
-            value: -3.0,
-        };
-        assert_eq!(
-            err.to_string(),
-            "matrix is not positive semidefinite at LDLT pivot column 1: diagonal value -3 < 0"
-        );
-    }
-
-    #[test]
-    fn laerror_is_std_error_with_no_source() {
-        let err = LaError::Singular { pivot_col: 0 };
-        let e: &dyn std::error::Error = &err;
-        assert!(e.source().is_none());
+    fn is_std_error_with_no_source() {
+        let err = LaError::singular_exact(0);
+        let error: &dyn Error = &err;
+        assert!(error.source().is_none());
     }
 }

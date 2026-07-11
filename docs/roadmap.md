@@ -63,14 +63,29 @@ API-invariant cleanup:
   only as implementation helpers at algorithm boundaries.
 - The public prelude stays focused on downstream composition: raw boundary
   types, factorization handles, tolerances, crate errors, dispatch helpers, and
-  documented constants. Proof-bearing wrappers remain crate-private, and
-  exact-arithmetic integer/rational re-exports remain gated behind the `"exact"`
-  feature.
+  common defaults. Advanced determinant error-bound coefficients remain
+  explicit crate-root exports. Proof-bearing wrappers remain crate-private,
+  while the exact-arithmetic sign and integer/rational re-exports remain gated
+  behind the `"exact"` feature.
+- Fallible raw boundaries advertise parsing explicitly: `Tolerance::try_new`
+  constructs validated tolerances, `Matrix::try_get` preserves index context,
+  and `Matrix::set` validates atomically before mutation.
+- Exact determinant signs use `DeterminantSign` rather than an invalidable raw
+  integer. Because `Matrix` already carries the finite-entry proof and filter
+  range failures fall back to exact integer arithmetic, `det_sign_exact` returns
+  `DeterminantSign` infallibly; `as_i8` is reserved for numeric interoperability.
 - The public LDLT API remains `Matrix::ldlt`. Symmetry proof storage is kept
-  internal, `SymmetricMatrix` is not exported, asymmetric inputs return
-  `LaError::Asymmetric`, and negative LDLT pivots return
-  `LaError::NotPositiveSemidefinite` rather than being folded into
-  `LaError::Singular`.
+  internal and `SymmetricMatrix` is not exported. Asymmetric errors retain both
+  observed entries and their effective bound; negative pivots and zero pivots
+  with nonzero coupling use distinct `PositiveSemidefiniteViolation` values.
+- The public error model keeps semantic categories typed: exact and numerical
+  singularity use distinct `SingularityReason` values, numerical rejection
+  retains its factorization/pivot/tolerance, and `NonFiniteOrigin` plus
+  `NonFiniteLocation` distinguish invalid inputs from arithmetic overflow.
+- Strict exact-to-`f64` conversion reports `RequiresRounding` only when an
+  explicit rounded fallback can return a finite value; values above the
+  overflow-rounding midpoint report `NotFinite` consistently from strict and
+  rounded APIs.
 - The determinant error-bound constants `ERR_COEFF_2`, `ERR_COEFF_3`, and
   `ERR_COEFF_4` are documented as dimension-specific roundoff multipliers over
   the absolute Leibniz sum, not caller-tuned tolerances.

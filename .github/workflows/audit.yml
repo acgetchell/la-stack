@@ -2,38 +2,52 @@ name: "Audit dependencies"
 
 on:
   push:
+    branches: ["main"]
     paths:
       - .github/workflows/audit.yml
       - "**/Cargo.toml"
       - "**/Cargo.lock"
   pull_request:
     paths:
+      - .github/workflows/audit.yml
       - "**/Cargo.toml"
       - "**/Cargo.lock"
   schedule:
     - cron: "0 6 * * 1" # Monday at 6 AM UTC
   workflow_dispatch:
 
+concurrency:
+  group: >
+    audit-${{ github.workflow }}-${{
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.number ||
+      github.ref
+    }}
+  cancel-in-progress: true
+
 permissions:
+  actions: read
   contents: read
+  security-events: write
 
 jobs:
   audit:
     runs-on: ubuntu-latest
     env:
-      CARGO_AUDIT_VERSION: "0.22.1"
+      CARGO_AUDIT_VERSION: "0.22.2"
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           cache: true # toolchain/components are specified in rust-toolchain.toml
+          cache-bin: false
 
-      - name: Cache advisory database
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - name: Cache audit database
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cargo/advisory-db
           key: advisory-db-${{ github.ref_name }}-v1
@@ -45,13 +59,47 @@ jobs:
           tool: cargo-audit@${{ env.CARGO_AUDIT_VERSION }}
 
       - name: Run cargo audit
+        id: audit
         run: |
+          set +e
+          cargo audit --format sarif > audit-results.sarif
+          sarif_status=$?
           cargo audit --json > audit-results.json
+          json_status=$?
           cargo audit
+          text_status=$?
+          set -e
+
+          exit_code=0
+          if ((sarif_status != 0 || json_status != 0 || text_status != 0)); then
+            exit_code=1
+          fi
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload audit SARIF results
+        if: >-
+          always() &&
+          hashFiles('audit-results.sarif') != '' &&
+          (
+            github.event_name != 'pull_request' ||
+            github.event.pull_request.head.repo.full_name == github.repository
+          )
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          sarif_file: audit-results.sarif
+          category: cargo-audit
+          wait-for-processing: true
 
       - name: Upload audit results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: audit-results
-          path: audit-results.json
+          path: |
+            audit-results.json
+            audit-results.sarif
+
+      - name: Fail on audit findings
+        if: steps.audit.outputs.exit_code != '0'
+        run: exit 1

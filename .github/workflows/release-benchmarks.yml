@@ -5,7 +5,7 @@ name: Release Benchmarks
 # or save dependency caches.
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   release:
@@ -24,17 +24,31 @@ jobs:
   release-baseline:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      release-asset: ${{ steps.package-baseline.outputs.asset }}
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.event.release.tag_name }}
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           cache: false
+
+      - name: Install benchmark validation tools
+        run: |
+          set -euo pipefail
+
+          just_version="$(grep '^just_version :=' justfile | cut -d '"' -f 2)"
+          cargo install --locked just --version "$just_version"
+          nextest_version="$(just --evaluate cargo_nextest_version)"
+          cargo install --locked cargo-nextest --version "$nextest_version"
+
+      - name: Validate benchmark inputs
+        run: just test-bench-inputs
 
       - name: Save release Criterion baseline
         env:
@@ -42,8 +56,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          cargo bench --features bench --bench vs_linalg -- --save-baseline "$RELEASE_TAG"
-          cargo bench --features bench,exact --bench exact -- --save-baseline "$RELEASE_TAG"
+          cargo bench --locked --features bench --bench vs_linalg -- --save-baseline "$RELEASE_TAG"
+          cargo bench --locked --features bench,exact --bench exact -- --save-baseline "$RELEASE_TAG"
 
       - name: Package release Criterion baseline
         id: package-baseline
@@ -64,11 +78,24 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+  publish-baseline:
+    needs: release-baseline
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download release baseline
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bench-baseline-${{ github.event.release.tag_name }}
+
       - name: Attach baseline to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_ASSET: ${{ steps.package-baseline.outputs.asset }}
+          RELEASE_ASSET: ${{ needs.release-baseline.outputs.release-asset }}
         run: |
           set -euo pipefail
 
@@ -76,7 +103,7 @@ jobs:
 
       - name: Release baseline summary
         env:
-          RELEASE_ASSET: ${{ steps.package-baseline.outputs.asset }}
+          RELEASE_ASSET: ${{ needs.release-baseline.outputs.release-asset }}
         run: |
           set -euo pipefail
 

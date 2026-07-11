@@ -2,24 +2,13 @@
 # Pin to MSRV as specified in Cargo.toml
 channel = "1.96.0"
 
-# Essential components for development
+# Essential repository components. Keep checkout and CI setup lean; workflows
+# install additional targets or components when they need them.
 components = [
-    "cargo", # Package manager
     "clippy", # Linting (you use strict pedantic mode)
     "rustfmt", # Code formatting (you use cargo fmt --all)
-    "rust-docs", # Local documentation
-    "rust-std", # Standard library
-    "rust-src", # Source code (helpful for IDEs)
-    "rust-analyzer", # Language server for IDE support
+    "rust-src", # Source code for IDEs and local diagnostics
 ]
 
-# Target the platforms you support (adjust as needed)
-targets = [
-    "x86_64-apple-darwin", # macOS Intel
-    "aarch64-apple-darwin", # macOS Apple Silicon
-    "x86_64-unknown-linux-gnu", # Linux
-    "x86_64-pc-windows-msvc", # Windows
-]
-
-# Set this toolchain as the profile default
-profile = "default"
+# Keep host installs small; CI passes matrix targets explicitly.
+profile = "minimal"

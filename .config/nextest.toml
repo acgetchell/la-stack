@@ -1,0 +1,35 @@
+# nextest configuration for la-stack
+# See: https://nexte.st/book/configuration.html
+
+[profile.default]
+test-threads = "num-cpus"
+failure-output = "immediate-final"
+success-output = "never"
+fail-fast = false
+retries = 0
+
+# Default-suite tests are intentionally small. Keep a finite watchdog so an
+# accidental hang fails locally instead of consuming the runner indefinitely.
+slow-timeout = { period = "10s", terminate-after = 1 }
+
+[profile.ci]
+failure-output = "immediate-final"
+success-output = "never"
+fail-fast = false
+
+# Match the shared repository baseline for transient runner failures while
+# keeping coverage deterministic below.
+retries = 1
+slow-timeout = { period = "10s", terminate-after = 1 }
+
+[profile.ci.junit]
+path = "test-results/junit.xml"
+store-success-output = false
+store-failure-output = true
+
+[profile.coverage]
+# LLVM-instrumented tests need more headroom than ordinary CI while retaining
+# a finite watchdog for genuine hangs.
+inherits = "ci"
+retries = 0
+slow-timeout = { period = "300s", terminate-after = 1 }

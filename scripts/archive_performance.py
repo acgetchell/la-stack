@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run
+#!/usr/bin/env -S uv run --locked
 """Promote a benchmark report into docs/PERFORMANCE.md and archive the old one.
 
 Release performance docs have two different lifetimes:
@@ -16,8 +16,10 @@ report metadata, such as ``v0.4.2-vs-v0.4.1.md``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -25,12 +27,14 @@ import sys
 import tarfile
 import tempfile
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from subprocess_utils import run_git_command, run_git_command_with_input, run_safe_command
+from subprocess_utils import ExecutableNotFoundError, run_git_command, run_git_command_with_input, run_safe_command
 
 _VERSION_RE = re.compile(r"^\*\*la-stack\*\* v(?P<version>[^\s`]+)", re.MULTILINE)
 _BASELINE_RE = re.compile(r"^Comparison against baseline \*\*(?P<baseline>[^*]+)\*\*:", re.MULTILINE)
@@ -48,10 +52,28 @@ _DEFAULT_ARCHIVE_DIR = "docs/archive/performance"
 _DEFAULT_SUITE = "all"
 _DEFAULT_SCOPE = "release-signal"
 _SUPPORTED_SUITES = ("all", "exact", "vs_linalg")
+_SUPPORTED_SCOPES = ("release-signal", "all-benches")
 _BENCH_TIMEOUT_SECONDS = 7200
 _COMMAND_TIMEOUT_SECONDS = 600
 _HOW_TO_UPDATE_RE = re.compile(r"(?ms)^## How to Update\n.*\Z")
+_BENCHMARK_HARNESS_DIRS = ("benches",)
+_BENCHMARK_HARNESS_FILES = (
+    ".config/nextest.toml",
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "justfile",
+    "tests/exact_bench_config.rs",
+    "tests/vs_linalg_inputs.rs",
+)
+_BENCHMARK_HARNESS_METADATA = ".la-stack-benchmark-harness.json"
+_BENCHMARK_INPUT_GATE = ("just", "test-bench-inputs")
+_COMPARISON_LINT_CAP = "--cap-lints=warn"
+_V0_4_3_API_CFG = "la_stack_v0_4_3_api"
+_V0_4_3_TAG = "v0.4.3"
 type BaselineSource = Literal["local", "github-assets"]
+type BenchmarkSuite = Literal["all", "exact", "vs_linalg"]
+type ComparisonScope = Literal["release-signal", "all-benches"]
 
 
 @dataclass(frozen=True)
@@ -75,10 +97,19 @@ class GenerationConfig:
     current_tag: str
     baseline_tag: str
     worktree_ref: str
-    suite: str = _DEFAULT_SUITE
-    scope: str = _DEFAULT_SCOPE
+    suite: BenchmarkSuite = "all"
+    scope: ComparisonScope = "release-signal"
     apply_current_diff: bool = True
     baseline_source: BaselineSource = "local"
+
+    def __post_init__(self) -> None:
+        """Reject unsupported benchmark selections at construction time."""
+        if self.suite not in _SUPPORTED_SUITES:
+            msg = f"unsupported benchmark suite: {self.suite}"
+            raise ValueError(msg)
+        if self.scope not in _SUPPORTED_SCOPES:
+            msg = f"unsupported comparison scope: {self.scope}"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True)
@@ -127,7 +158,19 @@ class PublishedRelease:
     """Stable GitHub release metadata used to infer release pairs."""
 
     tag: str
-    published_at: str
+    published_at: datetime
+
+
+@dataclass(frozen=True)
+class BaselineRun:
+    """Validated baseline run details needed for final provenance."""
+
+    commit: str
+    command: tuple[str, ...]
+    harness_sha256: str
+    git_clean: bool
+    source_state_sha256: str
+    api_compatibility: str | None
 
 
 def normalize_tag(tag: str) -> str:
@@ -170,22 +213,45 @@ def _semver_sort_key(tag: str) -> tuple[int, int, int]:
     return (int(match.group("major")), int(match.group("minor")), int(match.group("patch")))
 
 
+def _parse_published_at(value: object, *, release_index: int) -> datetime:
+    """Parse one GitHub publication timestamp as an aware UTC datetime."""
+    if not isinstance(value, str) or not value:
+        msg = f"GitHub release entry {release_index} has invalid publishedAt: {value!r}"
+        raise TypeError(msg)
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        msg = f"GitHub release entry {release_index} has invalid publishedAt: {value!r}"
+        raise ValueError(msg) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        msg = f"GitHub release entry {release_index} publishedAt must include a UTC offset: {value!r}"
+        raise ValueError(msg)
+    return parsed.astimezone(UTC)
+
+
 def _stable_published_releases(releases: object) -> list[PublishedRelease]:
     if not isinstance(releases, list):
         msg = "expected GitHub release list to be a JSON array"
         raise TypeError(msg)
 
     stable_releases: dict[str, PublishedRelease] = {}
-    for release in releases:
+    for index, release in enumerate(releases):
         if not isinstance(release, Mapping):
-            continue
+            msg = f"GitHub release entry {index} is not a JSON object"
+            raise TypeError(msg)
         release = cast("Mapping[str, Any]", release)
-        if release.get("isDraft") or release.get("isPrerelease"):
+        is_draft = release.get("isDraft")
+        is_prerelease = release.get("isPrerelease")
+        if not isinstance(is_draft, bool) or not isinstance(is_prerelease, bool):
+            msg = f"GitHub release entry {index} must contain boolean isDraft and isPrerelease fields"
+            raise TypeError(msg)
+        if is_draft or is_prerelease:
             continue
         tag_name = release.get("tagName")
-        published_at = release.get("publishedAt")
-        if not isinstance(tag_name, str) or not isinstance(published_at, str) or not published_at:
-            continue
+        if not isinstance(tag_name, str) or not tag_name:
+            msg = f"GitHub release entry {index} has invalid tagName: {tag_name!r}"
+            raise TypeError(msg)
+        published_at = _parse_published_at(release.get("publishedAt"), release_index=index)
         try:
             normalized = normalize_tag(tag_name)
             _semver_sort_key(normalized)
@@ -205,15 +271,12 @@ def _github_release_list(repo_root: Path) -> object:
         "--limit",
         "100",
     ]
-    try:
-        result = run_safe_command(
-            "gh",
-            command,
-            cwd=repo_root,
-            timeout=_COMMAND_TIMEOUT_SECONDS,
-        )
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(_format_command_failure(["gh", *command], exc)) from exc
+    result = _run_tool_output(
+        "gh",
+        command,
+        cwd=repo_root,
+        timeout=_COMMAND_TIMEOUT_SECONDS,
+    )
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as exc:
@@ -380,11 +443,65 @@ def _format_command_failure(command: list[str], exc: subprocess.CalledProcessErr
     return "\n".join(parts)
 
 
+def _format_command_timeout(command: list[str], exc: subprocess.TimeoutExpired) -> str:
+    parts = [f"command timed out after {exc.timeout} seconds: {' '.join(command)}"]
+    if exc.stdout:
+        parts.append(f"stdout:\n{str(exc.stdout).strip()}")
+    if exc.stderr:
+        parts.append(f"stderr:\n{str(exc.stderr).strip()}")
+    return "\n".join(parts)
+
+
+def _format_command_start_failure(command: list[str], exc: BaseException) -> str:
+    return f"command could not start: {' '.join(command)}: {exc}"
+
+
 def _run_git(args: list[str], *, cwd: Path, timeout: int = _COMMAND_TIMEOUT_SECONDS) -> None:
+    _run_git_output(args, cwd=cwd, timeout=timeout)
+
+
+@contextmanager
+def _temporary_detached_worktree(
+    *,
+    repo_root: Path,
+    worktree: Path,
+    revision: str,
+    label: str,
+) -> Iterator[Path]:
+    """Create and remove a detached worktree without masking primary failures."""
+    _run_git(["worktree", "add", "--detach", str(worktree), revision], cwd=repo_root)
+    primary_error: BaseException | None = None
     try:
-        run_git_command(args, cwd=cwd, timeout=timeout)
+        yield worktree
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        try:
+            _run_git(["worktree", "remove", "--force", str(worktree)], cwd=repo_root)
+        except RuntimeError as cleanup_error:
+            if primary_error is None:
+                msg = f"failed to remove {label}: {cleanup_error}"
+                raise RuntimeError(msg) from cleanup_error
+            msg = f"operation failed ({primary_error}); additionally failed to remove {label}: {cleanup_error}"
+            raise RuntimeError(msg) from primary_error
+
+
+def _run_git_output(
+    args: list[str],
+    *,
+    cwd: Path,
+    timeout: int = _COMMAND_TIMEOUT_SECONDS,
+    env: dict[str, str] | None = None,
+) -> str:
+    try:
+        return run_git_command(args, cwd=cwd, timeout=timeout, env=env).stdout
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(_format_command_failure(["git", *args], exc)) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(_format_command_timeout(["git", *args], exc)) from exc
+    except (ExecutableNotFoundError, OSError) as exc:
+        raise RuntimeError(_format_command_start_failure(["git", *args], exc)) from exc
 
 
 def _fetch_release_tags(*, repo_root: Path, tags: list[str]) -> None:
@@ -392,11 +509,260 @@ def _fetch_release_tags(*, repo_root: Path, tags: list[str]) -> None:
     _run_git(["fetch", "origin", *refspecs], cwd=repo_root)
 
 
-def _run_tool(command: str, args: list[str], *, cwd: Path, timeout: int = _COMMAND_TIMEOUT_SECONDS, env: dict[str, str] | None = None) -> None:
+def _run_tool_output(
+    command: str,
+    args: list[str],
+    *,
+    cwd: Path,
+    timeout: int = _COMMAND_TIMEOUT_SECONDS,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a support command and normalize all expected launch failures."""
     try:
-        run_safe_command(command, args, cwd=cwd, timeout=timeout, env=env)
+        return run_safe_command(command, args, cwd=cwd, timeout=timeout, env=env)
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(_format_command_failure([command, *args], exc)) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(_format_command_timeout([command, *args], exc)) from exc
+    except (ExecutableNotFoundError, OSError) as exc:
+        raise RuntimeError(_format_command_start_failure([command, *args], exc)) from exc
+
+
+def _run_tool(command: str, args: list[str], *, cwd: Path, timeout: int = _COMMAND_TIMEOUT_SECONDS, env: dict[str, str] | None = None) -> None:
+    _run_tool_output(command, args, cwd=cwd, timeout=timeout, env=env)
+
+
+def _run_benchmark_input_gate(checkout: Path, *, env: dict[str, str] | None = None) -> None:
+    """Run the shared deterministic benchmark-fixture correctness gate."""
+    _run_tool(
+        _BENCHMARK_INPUT_GATE[0],
+        list(_BENCHMARK_INPUT_GATE[1:]),
+        cwd=checkout,
+        timeout=_COMMAND_TIMEOUT_SECONDS,
+        env=env,
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    """Return a lowercase SHA-256 digest for a required file."""
+    if not path.is_file():
+        msg = f"required provenance file is missing: {path}"
+        raise FileNotFoundError(msg)
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _checkout_commit(checkout: Path) -> str:
+    """Return the full commit for a checkout, or an explicit unavailable label."""
+    commit = _run_git_output(["--no-pager", "rev-parse", "HEAD"], cwd=checkout).strip()
+    return commit or "unavailable"
+
+
+def _git_clean(checkout: Path) -> bool:
+    """Return whether Git reports a completely clean checkout."""
+    status = _run_git_output(
+        ["--no-pager", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=checkout,
+    )
+    return not status.strip()
+
+
+def _source_state_digest(checkout: Path) -> str:
+    """Hash measured library source content independent of commit cleanliness."""
+    source_dir = checkout / "src"
+    if not source_dir.is_dir():
+        msg = f"measured library source directory is missing: {source_dir}"
+        raise FileNotFoundError(msg)
+    files = sorted(
+        (path for path in source_dir.rglob("*") if path.is_file()),
+        key=lambda path: path.relative_to(checkout).as_posix(),
+    )
+    if not files:
+        msg = f"measured library source directory contains no files: {source_dir}"
+        raise FileNotFoundError(msg)
+    digest = hashlib.sha256()
+    for path in files:
+        relative = path.relative_to(checkout).as_posix().encode()
+        payload = path.read_bytes()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+    return digest.hexdigest()
+
+
+def _rustc_version(checkout: Path) -> str:
+    """Return one-line rustc version provenance for the active benchmark toolchain."""
+    result = _run_tool_output(
+        "rustc",
+        ["--version"],
+        cwd=checkout,
+        timeout=_COMMAND_TIMEOUT_SECONDS,
+        env=_benchmark_env(checkout),
+    )
+    version = result.stdout.strip()
+    return version or "unavailable"
+
+
+def _environment_metadata(checkout: Path, *, harness_sha256: str) -> dict[str, object]:
+    """Capture deterministic machine, toolchain, revision, and lock provenance."""
+    cpu = platform.processor().strip() or platform.machine().strip() or "unavailable"
+    os_description = " ".join(part for part in (platform.system(), platform.release(), platform.machine()) if part).strip()
+    return {
+        "cargo_lock_sha256": _sha256_file(checkout / "Cargo.lock"),
+        "commit": _checkout_commit(checkout),
+        "correctness_gate": "passed",
+        "cpu": cpu,
+        "git_clean": _git_clean(checkout),
+        "harness_sha256": harness_sha256,
+        "os": os_description or "unavailable",
+        "rustc": _rustc_version(checkout),
+        "source_state_sha256": _source_state_digest(checkout),
+    }
+
+
+def _criterion_dependency_version(checkout: Path) -> str:
+    """Return the resolved Criterion version, falling back to its manifest requirement."""
+    lock_data = tomllib.loads(_read_text(checkout / "Cargo.lock"))
+    packages = lock_data.get("package")
+    if isinstance(packages, list):
+        for package in packages:
+            if isinstance(package, dict) and package.get("name") == "criterion":
+                version = package.get("version")
+                if isinstance(version, str) and version:
+                    return version
+
+    manifest = tomllib.loads(_read_text(checkout / "Cargo.toml"))
+    for section in ("dev-dependencies", "dependencies", "build-dependencies"):
+        dependencies = manifest.get(section)
+        if not isinstance(dependencies, dict):
+            continue
+        criterion = dependencies.get("criterion")
+        if isinstance(criterion, str) and criterion:
+            return f"manifest requirement {criterion}"
+        if isinstance(criterion, dict):
+            version = criterion.get("version")
+            if isinstance(version, str) and version:
+                return f"manifest requirement {version}"
+    msg = f"Criterion dependency version is unavailable in {checkout / 'Cargo.lock'} and {checkout / 'Cargo.toml'}"
+    raise ValueError(msg)
+
+
+def _criterion_metadata(
+    *,
+    worktree: Path,
+    config: GenerationConfig,
+    baseline_command: tuple[str, ...],
+    current_command: tuple[str, ...],
+) -> dict[str, object]:
+    """Record the exact Criterion selection and timing commands."""
+    return {
+        "baseline_command": list(baseline_command),
+        "current_command": list(current_command),
+        "criterion_version": _criterion_dependency_version(worktree),
+        "sample": "new",
+        "scope": config.scope,
+        "statistic": "median",
+        "suite": config.suite,
+    }
+
+
+def _write_local_run_provenance(
+    *,
+    worktree: Path,
+    config: GenerationConfig,
+    baseline_run: BaselineRun,
+    current_command: tuple[str, ...],
+) -> None:
+    """Tie locally generated samples to their shared harness and environment."""
+    publication = _environment_metadata(worktree, harness_sha256=baseline_run.harness_sha256)
+    measurement = {
+        "baseline_api_compatibility": baseline_run.api_compatibility or "none",
+        "baseline_commit": baseline_run.commit,
+        "cargo_lock_sha256": publication["cargo_lock_sha256"],
+        "cpu": publication["cpu"],
+        "current_commit": publication["commit"],
+        "current_git_clean": publication["git_clean"],
+        "current_source_state_sha256": publication["source_state_sha256"],
+        "harness_sha256": baseline_run.harness_sha256,
+        "os": publication["os"],
+        "rustc": publication["rustc"],
+        "baseline_git_clean": baseline_run.git_clean,
+        "baseline_source_state_sha256": baseline_run.source_state_sha256,
+        "status": "recorded",
+    }
+    metadata = {
+        "baseline": config.baseline_tag,
+        "criterion": _criterion_metadata(
+            worktree=worktree,
+            config=config,
+            baseline_command=baseline_run.command,
+            current_command=current_command,
+        ),
+        "measurement": measurement,
+        "mode": "shared-current-harness",
+        "publication": publication,
+        "schema": 2,
+        "validation": {
+            "baseline_api_compatibility": baseline_run.api_compatibility or "none",
+            "baseline_commit": baseline_run.commit,
+            "baseline_git_clean": baseline_run.git_clean,
+            "baseline_revision": "passed",
+            "baseline_source_state_sha256": baseline_run.source_state_sha256,
+            "command": list(_BENCHMARK_INPUT_GATE),
+            "current_commit": publication["commit"],
+            "current_git_clean": publication["git_clean"],
+            "current_revision": "passed",
+            "current_source_state_sha256": publication["source_state_sha256"],
+            "harness": "shared-current",
+        },
+    }
+    _write_text(
+        worktree / "target" / "criterion" / _BENCHMARK_HARNESS_METADATA,
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+    )
+
+
+def _write_historical_asset_provenance(
+    *,
+    worktree: Path,
+    config: GenerationConfig,
+    baseline_run: BaselineRun,
+) -> None:
+    """Record validation while explicitly declining to invent historical timing metadata."""
+    publication = _environment_metadata(worktree, harness_sha256=baseline_run.harness_sha256)
+    metadata = {
+        "baseline": config.baseline_tag,
+        "criterion": _criterion_metadata(
+            worktree=worktree,
+            config=config,
+            baseline_command=("historical-release-asset", config.baseline_tag),
+            current_command=("historical-release-asset", config.current_tag),
+        ),
+        "measurement": {
+            "reason": "the downloaded release assets do not contain schema-2 measurement-environment provenance",
+            "status": "unavailable",
+        },
+        "mode": "historical-assets",
+        "publication": publication,
+        "schema": 2,
+        "validation": {
+            "baseline_api_compatibility": baseline_run.api_compatibility or "none",
+            "baseline_commit": baseline_run.commit,
+            "baseline_git_clean": baseline_run.git_clean,
+            "baseline_revision": "passed",
+            "baseline_source_state_sha256": baseline_run.source_state_sha256,
+            "command": list(_BENCHMARK_INPUT_GATE),
+            "current_commit": publication["commit"],
+            "current_git_clean": publication["git_clean"],
+            "current_revision": "passed",
+            "current_source_state_sha256": publication["source_state_sha256"],
+            "harness": "shared-current",
+        },
+    }
+    _write_text(
+        worktree / "target" / "criterion" / _BENCHMARK_HARNESS_METADATA,
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+    )
 
 
 def _current_rust_toolchain(checkout: Path) -> str | None:
@@ -419,6 +785,40 @@ def _benchmark_env(checkout: Path) -> dict[str, str] | None:
         return None
     env = os.environ.copy()
     env["RUSTUP_TOOLCHAIN"] = toolchain
+    return env
+
+
+def _append_rustflag(env: dict[str, str], flag: str) -> None:
+    """Append one rustc flag without discarding caller-selected codegen flags."""
+    encoded = env.get("CARGO_ENCODED_RUSTFLAGS")
+    if encoded is not None:
+        env["CARGO_ENCODED_RUSTFLAGS"] = "\x1f".join(part for part in (encoded, flag) if part)
+        return
+
+    rustflags = env.get("RUSTFLAGS", "").strip()
+    env["RUSTFLAGS"] = f"{rustflags} {flag}".strip()
+
+
+def _baseline_api_compatibility(baseline_tag: str) -> str | None:
+    """Return the shared-harness API adapter required by one baseline tag."""
+    return _V0_4_3_API_CFG if normalize_tag(baseline_tag) == _V0_4_3_TAG else None
+
+
+def _comparison_benchmark_env(checkout: Path, *, baseline_tag: str | None = None) -> dict[str, str]:
+    """Build a comparable benchmark environment for current or historical code."""
+    env = _benchmark_env(checkout)
+    if env is None:
+        env = os.environ.copy()
+
+    # The shared current manifest can enable lints unknown to historical source.
+    # Cap diagnostics for both revisions so lint-policy drift cannot prevent a
+    # performance comparison; the cap changes diagnostics, not code generation.
+    _append_rustflag(env, _COMPARISON_LINT_CAP)
+
+    if baseline_tag is not None:
+        compatibility = _baseline_api_compatibility(baseline_tag)
+        if compatibility is not None:
+            _append_rustflag(env, f"--cfg={compatibility}")
     return env
 
 
@@ -470,6 +870,88 @@ def _copy_criterion_sample(*, criterion_dir: Path, source_sample: str, target_sa
         raise FileNotFoundError(msg)
 
 
+def _selected_criterion_groups(criterion_dir: Path, *, suite: str) -> list[Path]:
+    """Return selected Criterion group directories in deterministic order."""
+    groups: list[Path] = []
+    if not criterion_dir.is_dir():
+        return groups
+    for child in criterion_dir.iterdir():
+        if not child.is_dir():
+            continue
+        is_exact = child.name.startswith("exact_")
+        is_vs_linalg = re.fullmatch(r"d[0-9]+", child.name) is not None
+        if (suite in {"all", "exact"} and is_exact) or (suite in {"all", "vs_linalg"} and is_vs_linalg):
+            groups.append(child)
+    return sorted(groups, key=lambda path: path.name)
+
+
+def _purge_criterion_new_samples(*, criterion_dir: Path, suite: str) -> list[Path]:
+    """Remove stale selected-suite `new` samples while preserving named baselines."""
+    removed: list[Path] = []
+    for group in _selected_criterion_groups(criterion_dir, suite=suite):
+        for sample in sorted(group.glob("*/new")):
+            if sample.is_dir():
+                shutil.rmtree(sample)
+                removed.append(sample)
+    return removed
+
+
+def _benchmark_harness_files(checkout: Path) -> list[Path]:
+    """Return every file that defines the comparable benchmark harness."""
+    files: list[Path] = []
+    for relative in _BENCHMARK_HARNESS_FILES:
+        path = checkout / relative
+        if not path.is_file():
+            msg = f"benchmark harness file is missing: {path}"
+            raise FileNotFoundError(msg)
+        files.append(path)
+    for relative in _BENCHMARK_HARNESS_DIRS:
+        directory = checkout / relative
+        if not directory.is_dir():
+            msg = f"benchmark harness directory is missing: {directory}"
+            raise FileNotFoundError(msg)
+        files.extend(path for path in directory.rglob("*") if path.is_file())
+    return sorted(files, key=lambda path: path.relative_to(checkout).as_posix())
+
+
+def _benchmark_harness_digest(checkout: Path) -> str:
+    """Hash benchmark sources, recipes, dependency resolution, and toolchain."""
+    digest = hashlib.sha256()
+    for path in _benchmark_harness_files(checkout):
+        relative = path.relative_to(checkout).as_posix().encode()
+        payload = path.read_bytes()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+    return digest.hexdigest()
+
+
+def _install_shared_benchmark_harness(*, source: Path, destination: Path) -> str:
+    """Replace a baseline checkout's harness with the current harness."""
+    source_files = _benchmark_harness_files(source)
+    for relative in _BENCHMARK_HARNESS_DIRS:
+        source_dir = source / relative
+        destination_dir = destination / relative
+        if destination_dir.exists():
+            shutil.rmtree(destination_dir)
+        shutil.copytree(source_dir, destination_dir)
+    for relative in _BENCHMARK_HARNESS_FILES:
+        destination_file = destination / relative
+        destination_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / relative, destination_file)
+
+    expected = _benchmark_harness_digest(source)
+    actual = _benchmark_harness_digest(destination)
+    if actual != expected:
+        msg = f"shared benchmark harness copy changed content: expected {expected}, found {actual}"
+        raise RuntimeError(msg)
+    if not source_files:
+        msg = "benchmark harness unexpectedly contained no files"
+        raise RuntimeError(msg)
+    return expected
+
+
 def _has_suite_aware_baseline_recipe(worktree: Path) -> bool:
     justfile = worktree / "justfile"
     return justfile.exists() and re.search(r'(?m)^bench-save-baseline\s+tag\s+suite(?:=|"|:|\s)', _read_text(justfile)) is not None
@@ -482,9 +964,9 @@ def _baseline_tool_args(*, baseline_tag: str, suite: str, baseline_worktree: Pat
         return ("just", ["bench-save-baseline", baseline_tag, suite])
     match suite:
         case "exact":
-            return ("cargo", ["bench", "--features", "bench,exact", "--bench", "exact", "--", "--save-baseline", baseline_tag])
+            return ("cargo", ["bench", "--locked", "--features", "bench,exact", "--bench", "exact", "--", "--save-baseline", baseline_tag])
         case "vs_linalg":
-            return ("cargo", ["bench", "--features", "bench", "--bench", "vs_linalg", "--", "--save-baseline", baseline_tag])
+            return ("cargo", ["bench", "--locked", "--features", "bench", "--bench", "vs_linalg", "--", "--save-baseline", baseline_tag])
         case _:
             msg = f"unsupported benchmark suite: {suite}"
             raise ValueError(msg)
@@ -503,21 +985,46 @@ def _latest_recipe_args(*, suite: str) -> list[str]:
             raise ValueError(msg)
 
 
-def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> None:
+def _fallback_current_command(*, suite: str) -> tuple[str, ...]:
+    """Return the Cargo command used when current benchmark recipes are unavailable."""
+    match suite:
+        case "all":
+            return ("cargo", "bench", "--locked", "--features", "bench,exact")
+        case "exact":
+            return ("cargo", "bench", "--locked", "--features", "bench,exact", "--bench", "exact")
+        case "vs_linalg":
+            return ("cargo", "bench", "--locked", "--features", "bench", "--bench", "vs_linalg")
+        case _:
+            msg = f"unsupported benchmark suite: {suite}"
+            raise ValueError(msg)
+
+
+def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> BaselineRun:
     baseline_worktree = tmp_dir / "baseline-worktree"
-    _run_git(["worktree", "add", "--detach", str(baseline_worktree), baseline_tag], cwd=repo_root)
-    try:
+    with _temporary_detached_worktree(
+        repo_root=repo_root,
+        worktree=baseline_worktree,
+        revision=baseline_tag,
+        label="baseline worktree",
+    ):
+        harness_sha256 = _install_shared_benchmark_harness(
+            source=target_worktree,
+            destination=baseline_worktree,
+        )
         baseline_command, baseline_args = _baseline_tool_args(
             baseline_tag=baseline_tag,
             suite=suite,
             baseline_worktree=baseline_worktree,
         )
+        api_compatibility = _baseline_api_compatibility(baseline_tag)
+        benchmark_env = _comparison_benchmark_env(repo_root, baseline_tag=baseline_tag)
+        _run_benchmark_input_gate(baseline_worktree, env=benchmark_env)
         _run_tool(
             baseline_command,
             baseline_args,
             cwd=baseline_worktree,
             timeout=_BENCH_TIMEOUT_SECONDS,
-            env=_benchmark_env(repo_root),
+            env=benchmark_env,
         )
         baseline_criterion = baseline_worktree / "target" / "criterion"
         if not baseline_criterion.is_dir():
@@ -526,21 +1033,58 @@ def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path
         target_criterion = target_worktree / "target" / "criterion"
         target_criterion.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(baseline_criterion, target_criterion, dirs_exist_ok=True)
-    finally:
-        try:
-            _run_git(["worktree", "remove", "--force", str(baseline_worktree)], cwd=repo_root)
-        except RuntimeError as exc:
-            print(f"archive-performance: failed to remove baseline worktree: {exc}", file=sys.stderr)
+        return BaselineRun(
+            commit=_checkout_commit(baseline_worktree),
+            command=(baseline_command, *baseline_args),
+            harness_sha256=harness_sha256,
+            git_clean=_git_clean(baseline_worktree),
+            source_state_sha256=_source_state_digest(baseline_worktree),
+            api_compatibility=api_compatibility,
+        )
 
 
-def _prepare_local_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> None:
-    _generate_release_baseline(
+def _prepare_local_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> BaselineRun:
+    return _generate_release_baseline(
         baseline_tag=baseline_tag,
         suite=suite,
         repo_root=repo_root,
         target_worktree=target_worktree,
         tmp_dir=tmp_dir,
     )
+
+
+def _validate_release_revision(
+    *,
+    revision: str,
+    repo_root: Path,
+    harness_source: Path,
+    tmp_dir: Path,
+) -> BaselineRun:
+    """Validate one historical revision with the shared current fixture harness."""
+    validation_worktree = tmp_dir / "baseline-validation-worktree"
+    with _temporary_detached_worktree(
+        repo_root=repo_root,
+        worktree=validation_worktree,
+        revision=revision,
+        label="baseline validation worktree",
+    ):
+        harness_sha256 = _install_shared_benchmark_harness(
+            source=harness_source,
+            destination=validation_worktree,
+        )
+        api_compatibility = _baseline_api_compatibility(revision)
+        _run_benchmark_input_gate(
+            validation_worktree,
+            env=_comparison_benchmark_env(repo_root, baseline_tag=revision),
+        )
+        return BaselineRun(
+            commit=_checkout_commit(validation_worktree),
+            command=("historical-release-asset", revision),
+            harness_sha256=harness_sha256,
+            git_clean=_git_clean(validation_worktree),
+            source_state_sha256=_source_state_digest(validation_worktree),
+            api_compatibility=api_compatibility,
+        )
 
 
 def _prepare_github_release_assets(*, current_tag: str, baseline_tag: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> None:
@@ -557,16 +1101,44 @@ def _prepare_github_release_assets(*, current_tag: str, baseline_tag: str, repo_
     target_dir = target_worktree / "target"
     _safe_extract_tar(baseline_archive, target_dir)
     _safe_extract_tar(current_archive, target_dir)
+    # Published artifacts retain their release-specific harnesses. Never let an
+    # embedded or stale local manifest claim that these samples shared one.
+    metadata_path = target_dir / "criterion" / _BENCHMARK_HARNESS_METADATA
+    if metadata_path.is_symlink() or metadata_path.is_file():
+        metadata_path.unlink()
+    elif metadata_path.exists():
+        msg = f"historical benchmark harness provenance path is not a file: {metadata_path}"
+        raise ValueError(msg)
     _copy_criterion_sample(criterion_dir=target_dir / "criterion", source_sample=current_tag, target_sample="new")
 
 
 def _apply_current_diff_to_worktree(*, repo_root: Path, worktree: Path) -> None:
-    diff = run_git_command(["diff", "--binary", "HEAD"], cwd=repo_root).stdout
+    # Build the patch through an isolated index so untracked, non-ignored files
+    # participate without changing the caller's real staging area. Git records
+    # binary blobs and symlink metadata directly and applies its normal safe-path
+    # checks when the patch is replayed in the detached worktree.
+    with tempfile.TemporaryDirectory(prefix="la-stack-current-tree-index-") as tmp:
+        temporary_dir = Path(tmp)
+        env = os.environ.copy()
+        env["GIT_INDEX_FILE"] = str(temporary_dir / "index")
+        _run_git_output(["read-tree", "HEAD"], cwd=repo_root, env=env)
+        _run_git_output(["add", "--all", "--", "."], cwd=repo_root, env=env)
+        patch_path = temporary_dir / "current-tree.patch"
+        _run_git_output(
+            ["diff", "--cached", "--binary", f"--output={patch_path}", "HEAD"],
+            cwd=repo_root,
+            env=env,
+        )
+        diff = patch_path.read_bytes()
     if diff.strip():
         try:
             run_git_command_with_input(["apply", "--binary"], diff, cwd=worktree)
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(_format_command_failure(["git", "apply", "--binary"], exc)) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(_format_command_timeout(["git", "apply", "--binary"], exc)) from exc
+        except (ExecutableNotFoundError, OSError) as exc:
+            raise RuntimeError(_format_command_start_failure(["git", "apply", "--binary"], exc)) from exc
 
 
 def _has_current_release_signal_tooling(worktree: Path) -> bool:
@@ -586,6 +1158,7 @@ def _render_report(*, worktree: Path, report: Path, config: GenerationConfig) ->
             "uv",
             [
                 "run",
+                "--locked",
                 "bench-compare",
                 config.baseline_tag,
                 "--suite",
@@ -603,6 +1176,7 @@ def _render_report(*, worktree: Path, report: Path, config: GenerationConfig) ->
             "uv",
             [
                 "run",
+                "--locked",
                 "bench-compare",
                 config.baseline_tag,
                 "--output",
@@ -613,12 +1187,36 @@ def _render_report(*, worktree: Path, report: Path, config: GenerationConfig) ->
         )
 
 
-def _run_benchmarks_and_render_report(*, worktree: Path, report: Path, config: GenerationConfig) -> None:
-    benchmark_env = _benchmark_env(config.repo_root)
+def _run_benchmarks_and_render_report(
+    *,
+    worktree: Path,
+    report: Path,
+    config: GenerationConfig,
+    baseline_run: BaselineRun,
+) -> None:
+    benchmark_env = _comparison_benchmark_env(config.repo_root)
+    _run_benchmark_input_gate(worktree, env=benchmark_env)
+    _purge_criterion_new_samples(
+        criterion_dir=worktree / "target" / "criterion",
+        suite=config.suite,
+    )
     if _has_current_release_signal_tooling(worktree):
-        _run_tool("just", _latest_recipe_args(suite=config.suite), cwd=worktree, timeout=_BENCH_TIMEOUT_SECONDS, env=benchmark_env)
+        current_command = ("just", *_latest_recipe_args(suite=config.suite))
     else:
-        _run_tool("just", ["bench-exact"], cwd=worktree, timeout=_BENCH_TIMEOUT_SECONDS, env=benchmark_env)
+        current_command = _fallback_current_command(suite=config.suite)
+    _run_tool(
+        current_command[0],
+        list(current_command[1:]),
+        cwd=worktree,
+        timeout=_BENCH_TIMEOUT_SECONDS,
+        env=benchmark_env,
+    )
+    _write_local_run_provenance(
+        worktree=worktree,
+        config=config,
+        baseline_run=baseline_run,
+        current_command=current_command,
+    )
     _render_report(worktree=worktree, report=report, config=config)
 
 
@@ -631,8 +1229,12 @@ def _generate_report_in_temp_worktree(
         worktree = tmp_dir / "worktree"
         report = tmp_dir / f"{config.current_tag}-vs-{config.baseline_tag}.md"
 
-        _run_git(["worktree", "add", "--detach", str(worktree), config.worktree_ref], cwd=config.repo_root)
-        try:
+        with _temporary_detached_worktree(
+            repo_root=config.repo_root,
+            worktree=worktree,
+            revision=config.worktree_ref,
+            label="temporary worktree",
+        ):
             if config.apply_current_diff:
                 _apply_current_diff_to_worktree(repo_root=config.repo_root, worktree=worktree)
             if config.baseline_source == "github-assets":
@@ -643,22 +1245,37 @@ def _generate_report_in_temp_worktree(
                     target_worktree=worktree,
                     tmp_dir=tmp_dir,
                 )
+                baseline_run = _validate_release_revision(
+                    revision=config.baseline_tag,
+                    repo_root=config.repo_root,
+                    harness_source=worktree,
+                    tmp_dir=tmp_dir,
+                )
+                _run_benchmark_input_gate(
+                    worktree,
+                    env=_comparison_benchmark_env(config.repo_root),
+                )
+                _write_historical_asset_provenance(
+                    worktree=worktree,
+                    config=config,
+                    baseline_run=baseline_run,
+                )
                 _render_report(worktree=worktree, report=report, config=config)
             else:
-                _prepare_local_release_baseline(
+                baseline_run = _prepare_local_release_baseline(
                     baseline_tag=config.baseline_tag,
                     suite=config.suite,
                     repo_root=config.repo_root,
                     target_worktree=worktree,
                     tmp_dir=tmp_dir,
                 )
-                _run_benchmarks_and_render_report(worktree=worktree, report=report, config=config)
+                _run_benchmarks_and_render_report(
+                    worktree=worktree,
+                    report=report,
+                    config=config,
+                    baseline_run=baseline_run,
+                )
             return _read_text(report)
-        finally:
-            try:
-                _run_git(["worktree", "remove", "--force", str(worktree)], cwd=config.repo_root)
-            except RuntimeError as exc:
-                print(f"archive-performance: failed to remove temporary worktree: {exc}", file=sys.stderr)
 
 
 def promote_report(
@@ -909,6 +1526,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--scope",
         default=_DEFAULT_SCOPE,
+        choices=_SUPPORTED_SCOPES,
         help=f"Comparison scope for --generate-in-temp-worktree (default: {_DEFAULT_SCOPE})",
     )
     return parser
@@ -944,8 +1562,8 @@ def _generation_config(*, args: argparse.Namespace, request: ResolvedArchiveRequ
         current_tag=request.current_tag,
         baseline_tag=request.baseline_tag,
         worktree_ref=request.worktree_ref,
-        suite=args.suite,
-        scope=args.scope,
+        suite=cast("BenchmarkSuite", args.suite),
+        scope=cast("ComparisonScope", args.scope),
         apply_current_diff=not args.no_apply_current_diff and not args.github_assets,
         baseline_source="github-assets" if args.github_assets else "local",
     )
@@ -978,6 +1596,7 @@ def _run_archive_request(*, args: argparse.Namespace, paths: ArchivePaths, reque
     if args.github_assets:
         msg = "--github-assets requires --generate-in-temp-worktree"
         raise ValueError(msg)
+    _run_benchmark_input_gate(repo_root, env=_benchmark_env(repo_root))
     return ArchiveResult(
         report_id=promote_report(
             source=paths.source,
@@ -1009,11 +1628,17 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         result = _run_archive_request(args=args, paths=paths, request=request, repo_root=root)
-    except (ValueError, RuntimeError, FileNotFoundError, subprocess.CalledProcessError) as exc:
+    except (
+        ExecutableNotFoundError,
+        OSError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ) as exc:
         print(f"archive-performance: {exc}", file=sys.stderr)
         return 1
-    except Exception:
-        raise
 
     if result.action == "output":
         print(f"Generated benchmark report in a temporary worktree and wrote it to {paths.output}")

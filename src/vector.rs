@@ -4,7 +4,7 @@
 
 use core::hint::cold_path;
 
-use crate::LaError;
+use crate::{ArithmeticOperation, LaError};
 
 /// Finite fixed-size vector of length `D`, stored inline.
 ///
@@ -62,30 +62,35 @@ impl<const D: usize> Vector<D> {
     /// `data` contains NaN or infinity.
     #[inline]
     pub const fn try_new(data: [f64; D]) -> Result<Self, LaError> {
-        if let Some(index) = Self::first_non_finite_entry_in(&data) {
-            Err(LaError::non_finite_at(index))
+        if let Some(index) = Self::first_non_finite_entry(&data) {
+            Err(LaError::non_finite_input_vector(index))
         } else {
-            Ok(Self::new_unchecked(data))
+            Ok(Self { data })
         }
     }
 
-    /// Construct a vector without checking that entries are finite.
+    /// Finalize vector storage produced by an arithmetic operation.
     ///
-    /// This crate-internal escape hatch is reserved for finite literals and
-    /// algorithm outputs whose finite invariant is visible at the call site.
-    /// Computed outputs must check their intermediates before using this
-    /// constructor to create an observable [`Vector`].
+    /// Keeping this validation in the type that owns the finite-storage
+    /// invariant prevents a new computation path from accidentally turning raw
+    /// non-finite storage into a [`Vector`].
     #[inline]
-    pub(crate) const fn new_unchecked(data: [f64; D]) -> Self {
-        Self { data }
+    pub(crate) const fn from_computation(
+        data: [f64; D],
+        operation: ArithmeticOperation,
+    ) -> Result<Self, LaError> {
+        if let Some(index) = Self::first_non_finite_entry(&data) {
+            Err(LaError::non_finite_computation_step(operation, index))
+        } else {
+            Ok(Self { data })
+        }
     }
 
     /// Return the first non-finite stored entry in index order.
     ///
-    /// Shared by the public raw-storage boundary and crate-internal reparsing
-    /// paths so both report the same first offending index with
-    /// [`LaError::NonFinite`].
-    const fn first_non_finite_entry_in(data: &[f64; D]) -> Option<usize> {
+    /// Used by the public raw-storage boundary to report the first offending
+    /// index with [`LaError::NonFinite`].
+    const fn first_non_finite_entry(data: &[f64; D]) -> Option<usize> {
         let mut i = 0;
         while i < D {
             if !data[i].is_finite() {
@@ -107,7 +112,7 @@ impl<const D: usize> Vector<D> {
     /// ```
     #[inline]
     pub const fn zero() -> Self {
-        Self::new_unchecked([0.0; D])
+        Self { data: [0.0; D] }
     }
 
     /// Borrow the finite backing array.
@@ -162,7 +167,7 @@ impl<const D: usize> Vector<D> {
     /// # fn main() -> Result<(), LaError> {
     /// let a = Vector::<3>::try_new([1.0, 2.0, 3.0])?;
     /// let b = Vector::<3>::try_new([-2.0, 0.5, 4.0])?;
-    /// assert!((a.dot(b)? - 11.0).abs() <= 1e-12);
+    /// assert!((a.dot(&b)? - 11.0).abs() <= 1e-12);
     /// # Ok(())
     /// # }
     /// ```
@@ -171,7 +176,16 @@ impl<const D: usize> Vector<D> {
     /// Returns [`LaError::NonFinite`] when the accumulated dot product overflows
     /// to NaN or infinity.
     #[inline]
-    pub const fn dot(self, other: Self) -> Result<f64, LaError> {
+    pub const fn dot(&self, other: &Self) -> Result<f64, LaError> {
+        self.dot_with_operation(other, ArithmeticOperation::VectorDotProduct)
+    }
+
+    /// Accumulate a dot product while retaining the public operation that owns it.
+    const fn dot_with_operation(
+        &self,
+        other: &Self,
+        operation: ArithmeticOperation,
+    ) -> Result<f64, LaError> {
         let lhs = self.as_array();
         let rhs = other.as_array();
         let mut acc = 0.0;
@@ -180,7 +194,7 @@ impl<const D: usize> Vector<D> {
             acc = lhs[i].mul_add(rhs[i], acc);
             if !acc.is_finite() {
                 cold_path();
-                return Err(LaError::non_finite_at(i));
+                return Err(LaError::non_finite_computation_step(operation, i));
             }
             i += 1;
         }
@@ -211,8 +225,8 @@ impl<const D: usize> Vector<D> {
     /// Returns [`LaError::NonFinite`] when the accumulated norm overflows to NaN
     /// or infinity.
     #[inline]
-    pub const fn norm2_sq(self) -> Result<f64, LaError> {
-        self.dot(self)
+    pub const fn norm2_sq(&self) -> Result<f64, LaError> {
+        self.dot_with_operation(self, ArithmeticOperation::VectorSquaredNorm)
     }
 }
 
@@ -225,18 +239,18 @@ impl<const D: usize> Default for Vector<D> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use core::hint::black_box;
 
     use approx::assert_abs_diff_eq;
     use pastey::paste;
 
-    macro_rules! gen_public_api_vector_tests {
+    use super::*;
+
+    macro_rules! gen_vector_tests {
         ($d:literal) => {
             paste! {
                 #[test]
-                fn [<public_api_vector_new_as_array_into_array_ $d d>]() {
+                fn [<vector_new_as_array_into_array_ $d d>]() {
                     let arr = {
                         let mut arr = [0.0f64; $d];
                         let values = [1.0f64, 2.0, 3.0, 4.0, 5.0];
@@ -259,7 +273,7 @@ mod tests {
                 }
 
                 #[test]
-                fn [<public_api_vector_zero_as_array_into_array_default_ $d d>]() {
+                fn [<vector_zero_as_array_into_array_default_ $d d>]() {
                     let z = Vector::<$d>::zero();
                     for &x in z.as_array() {
                         assert_abs_diff_eq!(x, 0.0, epsilon = 0.0);
@@ -275,7 +289,7 @@ mod tests {
                 }
 
                 #[test]
-                fn [<public_api_vector_dot_and_norm2_sq_ $d d>]() {
+                fn [<vector_dot_and_norm2_sq_ $d d>]() {
                     // Use black_box to avoid constant-folding/inlining eliminating the actual dot loop,
                     // which can make coverage tools report the mul_add line as uncovered.
 
@@ -320,50 +334,62 @@ mod tests {
 
                     // Call via (black_boxed) fn pointers to discourage inlining, improving line-level coverage
                     // attribution for the loop body.
-                    let dot_fn: fn(Vector<$d>, Vector<$d>) -> Result<f64, LaError> =
+                    let dot_fn: fn(&Vector<$d>, &Vector<$d>) -> Result<f64, LaError> =
                         black_box(Vector::<$d>::dot);
-                    let norm2_sq_fn: fn(Vector<$d>) -> Result<f64, LaError> =
+                    let norm2_sq_fn: fn(&Vector<$d>) -> Result<f64, LaError> =
                         black_box(Vector::<$d>::norm2_sq);
 
                     assert_abs_diff_eq!(
-                        dot_fn(black_box(a), black_box(b)).unwrap(),
+                        dot_fn(black_box(&a), black_box(&b)).unwrap(),
                         expected_dot,
                         epsilon = 1e-14
                     );
                     assert_abs_diff_eq!(
-                        norm2_sq_fn(black_box(a)).unwrap(),
+                        norm2_sq_fn(black_box(&a)).unwrap(),
                         expected_norm2_sq,
                         epsilon = 1e-14
                     );
                 }
 
                 #[test]
-                fn [<public_api_vector_try_new_rejects_nonfinite_ $d d>]() {
-                    let mut a_arr = [1.0f64; $d];
-                    a_arr[$d - 1] = f64::NAN;
+                fn [<vector_try_new_rejects_non_finite_ $d d>]() {
+                    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+                        let mut data = [1.0f64; $d];
+                        data[$d - 1] = value;
+                        assert_eq!(
+                            Vector::<$d>::try_new(data),
+                            Err(LaError::non_finite_input_vector($d - 1))
+                        );
+                    }
 
+                    let mut data = [1.0f64; $d];
+                    data[0] = f64::INFINITY;
+                    data[$d - 1] = f64::NAN;
                     assert_eq!(
-                        Vector::<$d>::try_new(a_arr),
-                        Err(LaError::NonFinite {
-                            row: None,
-                            col: $d - 1,
-                        })
+                        Vector::<$d>::try_new(data),
+                        Err(LaError::non_finite_input_vector(0))
                     );
                 }
 
                 #[test]
-                fn [<public_api_vector_try_new_rejects_nonfinite_rhs_fixture_ $d d>]() {
-                    let mut b_arr = [1.0f64; $d];
-                    b_arr[0] = f64::INFINITY;
+                fn [<vector_from_computation_preserves_failure_provenance_ $d d>]() {
+                    let mut data = [1.0f64; $d];
+                    data[$d - 1] = f64::INFINITY;
 
                     assert_eq!(
-                        Vector::<$d>::try_new(b_arr),
-                        Err(LaError::NonFinite { row: None, col: 0 })
+                        Vector::<$d>::from_computation(
+                            data,
+                            ArithmeticOperation::LuSolve,
+                        ),
+                        Err(LaError::non_finite_computation_step(
+                            ArithmeticOperation::LuSolve,
+                            $d - 1,
+                        ))
                     );
                 }
 
                 #[test]
-                fn [<public_api_vector_dot_and_norm2_sq_reject_overflow_ $d d>]() {
+                fn [<vector_dot_and_norm2_sq_reject_overflow_ $d d>]() {
                     let mut a_arr = [1.0f64; $d];
                     a_arr[0] = f64::MAX;
                     let a = Vector::<$d>::new(a_arr);
@@ -372,8 +398,20 @@ mod tests {
                     b_arr[0] = 2.0;
                     let b = Vector::<$d>::new(b_arr);
 
-                    assert_eq!(a.dot(b), Err(LaError::NonFinite { row: None, col: 0 }));
-                    assert_eq!(a.norm2_sq(), Err(LaError::NonFinite { row: None, col: 0 }));
+                    assert_eq!(
+                        a.dot(&b),
+                        Err(LaError::non_finite_computation_step(
+                            ArithmeticOperation::VectorDotProduct,
+                            0,
+                        ))
+                    );
+                    assert_eq!(
+                        a.norm2_sq(),
+                        Err(LaError::non_finite_computation_step(
+                            ArithmeticOperation::VectorSquaredNorm,
+                            0,
+                        ))
+                    );
                 }
 
             }
@@ -381,8 +419,19 @@ mod tests {
     }
 
     // Mirror delaunay-style multi-dimension tests.
-    gen_public_api_vector_tests!(2);
-    gen_public_api_vector_tests!(3);
-    gen_public_api_vector_tests!(4);
-    gen_public_api_vector_tests!(5);
+    gen_vector_tests!(1);
+    gen_vector_tests!(2);
+    gen_vector_tests!(3);
+    gen_vector_tests!(4);
+    gen_vector_tests!(5);
+
+    #[test]
+    fn zero_dimension_vector_has_zero_dot_and_norm() {
+        let vector = Vector::<0>::try_new([]).unwrap();
+
+        assert!(vector.as_array().is_empty());
+        assert!(vector.into_array().is_empty());
+        assert_eq!(vector.dot(&Vector::zero()), Ok(0.0));
+        assert_eq!(vector.norm2_sq(), Ok(0.0));
+    }
 }

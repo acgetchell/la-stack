@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Property-based tests for LU/LDLT factorization APIs.
 //!
 //! These tests construct matrices from known factors so we have a reliable oracle for
@@ -5,7 +7,7 @@
 
 use approx::assert_abs_diff_eq;
 use pastey::paste;
-use proptest::prelude::*;
+use proptest::{array, prelude::*};
 
 use la_stack::prelude::*;
 
@@ -36,11 +38,11 @@ macro_rules! gen_factorization_proptests {
 
                 #[test]
                 fn [<ldlt_det_and_solve_match_constructed_factors_ $d d>](
-                    l_raw in proptest::array::[<uniform $d>](
-                        proptest::array::[<uniform $d>](small_factor_entry()),
+                    l_raw in array::[<uniform $d>](
+                        array::[<uniform $d>](small_factor_entry()),
                     ),
-                    d_diag in proptest::array::[<uniform $d>](positive_diag_entry()),
-                    x_true in proptest::array::[<uniform $d>](small_f64()),
+                    d_diag in array::[<uniform $d>](positive_diag_entry()),
+                    x_true in array::[<uniform $d>](small_f64()),
                 ) {
                     // Construct A = L * diag(D) * L^T, where L is unit-lower-triangular.
                     let mut l = [[0.0f64; $d]; $d];
@@ -89,7 +91,10 @@ macro_rules! gen_factorization_proptests {
                     let a = Matrix::<$d>::try_from_rows(a_rows).unwrap();
                     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
-                    assert_abs_diff_eq!(ldlt.det().unwrap(), expected_det, epsilon = 1e-8);
+                    let det_ldlt = ldlt.det().unwrap();
+                    let det_lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap().det().unwrap();
+                    assert_abs_diff_eq!(det_ldlt, expected_det, epsilon = 1e-8);
+                    assert_abs_diff_eq!(det_ldlt, det_lu, epsilon = 1e-8);
 
                     let b = Vector::<$d>::try_new(b_arr).unwrap();
                     let x = ldlt.solve(b).unwrap().into_array();
@@ -100,14 +105,14 @@ macro_rules! gen_factorization_proptests {
 
                 #[test]
                 fn [<lu_det_and_solve_match_constructed_factors_no_perm_ $d d>](
-                    l_raw in proptest::array::[<uniform $d>](
-                        proptest::array::[<uniform $d>](small_factor_entry()),
+                    l_raw in array::[<uniform $d>](
+                        array::[<uniform $d>](small_factor_entry()),
                     ),
-                    u_raw in proptest::array::[<uniform $d>](
-                        proptest::array::[<uniform $d>](small_factor_entry()),
+                    u_raw in array::[<uniform $d>](
+                        array::[<uniform $d>](small_factor_entry()),
                     ),
-                    u_diag in proptest::array::[<uniform $d>](nonzero_diag_entry()),
-                    x_true in proptest::array::[<uniform $d>](small_f64()),
+                    u_diag in array::[<uniform $d>](nonzero_diag_entry()),
+                    x_true in array::[<uniform $d>](small_f64()),
                 ) {
                     // Construct A = L * U, where L is unit-lower-triangular and U is upper-triangular.
                     let mut l = [[0.0f64; $d]; $d];
@@ -180,19 +185,17 @@ macro_rules! gen_factorization_proptests {
 
                 #[test]
                 fn [<lu_det_and_solve_match_constructed_factors_row_swap_ $d d>](
-                    l_raw in proptest::array::[<uniform $d>](
-                        proptest::array::[<uniform $d>](small_factor_entry()),
+                    l_raw in array::[<uniform $d>](
+                        array::[<uniform $d>](small_factor_entry()),
                     ),
-                    u_raw in proptest::array::[<uniform $d>](
-                        proptest::array::[<uniform $d>](small_factor_entry()),
+                    u_raw in array::[<uniform $d>](
+                        array::[<uniform $d>](small_factor_entry()),
                     ),
-                    u_diag in proptest::array::[<uniform $d>](nonzero_diag_entry()),
-                    x_true in proptest::array::[<uniform $d>](small_f64()),
+                    u_diag in array::[<uniform $d>](nonzero_diag_entry()),
+                    x_true in array::[<uniform $d>](small_f64()),
                 ) {
                     // Construct A = P^{-1} * L * U, where P swaps the first two rows.
                     // This ensures det(A) has an extra sign flip vs det(LU).
-                    prop_assume!($d >= 2);
-
                     let mut l = [[0.0f64; $d]; $d];
                     for i in 0..$d {
                         for j in 0..$d {
@@ -273,3 +276,5 @@ gen_factorization_proptests!(2);
 gen_factorization_proptests!(3);
 gen_factorization_proptests!(4);
 gen_factorization_proptests!(5);
+// Exercise the D > 5 factorization and solve branches with randomized inputs.
+gen_factorization_proptests!(8);

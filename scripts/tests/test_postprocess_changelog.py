@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from postprocess_changelog import (
+    _CodeFence,
     _compact_entry,
     _inject_summary_sections,
     _is_duplicate_squash_heading,
@@ -266,6 +267,22 @@ class TestReflowLine:
             assert cont.startswith("  ")
         # All links must be intact.
         assert link in result
+
+    def test_preserves_link_with_balanced_destination_parentheses(self) -> None:
+        link = "[API](https://example.com/search(function(arg(nested))))"
+        line = f"- Read the detailed publication API notes before continuing with the release process {link}"
+
+        result = _reflow_line(line, max_width=60)
+
+        assert link in result
+
+    def test_preserves_multi_backtick_code_span(self) -> None:
+        span = "``call(`inner`, value)``"
+        line = f"- Use {span} when documenting the generated command and all of its arguments"
+
+        result = _reflow_line(line, max_width=45)
+
+        assert span in result
 
 
 # ---------------------------------------------------------------------------
@@ -614,6 +631,14 @@ class TestIndentedHeadingNormalization:
         assert "```markdown\n## Example Heading\n### Fixed: Example\n```" in result
         assert "#### Duplicate Vertex Handling" in result
 
+    def test_existing_archive_normalization_preserves_tilde_fenced_headings(self) -> None:
+        text = "# Changelog - 0.5.x\n\n~~~markdown\n## Example Heading\n~~~\n\n## Duplicate Vertex Handling\n"
+
+        result = normalize_entry_headings_text(text)
+
+        assert "~~~markdown\n## Example Heading\n~~~" in result
+        assert "#### Duplicate Vertex Handling" in result
+
 
 class TestSquashHeadingNormalization:
     """GitHub squash-body pseudo-commit headings are rendered as prose."""
@@ -737,38 +762,70 @@ class TestCodeBlockLanguage:
     def test_process_code_fence_opens_and_tags_bare_fence(self) -> None:
         result: list[str] = []
 
-        handled, in_code_block = _process_code_fence("```", result, in_code_block=False, next_line="let x = 1;")
+        handled, active_fence = _process_code_fence("```", result, active_fence=None, next_line="let x = 1;")
 
         assert handled
-        assert in_code_block
+        assert active_fence == _CodeFence(delimiter="`", length=3)
         assert result == ["```text"]
 
     def test_process_code_fence_closes_existing_block(self) -> None:
         result: list[str] = []
 
-        handled, in_code_block = _process_code_fence("```", result, in_code_block=True, next_line=None)
+        handled, active_fence = _process_code_fence(
+            "```",
+            result,
+            active_fence=_CodeFence(delimiter="`", length=3),
+            next_line=None,
+        )
 
         assert handled
-        assert not in_code_block
+        assert active_fence is None
         assert result == ["```"]
 
     def test_process_code_fence_adds_blank_after_closing_fence(self) -> None:
         result: list[str] = []
 
-        handled, in_code_block = _process_code_fence("```", result, in_code_block=True, next_line="following prose")
+        handled, active_fence = _process_code_fence(
+            "```",
+            result,
+            active_fence=_CodeFence(delimiter="`", length=3),
+            next_line="following prose",
+        )
 
         assert handled
-        assert not in_code_block
+        assert active_fence is None
         assert result == ["```", ""]
 
     def test_process_code_fence_ignores_regular_line(self) -> None:
         result: list[str] = []
 
-        handled, in_code_block = _process_code_fence("regular text", result, in_code_block=False, next_line=None)
+        handled, active_fence = _process_code_fence("regular text", result, active_fence=None, next_line=None)
 
         assert not handled
-        assert not in_code_block
+        assert active_fence is None
         assert result == []
+
+    def test_tilde_fence_is_supported_and_tagged(self) -> None:
+        result: list[str] = []
+
+        handled, active_fence = _process_code_fence("~~~~", result, active_fence=None, next_line="code")
+
+        assert handled
+        assert active_fence == _CodeFence(delimiter="~", length=4)
+        assert result == ["~~~~text"]
+
+    def test_shorter_or_different_delimiter_does_not_close_fence(self) -> None:
+        active = _CodeFence(delimiter="`", length=4)
+
+        handled_short, still_active = _process_code_fence("```", [], active_fence=active, next_line=None)
+        handled_tilde, still_active = _process_code_fence("~~~~", [], active_fence=still_active, next_line=None)
+        handled_close, closed = _process_code_fence("`````", [], active_fence=still_active, next_line=None)
+
+        assert not handled_short
+        assert not handled_tilde
+        assert still_active == active
+        assert handled_close
+        assert closed is None
 
     def test_adds_language_to_bare_fence(self, tmp_path: Path) -> None:
         f = tmp_path / "CHANGELOG.md"
@@ -798,6 +855,18 @@ class TestCodeBlockLanguage:
 
         result = f.read_text(encoding="utf-8")
         assert long_code in result
+
+    def test_no_reflow_or_heading_rewrite_inside_tilde_block(self, tmp_path: Path) -> None:
+        long_code = "## " + "code " * 50
+        f = tmp_path / "CHANGELOG.md"
+        f.write_text(f"~~~markdown\n{long_code.rstrip()}\n~~~\n## Outside\n", encoding="utf-8")
+
+        postprocess(f)
+
+        result = f.read_text(encoding="utf-8")
+        assert long_code.rstrip() in result
+        assert "~~~markdown" in result
+        assert "#### Outside" in result
 
     def test_adds_blank_after_code_block_before_prose(self, tmp_path: Path) -> None:
         f = tmp_path / "CHANGELOG.md"

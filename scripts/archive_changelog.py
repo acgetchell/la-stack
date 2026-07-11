@@ -103,7 +103,7 @@ def _extract_link_defs(text: str) -> tuple[str, dict[str, str]]:
     CHANGELOG.md for every version heading.  When the changelog is split
     into per-version blocks these definitions must be distributed to the
     correct output files so that headings like ``## [0.7.2]`` resolve and
-    no unused definitions trigger markdownlint MD053.
+    no unused definitions trigger rumdl MD053.
 
     Parameters:
         text: The full changelog text.
@@ -168,13 +168,13 @@ def parse_changelog(text: str) -> tuple[str, str, list[tuple[str, str]]]:
         block = "\n".join(lines[start:end])
 
         heading_line = lines[start]
-        if "Unreleased" in heading_line:
+        if heading_line.startswith("## [Unreleased]"):
             unreleased = block
         else:
             m = _VERSION_RE.match(heading_line)
             if not m:
-                # Skip headings that don't contain a recognisable semver.
-                continue
+                msg = f"Unrecognized changelog version heading at line {start + 1}: {heading_line!r}; expected '## [Unreleased]' or a semantic version"
+                raise ValueError(msg)
             version_blocks.append((m.group(1), block))
 
     return preamble, unreleased, version_blocks
@@ -312,6 +312,26 @@ def build_root(
     return postprocess_text("\n".join(parts))
 
 
+def _archive_dir_link_prefix(archive_dir: Path, changelog_parent: Path) -> str:
+    """Return the Markdown link prefix from a changelog to its archive directory."""
+    try:
+        return archive_dir.relative_to(changelog_parent).as_posix()
+    except ValueError:
+        try:
+            archive_dir_rel = Path(os.path.relpath(archive_dir, changelog_parent)).as_posix()
+        except ValueError as err:
+            msg = "cannot compute relative archive links because the archive and changelog directories are on different filesystem roots"
+            raise ValueError(msg) from err
+        if archive_dir_rel == ".." or archive_dir_rel.startswith("../") or Path(archive_dir_rel).is_absolute():
+            LOGGER.warning(
+                "Archive directory %s is outside changelog directory %s; generated Markdown links use %s",
+                archive_dir,
+                changelog_parent,
+                archive_dir_rel,
+            )
+        return archive_dir_rel
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -350,37 +370,18 @@ def archive_changelog(
     active_minor = minor_keys[0]
 
     # Archive every minor except the active one.
-    archived_minors: list[str] = []
-    for minor in minor_keys[1:]:
-        write_archive(archive_dir, minor, groups[minor], link_defs)
-        archived_minors.append(minor)
+    archived_minors = minor_keys[1:]
 
     if not archived_minors:
         _postprocess_existing_archives(archive_dir)
         return  # only one minor series — nothing to archive yet
 
-    # Compute relative path from changelog location to archive dir.
-    try:
-        archive_dir_rel = archive_dir.relative_to(changelog_path.parent).as_posix()
-    except ValueError:
-        try:
-            archive_dir_rel = Path(os.path.relpath(archive_dir, changelog_path.parent)).as_posix()
-        except ValueError as err:
-            archive_dir_rel = archive_dir.as_posix()
-            LOGGER.warning(
-                "Could not compute relative archive directory: %s; archive_dir=%s changelog_parent=%s; generated Markdown links use %s",
-                err,
-                archive_dir,
-                changelog_path.parent,
-                archive_dir_rel,
-            )
-        if archive_dir_rel == ".." or archive_dir_rel.startswith("../") or Path(archive_dir_rel).is_absolute():
-            LOGGER.warning(
-                "Archive directory %s is outside changelog directory %s; generated Markdown links use %s",
-                archive_dir,
-                changelog_path.parent,
-                archive_dir_rel,
-            )
+    # Validate link portability before creating or modifying archive files.
+    # In particular, os.path.relpath() cannot cross Windows volumes.
+    archive_dir_rel = _archive_dir_link_prefix(archive_dir, changelog_path.parent)
+
+    for minor in archived_minors:
+        write_archive(archive_dir, minor, groups[minor], link_defs)
 
     root_text = build_root(
         preamble,
