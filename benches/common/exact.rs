@@ -12,6 +12,8 @@ use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{FromPrimitive, Signed, ToPrimitive, Zero};
 
+use crate::bench_utils::OrAbort;
+
 /// Number of matrices in each deterministic random benchmark corpus.
 pub const RANDOM_INPUT_ARRAY_LEN: usize = 50;
 /// Stable global seed used to derive one random corpus per dimension.
@@ -147,14 +149,6 @@ impl<const D: usize> ValidatedExactInput<D> {
     }
 }
 
-/// Return a successful fixture-construction result or panic with context.
-fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
-    match result {
-        Ok(value) => value,
-        Err(err) => panic!("{operation} failed: {err}"),
-    }
-}
-
 /// Return one matrix entry through the bounds-checked API shared by current and
 /// v0.4.3 releases.
 fn stored_matrix_entry<const D: usize>(matrix: &Matrix<D>, row: usize, col: usize) -> f64 {
@@ -172,10 +166,9 @@ fn checked_det_sign<const D: usize>(matrix: &Matrix<D>) -> i8 {
 
 #[cfg(la_stack_v0_4_3_api)]
 fn checked_det_sign<const D: usize>(matrix: &Matrix<D>) -> i8 {
-    require_ok(
-        matrix.det_sign_exact(),
-        "exact determinant sign oracle check",
-    )
+    matrix
+        .det_sign_exact()
+        .or_abort("exact determinant sign oracle check")
 }
 
 /// Return a deterministic, strictly diagonally-dominant matrix entry.
@@ -223,11 +216,11 @@ pub fn make_vector_array<const D: usize>() -> [f64; D] {
 /// Derive a stable per-dimension seed from the global random benchmark seed.
 fn random_seed_for_dim<const D: usize>() -> u64 {
     let mut seed =
-        0xC0DE_CAFE_D15C_A11Au64 ^ require_ok(u64::try_from(D), "dimension seed conversion");
+        0xC0DE_CAFE_D15C_A11Au64 ^ u64::try_from(D).or_abort("dimension seed conversion");
     for (i, byte) in RANDOM_SEED.iter().copied().enumerate() {
-        let shift = require_ok(u32::try_from((i % 8) * 8), "seed shift conversion");
+        let shift = u32::try_from((i % 8) * 8).or_abort("seed shift conversion");
         seed ^= u64::from(byte) << shift;
-        seed = seed.rotate_left(7) ^ require_ok(u64::try_from(i), "seed index conversion");
+        seed = seed.rotate_left(7) ^ u64::try_from(i).or_abort("seed index conversion");
     }
     seed
 }
@@ -235,7 +228,7 @@ fn random_seed_for_dim<const D: usize>() -> u64 {
 /// Build a fixed random corpus of finite, strictly diagonally-dominant inputs.
 pub fn make_random_input_corpus<const D: usize>() -> [ExactInput<D>; RANDOM_INPUT_ARRAY_LEN] {
     let mut rng = SplitMix64::new(random_seed_for_dim::<D>());
-    let entry_range = require_ok(I16Range::try_new(-10, 10), "random integer range");
+    let entry_range = I16Range::try_new(-10, 10).or_abort("random integer range");
     array::from_fn(|_| {
         let mut rows = [[0.0; D]; D];
         let mut diag = [0_i16; D];
@@ -251,7 +244,7 @@ pub fn make_random_input_corpus<const D: usize>() -> [ExactInput<D>; RANDOM_INPU
         }
 
         let shift =
-            f64::from(require_ok(u8::try_from(D), "dimension shift conversion")).mul_add(10.0, 1.0);
+            f64::from(u8::try_from(D).or_abort("dimension shift conversion")).mul_add(10.0, 1.0);
         for (i, row) in rows.iter_mut().enumerate() {
             row[i] = if diag[i] >= 0 {
                 f64::from(diag[i]) + shift
@@ -263,11 +256,8 @@ pub fn make_random_input_corpus<const D: usize>() -> [ExactInput<D>; RANDOM_INPU
         let rhs = from_fn(|_| f64::from(rng.next_i16(entry_range)));
 
         ExactInput {
-            matrix: require_ok(
-                Matrix::<D>::try_from_rows(rows),
-                "random matrix construction",
-            ),
-            rhs: require_ok(Vector::<D>::try_new(rhs), "random RHS vector construction"),
+            matrix: Matrix::<D>::try_from_rows(rows).or_abort("random matrix construction"),
+            rhs: Vector::<D>::try_new(rhs).or_abort("random RHS vector construction"),
         }
     })
 }
@@ -276,18 +266,14 @@ pub fn make_random_input_corpus<const D: usize>() -> [ExactInput<D>; RANDOM_INPU
 pub fn near_singular_3x3_input() -> ExactInput<3> {
     let perturbation = f64::from_bits(0x3CD0_0000_0000_0000); // 2^-50
     ExactInput {
-        matrix: require_ok(
-            Matrix::<3>::try_from_rows([
-                [1.0 + perturbation, 2.0, 3.0],
-                [4.0, 5.0, 6.0],
-                [7.0, 8.0, 9.0],
-            ]),
-            "near-singular matrix construction",
-        ),
-        rhs: require_ok(
-            Vector::<3>::try_new([1.0, 2.0, 3.0]),
-            "near-singular RHS vector construction",
-        ),
+        matrix: Matrix::<3>::try_from_rows([
+            [1.0 + perturbation, 2.0, 3.0],
+            [4.0, 5.0, 6.0],
+            [7.0, 8.0, 9.0],
+        ])
+        .or_abort("near-singular matrix construction"),
+        rhs: Vector::<3>::try_new([1.0, 2.0, 3.0])
+            .or_abort("near-singular RHS vector construction"),
     }
 }
 
@@ -295,14 +281,9 @@ pub fn near_singular_3x3_input() -> ExactInput<3> {
 pub fn large_entries_3x3_input() -> ExactInput<3> {
     let big = f64::MAX / 2.0;
     ExactInput {
-        matrix: require_ok(
-            Matrix::<3>::try_from_rows([[big, 1.0, 1.0], [1.0, big, 1.0], [1.0, 1.0, big]]),
-            "large-entry matrix construction",
-        ),
-        rhs: require_ok(
-            Vector::<3>::try_new([1.0, 1.0, 1.0]),
-            "large-entry RHS vector construction",
-        ),
+        matrix: Matrix::<3>::try_from_rows([[big, 1.0, 1.0], [1.0, big, 1.0], [1.0, 1.0, big]])
+            .or_abort("large-entry matrix construction"),
+        rhs: Vector::<3>::try_new([1.0, 1.0, 1.0]).or_abort("large-entry RHS vector construction"),
     }
 }
 
@@ -314,14 +295,8 @@ pub fn large_entries_3x3_input() -> ExactInput<3> {
 pub fn hilbert_input<const D: usize>() -> ExactInput<D> {
     let rows = from_fn(|r| from_fn(|c| 1.0 / ((r + c + 1) as f64)));
     ExactInput {
-        matrix: require_ok(
-            Matrix::<D>::try_from_rows(rows),
-            "Hilbert matrix construction",
-        ),
-        rhs: require_ok(
-            Vector::<D>::try_new([1.0; D]),
-            "Hilbert RHS vector construction",
-        ),
+        matrix: Matrix::<D>::try_from_rows(rows).or_abort("Hilbert matrix construction"),
+        rhs: Vector::<D>::try_new([1.0; D]).or_abort("Hilbert RHS vector construction"),
     }
 }
 
@@ -528,13 +503,16 @@ fn assert_approximate_determinant(actual: f64, exact: &BigRational, operation: &
 /// dimension, or disagrees with the independent exact oracle.
 pub fn validate_f64_determinant_benchmarks<const D: usize>(input: &ValidatedExactInput<D>) {
     let exact = determinant_leibniz(input.matrix());
-    let determinant = require_ok(input.matrix().det(), "f64 determinant oracle check");
+    let determinant = input
+        .matrix()
+        .det()
+        .or_abort("f64 determinant oracle check");
     assert_approximate_determinant(determinant, &exact, "f64 determinant");
 
-    let direct = require_ok(
-        input.matrix().det_direct(),
-        "direct f64 determinant oracle check",
-    );
+    let direct = input
+        .matrix()
+        .det_direct()
+        .or_abort("direct f64 determinant oracle check");
     if D <= 4 {
         let Some(direct) = direct else {
             panic!("det_direct must support benchmark dimension {D}");
@@ -543,10 +521,10 @@ pub fn validate_f64_determinant_benchmarks<const D: usize>(input: &ValidatedExac
 
         #[cfg(not(la_stack_v0_4_3_api))]
         {
-            let estimate = require_ok(
-                input.matrix().det_direct_with_errbound(),
-                "combined direct determinant oracle check",
-            );
+            let estimate = input
+                .matrix()
+                .det_direct_with_errbound()
+                .or_abort("combined direct determinant oracle check");
             let Some(estimate) = estimate else {
                 panic!("the baseline fixture must have a certified D={D} determinant bound");
             };
@@ -563,11 +541,11 @@ pub fn validate_f64_determinant_benchmarks<const D: usize>(input: &ValidatedExac
 
         #[cfg(not(la_stack_v0_4_3_api))]
         assert!(
-            require_ok(
-                input.matrix().det_direct_with_errbound(),
-                "combined direct determinant scope check",
-            )
-            .is_none(),
+            input
+                .matrix()
+                .det_direct_with_errbound()
+                .or_abort("combined direct determinant scope check")
+                .is_none(),
             "combined direct determinant unexpectedly supports D={D}",
         );
     }
@@ -599,7 +577,10 @@ fn assert_exact_residual<const D: usize>(input: &ExactInput<D>, solution: &[BigR
 pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> ValidatedExactInput<D> {
     let determinant = determinant_leibniz(&input.matrix);
     assert_eq!(
-        require_ok(input.matrix.det_exact(), "exact determinant oracle check"),
+        input
+            .matrix
+            .det_exact()
+            .or_abort("exact determinant oracle check"),
         determinant
     );
     assert_eq!(
@@ -609,10 +590,10 @@ pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> Validated
     assert_strict_scalar(input.matrix.det_exact_f64(), &determinant, None);
     assert_rounded_scalar(input.matrix.det_exact_rounded_f64(), &determinant);
 
-    let solution = require_ok(
-        input.matrix.solve_exact(input.rhs),
-        "exact solve oracle check",
-    );
+    let solution = input
+        .matrix
+        .solve_exact(input.rhs)
+        .or_abort("exact solve oracle check");
     assert_exact_residual(&input, &solution);
 
     let strict_solution = input.matrix.solve_exact_f64(input.rhs);

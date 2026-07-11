@@ -56,12 +56,12 @@ jobs:
       - name: Run clippy with SARIF output
         run: |
           set -euo pipefail
+          # Lint levels are owned by Cargo.toml.
           cargo clippy \
             --workspace \
             --all-targets \
             --all-features \
-            --message-format=json \
-            -- -W clippy::pedantic -W clippy::nursery -W clippy::cargo | \
+            --message-format=json | \
             clippy-sarif | \
             tee rust-clippy-results.sarif | \
             sarif-fmt

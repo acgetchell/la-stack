@@ -3,6 +3,8 @@
 #![cfg(all(feature = "bench", feature = "exact"))]
 #![forbid(unsafe_code)]
 
+#[path = "../benches/common/bench_utils.rs"]
+mod bench_utils;
 #[path = "../benches/common/exact.rs"]
 pub mod exact_bench;
 
