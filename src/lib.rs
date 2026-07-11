@@ -341,8 +341,9 @@ pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
 /// ```
 ///
 /// where `p(|A|)` is the absolute Leibniz sum. `det_direct` for D=4
-/// evaluates four nested 3×3 cofactors and reduces them with an FMA row
-/// combination, yielding the
+/// evaluates four nested 3×3 cofactors, sharing their six 2×2 minors when
+/// every coefficient in the first two rows is non-zero, and reduces them with
+/// an FMA row combination, yielding the
 /// `12·EPS + 128·EPS²` bound.  See `REFERENCES.md` \[8\] for the
 /// Shewchuk framework these bounds follow.
 ///

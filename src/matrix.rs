@@ -861,15 +861,10 @@ impl<const D: usize> Matrix<D> {
                 let b = self.rows[0][1];
                 let c = self.rows[1][0];
                 let d = self.rows[1][1];
-                if b == 0.0 {
-                    Some(FilterArithmetic::<TRACK_UNDERFLOW>::multiply(a, d))
-                } else {
-                    let subtrahend = FilterArithmetic::<TRACK_UNDERFLOW>::multiply(b, c);
-                    let mut det =
-                        FilterArithmetic::<TRACK_UNDERFLOW>::mul_add(a, d, -subtrahend.value);
-                    det.underflow_safe &= subtrahend.underflow_safe;
-                    Some(det)
-                }
+                let subtrahend = FilterArithmetic::<TRACK_UNDERFLOW>::multiply(b, c);
+                let mut det = FilterArithmetic::<TRACK_UNDERFLOW>::mul_add(a, d, -subtrahend.value);
+                det.underflow_safe &= subtrahend.underflow_safe;
+                Some(det)
             }
             3 => Some(Self::det3_elements::<TRACK_UNDERFLOW>(
                 [self.rows[0][0], self.rows[0][1], self.rows[0][2]],
@@ -878,6 +873,26 @@ impl<const D: usize> Matrix<D> {
             )),
             4 => {
                 let r = &self.rows;
+
+                // The dense hot path shares the six unique 2×2 minors across
+                // all four cofactors. Requiring non-zero coefficients in the
+                // first two rows keeps this equivalent to the guarded path
+                // below: no mathematically absent term can force evaluation of
+                // an overflowing minor.
+                let dense = (r[0][0] != 0.0)
+                    && (r[0][1] != 0.0)
+                    && (r[0][2] != 0.0)
+                    && (r[0][3] != 0.0)
+                    && (r[1][0] != 0.0)
+                    && (r[1][1] != 0.0)
+                    && (r[1][2] != 0.0)
+                    && (r[1][3] != 0.0);
+                if !TRACK_UNDERFLOW && dense {
+                    return Some(FilterArithmetic {
+                        value: Self::det4_dense_elements(r),
+                        underflow_safe: true,
+                    });
+                }
 
                 let mut det = if r[0][3] == 0.0 {
                     FilterArithmetic {
@@ -935,6 +950,36 @@ impl<const D: usize> Matrix<D> {
             }
             _ => None,
         }
+    }
+
+    /// Evaluate the dense 4×4 cofactor expansion with shared 2×2 minors.
+    ///
+    /// Callers must establish that the first two rows contain no zero
+    /// coefficients. That proof makes every minor part of an active Leibniz
+    /// term, so evaluating all six shared minors cannot introduce a non-finite
+    /// result through a mathematically absent term.
+    #[expect(
+        clippy::inline_always,
+        reason = "the D=4 determinant hot path must inline its shared-minor expansion"
+    )]
+    #[inline(always)]
+    const fn det4_dense_elements(r: &[[f64; D]; D]) -> f64 {
+        let s23 = r[2][2].mul_add(r[3][3], -(r[2][3] * r[3][2]));
+        let s13 = r[2][1].mul_add(r[3][3], -(r[2][3] * r[3][1]));
+        let s12 = r[2][1].mul_add(r[3][2], -(r[2][2] * r[3][1]));
+        let s03 = r[2][0].mul_add(r[3][3], -(r[2][3] * r[3][0]));
+        let s02 = r[2][0].mul_add(r[3][2], -(r[2][2] * r[3][0]));
+        let s01 = r[2][0].mul_add(r[3][1], -(r[2][1] * r[3][0]));
+
+        let c00 = r[1][1].mul_add(s23, (-r[1][2]).mul_add(s13, r[1][3] * s12));
+        let c01 = r[1][0].mul_add(s23, (-r[1][2]).mul_add(s03, r[1][3] * s02));
+        let c02 = r[1][0].mul_add(s13, (-r[1][1]).mul_add(s03, r[1][3] * s01));
+        let c03 = r[1][0].mul_add(s12, (-r[1][1]).mul_add(s02, r[1][2] * s01));
+
+        r[0][0].mul_add(
+            c00,
+            (-r[0][1]).mul_add(c01, r[0][2].mul_add(c02, -(r[0][3] * c03))),
+        )
     }
 
     /// Floating-point determinant, using closed-form formulas for D ≤ 4 and
@@ -1283,12 +1328,14 @@ impl<const D: usize> Matrix<D> {
         }
     }
 
-    /// Evaluate a 3×3 determinant expansion while skipping zero coefficients.
+    /// Evaluate a 3×3 determinant expansion with a guarded sparse fallback.
     ///
-    /// This helper protects the public [`det_direct`](Self::det_direct)
-    /// contract: a mathematically absent term must not compute an overflowing
-    /// minor and poison the determinant with `0.0 * inf == NaN`. Nonzero terms
-    /// keep the same fused multiply-add ordering as the closed-form expansion.
+    /// When all three first-row coefficients are non-zero, one branch-free
+    /// closed form is used. The sparse fallback protects the public
+    /// [`det_direct`](Self::det_direct) contract: a mathematically absent term
+    /// must not compute an overflowing minor and poison the determinant with
+    /// `0.0 * inf == NaN`. Nonzero terms keep the same fused multiply-add
+    /// ordering as the closed-form expansion.
     #[expect(
         clippy::inline_always,
         reason = "det_direct callers must eliminate unused filter-safety bookkeeping"
@@ -1299,6 +1346,17 @@ impl<const D: usize> Matrix<D> {
         r1: [f64; 3],
         r2: [f64; 3],
     ) -> FilterArithmetic<TRACK_UNDERFLOW> {
+        let dense = (r0[0] != 0.0) && (r0[1] != 0.0) && (r0[2] != 0.0);
+        if !TRACK_UNDERFLOW && dense {
+            let m00 = r1[1].mul_add(r2[2], -(r1[2] * r2[1]));
+            let m01 = r1[0].mul_add(r2[2], -(r1[2] * r2[0]));
+            let m02 = r1[0].mul_add(r2[1], -(r1[1] * r2[0]));
+            return FilterArithmetic {
+                value: r0[0].mul_add(m00, (-r0[1]).mul_add(m01, r0[2] * m02)),
+                underflow_safe: true,
+            };
+        }
+
         let mut det = if r0[2] == 0.0 {
             FilterArithmetic {
                 value: 0.0,
@@ -1731,13 +1789,17 @@ mod tests {
         let m = black_box(
             Matrix::<4>::try_from_rows([
                 [4.0, 1.0, 3.0, 2.0],
-                [0.0, 5.0, 2.0, 1.0],
+                [1.0, 5.0, 2.0, 1.0],
                 [7.0, 2.0, 6.0, 3.0],
                 [1.0, 8.0, 4.0, 9.0],
             ])
             .unwrap(),
         );
-        assert_abs_diff_eq!(m.det_direct().unwrap().unwrap(), 92.0, epsilon = 1e-12);
+        let direct = m.det_direct().unwrap().unwrap();
+        let paired = m.det_direct_with_errbound().unwrap().unwrap();
+
+        assert_abs_diff_eq!(direct, 112.0, epsilon = 1e-12);
+        assert_eq!(paired.determinant().to_bits(), direct.to_bits());
     }
 
     #[test]
@@ -1752,6 +1814,22 @@ mod tests {
             .unwrap(),
         );
         assert_eq!(m.det_direct(), Ok(Some(0.0)));
+    }
+
+    #[test]
+    fn det_direct_d4_sparse_second_row_skips_inactive_overflowing_minors() {
+        let m = black_box(
+            Matrix::<4>::try_from_rows([
+                [1.0e-300, 1.0, 1.0, 1.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 1.0e300, 1.0, 1.0e300],
+                [0.0, 1.0e300, 0.0, 1.0e300],
+            ])
+            .unwrap(),
+        );
+
+        assert_eq!(m.det_direct(), Ok(Some(1.0)));
+        assert_eq!(m.det(), Ok(1.0));
     }
 
     #[test]
