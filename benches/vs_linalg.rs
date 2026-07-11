@@ -9,7 +9,6 @@
 //! - Determinant is benchmarked via LU on all sides (nalgebra uses closed-forms for 1×1/2×2/3×3).
 //! - Matrix infinity norm is the maximum absolute row sum on all sides.
 
-use std::fmt::Display;
 use std::hint::black_box;
 
 use criterion::measurement::WallTime;
@@ -21,39 +20,26 @@ use nalgebra::{Const, DimMin, SMatrix, SVector};
 
 use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
 
+#[path = "common/bench_utils.rs"]
+mod bench_utils;
 #[path = "common/vs_linalg.rs"]
 pub mod vs_linalg_common;
 
+use bench_utils::OrAbort;
 use vs_linalg_common::{
     PreparedFaerLuDet, faer_det_from_ldlt, la_stack_dot, la_stack_tolerance,
     make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows, make_matrix_rows,
     make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
 };
 
-/// Return a successful benchmark operation result or panic with the named operation.
-fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
-    match result {
-        Ok(value) => value,
-        Err(err) => panic!("{operation} failed: {err}"),
-    }
-}
-
-/// Return a present third-party benchmark result or panic with the named operation.
-fn require_some<T>(value: Option<T>, operation: &str) -> T {
-    value.unwrap_or_else(|| panic!("{operation} returned no result"))
-}
-
 /// Build the deterministic la-stack matrix shared by a benchmark family.
 fn la_matrix<const D: usize>() -> Matrix<D> {
-    require_ok(
-        Matrix::try_from_rows(make_matrix_rows()),
-        "la_stack matrix construction",
-    )
+    Matrix::try_from_rows(make_matrix_rows()).or_abort("la_stack matrix construction")
 }
 
 /// Build a deterministic la-stack vector with the requested offset.
 fn la_vector<const D: usize>(offset: f64, operation: &str) -> Vector<D> {
-    require_ok(Vector::try_new(make_vector_array(offset)), operation)
+    Vector::try_new(make_vector_array(offset)).or_abort(operation)
 }
 
 /// Build the deterministic nalgebra matrix shared by a benchmark family.
@@ -89,11 +75,10 @@ where
         bencher.iter_batched(
             || a,
             |a| {
-                let lu = require_ok(
-                    black_box(a).lu(DEFAULT_SINGULAR_TOL),
-                    "la_stack LU factorization",
-                );
-                let det = require_ok(lu.det(), "la_stack LU determinant");
+                let lu = black_box(a)
+                    .lu(DEFAULT_SINGULAR_TOL)
+                    .or_abort("la_stack LU factorization");
+                let det = lu.det().or_abort("la_stack LU determinant");
                 black_box(det);
             },
             BatchSize::SmallInput,
@@ -128,7 +113,7 @@ where
         bencher.iter_batched(
             || a,
             |a| {
-                let det = require_ok(black_box(a).det(), "la_stack determinant");
+                let det = black_box(a).det().or_abort("la_stack determinant");
                 black_box(det);
             },
             BatchSize::SmallInput,
@@ -149,10 +134,9 @@ where
         bencher.iter_batched(
             || a,
             |a| {
-                let lu = require_ok(
-                    black_box(a).lu(DEFAULT_SINGULAR_TOL),
-                    "la_stack LU factorization",
-                );
+                let lu = black_box(a)
+                    .lu(DEFAULT_SINGULAR_TOL)
+                    .or_abort("la_stack LU factorization");
                 let _ = black_box(lu);
             },
             BatchSize::SmallInput,
@@ -185,10 +169,9 @@ where
         bencher.iter_batched(
             || a,
             |a| {
-                let ldlt = require_ok(
-                    black_box(a).ldlt(DEFAULT_SINGULAR_TOL),
-                    "la_stack LDLT factorization",
-                );
+                let ldlt = black_box(a)
+                    .ldlt(DEFAULT_SINGULAR_TOL)
+                    .or_abort("la_stack LDLT factorization");
                 let _ = black_box(ldlt);
             },
             BatchSize::SmallInput,
@@ -199,8 +182,9 @@ where
         bencher.iter_batched(
             || na,
             |na| {
-                let chol =
-                    require_some(black_box(na).cholesky(), "nalgebra Cholesky factorization");
+                let chol = black_box(na)
+                    .cholesky()
+                    .or_abort("nalgebra Cholesky factorization");
                 black_box(chol);
             },
             BatchSize::SmallInput,
@@ -211,7 +195,9 @@ where
         bencher.iter_batched(
             || &fa,
             |fa| {
-                let ldlt = require_ok(black_box(fa).ldlt(Side::Lower), "faer LDLT factorization");
+                let ldlt = black_box(fa)
+                    .ldlt(Side::Lower)
+                    .or_abort("faer LDLT factorization");
                 let _ = black_box(ldlt);
             },
             BatchSize::SmallInput,
@@ -235,11 +221,10 @@ where
         bencher.iter_batched(
             || (a, rhs),
             |(a, rhs)| {
-                let lu = require_ok(
-                    black_box(a).lu(DEFAULT_SINGULAR_TOL),
-                    "la_stack LU factorization",
-                );
-                let x = require_ok(lu.solve(black_box(rhs)), "la_stack LU solve");
+                let lu = black_box(a)
+                    .lu(DEFAULT_SINGULAR_TOL)
+                    .or_abort("la_stack LU factorization");
+                let x = lu.solve(black_box(rhs)).or_abort("la_stack LU solve");
                 let _ = black_box(x);
             },
             BatchSize::SmallInput,
@@ -251,7 +236,7 @@ where
             || (na, nrhs),
             |(na, nrhs)| {
                 let lu = black_box(na).lu();
-                let x = require_some(lu.solve(black_box(&nrhs)), "nalgebra LU solve");
+                let x = lu.solve(black_box(&nrhs)).or_abort("nalgebra LU solve");
                 black_box(x);
             },
             BatchSize::SmallInput,
@@ -284,11 +269,10 @@ fn register_ldlt_solve_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_,
         bencher.iter_batched(
             || (a, rhs),
             |(a, rhs)| {
-                let ldlt = require_ok(
-                    black_box(a).ldlt(DEFAULT_SINGULAR_TOL),
-                    "la_stack LDLT factorization",
-                );
-                let x = require_ok(ldlt.solve(black_box(rhs)), "la_stack LDLT solve");
+                let ldlt = black_box(a)
+                    .ldlt(DEFAULT_SINGULAR_TOL)
+                    .or_abort("la_stack LDLT factorization");
+                let x = ldlt.solve(black_box(rhs)).or_abort("la_stack LDLT solve");
                 let _ = black_box(x);
             },
             BatchSize::SmallInput,
@@ -299,8 +283,9 @@ fn register_ldlt_solve_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_,
         bencher.iter_batched(
             || (na, nrhs),
             |(na, nrhs)| {
-                let chol =
-                    require_some(black_box(na).cholesky(), "nalgebra Cholesky factorization");
+                let chol = black_box(na)
+                    .cholesky()
+                    .or_abort("nalgebra Cholesky factorization");
                 let x = chol.solve(black_box(&nrhs));
                 black_box(x);
             },
@@ -312,7 +297,9 @@ fn register_ldlt_solve_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_,
         bencher.iter_batched(
             || (&fa, &frhs),
             |(fa, rhs)| {
-                let ldlt = require_ok(black_box(fa).ldlt(Side::Lower), "faer LDLT factorization");
+                let ldlt = black_box(fa)
+                    .ldlt(Side::Lower)
+                    .or_abort("faer LDLT factorization");
                 let x = ldlt.solve(black_box(rhs));
                 black_box(x);
             },
@@ -333,26 +320,26 @@ fn register_precomputed_lu_solve_benchmarks<const D: usize>(
     let nrhs = nalgebra_vector::<D>(0.0);
     let fa = faer_matrix::<D>();
     let frhs = faer_vector::<D>(0.0);
-    let a_lu = require_ok(a.lu(DEFAULT_SINGULAR_TOL), "precomputed la_stack LU");
+    let a_lu = a
+        .lu(DEFAULT_SINGULAR_TOL)
+        .or_abort("precomputed la_stack LU");
     let na_lu = na.lu();
     let fa_lu = fa.partial_piv_lu();
 
     group.bench_function("la_stack_solve_from_lu", |bencher| {
         bencher.iter(|| {
-            let x = require_ok(
-                black_box(&a_lu).solve(black_box(rhs)),
-                "precomputed la_stack LU solve",
-            );
+            let x = black_box(&a_lu)
+                .solve(black_box(rhs))
+                .or_abort("precomputed la_stack LU solve");
             let _ = black_box(x);
         });
     });
 
     group.bench_function("nalgebra_solve_from_lu", |bencher| {
         bencher.iter(|| {
-            let x = require_some(
-                black_box(&na_lu).solve(black_box(&nrhs)),
-                "precomputed nalgebra LU solve",
-            );
+            let x = black_box(&na_lu)
+                .solve(black_box(&nrhs))
+                .or_abort("precomputed nalgebra LU solve");
             black_box(x);
         });
     });
@@ -375,16 +362,17 @@ fn register_precomputed_ldlt_solve_benchmarks<const D: usize>(
     let nrhs = nalgebra_vector::<D>(0.0);
     let fa = faer_matrix::<D>();
     let frhs = faer_vector::<D>(0.0);
-    let a_ldlt = require_ok(a.ldlt(DEFAULT_SINGULAR_TOL), "precomputed la_stack LDLT");
-    let na_cholesky = require_some(na.cholesky(), "precomputed nalgebra Cholesky");
-    let fa_ldlt = require_ok(fa.ldlt(Side::Lower), "precomputed faer LDLT");
+    let a_ldlt = a
+        .ldlt(DEFAULT_SINGULAR_TOL)
+        .or_abort("precomputed la_stack LDLT");
+    let na_cholesky = na.cholesky().or_abort("precomputed nalgebra Cholesky");
+    let fa_ldlt = fa.ldlt(Side::Lower).or_abort("precomputed faer LDLT");
 
     group.bench_function("la_stack_solve_from_ldlt", |bencher| {
         bencher.iter(|| {
-            let x = require_ok(
-                black_box(&a_ldlt).solve(black_box(rhs)),
-                "precomputed la_stack LDLT solve",
-            );
+            let x = black_box(&a_ldlt)
+                .solve(black_box(rhs))
+                .or_abort("precomputed la_stack LDLT solve");
             let _ = black_box(x);
         });
     });
@@ -413,17 +401,18 @@ fn register_precomputed_lu_determinant_benchmarks<const D: usize>(
     let a = la_matrix::<D>();
     let na = nalgebra_matrix::<D>();
     let fa = faer_matrix::<D>();
-    let a_lu = require_ok(a.lu(DEFAULT_SINGULAR_TOL), "precomputed la_stack LU");
+    let a_lu = a
+        .lu(DEFAULT_SINGULAR_TOL)
+        .or_abort("precomputed la_stack LU");
     let na_lu = na.lu();
     let fa_lu = fa.partial_piv_lu();
     let fa_lu_det = PreparedFaerLuDet::new(&fa_lu);
 
     group.bench_function("la_stack_det_from_lu", |bencher| {
         bencher.iter(|| {
-            let det = require_ok(
-                black_box(&a_lu).det(),
-                "precomputed la_stack LU determinant",
-            );
+            let det = black_box(&a_lu)
+                .det()
+                .or_abort("precomputed la_stack LU determinant");
             black_box(det);
         });
     });
@@ -450,16 +439,17 @@ fn register_precomputed_ldlt_determinant_benchmarks<const D: usize>(
     let a = la_matrix::<D>();
     let na = nalgebra_matrix::<D>();
     let fa = faer_matrix::<D>();
-    let a_ldlt = require_ok(a.ldlt(DEFAULT_SINGULAR_TOL), "precomputed la_stack LDLT");
-    let na_cholesky = require_some(na.cholesky(), "precomputed nalgebra Cholesky");
-    let fa_ldlt = require_ok(fa.ldlt(Side::Lower), "precomputed faer LDLT");
+    let a_ldlt = a
+        .ldlt(DEFAULT_SINGULAR_TOL)
+        .or_abort("precomputed la_stack LDLT");
+    let na_cholesky = na.cholesky().or_abort("precomputed nalgebra Cholesky");
+    let fa_ldlt = fa.ldlt(Side::Lower).or_abort("precomputed faer LDLT");
 
     group.bench_function("la_stack_det_from_ldlt", |bencher| {
         bencher.iter(|| {
-            let det = require_ok(
-                black_box(&a_ldlt).det(),
-                "precomputed la_stack LDLT determinant",
-            );
+            let det = black_box(&a_ldlt)
+                .det()
+                .or_abort("precomputed la_stack LDLT determinant");
             black_box(det);
         });
     });
@@ -490,7 +480,7 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
 
     group.bench_function("la_stack_dot", |bencher| {
         bencher.iter(|| {
-            let result = require_ok(la_stack_dot(black_box(&v1), black_box(&v2)), "la_stack dot");
+            let result = la_stack_dot(black_box(&v1), black_box(&v2)).or_abort("la_stack dot");
             black_box(result);
         });
     });
@@ -516,7 +506,7 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
 
     group.bench_function("la_stack_norm2_sq", |bencher| {
         bencher.iter(|| {
-            let result = require_ok(black_box(&v1).norm2_sq(), "la_stack norm2_sq");
+            let result = black_box(&v1).norm2_sq().or_abort("la_stack norm2_sq");
             black_box(result);
         });
     });
@@ -545,7 +535,7 @@ fn register_matrix_norm_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_
 
     group.bench_function("la_stack_inf_norm", |bencher| {
         bencher.iter(|| {
-            let result = require_ok(black_box(&a).inf_norm(), "la_stack inf_norm");
+            let result = black_box(&a).inf_norm().or_abort("la_stack inf_norm");
             black_box(result);
         });
     });
@@ -579,29 +569,22 @@ fn register_matrix_norm_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_
 
 /// Register D=8 stress cases that exercise pivoting, conditioning, and scaled products.
 fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
-    let zero_tolerance = require_ok(la_stack_tolerance(0.0), "zero benchmark tolerance");
-    let pivoting = require_ok(
-        Matrix::<8>::try_from_rows(make_pivoting_matrix_rows()),
-        "pivoting benchmark matrix construction",
-    );
-    let ill_conditioned = require_ok(
-        Matrix::<8>::try_from_rows(make_ill_conditioned_matrix_rows()),
-        "ill-conditioned benchmark matrix construction",
-    );
+    let zero_tolerance = la_stack_tolerance(0.0).or_abort("zero benchmark tolerance");
+    let pivoting = Matrix::<8>::try_from_rows(make_pivoting_matrix_rows())
+        .or_abort("pivoting benchmark matrix construction");
+    let ill_conditioned = Matrix::<8>::try_from_rows(make_ill_conditioned_matrix_rows())
+        .or_abort("ill-conditioned benchmark matrix construction");
     #[cfg(not(la_stack_v0_4_3_api))]
-    let balanced = require_ok(
-        Matrix::<8>::try_from_rows(make_balanced_dynamic_range_rows()),
-        "balanced-range benchmark matrix construction",
-    );
+    let balanced = Matrix::<8>::try_from_rows(make_balanced_dynamic_range_rows())
+        .or_abort("balanced-range benchmark matrix construction");
 
     group.bench_function("la_stack_lu_pivoting", |bencher| {
         bencher.iter_batched(
             || pivoting,
             |matrix| {
-                let lu = require_ok(
-                    black_box(matrix).lu(zero_tolerance),
-                    "pivoting LU factorization",
-                );
+                let lu = black_box(matrix)
+                    .lu(zero_tolerance)
+                    .or_abort("pivoting LU factorization");
                 let _ = black_box(lu);
             },
             BatchSize::SmallInput,
@@ -612,10 +595,9 @@ fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
         bencher.iter_batched(
             || ill_conditioned,
             |matrix| {
-                let lu = require_ok(
-                    black_box(matrix).lu(zero_tolerance),
-                    "ill-conditioned LU factorization",
-                );
+                let lu = black_box(matrix)
+                    .lu(zero_tolerance)
+                    .or_abort("ill-conditioned LU factorization");
                 let _ = black_box(lu);
             },
             BatchSize::SmallInput,
@@ -626,10 +608,9 @@ fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
         bencher.iter_batched(
             || ill_conditioned,
             |matrix| {
-                let ldlt = require_ok(
-                    black_box(matrix).ldlt(zero_tolerance),
-                    "ill-conditioned LDLT factorization",
-                );
+                let ldlt = black_box(matrix)
+                    .ldlt(zero_tolerance)
+                    .or_abort("ill-conditioned LDLT factorization");
                 let _ = black_box(ldlt);
             },
             BatchSize::SmallInput,
@@ -637,23 +618,20 @@ fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
     });
 
     #[cfg(not(la_stack_v0_4_3_api))]
-    let balanced_lu = require_ok(
-        balanced.lu(zero_tolerance),
-        "balanced-range LU factorization",
-    );
+    let balanced_lu = balanced
+        .lu(zero_tolerance)
+        .or_abort("balanced-range LU factorization");
     #[cfg(not(la_stack_v0_4_3_api))]
-    let balanced_ldlt = require_ok(
-        balanced.ldlt(zero_tolerance),
-        "balanced-range LDLT factorization",
-    );
+    let balanced_ldlt = balanced
+        .ldlt(zero_tolerance)
+        .or_abort("balanced-range LDLT factorization");
 
     #[cfg(not(la_stack_v0_4_3_api))]
     group.bench_function("la_stack_det_from_lu_balanced_range", |bencher| {
         bencher.iter(|| {
-            let det = require_ok(
-                black_box(&balanced_lu).det(),
-                "balanced-range LU determinant",
-            );
+            let det = black_box(&balanced_lu)
+                .det()
+                .or_abort("balanced-range LU determinant");
             black_box(det);
         });
     });
@@ -661,10 +639,9 @@ fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
     #[cfg(not(la_stack_v0_4_3_api))]
     group.bench_function("la_stack_det_from_ldlt_balanced_range", |bencher| {
         bencher.iter(|| {
-            let det = require_ok(
-                black_box(&balanced_ldlt).det(),
-                "balanced-range LDLT determinant",
-            );
+            let det = black_box(&balanced_ldlt)
+                .det()
+                .or_abort("balanced-range LDLT determinant");
             black_box(det);
         });
     });

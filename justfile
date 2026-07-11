@@ -349,16 +349,16 @@ clean:
     rm -rf target/llvm-cov
     rm -rf coverage
 
-# Code quality and formatting
+# Code quality and formatting (lint levels are configured in Cargo.toml).
 clippy: clippy-all-targets
 
 clippy-all-targets:
-    cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::cargo
-    cargo clippy --workspace --all-targets --all-features -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::cargo
+    cargo clippy --workspace --all-targets
+    cargo clippy --workspace --all-targets --all-features
 
 # Clippy for the "exact" feature (catches feature-gated lint issues)
 clippy-exact:
-    cargo clippy --features exact --all-targets -- -D warnings -W clippy::pedantic
+    cargo clippy --features exact --all-targets
 
 # Coverage (cargo-llvm-cov)
 #

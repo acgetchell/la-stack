@@ -1,8 +1,4 @@
 #![forbid(unsafe_code)]
-#![expect(
-    clippy::redundant_pub_crate,
-    reason = "the helper is shared by sibling modules through this private module"
-)]
 
 //! Allocation-free scaled products for floating-point factor diagonals.
 

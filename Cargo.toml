@@ -96,5 +96,8 @@ bare_urls = "deny"
 broken_intra_doc_links = "deny"
 
 [lints.clippy]
+cargo = { level = "warn", priority = -1 }
 extra_unused_type_parameters = "warn"
+nursery = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
+redundant_pub_crate = { level = "allow", priority = 0 }

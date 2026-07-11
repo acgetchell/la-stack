@@ -26,29 +26,23 @@
 //! the full `Result` path, including valid `Err(Unrepresentable)` outcomes for
 //! inputs whose exact answer cannot be represented as finite binary64.
 
-use std::fmt::Display;
 use std::hint::black_box;
 
 use criterion::{BenchmarkGroup, Criterion, Throughput, measurement::WallTime};
 
 use la_stack::{Matrix, Vector};
 
+#[path = "common/bench_utils.rs"]
+mod bench_utils;
 #[path = "common/exact.rs"]
 pub mod exact_bench;
 
+use bench_utils::OrAbort;
 use exact_bench::{
     ExactInput, RANDOM_INPUT_ARRAY_LEN, ValidatedExactInput, hilbert_input,
     large_entries_3x3_input, make_matrix_rows, make_random_input_corpus, make_vector_array,
     near_singular_3x3_input, validate_exact_fixture, validate_f64_determinant_benchmarks,
 };
-
-/// Return a successful benchmark operation result or panic with the named operation.
-fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
-    match result {
-        Ok(value) => value,
-        Err(err) => panic!("{operation} failed: {err}"),
-    }
-}
 
 /// Exact operation measured by a benchmark group.
 #[derive(Clone, Copy)]
@@ -103,7 +97,9 @@ fn run_exact_operation<const D: usize>(operation: ExactOperation, input: &Valida
             let _ = black_box(sign);
         }
         ExactOperation::DetExact => {
-            let det = require_ok(black_box(input.matrix()).det_exact(), "exact determinant");
+            let det = black_box(input.matrix())
+                .det_exact()
+                .or_abort("exact determinant");
             black_box(det);
         }
         ExactOperation::DetExactF64Result => {
@@ -111,17 +107,15 @@ fn run_exact_operation<const D: usize>(operation: ExactOperation, input: &Valida
             let _ = black_box(det);
         }
         ExactOperation::DetExactRoundedF64 => {
-            let det = require_ok(
-                black_box(input.matrix()).det_exact_rounded_f64(),
-                "exact determinant rounded to f64",
-            );
+            let det = black_box(input.matrix())
+                .det_exact_rounded_f64()
+                .or_abort("exact determinant rounded to f64");
             let _ = black_box(det);
         }
         ExactOperation::SolveExact => {
-            let x = require_ok(
-                black_box(input.matrix()).solve_exact(black_box(input.rhs())),
-                "exact linear solve",
-            );
+            let x = black_box(input.matrix())
+                .solve_exact(black_box(input.rhs()))
+                .or_abort("exact linear solve");
             let _ = black_box(x);
         }
         ExactOperation::SolveExactF64Result => {
@@ -129,10 +123,9 @@ fn run_exact_operation<const D: usize>(operation: ExactOperation, input: &Valida
             let _ = black_box(x);
         }
         ExactOperation::SolveExactRoundedF64 => {
-            let x = require_ok(
-                black_box(input.matrix()).solve_exact_rounded_f64(black_box(input.rhs())),
-                "exact linear solve rounded to f64",
-            );
+            let x = black_box(input.matrix())
+                .solve_exact_rounded_f64(black_box(input.rhs()))
+                .or_abort("exact linear solve rounded to f64");
             let _ = black_box(x);
         }
     }
@@ -187,15 +180,18 @@ fn bench_det_direct<const D: usize>(
     group: &mut BenchmarkGroup<'_, WallTime>,
     input: &ValidatedExactInput<D>,
 ) {
-    let Some(_) = require_ok(input.matrix().det_direct(), "direct determinant setup") else {
+    let Some(_) = input
+        .matrix()
+        .det_direct()
+        .or_abort("direct determinant setup")
+    else {
         panic!("det_direct must support this benchmark dimension");
     };
     group.bench_function("det_direct", |bencher| {
         bencher.iter(|| {
-            let det = require_ok(
-                black_box(input.matrix()).det_direct(),
-                "direct f64 determinant",
-            );
+            let det = black_box(input.matrix())
+                .det_direct()
+                .or_abort("direct f64 determinant");
             let Some(det) = det else {
                 panic!("det_direct support changed after benchmark setup");
             };
@@ -214,14 +210,10 @@ macro_rules! register_det_direct_benchmark {
 macro_rules! gen_exact_benches_for_dim {
     ($c:expr, $d:literal, $direct:ident) => {{
         let input = validate_exact_fixture(ExactInput {
-            matrix: require_ok(
-                Matrix::<$d>::try_from_rows(make_matrix_rows::<$d>()),
-                "benchmark matrix construction",
-            ),
-            rhs: require_ok(
-                Vector::<$d>::try_new(make_vector_array::<$d>()),
-                "benchmark RHS vector construction",
-            ),
+            matrix: Matrix::<$d>::try_from_rows(make_matrix_rows::<$d>())
+                .or_abort("benchmark matrix construction"),
+            rhs: Vector::<$d>::try_new(make_vector_array::<$d>())
+                .or_abort("benchmark RHS vector construction"),
         });
         validate_f64_determinant_benchmarks(&input);
 
@@ -230,7 +222,7 @@ macro_rules! gen_exact_benches_for_dim {
         // === f64 baselines ===
         group.bench_function("det", |bencher| {
             bencher.iter(|| {
-                let det = require_ok(black_box(input.matrix()).det(), "f64 determinant");
+                let det = black_box(input.matrix()).det().or_abort("f64 determinant");
                 black_box(det);
             });
         });
@@ -250,10 +242,8 @@ macro_rules! gen_random_corpus_benches_for_dim {
         let corpus = make_random_input_corpus::<$d>().map(validate_exact_fixture);
 
         let mut group = ($c).benchmark_group(concat!("exact_random_corpus_d", stringify!($d)));
-        let input_count = require_ok(
-            u64::try_from(corpus.len()),
-            "random corpus throughput conversion",
-        );
+        let input_count =
+            u64::try_from(corpus.len()).or_abort("random corpus throughput conversion");
         group.throughput(Throughput::Elements(input_count));
 
         for &operation in CORPUS_AND_EXTREME_OPERATIONS {

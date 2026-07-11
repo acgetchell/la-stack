@@ -133,10 +133,10 @@ invariant over the convenient edit.
 ### Testing mirrors the principles
 
 - Unit tests cover known values, error paths, and dimension-generic
+  correctness across D=2..=5 (see **Dimension Coverage** below).
 - Error-path tests match the exact variant, typed reason/origin/location, and
   structured fields; do not replace an unexpected error with a numeric sentinel
   or assert only `is_err()`.
-  correctness across D=2..=5 (see **Dimension Coverage** below).
 - Proptests under `tests/proptest_*.rs` cover algebraic invariants
   (round-trip, residual, sign agreement) — not just "does it not panic".
 - Adversarial inputs (near-singular, large-entry, Hilbert-style
