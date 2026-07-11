@@ -145,10 +145,10 @@ package = true
 dev = [
     "actionlint-py==1.7.12.24",
     "pytest==9.1.1",
-    "ruff==0.15.20",
-    "semgrep==1.168.0",
+    "ruff==0.15.21",
+    "semgrep==1.169.0",
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.0.0",
-    "ty==0.0.56",
+    "ty==0.0.58",
     "yamllint==1.38.0",
 ]

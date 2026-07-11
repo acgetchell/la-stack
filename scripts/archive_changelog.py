@@ -168,13 +168,13 @@ def parse_changelog(text: str) -> tuple[str, str, list[tuple[str, str]]]:
         block = "\n".join(lines[start:end])
 
         heading_line = lines[start]
-        if "Unreleased" in heading_line:
+        if heading_line.startswith("## [Unreleased]"):
             unreleased = block
         else:
             m = _VERSION_RE.match(heading_line)
             if not m:
-                # Skip headings that don't contain a recognisable semver.
-                continue
+                msg = f"Unrecognized changelog version heading at line {start + 1}: {heading_line!r}; expected '## [Unreleased]' or a semantic version"
+                raise ValueError(msg)
             version_blocks.append((m.group(1), block))
 
     return preamble, unreleased, version_blocks
@@ -370,16 +370,18 @@ def archive_changelog(
     active_minor = minor_keys[0]
 
     # Archive every minor except the active one.
-    archived_minors: list[str] = []
-    for minor in minor_keys[1:]:
-        write_archive(archive_dir, minor, groups[minor], link_defs)
-        archived_minors.append(minor)
+    archived_minors = minor_keys[1:]
 
     if not archived_minors:
         _postprocess_existing_archives(archive_dir)
         return  # only one minor series — nothing to archive yet
 
+    # Validate link portability before creating or modifying archive files.
+    # In particular, os.path.relpath() cannot cross Windows volumes.
     archive_dir_rel = _archive_dir_link_prefix(archive_dir, changelog_path.parent)
+
+    for minor in archived_minors:
+        write_archive(archive_dir, minor, groups[minor], link_defs)
 
     root_text = build_root(
         preamble,

@@ -151,11 +151,9 @@ mod readme_doctests {
     /// fn adaptive_det_sign<const D: usize>(
     ///     matrix: &Matrix<D>,
     /// ) -> DeterminantSign {
-    ///     if let (Ok(Some(bound)), Ok(Some(det))) =
-    ///         (matrix.det_errbound(), matrix.det_direct())
-    ///     {
-    ///         if det.abs() > bound {
-    ///             return if det > 0.0 {
+    ///     if let Ok(Some(estimate)) = matrix.det_direct_with_errbound() {
+    ///         if estimate.determinant().abs() > estimate.absolute_error_bound() {
+    ///             return if estimate.determinant() > 0.0 {
     ///                 DeterminantSign::Positive
     ///             } else {
     ///                 DeterminantSign::Negative
@@ -216,7 +214,8 @@ pub use num_rational::BigRational;
 pub use num_traits::{FromPrimitive, Signed, ToPrimitive};
 
 // ---------------------------------------------------------------------------
-// Error-bound constants for `Matrix::det_errbound()`.
+// Error-bound constants for `Matrix::det_direct_with_errbound()` and
+// `Matrix::det_errbound()`.
 //
 // For `D ∈ {2, 3, 4}`, `Matrix::det_direct()` evaluates the Leibniz expansion
 // of the determinant as a tree of f64 multiplies and fused multiply-adds
@@ -243,8 +242,10 @@ pub use num_traits::{FromPrimitive, Signed, ToPrimitive};
 //
 // These constants are NOT feature-gated — they rely only on f64 arithmetic
 // and are useful for adaptive-precision logic even without the `exact`
-// feature.  Most callers should prefer `Matrix::det_errbound()`, which
-// applies these constants to the actual matrix; the raw constants are
+// feature. Most callers should prefer `Matrix::det_direct_with_errbound()`
+// when they need the approximation and bound together, or
+// `Matrix::det_errbound()` when they need only the bound. Those methods apply
+// these constants to the actual matrix; the raw constants are
 // exposed for advanced use cases (composing the bound with a pre-reduced
 // permanent, rolling a custom adaptive filter, etc.).  See
 // `Matrix::det_sign_exact()` (behind the `exact` feature) for the
@@ -272,8 +273,10 @@ const EPS: f64 = f64::EPSILON; // 2^-52
 /// interaction.  Derivation follows Shewchuk's framework; see
 /// `REFERENCES.md` \[8\].
 ///
-/// Prefer [`Matrix::det_errbound`](crate::Matrix::det_errbound) unless
-/// you already have the absolute-Leibniz sum available; see
+/// Prefer
+/// [`Matrix::det_direct_with_errbound`](crate::Matrix::det_direct_with_errbound)
+/// unless you need only the bound or already have the absolute-Leibniz sum;
+/// see
 /// `Matrix::det_sign_exact` (under the `exact` feature) for the reference
 /// adaptive-precision filter.
 ///
@@ -318,8 +321,10 @@ pub const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
 /// FMA, yielding the `8·EPS + 64·EPS²` bound.  See `REFERENCES.md`
 /// \[8\] for the Shewchuk framework these bounds follow.
 ///
-/// Prefer [`Matrix::det_errbound`](crate::Matrix::det_errbound) over this
-/// constant for typical use; see [`ERR_COEFF_2`] for a worked example.
+/// Prefer
+/// [`Matrix::det_direct_with_errbound`](crate::Matrix::det_direct_with_errbound)
+/// over this constant for typical use; see [`ERR_COEFF_2`] for a worked
+/// example.
 pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
 
 /// Absolute error coefficient for [`Matrix::<4>::det_direct`](crate::Matrix::det_direct).
@@ -341,8 +346,10 @@ pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
 /// `12·EPS + 128·EPS²` bound.  See `REFERENCES.md` \[8\] for the
 /// Shewchuk framework these bounds follow.
 ///
-/// Prefer [`Matrix::det_errbound`](crate::Matrix::det_errbound) over this
-/// constant for typical use; see [`ERR_COEFF_2`] for a worked example.
+/// Prefer
+/// [`Matrix::det_direct_with_errbound`](crate::Matrix::det_direct_with_errbound)
+/// over this constant for typical use; see [`ERR_COEFF_2`] for a worked
+/// example.
 pub const ERR_COEFF_4: f64 = 12.0 * EPS + 128.0 * EPS * EPS;
 
 /// Largest dimension supported by [`try_with_stack_matrix!`].
@@ -359,7 +366,7 @@ pub use error::{
 };
 pub use ldlt::Ldlt;
 pub use lu::Lu;
-pub use matrix::Matrix;
+pub use matrix::{DeterminantWithErrorBound, Matrix};
 pub use tolerance::{DEFAULT_SINGULAR_TOL, Tolerance};
 pub use vector::Vector;
 
@@ -465,7 +472,8 @@ macro_rules! try_with_stack_matrix {
 /// Common imports for ergonomic usage.
 ///
 /// This prelude re-exports the primary types and common constants: [`Matrix`],
-/// [`Vector`], [`Lu`], [`Ldlt`], [`Tolerance`], and [`LaError`]. Its typed
+/// [`DeterminantWithErrorBound`], [`Vector`], [`Lu`], [`Ldlt`], [`Tolerance`],
+/// and [`LaError`]. Its typed
 /// error categories include [`ArithmeticOperation`], [`FactorizationKind`],
 /// [`InvalidToleranceReason`], [`NonFiniteLocation`], [`NonFiniteOrigin`],
 /// [`PositiveSemidefiniteViolation`], [`SingularityReason`], and
@@ -487,10 +495,10 @@ macro_rules! try_with_stack_matrix {
 /// `.is_positive()` / `.is_negative()` / `.abs()`.
 pub mod prelude {
     pub use crate::{
-        ArithmeticOperation, DEFAULT_SINGULAR_TOL, FactorizationKind, InvalidToleranceReason,
-        LaError, Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, NonFiniteLocation,
-        NonFiniteOrigin, PositiveSemidefiniteViolation, SingularityReason, Tolerance,
-        UnrepresentableReason, Vector, try_with_stack_matrix,
+        ArithmeticOperation, DEFAULT_SINGULAR_TOL, DeterminantWithErrorBound, FactorizationKind,
+        InvalidToleranceReason, LaError, Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix,
+        NonFiniteLocation, NonFiniteOrigin, PositiveSemidefiniteViolation, SingularityReason,
+        Tolerance, UnrepresentableReason, Vector, try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]

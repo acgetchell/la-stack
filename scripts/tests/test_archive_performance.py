@@ -255,6 +255,34 @@ def test_apply_current_diff_includes_complete_current_tree_without_mutating_inde
     assert _git(repo_root, "status", "--porcelain=v1", "--untracked-files=all") == status_before
 
 
+def test_apply_current_diff_preserves_crlf_patch_bytes(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    worktree = tmp_path / "worktree"
+    repo_root.mkdir()
+    _git(repo_root, "init", "--quiet")
+    _git(repo_root, "config", "user.name", "Test User")
+    _git(repo_root, "config", "user.email", "test@example.com")
+    _git(repo_root, "config", "commit.gpgsign", "false")
+    _git(repo_root, "config", "core.autocrlf", "false")
+
+    (repo_root / ".gitattributes").write_text("tracked.txt -text\n", encoding="utf-8")
+    tracked = repo_root / "tracked.txt"
+    tracked.write_bytes(b"committed\r\n")
+    _git(repo_root, "add", "--", ".gitattributes", tracked.name)
+    _git(repo_root, "commit", "--quiet", "-m", "initial")
+    _git(repo_root, "worktree", "add", "--quiet", "--detach", str(worktree), "HEAD")
+
+    tracked.write_bytes(b"staged\r\n")
+    _git(repo_root, "add", "--", tracked.name)
+    tracked.write_bytes(b"working tree\r\n")
+    index_before = _git(repo_root, "rev-parse", f":{tracked.name}")
+
+    archive_performance._apply_current_diff_to_worktree(repo_root=repo_root, worktree=worktree)
+
+    assert (worktree / tracked.name).read_bytes() == b"working tree\r\n"
+    assert _git(repo_root, "rev-parse", f":{tracked.name}") == index_before
+
+
 def test_apply_current_diff_fails_loudly_and_cleans_temporary_index(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -291,6 +319,86 @@ def test_apply_current_diff_fails_loudly_and_cleans_temporary_index(
     assert "cannot snapshot current tree" in error
     assert temporary_index is not None
     assert not temporary_index.parent.exists()
+
+
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    [
+        (archive_performance.ExecutableNotFoundError("missing tool"), "command could not start: tool --flag: missing tool"),
+        (subprocess.TimeoutExpired(["tool", "--flag"], 17, stderr="stalled"), "command timed out after 17 seconds: tool --flag"),
+        (OSError("working directory unavailable"), "command could not start: tool --flag: working directory unavailable"),
+    ],
+)
+def test_run_tool_normalizes_launch_timeout_and_os_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+    message: str,
+) -> None:
+    def fail_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        raise failure
+
+    monkeypatch.setattr(archive_performance, "run_safe_command", fail_run)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        archive_performance._run_tool("tool", ["--flag"], cwd=tmp_path)
+
+    assert str(exc_info.value).startswith(message)
+    assert exc_info.value.__cause__ is failure
+
+
+def test_temporary_worktree_cleanup_failure_fails_successful_operation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run_git(args: list[str], *, cwd: Path, timeout: int = 600) -> None:
+        del cwd, timeout
+        if args[:3] == ["worktree", "remove", "--force"]:
+            msg = "cleanup failed"
+            raise RuntimeError(msg)
+
+    monkeypatch.setattr(archive_performance, "_run_git", fake_run_git)
+
+    def complete_operation() -> None:
+        with archive_performance._temporary_detached_worktree(
+            repo_root=tmp_path,
+            worktree=tmp_path / "worktree",
+            revision="HEAD",
+            label="test worktree",
+        ):
+            pass
+
+    with pytest.raises(RuntimeError, match="failed to remove test worktree"):
+        complete_operation()
+
+
+def test_temporary_worktree_cleanup_does_not_mask_primary_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run_git(args: list[str], *, cwd: Path, timeout: int = 600) -> None:
+        del cwd, timeout
+        if args[:3] == ["worktree", "remove", "--force"]:
+            msg = "cleanup failed"
+            raise RuntimeError(msg)
+
+    monkeypatch.setattr(archive_performance, "_run_git", fake_run_git)
+
+    def fail_operation() -> None:
+        with archive_performance._temporary_detached_worktree(
+            repo_root=tmp_path,
+            worktree=tmp_path / "worktree",
+            revision="HEAD",
+            label="test worktree",
+        ):
+            msg = "primary failed"
+            raise ValueError(msg)
+
+    with pytest.raises(RuntimeError, match="operation failed") as exc_info:
+        fail_operation()
+
+    assert "additionally failed to remove test worktree: cleanup failed" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, ValueError)
 
 
 def test_normalize_tag_adds_leading_v() -> None:
@@ -361,6 +469,55 @@ def test_published_release_pair_uses_latest_published_release_not_highest_semver
 
     assert report_id.current_tag == "v0.4.9"
     assert report_id.baseline_tag == "v0.4.8"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("isDraft", "false"),
+        ("isDraft", 0),
+        ("isPrerelease", None),
+    ],
+)
+def test_stable_published_releases_requires_boolean_flags(field: str, value: object) -> None:
+    release: dict[str, object] = {
+        "tagName": "v0.4.3",
+        "isDraft": False,
+        "isPrerelease": False,
+        "publishedAt": "2026-02-01T00:00:00Z",
+    }
+    release[field] = value
+
+    with pytest.raises(TypeError, match="boolean isDraft and isPrerelease"):
+        archive_performance._stable_published_releases([release])
+
+
+@pytest.mark.parametrize("published_at", ["2026-02-01T00:00:00", "not-a-timestamp", ""])
+def test_stable_published_releases_requires_aware_timestamp(published_at: str) -> None:
+    release = {
+        "tagName": "v0.4.3",
+        "isDraft": False,
+        "isPrerelease": False,
+        "publishedAt": published_at,
+    }
+
+    with pytest.raises((TypeError, ValueError), match="publishedAt"):
+        archive_performance._stable_published_releases([release])
+
+
+def test_stable_published_releases_normalizes_timestamp_to_utc() -> None:
+    releases = archive_performance._stable_published_releases(
+        [
+            {
+                "tagName": "v0.4.3",
+                "isDraft": False,
+                "isPrerelease": False,
+                "publishedAt": "2026-02-01T01:00:00+01:00",
+            }
+        ]
+    )
+
+    assert releases[0].published_at.isoformat() == "2026-02-01T00:00:00+00:00"
 
 
 def test_resolve_archive_request_infer_release_uses_package_version_and_previous_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -448,6 +605,36 @@ def test_benchmark_env_respects_existing_toolchain_override(tmp_path: Path, monk
     assert archive_performance._benchmark_env(tmp_path) is None
 
 
+def test_parser_rejects_unsupported_scope() -> None:
+    with pytest.raises(SystemExit):
+        archive_performance.build_parser().parse_args(["v0.4.3", "v0.4.2", "--scope", "quick"])
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("suite", "other", "unsupported benchmark suite"),
+        ("scope", "quick", "unsupported comparison scope"),
+    ],
+)
+def test_generation_config_rejects_unsupported_benchmark_selection(
+    tmp_path: Path,
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    kwargs: dict[str, Any] = {
+        "repo_root": tmp_path,
+        "current_tag": "v0.4.3",
+        "baseline_tag": "v0.4.2",
+        "worktree_ref": "HEAD",
+    }
+    kwargs[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        GenerationConfig(**kwargs)
+
+
 def test_comparison_benchmark_env_preserves_flags_and_selects_v043_adapter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -509,7 +696,7 @@ def test_fallback_baseline_cargo_commands_enforce_lockfile(
 @pytest.mark.parametrize(
     ("suite", "expected"),
     [
-        ("all", ("cargo", "bench", "--locked", "--features", "bench,exact", "--bench", "exact")),
+        ("all", ("cargo", "bench", "--locked", "--features", "bench,exact")),
         ("exact", ("cargo", "bench", "--locked", "--features", "bench,exact", "--bench", "exact")),
         ("vs_linalg", ("cargo", "bench", "--locked", "--features", "bench", "--bench", "vs_linalg")),
     ],
@@ -787,6 +974,7 @@ def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pyt
     assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.3" for kind, args, _ in calls)
     assert any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
     assert any(kind == "uv" and "--suite" in args and args[args.index("--suite") + 1] == "exact" for kind, args, _ in calls)
+    assert any(kind == "uv" and args[:2] == ("run", "--locked") for kind, args, _ in calls)
     assert not any(kind == "git" and args[:1] == ("read-tree",) for kind, args, _ in calls)
     assert not any(kind == "git-stdin" for kind, _, _ in calls)
 
@@ -1372,13 +1560,14 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path: Path
             worktree = Path(args[3])
             worktree.mkdir(parents=True)
             _write_current_benchmark_tooling(worktree)
-        if args == ["diff", "--cached", "--binary", "HEAD"]:
-            return _result("diff --git a/README.md b/README.md\n")
+        if args[:3] == ["diff", "--cached", "--binary"]:
+            output_arg = next(arg for arg in args if arg.startswith("--output="))
+            Path(output_arg.removeprefix("--output=")).write_bytes(b"diff --git a/README.md b/README.md\n")
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], input_data: str | bytes, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
-        assert "diff --git" in input_data
+        assert b"diff --git" in input_data if isinstance(input_data, bytes) else "diff --git" in input_data
         return _result()
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
@@ -1469,7 +1658,7 @@ def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path
     assert report_id.archive_name == "v0.4.2-vs-v0.4.1.md"
     assert current.read_text(encoding="utf-8") == _normalized_report("0.4.2", "v0.4.1")
     assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.2" for kind, args, _ in calls)
-    assert any(kind == "cargo" and args[:2] == ("bench", "--locked") and "exact" in args for kind, args, _ in calls)
+    assert any(kind == "cargo" and args == ("bench", "--locked", "--features", "bench,exact") for kind, args, _ in calls)
     assert not any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
     assert not any(kind == "just" and args == ("bench-latest",) for kind, args, _ in calls)
     assert not any(kind == "uv" and "--suite" in args for kind, args, _ in calls)

@@ -3,7 +3,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18158926.svg)](https://doi.org/10.5281/zenodo.18158926)
 [![Crates.io](https://img.shields.io/crates/v/la-stack.svg)](https://crates.io/crates/la-stack)
 [![Downloads](https://img.shields.io/crates/d/la-stack.svg)](https://crates.io/crates/la-stack)
-[![License](https://img.shields.io/crates/l/la-stack.svg)](./LICENSE)
+[![License](https://img.shields.io/crates/l/la-stack.svg)](https://github.com/acgetchell/la-stack/blob/v0.4.3/LICENSE)
 [![Docs.rs](https://docs.rs/la-stack/badge.svg)](https://docs.rs/la-stack)
 [![CI](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml)
 [![rust-clippy analyze][clippy-badge]][clippy-workflow]
@@ -328,14 +328,15 @@ filter and uses fraction-free Bareiss elimination in `BigInt`.
 Because `Matrix` stores only finite entries, arithmetic range failures in the
 filter are inconclusive rather than errors and the exact fallback is total.
 
-### Adaptive precision with `det_errbound()`
+### Adaptive precision with `det_direct_with_errbound()`
 
-`det_errbound()` returns the conservative absolute error bound used by the fast
-filter when the relative-error analysis is valid. It returns `None` when a
-D ≤ 4 computation may be affected by gradual underflow, as well as for
-unsupported D ≥ 5 dimensions. This method does NOT require the `exact` feature
-— it uses pure f64 arithmetic and is available by default. This enables
-building custom adaptive-precision logic for geometric predicates:
+`det_direct_with_errbound()` returns a closed-form determinant together with
+the conservative absolute error bound used by the fast filter, computed from
+one shared traversal. It returns `None` when a D ≤ 4 computation may be
+affected by gradual underflow, as well as for unsupported D ≥ 5 dimensions.
+This method does NOT require the `exact` feature — it uses pure f64 arithmetic
+and is available by default. Use `det_errbound()` when only the bound is needed.
+The paired API enables custom adaptive-precision logic for geometric predicates:
 
 ```rust,ignore
 use la_stack::prelude::*;
@@ -343,11 +344,9 @@ use la_stack::prelude::*;
 fn adaptive_det_sign<const D: usize>(
     matrix: &Matrix<D>,
 ) -> DeterminantSign {
-    if let (Ok(Some(bound)), Ok(Some(det))) =
-        (matrix.det_errbound(), matrix.det_direct())
-    {
-        if det.abs() > bound {
-            return if det > 0.0 {
+    if let Ok(Some(estimate)) = matrix.det_direct_with_errbound() {
+        if estimate.determinant().abs() > estimate.absolute_error_bound() {
+            return if estimate.determinant() > 0.0 {
                 DeterminantSign::Positive
             } else {
                 DeterminantSign::Negative
@@ -422,6 +421,7 @@ out of the common prelude.
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Finite fixed-length vector for input and computation | `try_new`, `as_array`, `into_array`, `dot`, `norm2_sq` |
 | `Matrix<D>` | `[[f64; D]; D]` | Finite square matrix for input and computation | See below |
+| `DeterminantWithErrorBound` | two private `f64` fields | Paired direct determinant and certified absolute bound | `determinant`, `absolute_error_bound` |
 | `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve`, `det` |
 | `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve`, `det` |
 | `Tolerance` | finite non-negative `f64` | Validated numerical threshold | `try_new`, `get` |
@@ -431,7 +431,7 @@ out of the common prelude.
 Storage shown above reflects the intentional `f64` scalar model.
 
 `Matrix<D>` key methods: `as_rows`, `into_rows`, `lu`, `ldlt`, `det`,
-`det_direct`, `det_errbound`,
+`det_direct`, `det_direct_with_errbound`, `det_errbound`,
 `det_exact`¹, `det_exact_f64`¹, `det_exact_rounded_f64`¹, `det_sign_exact`¹,
 `solve_exact`¹, `solve_exact_f64`¹, `solve_exact_rounded_f64`¹.
 Matrix and vector constructors validate non-finite inputs at public API
@@ -469,7 +469,7 @@ breaking callers.
 Raw data:
 [docs/assets/bench/vs_linalg_lu_solve_median.csv](https://github.com/acgetchell/la-stack/blob/v0.4.3/docs/assets/bench/vs_linalg_lu_solve_median.csv)
 Historical provenance status:
-[docs/assets/bench/vs_linalg_lu_solve_median.provenance.json](docs/assets/bench/vs_linalg_lu_solve_median.provenance.json)
+[docs/assets/bench/vs_linalg_lu_solve_median.provenance.json][benchmark-provenance]
 
 Representative benchmark: `lu_solve` factors the matrix and solves one
 right-hand side. Median time is lower-is-better, and the “la-stack vs
@@ -540,8 +540,12 @@ cargo run --features exact --example exact_solve_3x3
 
 A short contributor workflow:
 
+Install Rust through [rustup](https://rustup.rs/), Git, Python 3.14,
+[`uv` 0.11.28](https://docs.astral.sh/uv/), and `jq`. Then install the pinned
+`just` release from its locked dependency graph:
+
 ```bash
-cargo install --locked just
+cargo install --locked just --version 1.56.0
 just setup        # install/verify dev tools + sync Python deps
 just check        # lint/validate (non-mutating)
 just fix          # apply auto-fixes (mutating)
@@ -585,10 +589,11 @@ for the repository's AI-assisted development note.
 
 ## 📄 License
 
-BSD 3-Clause License. See [LICENSE](./LICENSE).
+BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/v0.4.3/LICENSE).
 
 [audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml
+[benchmark-provenance]: https://github.com/acgetchell/la-stack/blob/v0.4.3/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json
 [clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg
 [clippy-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml
 [lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/v0.4.3/docs/assets/bench/vs_linalg_lu_solve_median.svg

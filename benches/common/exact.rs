@@ -493,6 +493,86 @@ fn assert_rounded_scalar(actual: Result<f64, LaError>, exact: &BigRational) {
     }
 }
 
+/// Check a floating-point determinant against an independent exact oracle.
+fn assert_approximate_determinant(actual: f64, exact: &BigRational, operation: &str) {
+    assert!(
+        actual.is_finite(),
+        "{operation} produced a non-finite result"
+    );
+    let Some(expected) = exact.to_f64() else {
+        panic!("{operation} oracle does not round to binary64");
+    };
+    assert!(
+        expected.is_finite(),
+        "{operation} oracle rounds outside finite binary64"
+    );
+
+    let scale = expected.abs().max(1.0);
+    let tolerance = 1024.0 * f64::EPSILON * scale;
+    assert!(
+        (actual - expected).abs() <= tolerance,
+        "{operation} result {actual:?} differs from exact-oracle rounding {expected:?} by more than {tolerance:?}",
+    );
+}
+
+/// Validate the floating-point determinant operations used by Criterion.
+///
+/// This runs during setup, outside timed closures. The deterministic `det` and
+/// `det_direct` results are compared with the independent Leibniz oracle; on
+/// current revisions the combined direct result is additionally checked
+/// against its certified absolute bound.
+///
+/// # Panics
+///
+/// Panics if either floating-point operation fails, falls outside its documented
+/// dimension, or disagrees with the independent exact oracle.
+pub fn validate_f64_determinant_benchmarks<const D: usize>(input: &ValidatedExactInput<D>) {
+    let exact = determinant_leibniz(input.matrix());
+    let determinant = require_ok(input.matrix().det(), "f64 determinant oracle check");
+    assert_approximate_determinant(determinant, &exact, "f64 determinant");
+
+    let direct = require_ok(
+        input.matrix().det_direct(),
+        "direct f64 determinant oracle check",
+    );
+    if D <= 4 {
+        let Some(direct) = direct else {
+            panic!("det_direct must support benchmark dimension {D}");
+        };
+        assert_approximate_determinant(direct, &exact, "direct f64 determinant");
+
+        #[cfg(not(la_stack_v0_4_3_api))]
+        {
+            let estimate = require_ok(
+                input.matrix().det_direct_with_errbound(),
+                "combined direct determinant oracle check",
+            );
+            let Some(estimate) = estimate else {
+                panic!("the baseline fixture must have a certified D={D} determinant bound");
+            };
+            assert_eq!(estimate.determinant().to_bits(), direct.to_bits());
+            let observed_error = (rational_from_f64(direct) - &exact).abs();
+            let certified_bound = rational_from_f64(estimate.absolute_error_bound());
+            assert!(
+                observed_error <= certified_bound,
+                "direct determinant error {observed_error} exceeds certified bound {certified_bound}",
+            );
+        }
+    } else {
+        assert!(direct.is_none(), "det_direct unexpectedly supports D={D}");
+
+        #[cfg(not(la_stack_v0_4_3_api))]
+        assert!(
+            require_ok(
+                input.matrix().det_direct_with_errbound(),
+                "combined direct determinant scope check",
+            )
+            .is_none(),
+            "combined direct determinant unexpectedly supports D={D}",
+        );
+    }
+}
+
 /// Verify `A · x = b` exactly using independently reconstructed binary64 inputs.
 fn assert_exact_residual<const D: usize>(input: &ExactInput<D>, solution: &[BigRational; D]) {
     for row in 0..D {

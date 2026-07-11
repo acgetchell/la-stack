@@ -17,6 +17,7 @@ rules:
     paths:
       include:
         - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
     patterns:
       - pattern-either:
           - pattern: println!(...)
@@ -67,6 +68,7 @@ rules:
     paths:
       include:
         - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
     pattern-either:
       - pattern: $VALUE.unwrap_or(f64::NAN)
       - pattern: $VALUE.unwrap_or(f64::INFINITY)
@@ -272,6 +274,7 @@ rules:
     paths:
       include:
         - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
     pattern-regex: '(?m)(?<!#\[non_exhaustive\]\n)^\s*pub\s+enum\s+[A-Za-z_][A-Za-z0-9_]*Error(?:<[^>{}]*)?\s*\{'
 
   - id: la-stack.rust.no-unwrap-expect-in-doctests

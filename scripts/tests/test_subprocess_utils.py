@@ -127,6 +127,24 @@ class TestRunGitCommandWithInput:
         assert "input" not in kwargs
         assert kwargs["text"] is True
 
+    def test_binary_input_forwarded_without_newline_or_encoding_changes(self) -> None:
+        observed_input = b""
+
+        def capture_run(*_args: object, **kwargs: object) -> subprocess_utils.subprocess.CompletedProcess[str]:
+            nonlocal observed_input
+            stdin = cast("BinaryIO", kwargs["stdin"])
+            observed_input = stdin.read()
+            return subprocess_utils.subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
+
+        payload = b"line\r\n\x00\xff"
+        with (
+            patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/git"),
+            patch("subprocess_utils.subprocess.run", side_effect=capture_run),
+        ):
+            run_git_command_with_input(["apply", "--binary"], input_data=payload)
+
+        assert observed_input == payload
+
 
 class TestAdditionalHelpers:
     def test_run_cargo_command_uses_safe_executable(self) -> None:

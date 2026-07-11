@@ -16,14 +16,17 @@ use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
 pub mod vs_linalg_common;
 
 use vs_linalg_common::{
-    faer_det_from_ldlt, faer_det_from_partial_piv_lu, faer_perm_sign, la_stack_dot,
-    la_stack_tolerance, make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows,
-    make_matrix_rows, make_pivoting_matrix_rows, make_vector_array, matrix_entry,
-    nalgebra_inf_norm, vector_entry,
+    PreparedFaerLuDet, faer_det_from_ldlt, faer_perm_sign, la_stack_dot, la_stack_tolerance,
+    make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows, make_matrix_rows,
+    make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
 };
 
 /// Assert scalar agreement with a tolerance that scales for larger magnitudes.
 fn assert_close(label: &str, actual: f64, expected: f64) {
+    assert!(
+        actual.is_finite() && expected.is_finite(),
+        "{label}: comparison requires finite values, actual={actual:?}, expected={expected:?}",
+    );
     let scale = actual.abs().max(expected.abs()).max(1.0);
     let diff = (actual - expected).abs();
     assert!(
@@ -78,10 +81,14 @@ where
     let la_lu_det = la_lu
         .det()
         .unwrap_or_else(|err| panic!("la_stack LU determinant failed: {err}"));
+    let la_matrix_det = a
+        .det()
+        .unwrap_or_else(|err| panic!("la_stack Matrix determinant failed: {err}"));
+    assert_close("la_stack_det", la_matrix_det, la_lu_det);
     assert_close("nalgebra_det_from_lu", na_lu.determinant(), la_lu_det);
     assert_close(
         "faer_det_from_lu",
-        faer_det_from_partial_piv_lu(&fa_lu),
+        PreparedFaerLuDet::new(&fa_lu).det(),
         la_lu_det,
     );
 
@@ -197,9 +204,24 @@ fn faer_lu_determinant_includes_odd_row_permutation_sign() {
     );
     assert_close(
         "faer determinant with one pivot swap",
-        faer_det_from_partial_piv_lu(&lu),
+        PreparedFaerLuDet::new(&lu).det(),
         -6.0,
     );
+}
+
+#[test]
+fn scalar_agreement_rejects_non_finite_values() {
+    for (actual, expected) in [
+        (f64::INFINITY, f64::INFINITY),
+        (f64::NEG_INFINITY, -1.0),
+        (f64::NAN, 1.0),
+        (1.0, f64::NAN),
+    ] {
+        assert!(
+            std::panic::catch_unwind(|| assert_close("non-finite regression", actual, expected))
+                .is_err()
+        );
+    }
 }
 
 #[test]

@@ -75,7 +75,9 @@ same machine with the current checkout's benchmark sources, manifests, lockfile,
 benchmark-input tests, recipes, and Rust toolchain. Only the baseline library
 implementation comes from the release tag. Before either timing run, the command
 runs `just test-bench-inputs` against that revision under the shared current
-fixture harness. It writes `target/bench-reports/performance.md` and records both
+fixture harness. This is a prerequisite correctness gate over the deterministic
+fixtures and operations, not validation of each timed Criterion sample. It
+writes `target/bench-reports/performance.md` and records both
 commits, CPU, operating system, Rust toolchain, lockfile and harness digests,
 Criterion selection/commands, and both correctness-gate results. The report
 reader rejects malformed or mismatched provenance and incomplete selected-suite
@@ -202,7 +204,10 @@ when a selected suite or required dimension is absent.
 
 After releases are published, the GitHub Release benchmark workflow attaches a
 compressed Criterion baseline artifact. To compare those stored artifacts
-without running cargo locally:
+without running cargo locally, install the GitHub CLI (`gh`) and authenticate it
+with access to the repository (`gh auth login` or an equivalent token). The
+requirement applies even when both release tags are supplied explicitly because
+the recipe still downloads their GitHub Release assets:
 
 ```bash
 just performance-github-assets v0.4.3 v0.4.2
@@ -341,6 +346,11 @@ strict/rounded binary64 results are checked for their exact bits, typed reason,
 and first failing component. These checks run outside timed Criterion closures.
 Any disagreement or unexpected error fails setup instead of becoming an
 artificially fast measurement.
+
+The proof-bearing fixture is therefore a prerequisite correctness gate, not a
+claim that every timed sample is revalidated. Criterion closures remain free of
+oracle work so their measurements cover only the named operation; the operation
+is deterministic for the already-validated input.
 
 For exact-arithmetic comparisons against v0.4.2 or older baselines, rows such
 as `det_exact_rounded_f64 (vs det_exact_f64)` mean the current rounded API is

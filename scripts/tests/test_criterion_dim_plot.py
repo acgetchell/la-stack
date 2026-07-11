@@ -18,6 +18,8 @@ import criterion_dim_plot
 if TYPE_CHECKING:
     from pathlib import Path
 
+_OVERFLOWING_TIMING = 10**400
+
 
 def _toml_dependency_version(data: dict[str, object], name: str) -> str | None:
     for section in ("dependencies", "dev-dependencies", "build-dependencies"):
@@ -107,9 +109,8 @@ def test_markdown_table_formats_values_and_pct() -> None:
     assert "| 64 | 1,000.000 | 900.000 | 800.000 | -11.1% | -25.0% |" in table
 
 
-def test_markdown_table_handles_zero_nalgebra_time() -> None:
-    rows = [
-        # nalgebra time of 0 indicates missing/corrupt data; ensure we don't crash.
+def test_row_rejects_zero_peer_time_before_markdown_rendering() -> None:
+    with pytest.raises(ValueError, match="na_time must be finite and positive"):
         criterion_dim_plot.Row(
             dim=2,
             la_time=10.0,
@@ -121,11 +122,7 @@ def test_markdown_table_handles_zero_nalgebra_time() -> None:
             fa_time=100.0,
             fa_lo=90.0,
             fa_hi=110.0,
-        ),
-    ]
-
-    table = criterion_dim_plot._markdown_table(rows, stat="median")
-    assert "| 2 | 10.000 | 0.000 | 100.000 | n/a | +90.0% |" in table
+        )
 
 
 def test_gp_quote_escapes_backslashes_and_quotes() -> None:
@@ -518,6 +515,37 @@ def test_read_estimate_non_numeric_ci_bound_names_field(tmp_path: Path) -> None:
         criterion_dim_plot._read_estimate(estimates, "median")
 
 
+def test_read_estimate_rejects_numeric_overflow(tmp_path: Path) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text(json.dumps({"median": {"point_estimate": _OVERFLOWING_TIMING}}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"field 'point_estimate'.*not numeric") as exc_info:
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+    assert isinstance(exc_info.value.__cause__, OverflowError)
+
+
+def test_read_estimate_rejects_missing_or_partial_confidence_interval(tmp_path: Path) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text(json.dumps({"median": {"point_estimate": 1.0}}), encoding="utf-8")
+    with pytest.raises(KeyError, match="field 'confidence_interval'"):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+    estimates.write_text(
+        json.dumps(
+            {
+                "median": {
+                    "point_estimate": 1.0,
+                    "confidence_interval": {"lower_bound": 0.9},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(KeyError, match="field 'upper_bound'"):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+
 @pytest.mark.parametrize(
     ("payload", "field"),
     [
@@ -545,7 +573,7 @@ def test_read_estimate_rejects_nonfinite_time(tmp_path: Path) -> None:
     estimates = tmp_path / "estimates.json"
     estimates.write_text(json.dumps({"median": {"point_estimate": "NaN"}}), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=r"median\.point_estimate.*finite and nonnegative"):
+    with pytest.raises(ValueError, match=r"median\.point_estimate.*finite and positive"):
         criterion_dim_plot._read_estimate(estimates, "median")
 
 
@@ -553,7 +581,15 @@ def test_read_estimate_rejects_negative_time(tmp_path: Path) -> None:
     estimates = tmp_path / "estimates.json"
     estimates.write_text(json.dumps({"median": {"point_estimate": -1.0}}), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=r"median\.point_estimate.*finite and nonnegative"):
+    with pytest.raises(ValueError, match=r"median\.point_estimate.*finite and positive"):
+        criterion_dim_plot._read_estimate(estimates, "median")
+
+
+def test_read_estimate_rejects_zero_time(tmp_path: Path) -> None:
+    estimates = tmp_path / "estimates.json"
+    estimates.write_text(json.dumps({"median": {"point_estimate": 0.0}}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"median\.point_estimate.*finite and positive"):
         criterion_dim_plot._read_estimate(estimates, "median")
 
 
@@ -575,7 +611,7 @@ def test_read_estimate_rejects_inverted_confidence_interval(tmp_path: Path) -> N
         criterion_dim_plot._read_estimate(estimates, "median")
 
 
-def test_read_estimate_rejects_point_outside_confidence_interval(tmp_path: Path) -> None:
+def test_read_estimate_allows_point_outside_percentile_confidence_interval(tmp_path: Path) -> None:
     estimates = tmp_path / "estimates.json"
     estimates.write_text(
         json.dumps(
@@ -589,8 +625,7 @@ def test_read_estimate_rejects_point_outside_confidence_interval(tmp_path: Path)
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="point estimate must be inside confidence interval"):
-        criterion_dim_plot._read_estimate(estimates, "median")
+    assert criterion_dim_plot._read_estimate(estimates, "median") == (5.0, 1.0, 4.0)
 
 
 def test_row_rejects_invalid_dimension_and_times() -> None:
@@ -608,7 +643,7 @@ def test_row_rejects_invalid_dimension_and_times() -> None:
             fa_hi=1.0,
         )
 
-    with pytest.raises(ValueError, match="la_time must be finite and nonnegative"):
+    with pytest.raises(ValueError, match="la_time must be finite and positive"):
         criterion_dim_plot.Row(
             dim=2,
             la_time=float("inf"),
@@ -622,19 +657,19 @@ def test_row_rejects_invalid_dimension_and_times() -> None:
             fa_hi=1.0,
         )
 
-    with pytest.raises(ValueError, match="point estimate must be inside confidence interval"):
-        criterion_dim_plot.Row(
-            dim=2,
-            la_time=5.0,
-            la_lo=1.0,
-            la_hi=4.0,
-            na_time=1.0,
-            na_lo=1.0,
-            na_hi=1.0,
-            fa_time=1.0,
-            fa_lo=1.0,
-            fa_hi=1.0,
-        )
+    row = criterion_dim_plot.Row(
+        dim=2,
+        la_time=5.0,
+        la_lo=1.0,
+        la_hi=4.0,
+        na_time=1.0,
+        na_lo=1.0,
+        na_hi=1.0,
+        fa_time=1.0,
+        fa_lo=1.0,
+        fa_hi=1.0,
+    )
+    assert row.la_time == 5.0
 
 
 def test_write_csv_and_collect_rows(tmp_path: Path) -> None:
@@ -840,6 +875,145 @@ def test_main_partial_mode_is_explicit_and_labels_measurement_unavailable(
     assert provenance["publication"]["correctness_gate"] == "not-run-exploratory"
 
 
+def test_main_rejects_missing_confidence_interval_without_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    criterion_dir = tmp_path / "criterion"
+    metric = criterion_dim_plot.METRICS["lu_solve"]
+    for bench in (metric.la_bench, metric.na_bench, metric.fa_bench):
+        estimates = criterion_dir / "d2" / bench / "new" / "estimates.json"
+        estimates.parent.mkdir(parents=True, exist_ok=True)
+        estimates.write_text(json.dumps({"median": {"point_estimate": 1.0}}), encoding="utf-8")
+    output = tmp_path / "out.csv"
+    monkeypatch.setattr(criterion_dim_plot, "_repo_root", lambda: tmp_path)
+
+    rc = criterion_dim_plot.main(
+        [
+            "--criterion-dir",
+            str(criterion_dir),
+            "--csv",
+            str(output),
+            "--no-plot",
+            "--allow-partial",
+        ]
+    )
+
+    assert rc == 2
+    assert "Invalid Criterion estimate data" in capsys.readouterr().err
+    assert not output.exists()
+
+
+def test_main_rejects_overflowing_timing_without_writing_or_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    criterion_dir = tmp_path / "criterion"
+    metric = criterion_dim_plot.METRICS["lu_solve"]
+    for bench in (metric.la_bench, metric.na_bench, metric.fa_bench):
+        estimates = criterion_dir / "d2" / bench / "new" / "estimates.json"
+        estimates.parent.mkdir(parents=True, exist_ok=True)
+        estimates.write_text(json.dumps({"median": {"point_estimate": _OVERFLOWING_TIMING}}), encoding="utf-8")
+    output = tmp_path / "out.csv"
+    monkeypatch.setattr(criterion_dim_plot, "_repo_root", lambda: tmp_path)
+
+    rc = criterion_dim_plot.main(
+        [
+            "--criterion-dir",
+            str(criterion_dir),
+            "--csv",
+            str(output),
+            "--no-plot",
+            "--allow-partial",
+        ]
+    )
+
+    assert rc == 2
+    assert "Invalid Criterion estimate data" in capsys.readouterr().err
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        subprocess.TimeoutExpired(["tool"], 17),
+        OSError("working directory unavailable"),
+    ],
+)
+def test_provenance_helpers_treat_timeout_and_os_error_as_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    def fail_command(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        raise failure
+
+    monkeypatch.setattr(criterion_dim_plot, "run_git_command", fail_command)
+    assert criterion_dim_plot._git_value(tmp_path, ["rev-parse", "HEAD"]) == "unavailable"
+    git_clean, _status_digest = criterion_dim_plot._git_status_metadata(tmp_path)
+    assert git_clean is None
+
+    monkeypatch.setattr(criterion_dim_plot, "run_safe_command", fail_command)
+    assert criterion_dim_plot._rustc_version(tmp_path) == "unavailable"
+
+
+def test_main_publication_fails_closed_when_provenance_tool_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    criterion_dir = tmp_path / "target" / "criterion"
+    criterion_dir.mkdir(parents=True)
+    begin, end = criterion_dim_plot._readme_table_markers("lu_solve", "median", "new")
+    readme = tmp_path / "README.fixture.md"
+    readme.write_text(f"{begin}\nold table\n{end}\n", encoding="utf-8")
+    output = tmp_path / "out.csv"
+    row = criterion_dim_plot.Row(2, 1.0, 0.9, 1.1, 2.0, 1.9, 2.1, 3.0, 2.9, 3.1)
+
+    monkeypatch.setattr(criterion_dim_plot, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(criterion_dim_plot, "_run_publication_benchmarks", lambda _root: None)
+    monkeypatch.setattr(criterion_dim_plot, "_detect_versions", lambda _root: {})
+    monkeypatch.setattr(criterion_dim_plot, "_discover_dims", lambda _criterion_dir: [2])
+    monkeypatch.setattr(criterion_dim_plot, "_collect_rows", lambda *_args: ([row], []))
+    monkeypatch.setattr(
+        criterion_dim_plot,
+        "_capture_provenance",
+        lambda *_args, **_kwargs: {
+            "publication": {
+                "cargo_lock_sha256": "a" * 64,
+                "commit": "commit",
+                "cpu": "cpu",
+                "git_clean": True,
+                "missing_harness_files": [],
+                "os": "os",
+                "rustc": "unavailable",
+                "source_missing": False,
+            }
+        },
+    )
+
+    rc = criterion_dim_plot.main(
+        [
+            "--criterion-dir",
+            str(criterion_dir),
+            "--csv",
+            str(output),
+            "--out",
+            str(tmp_path / "out.svg"),
+            "--update-readme",
+            "--readme",
+            str(readme),
+        ]
+    )
+
+    assert rc == 2
+    assert "required fields are unavailable: rustc" in capsys.readouterr().err
+    assert not output.exists()
+    assert "old table" in readme.read_text(encoding="utf-8")
+
+
 def test_publication_gate_failure_stops_before_timing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[tuple[str, tuple[str, ...]]] = []
 
@@ -861,6 +1035,7 @@ def test_publication_gate_failure_stops_before_timing(monkeypatch: pytest.Monkey
         ("process", ("timing failed",), subprocess.CalledProcessError),
         ("missing", ("Required executable 'cargo' not found in PATH",), criterion_dim_plot.ExecutableNotFoundError),
         ("timeout", ("timed out after 17 seconds", "timing stalled"), subprocess.TimeoutExpired),
+        ("os-error", ("could not start", "working directory unavailable"), OSError),
     ],
 )
 def test_failed_timing_restores_staged_new_samples(
@@ -883,6 +1058,9 @@ def test_failed_timing_restores_staged_new_samples(
             if failure_kind == "missing":
                 msg = "Required executable 'cargo' not found in PATH"
                 raise criterion_dim_plot.ExecutableNotFoundError(msg)
+            if failure_kind == "os-error":
+                msg = "working directory unavailable"
+                raise OSError(msg)
             raise subprocess.TimeoutExpired([command, *args], 17, stderr="timing stalled")
         return SimpleNamespace(stdout="")
 
@@ -894,6 +1072,82 @@ def test_failed_timing_restores_staged_new_samples(
     assert old_estimate.read_text(encoding="utf-8") == "old\n"
     assert all(detail in str(exc_info.value) for detail in expected_details)
     assert isinstance(exc_info.value.__cause__, cause_type)
+
+
+def test_partial_staging_failure_restores_every_moved_sample(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    criterion_dir = tmp_path / "target" / "criterion"
+    first = criterion_dir / "d2" / "a_bench" / "new" / "estimates.json"
+    second = criterion_dir / "d2" / "b_bench" / "new" / "estimates.json"
+    for path, text in ((first, "first\n"), (second, "second\n")):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    backup_root = tmp_path / "criterion-backup"
+    backup_root.mkdir()
+    original_replace = criterion_dim_plot.Path.replace
+
+    def fail_second_move(source: Path, destination: Path) -> Path:
+        if source == second.parent and backup_root in destination.parents:
+            msg = "simulated second staging failure"
+            raise OSError(msg)
+        return original_replace(source, destination)
+
+    def fake_mkdtemp(*, prefix: str, **kwargs: object) -> str:
+        assert prefix == "la-stack-stale-criterion-"
+        assert kwargs == {"dir": criterion_dir.parent}
+        return str(backup_root)
+
+    monkeypatch.setattr(criterion_dim_plot.tempfile, "mkdtemp", fake_mkdtemp)
+    monkeypatch.setattr(criterion_dim_plot.Path, "replace", fail_second_move)
+    monkeypatch.setattr(criterion_dim_plot, "run_safe_command", lambda *_args, **_kwargs: SimpleNamespace(stdout=""))
+
+    with pytest.raises(RuntimeError, match="could not stage existing Criterion samples"):
+        criterion_dim_plot._run_publication_benchmarks(tmp_path)
+
+    assert first.read_text(encoding="utf-8") == "first\n"
+    assert second.read_text(encoding="utf-8") == "second\n"
+    assert not backup_root.exists()
+
+
+def test_failed_timing_preserves_backup_when_rollback_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    estimate = tmp_path / "target" / "criterion" / "d2" / "la_stack_lu" / "new" / "estimates.json"
+    estimate.parent.mkdir(parents=True)
+    estimate.write_text("old\n", encoding="utf-8")
+    backup_root = tmp_path / "criterion-backup"
+    backup_root.mkdir()
+
+    def fail_timing(command: str, args: list[str], **_kwargs: object) -> SimpleNamespace:
+        if command == "cargo":
+            estimate.parent.mkdir(parents=True, exist_ok=True)
+            estimate.write_text("partial\n", encoding="utf-8")
+            raise subprocess.CalledProcessError(1, [command, *args], stderr="timing failed")
+        return SimpleNamespace(stdout="")
+
+    original_rmtree = criterion_dim_plot.shutil.rmtree
+
+    def fail_fresh_removal(path: Path) -> None:
+        if path == estimate.parent:
+            msg = "simulated rollback removal failure"
+            raise OSError(msg)
+        original_rmtree(path)
+
+    monkeypatch.setattr(criterion_dim_plot.tempfile, "mkdtemp", lambda **_kwargs: str(backup_root))
+    monkeypatch.setattr(criterion_dim_plot.shutil, "rmtree", fail_fresh_removal)
+    monkeypatch.setattr(criterion_dim_plot, "run_safe_command", fail_timing)
+
+    with pytest.raises(RuntimeError, match="backups preserved") as exc_info:
+        criterion_dim_plot._run_publication_benchmarks(tmp_path)
+
+    assert str(backup_root) in str(exc_info.value)
+    preserved = backup_root / "d2" / "la_stack_lu" / "new" / "estimates.json"
+    assert preserved.read_text(encoding="utf-8") == "old\n"
+    assert estimate.read_text(encoding="utf-8") == "partial\n"
 
 
 def test_readme_publication_cannot_reuse_stale_new_samples(
@@ -1013,3 +1267,42 @@ def test_staged_publication_leaves_existing_assets_unchanged_when_render_fails(
     assert svg_path.read_text(encoding="utf-8") == "old svg\n"
     assert provenance_path.read_text(encoding="utf-8") == "old provenance\n"
     assert "old table" in readme.read_text(encoding="utf-8")
+
+
+def test_artifact_rollback_failure_preserves_backups(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination_one = tmp_path / "one.txt"
+    destination_two = tmp_path / "two.txt"
+    staged_one = tmp_path / "staged-one.txt"
+    staged_two = tmp_path / "staged-two.txt"
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    destination_one.write_text("old one\n", encoding="utf-8")
+    destination_two.write_text("old two\n", encoding="utf-8")
+    staged_one.write_text("new one\n", encoding="utf-8")
+    staged_two.write_text("new two\n", encoding="utf-8")
+    original_replace = criterion_dim_plot.Path.replace
+
+    def fail_replacement_and_rollback(source: Path, destination: Path) -> Path:
+        if source == staged_two and destination == destination_two:
+            msg = "simulated publish failure"
+            raise OSError(msg)
+        if source == backup_dir / "backup-0" and destination == destination_one:
+            msg = "simulated rollback failure"
+            raise OSError(msg)
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(criterion_dim_plot.Path, "replace", fail_replacement_and_rollback)
+
+    with pytest.raises(criterion_dim_plot.PublicationRollbackError, match="backups preserved") as exc_info:
+        criterion_dim_plot._replace_staged_files(
+            [(staged_one, destination_one), (staged_two, destination_two)],
+            backup_dir,
+        )
+
+    assert str(backup_dir) in str(exc_info.value)
+    assert (backup_dir / "backup-0").read_text(encoding="utf-8") == "old one\n"
+    assert destination_one.read_text(encoding="utf-8") == "new one\n"
+    assert destination_two.read_text(encoding="utf-8") == "old two\n"

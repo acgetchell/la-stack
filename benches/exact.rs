@@ -39,7 +39,7 @@ pub mod exact_bench;
 use exact_bench::{
     ExactInput, RANDOM_INPUT_ARRAY_LEN, ValidatedExactInput, hilbert_input,
     large_entries_3x3_input, make_matrix_rows, make_random_input_corpus, make_vector_array,
-    near_singular_3x3_input, validate_exact_fixture,
+    near_singular_3x3_input, validate_exact_fixture, validate_f64_determinant_benchmarks,
 };
 
 /// Return a successful benchmark operation result or panic with the named operation.
@@ -223,6 +223,7 @@ macro_rules! gen_exact_benches_for_dim {
                 "benchmark RHS vector construction",
             ),
         });
+        validate_f64_determinant_benchmarks(&input);
 
         let mut group = ($c).benchmark_group(concat!("exact_d", stringify!($d)));
 

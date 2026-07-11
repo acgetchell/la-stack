@@ -10,6 +10,41 @@ use crate::{
     ArithmeticOperation, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError, SymmetricMatrix, Tolerance,
 };
 
+/// A closed-form determinant and its certified absolute error bound.
+///
+/// Values of this type are produced by
+/// [`Matrix::det_direct_with_errbound`]. The paired result guarantees that the
+/// determinant and bound came from one traversal of the same rounded
+/// arithmetic tree. The guarantee is unavailable when gradual underflow could
+/// invalidate the relative-error analysis or when the matrix dimension exceeds
+/// the closed-form D ≤ 4 scope.
+#[must_use]
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DeterminantWithErrorBound {
+    determinant: f64,
+    absolute_error_bound: f64,
+}
+
+impl DeterminantWithErrorBound {
+    /// Return the closed-form determinant approximation.
+    #[inline]
+    #[must_use]
+    pub const fn determinant(self) -> f64 {
+        self.determinant
+    }
+
+    /// Return the certified absolute error bound.
+    ///
+    /// The exact determinant lies in
+    /// `[determinant - bound, determinant + bound]`.
+    #[inline]
+    #[must_use]
+    pub const fn absolute_error_bound(self) -> f64 {
+        self.absolute_error_bound
+    }
+}
+
 /// Finite fixed-size square matrix `D×D`, stored inline.
 ///
 /// `Matrix` is designed for small, robustness-sensitive systems where stack
@@ -951,6 +986,56 @@ impl<const D: usize> Matrix<D> {
         self.lu(Tolerance::ZERO)?.det()
     }
 
+    /// Evaluate `det_direct()` and its absolute error bound together.
+    ///
+    /// Returns `Ok(Some(result))` for D ≤ 4 when the relative-error analysis
+    /// is valid. The result contains the closed-form determinant and a bound
+    /// such that `|result.determinant() - det_exact| ≤
+    /// result.absolute_error_bound()`. Returns `Ok(None)` when gradual
+    /// underflow could invalidate that analysis or for D ≥ 5, where no
+    /// closed-form bound is available.
+    ///
+    /// This is the preferred API when both values are needed: it evaluates the
+    /// determinant arithmetic tree once, so the approximation and bound cannot
+    /// accidentally come from separate traversals.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let matrix = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
+    /// if let Some(estimate) = matrix.det_direct_with_errbound()? {
+    ///     assert_eq!(estimate.determinant(), -2.0);
+    ///     assert!(estimate.absolute_error_bound() >= 0.0);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] when the determinant or bound computation
+    /// overflows to NaN or infinity. Underflow-sensitive finite computations
+    /// return `Ok(None)` because they remain valid inputs for an exact fallback.
+    #[inline]
+    pub const fn det_direct_with_errbound(
+        &self,
+    ) -> Result<Option<DeterminantWithErrorBound>, LaError> {
+        if self.det_bound_inputs_have_wide_exponent_margin() {
+            let Some(det) = self.det_direct_arithmetic::<false>() else {
+                cold_path();
+                return Ok(None);
+            };
+            return self.det_direct_with_errbound_from_arithmetic(det);
+        }
+
+        let Some(det) = self.det_direct_arithmetic::<true>() else {
+            cold_path();
+            return Ok(None);
+        };
+        self.det_direct_with_errbound_from_arithmetic(det)
+    }
+
     /// Conservative absolute error bound for `det_direct()`.
     ///
     /// Returns `Ok(Some(bound))` such that `|det_direct() - det_exact| ≤ bound`
@@ -971,9 +1056,9 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # When to use
     ///
-    /// Use this to build adaptive-precision logic: when a bound is available and
-    /// `|det_direct()| > bound`, the f64 sign is provably correct. Otherwise fall
-    /// back to exact arithmetic.
+    /// Use [`det_direct_with_errbound`](Self::det_direct_with_errbound) when the
+    /// determinant and bound are both needed. This accessor is convenient when
+    /// only the bound is needed.
     ///
     /// # Examples
     /// ```
@@ -985,10 +1070,8 @@ impl<const D: usize> Matrix<D> {
     ///     [4.0, 5.0, 6.0],
     ///     [7.0, 8.0, 9.0],
     /// ])?;
-    /// if let (Some(bound), Some(det_approx)) = (m.det_errbound()?, m.det_direct()?) {
-    ///     // If |det_approx| > bound, the sign is guaranteed correct.
-    ///     let sign_is_certified = det_approx.abs() > bound;
-    ///     assert!(!sign_is_certified);
+    /// if let Some(bound) = m.det_errbound()? {
+    ///     assert!(bound >= 0.0);
     /// }
     /// # Ok(())
     /// # }
@@ -1001,11 +1084,9 @@ impl<const D: usize> Matrix<D> {
     /// fn adaptive_det_sign<const D: usize>(
     ///     matrix: &Matrix<D>,
     /// ) -> DeterminantSign {
-    ///     if let (Ok(Some(bound)), Ok(Some(det))) =
-    ///         (matrix.det_errbound(), matrix.det_direct())
-    ///     {
-    ///         if det.abs() > bound {
-    ///             return if det > 0.0 {
+    ///     if let Ok(Some(estimate)) = matrix.det_direct_with_errbound() {
+    ///         if estimate.determinant().abs() > estimate.absolute_error_bound() {
+    ///             return if estimate.determinant() > 0.0 {
     ///                 DeterminantSign::Positive
     ///             } else {
     ///                 DeterminantSign::Negative
@@ -1042,30 +1123,11 @@ impl<const D: usize> Matrix<D> {
     /// `Ok(None)` instead because they are valid inputs for an exact fallback.
     #[inline]
     pub const fn det_errbound(&self) -> Result<Option<f64>, LaError> {
-        let Some(det) = self.det_direct_arithmetic::<true>() else {
-            cold_path();
-            return Ok(None);
-        };
-        self.det_errbound_from_arithmetic(det)
-    }
-
-    /// Evaluate the determinant and its certified error bound with one shared
-    /// traversal of the determinant arithmetic tree.
-    #[cfg(feature = "exact")]
-    pub(crate) const fn det_filter(&self) -> Option<(f64, f64)> {
-        if self.det_filter_inputs_have_wide_exponent_margin() {
-            let Some(det) = self.det_direct_arithmetic::<false>() else {
-                cold_path();
-                return None;
-            };
-            return self.det_filter_from_arithmetic(det);
+        match self.det_direct_with_errbound() {
+            Ok(Some(result)) => Ok(Some(result.absolute_error_bound)),
+            Ok(None) => Ok(None),
+            Err(error) => Err(error),
         }
-
-        let Some(det) = self.det_direct_arithmetic::<true>() else {
-            cold_path();
-            return None;
-        };
-        self.det_filter_from_arithmetic(det)
     }
 
     /// Return whether every non-zero entry is large enough that the complete
@@ -1075,8 +1137,7 @@ impl<const D: usize> Matrix<D> {
     /// even after the D=4 tree's products, FMAs, and binary64 rounding steps.
     /// Overflow remains possible and is classified after evaluation. Inputs
     /// below this conservative threshold use per-operation tracking instead.
-    #[cfg(feature = "exact")]
-    const fn det_filter_inputs_have_wide_exponent_margin(&self) -> bool {
+    const fn det_bound_inputs_have_wide_exponent_margin(&self) -> bool {
         const MIN_MAGNITUDE_BITS: u64 = 1007_u64 << 52; // 2^-16
         const MAGNITUDE_MASK: u64 = !(1_u64 << 63);
 
@@ -1100,19 +1161,25 @@ impl<const D: usize> Matrix<D> {
     }
 
     /// Classify a completed determinant tree and construct its matching bound.
-    #[cfg(feature = "exact")]
-    const fn det_filter_from_arithmetic<const TRACK_UNDERFLOW: bool>(
+    const fn det_direct_with_errbound_from_arithmetic<const TRACK_UNDERFLOW: bool>(
         &self,
         det: FilterArithmetic<TRACK_UNDERFLOW>,
-    ) -> Option<(f64, f64)> {
-        if !det.value.is_finite() {
-            return None;
-        }
-
-        let Ok(Some(bound)) = self.det_errbound_from_arithmetic(det) else {
-            return None;
+    ) -> Result<Option<DeterminantWithErrorBound>, LaError> {
+        let bound = match self.det_errbound_from_arithmetic(det) {
+            Ok(Some(bound)) => bound,
+            Ok(None) => return Ok(None),
+            Err(error) => return Err(error),
         };
-        Some((det.value, bound))
+        if !det.value.is_finite() {
+            cold_path();
+            return Err(LaError::non_finite_computation_scalar(
+                ArithmeticOperation::Determinant,
+            ));
+        }
+        Ok(Some(DeterminantWithErrorBound {
+            determinant: det.value,
+            absolute_error_bound: bound,
+        }))
     }
 
     /// Compute a bound after the matching determinant tree has been evaluated.
@@ -1378,11 +1445,9 @@ mod det_errbound_doctests {
     /// fn adaptive_det_sign<const D: usize>(
     ///     matrix: &Matrix<D>,
     /// ) -> DeterminantSign {
-    ///     if let (Ok(Some(bound)), Ok(Some(det))) =
-    ///         (matrix.det_errbound(), matrix.det_direct())
-    ///     {
-    ///         if det.abs() > bound {
-    ///             return if det > 0.0 {
+    ///     if let Ok(Some(estimate)) = matrix.det_direct_with_errbound() {
+    ///         if estimate.determinant().abs() > estimate.absolute_error_bound() {
+    ///             return if estimate.determinant() > 0.0 {
     ///                 DeterminantSign::Positive
     ///             } else {
     ///                 DeterminantSign::Negative
@@ -2012,26 +2077,65 @@ mod tests {
         assert_eq!(Matrix::<5>::identity().det_errbound(), Ok(None));
     }
 
-    #[cfg(feature = "exact")]
     #[test]
-    fn det_filter_wide_exponent_fast_path_matches_tracked_arithmetic() {
+    fn combined_det_bound_wide_exponent_fast_path_matches_tracked_arithmetic() {
         let threshold = f64::from_bits(1007_u64 << 52); // 2^-16
         let at_threshold = Matrix::<2>::try_from_rows([[threshold, 0.0], [0.0, 2.0]]).unwrap();
-        assert!(at_threshold.det_filter_inputs_have_wide_exponent_margin());
+        assert!(at_threshold.det_bound_inputs_have_wide_exponent_margin());
 
         let tracked = at_threshold
-            .det_filter_from_arithmetic(
+            .det_direct_with_errbound_from_arithmetic(
                 at_threshold
                     .det_direct_arithmetic::<true>()
                     .expect("D=2 has direct arithmetic"),
             )
             .unwrap();
-        assert_eq!(at_threshold.det_filter().unwrap(), tracked);
+        assert_eq!(at_threshold.det_direct_with_errbound().unwrap(), tracked);
 
         let just_below = f64::from_bits(threshold.to_bits() - 1);
         let below_threshold = Matrix::<2>::try_from_rows([[just_below, 0.0], [0.0, 2.0]]).unwrap();
-        assert!(!below_threshold.det_filter_inputs_have_wide_exponent_margin());
-        assert!(!Matrix::<5>::identity().det_filter_inputs_have_wide_exponent_margin());
+        assert!(!below_threshold.det_bound_inputs_have_wide_exponent_margin());
+        assert!(!Matrix::<5>::identity().det_bound_inputs_have_wide_exponent_margin());
+    }
+
+    #[test]
+    fn det_direct_with_errbound_covers_zero_and_one_dimensions() {
+        let empty = Matrix::<0>::zero()
+            .det_direct_with_errbound()
+            .unwrap()
+            .unwrap();
+        assert_abs_diff_eq!(empty.determinant(), 1.0, epsilon = 0.0);
+        assert_abs_diff_eq!(empty.absolute_error_bound(), 0.0, epsilon = 0.0);
+
+        let scalar = Matrix::<1>::try_from_rows([[-7.0]])
+            .unwrap()
+            .det_direct_with_errbound()
+            .unwrap()
+            .unwrap();
+        assert_abs_diff_eq!(scalar.determinant(), -7.0, epsilon = 0.0);
+        assert_abs_diff_eq!(scalar.absolute_error_bound(), 0.0, epsilon = 0.0);
+    }
+
+    #[test]
+    fn det_direct_with_errbound_pairs_the_closed_form_values() {
+        let matrix = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]]).unwrap();
+        let estimate = matrix.det_direct_with_errbound().unwrap().unwrap();
+
+        assert_abs_diff_eq!(
+            estimate.determinant(),
+            matrix.det_direct().unwrap().unwrap(),
+            epsilon = 0.0
+        );
+        assert_abs_diff_eq!(
+            estimate.absolute_error_bound(),
+            ERR_COEFF_2 * (4.0_f64 + 6.0_f64),
+            epsilon = 0.0
+        );
+    }
+
+    #[test]
+    fn det_direct_with_errbound_d5_returns_none() {
+        assert_eq!(Matrix::<5>::identity().det_direct_with_errbound(), Ok(None));
     }
 
     #[test]

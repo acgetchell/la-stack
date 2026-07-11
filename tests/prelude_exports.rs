@@ -16,6 +16,11 @@ fn common_prelude_supports_downstream_composition() -> Result<(), LaError> {
     let matrix = Matrix::<2>::identity();
     let vector = Vector::<2>::try_new([1.0, 2.0])?;
     let tolerance = Tolerance::try_new(0.0)?;
+    let estimate: Option<DeterminantWithErrorBound> = matrix.det_direct_with_errbound()?;
+    if let Some(estimate) = estimate {
+        assert_abs_diff_eq!(estimate.determinant(), 1.0, epsilon = 0.0);
+        assert!(estimate.absolute_error_bound() >= 0.0);
+    }
 
     let lu: Lu<2> = matrix.lu(tolerance)?;
     let ldlt: Ldlt<2> = matrix.ldlt(tolerance)?;

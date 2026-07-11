@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -12,6 +13,8 @@ import bench_compare
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+_OVERFLOWING_TIMING = 10**400
 
 
 def _write_estimates(
@@ -114,6 +117,27 @@ def _schema2_provenance_data() -> dict[str, object]:
             "harness": "shared-current",
         },
     }
+
+
+def _read_harness_provenance(  # noqa: PLR0913
+    criterion_dir: Path,
+    *,
+    baseline: str = "v0.4.3",
+    suite: bench_compare.BenchmarkSuite = "all",
+    scope: bench_compare.ComparisonScope = "release-signal",
+    stat: bench_compare.Statistic = "median",
+    sample: str = "new",
+) -> bench_compare.HarnessProvenance | None:
+    return bench_compare._read_harness_provenance(
+        criterion_dir,
+        expected_baseline=baseline,
+        expected=bench_compare.CriterionSelection(
+            suite=suite,
+            scope=scope,
+            statistic=stat,
+            sample=sample,
+        ),
+    )
 
 
 def _build_criterion_tree(criterion_dir: Path, stat: str = "median") -> None:
@@ -290,6 +314,16 @@ def test_read_estimate_non_numeric_ci_bound_names_field(tmp_path: Path) -> None:
         bench_compare._read_estimate(est, "median")
 
 
+def test_read_estimate_rejects_numeric_overflow(tmp_path: Path) -> None:
+    est = tmp_path / "estimates.json"
+    est.write_text(json.dumps({"median": {"point_estimate": _OVERFLOWING_TIMING}}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"field 'point_estimate'.*not numeric") as exc_info:
+        bench_compare._read_estimate(est, "median")
+
+    assert isinstance(exc_info.value.__cause__, OverflowError)
+
+
 def test_read_estimate_rejects_partial_confidence_interval(tmp_path: Path) -> None:
     est = tmp_path / "estimates.json"
     est.write_text(
@@ -316,13 +350,18 @@ def test_read_estimate_rejects_reversed_confidence_interval(tmp_path: Path) -> N
         bench_compare._read_estimate(est, "median")
 
 
-@pytest.mark.parametrize("point", [float("nan"), float("inf"), -1.0])
+@pytest.mark.parametrize("point", [float("nan"), float("inf"), -1.0, 0.0])
 def test_read_estimate_rejects_invalid_timing(tmp_path: Path, point: float) -> None:
     est = tmp_path / "estimates.json"
     est.write_text(json.dumps({"median": {"point_estimate": point}}), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="must be finite and non-negative"):
+    with pytest.raises(ValueError, match="must be finite and positive"):
         bench_compare._read_estimate(est, "median")
+
+
+def test_criterion_estimate_rejects_partial_interval_even_when_constructed_directly() -> None:
+    with pytest.raises(ValueError, match="both bounds or neither"):
+        bench_compare.CriterionEstimate(point_ns=1.0, ci_lo_ns=0.9, ci_hi_ns=None)
 
 
 # ---------------------------------------------------------------------------
@@ -390,21 +429,6 @@ def test_collect_comparisons(tmp_path: Path) -> None:
         ("solve_exact_f64_result", "solve_exact_f64"),
         ("solve_exact_rounded_f64", "solve_exact_f64"),
     }
-
-
-def test_collect_comparisons_zero_current(tmp_path: Path) -> None:
-    """When the current estimate is zero, speedup should be infinity."""
-    group = tmp_path / "exact_d2"
-    # Current (new) has a zero point estimate.
-    _write_estimates(group / "det" / "new" / "estimates.json", "median", 0.0)
-    # Baseline has a normal value.
-    _write_estimates(group / "det" / "v0.3.0" / "estimates.json", "median", 5.0)
-
-    comparisons = bench_compare._collect_comparisons(tmp_path, "v0.3.0", "median").comparisons
-    assert len(comparisons) == 1
-    c = comparisons[0]
-    assert c.speedup == float("inf")
-    assert c.pct_change == pytest.approx(-100.0)
 
 
 def test_collect_comparisons_missing_baseline(tmp_path: Path) -> None:
@@ -702,7 +726,7 @@ def test_coverage_table_makes_missing_samples_explicit(tmp_path: Path) -> None:
 def test_read_harness_provenance_validates_shared_harness_metadata(tmp_path: Path) -> None:
     _write_harness_provenance(tmp_path)
 
-    provenance = bench_compare._read_harness_provenance(tmp_path, expected_baseline="v0.4.3")
+    provenance = _read_harness_provenance(tmp_path)
 
     assert provenance == bench_compare.HarnessProvenance(
         schema=1,
@@ -713,7 +737,7 @@ def test_read_harness_provenance_validates_shared_harness_metadata(tmp_path: Pat
 
 
 def test_read_harness_provenance_is_optional(tmp_path: Path) -> None:
-    assert bench_compare._read_harness_provenance(tmp_path, expected_baseline="v0.4.3") is None
+    assert _read_harness_provenance(tmp_path) is None
 
 
 def test_read_schema2_provenance_records_versions_dirty_source_and_both_gates(tmp_path: Path) -> None:
@@ -723,12 +747,12 @@ def test_read_schema2_provenance_records_versions_dirty_source_and_both_gates(tm
         encoding="utf-8",
     )
 
-    provenance = bench_compare._read_harness_provenance(tmp_path, expected_baseline="v0.4.3")
+    provenance = _read_harness_provenance(tmp_path)
 
     assert provenance is not None
     assert provenance.schema == 2
     assert provenance.criterion is not None
-    assert provenance.criterion["criterion_version"] == "0.7.0"
+    assert provenance.criterion.criterion_version == "0.7.0"
     markdown = bench_compare._provenance_markdown(provenance)
     rendered = "\n".join(markdown)
     assert "Criterion dependency version: `0.7.0`" in rendered
@@ -753,7 +777,7 @@ def test_historical_asset_provenance_uses_mode_appropriate_gate_wording(tmp_path
     }
     (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
 
-    provenance = bench_compare._read_harness_provenance(tmp_path, expected_baseline="v0.4.3")
+    provenance = _read_harness_provenance(tmp_path)
 
     assert provenance is not None
     rendered = "\n".join(bench_compare._provenance_markdown(provenance))
@@ -772,7 +796,31 @@ def test_read_schema2_provenance_requires_criterion_version(tmp_path: Path) -> N
     (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(ValueError, match="criterion_version"):
-        bench_compare._read_harness_provenance(tmp_path, expected_baseline="v0.4.3")
+        _read_harness_provenance(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("suite", "exact"),
+        ("scope", "all-benches"),
+        ("statistic", "mean"),
+        ("sample", "v0.4.3"),
+    ],
+)
+def test_read_schema2_provenance_binds_criterion_settings_to_request(
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    data = _schema2_provenance_data()
+    criterion = data["criterion"]
+    assert isinstance(criterion, dict)
+    cast("dict[str, object]", criterion)[field] = value
+    (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=rf"criterion\.{field}.*does not match requested value"):
+        _read_harness_provenance(tmp_path)
 
 
 def test_read_schema2_provenance_rejects_v043_adapter_for_other_baseline(tmp_path: Path) -> None:
@@ -781,14 +829,14 @@ def test_read_schema2_provenance_rejects_v043_adapter_for_other_baseline(tmp_pat
     (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(ValueError, match=r"valid only for baseline 'v0\.4\.3'"):
-        bench_compare._read_harness_provenance(tmp_path, expected_baseline="v0.4.4")
+        _read_harness_provenance(tmp_path, baseline="v0.4.4")
 
 
 def test_read_harness_provenance_rejects_different_requested_baseline(tmp_path: Path) -> None:
     _write_harness_provenance(tmp_path, baseline="v0.4.3")
 
     with pytest.raises(ValueError, match="does not match requested Criterion baseline 'last'"):
-        bench_compare._read_harness_provenance(tmp_path, expected_baseline="last")
+        _read_harness_provenance(tmp_path, baseline="last")
 
 
 @pytest.mark.parametrize(
@@ -817,7 +865,7 @@ def test_read_harness_provenance_rejects_malformed_fields(
     (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(ValueError, match=message):
-        bench_compare._read_harness_provenance(tmp_path, expected_baseline="v0.4.3")
+        _read_harness_provenance(tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -890,6 +938,41 @@ def test_main_comparison_refuses_incomplete_coverage_before_writing(tmp_path: Pa
     assert "## Incomplete Comparison Coverage" in error
 
 
+def test_main_rejects_invalid_timing_without_writing_or_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    criterion_dir = tmp_path / "criterion"
+    group = criterion_dir / "exact_d2"
+    _write_estimates(group / "det" / "new" / "estimates.json", "median", 0.0)
+    _write_estimates(group / "det" / "last" / "estimates.json", "median", 10.0)
+    output = tmp_path / "report.md"
+
+    rc = bench_compare.main(["last", "--suite", "exact", "--criterion-dir", str(criterion_dir), "--output", str(output)])
+
+    assert rc == 2
+    assert "Invalid Criterion estimate data" in capsys.readouterr().err
+    assert not output.exists()
+
+
+def test_main_rejects_overflowing_timing_without_writing_or_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    criterion_dir = tmp_path / "criterion"
+    current = criterion_dir / "exact_d2" / "det" / "new" / "estimates.json"
+    current.parent.mkdir(parents=True)
+    current.write_text(json.dumps({"median": {"point_estimate": _OVERFLOWING_TIMING}}), encoding="utf-8")
+    _write_estimates(criterion_dir / "exact_d2" / "det" / "last" / "estimates.json", "median", 10.0)
+    output = tmp_path / "report.md"
+
+    rc = bench_compare.main(["last", "--suite", "exact", "--criterion-dir", str(criterion_dir), "--output", str(output)])
+
+    assert rc == 2
+    assert "Invalid Criterion estimate data" in capsys.readouterr().err
+    assert not output.exists()
+
+
 def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(tmp_path: Path) -> None:
     criterion_dir = tmp_path / "criterion"
     unavailable = bench_compare._V0_4_3_UNAVAILABLE_BASELINE_ROWS
@@ -920,7 +1003,8 @@ def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(tmp_pat
     assert "no speedup is claimed" in rendered
 
 
-def test_generate_markdown_labels_absent_provenance_unavailable(tmp_path: Path) -> None:
+def test_generate_markdown_labels_absent_provenance_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bench_compare, "_get_git_source_date", lambda _root: "2026-06-01 12:34:56 UTC")
     report = bench_compare._generate_markdown(
         tmp_path,
         "tables",
@@ -935,6 +1019,18 @@ def test_generate_markdown_labels_absent_provenance_unavailable(tmp_path: Path) 
     assert "**Reproducibility provenance**: unavailable" in report
     assert "CPU, OS, rustc, commit, dependency lock" in report
     assert "performance-improvement claim" in report
+    assert "**Source revision timestamp**: 2026-06-01 12:34:56 UTC (deterministic report metadata; not the benchmark measurement time)" in report
+    assert "**Benchmark measurement timestamp**: not recorded by Criterion" in report
+
+
+def test_git_source_date_is_normalized_to_unambiguous_utc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        bench_compare,
+        "run_git_command",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout="2026-06-01T05:34:56-07:00\n"),
+    )
+
+    assert bench_compare._get_git_source_date(tmp_path) == "2026-06-01 12:34:56 UTC"
 
 
 def test_main_rejects_malformed_harness_provenance(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

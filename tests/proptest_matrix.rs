@@ -176,7 +176,45 @@ macro_rules! gen_matrix_proptests {
 }
 
 // Mirror delaunay-style multi-dimension tests.
+gen_matrix_proptests!(1);
 gen_matrix_proptests!(2);
 gen_matrix_proptests!(3);
 gen_matrix_proptests!(4);
 gen_matrix_proptests!(5);
+
+#[test]
+fn zero_dimension_matrix_obeys_empty_product_and_bounds_contracts() {
+    let mut matrix = Matrix::<0>::try_from_rows([]).unwrap();
+
+    assert!(matrix.as_rows().is_empty());
+    assert_eq!(matrix.get(0, 0), None);
+    assert!(matches!(
+        matrix.try_get(0, 0),
+        Err(LaError::IndexOutOfBounds {
+            row: 0,
+            col: 0,
+            dim: 0,
+            ..
+        })
+    ));
+    assert!(matches!(
+        matrix.set(0, 0, 1.0),
+        Err(LaError::IndexOutOfBounds {
+            row: 0,
+            col: 0,
+            dim: 0,
+            ..
+        })
+    ));
+    assert_eq!(matrix.inf_norm(), Ok(0.0));
+    assert_eq!(matrix.det(), Ok(1.0));
+    assert!(
+        matrix
+            .lu(DEFAULT_SINGULAR_TOL)
+            .unwrap()
+            .solve(Vector::<0>::zero())
+            .unwrap()
+            .into_array()
+            .is_empty()
+    );
+}

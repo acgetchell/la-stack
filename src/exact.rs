@@ -39,9 +39,12 @@
 //! `A x = b` with a hybrid algorithm that shares the determinant path's exact
 //! integer scaling and then applies Bareiss elimination to the augmented
 //! system. Matrix and RHS entries are decomposed via
-//! `decompose_proven_finite_f64` into `mantissa × 2^exponent`, scaled to a shared
-//! base `2^e_min`, and assembled into a `BigInt` augmented system
-//! `(A | b)`.  Forward elimination runs entirely in `BigInt` with
+//! `decompose_proven_finite_f64` into `mantissa × 2^exponent`. Each side is
+//! independently scaled to its own minimum exponent before assembly into a
+//! `BigInt` augmented system `(A | b)`; the resulting solution is adjusted by
+//! the exact power-of-two ratio between those scales. This avoids inflating one
+//! side's integers merely because the other side has much smaller entries.
+//! Forward elimination runs entirely in `BigInt` with
 //! fraction-free Bareiss updates — no `BigRational`, no GCD
 //! normalisation in the `O(D³)` phase.  Once the system is upper
 //! triangular, back-substitution is performed in `BigRational`, where
@@ -495,6 +498,161 @@ fn shifted_magnitude_to_u64(value: &BigInt, shift: u64) -> Option<u64> {
     }
 }
 
+/// Return whether a bit is set in the magnitude of `value`.
+fn magnitude_bit_is_set(value: &BigInt, bit: u64) -> bool {
+    let word_bits = u64::from(u64::BITS);
+    let Ok(word_index) = usize::try_from(bit / word_bits) else {
+        return false;
+    };
+    let bit_index = u32::try_from(bit % word_bits).unwrap_or(0);
+    value
+        .iter_u64_digits()
+        .nth(word_index)
+        .is_some_and(|word| word & (1_u64 << bit_index) != 0)
+}
+
+/// Return whether any magnitude bit below `exclusive_end` is set.
+fn magnitude_has_lower_bits(value: &BigInt, exclusive_end: u64) -> bool {
+    let word_bits = u64::from(u64::BITS);
+    let Ok(full_words) = usize::try_from(exclusive_end / word_bits) else {
+        return value.sign() != Sign::NoSign;
+    };
+    let partial_bits = u32::try_from(exclusive_end % word_bits).unwrap_or(0);
+    let mut digits = value.iter_u64_digits();
+
+    for _ in 0..full_words {
+        if digits.next().unwrap_or(0) != 0 {
+            return true;
+        }
+    }
+
+    if partial_bits == 0 {
+        false
+    } else {
+        let mask = (1_u64 << partial_bits) - 1;
+        digits.next().is_some_and(|word| word & mask != 0)
+    }
+}
+
+/// Right-shift a magnitude and round the retained integer to nearest-even.
+fn rounded_shifted_magnitude_to_u64(value: &BigInt, shift: u64) -> Option<u64> {
+    if shift > value.bits() {
+        return Some(0);
+    }
+    let retained = shifted_magnitude_to_u64(value, shift).unwrap_or(0);
+    if shift == 0 {
+        return Some(retained);
+    }
+
+    let guard_bit = shift - 1;
+    let increment = magnitude_bit_is_set(value, guard_bit)
+        && (magnitude_has_lower_bits(value, guard_bit) || retained & 1 != 0);
+    retained.checked_add(u64::from(increment))
+}
+
+/// Round a `BigInt × 2^exp` pair directly to finite binary64.
+///
+/// The implementation reads only the magnitude bits needed for the binary64
+/// significand and rounding decision. It therefore avoids constructing a
+/// potentially enormous [`BigRational`] denominator for very negative
+/// exponents.
+fn big_int_exp_ref_to_rounded_f64(
+    value: &BigInt,
+    exp: i32,
+    index: Option<usize>,
+) -> Result<f64, LaError> {
+    if value.sign() == Sign::NoSign {
+        return Ok(0.0);
+    }
+
+    let sign = if value.sign() == Sign::Minus {
+        1_u64 << 63
+    } else {
+        0
+    };
+    let Ok(bit_len) = i64::try_from(value.bits()) else {
+        cold_path();
+        return Err(LaError::unrepresentable(
+            index,
+            UnrepresentableReason::NotFinite,
+        ));
+    };
+    let Some(mut top_bit_exp) = i64::from(exp).checked_add(bit_len - 1) else {
+        cold_path();
+        return Err(LaError::unrepresentable(
+            index,
+            UnrepresentableReason::NotFinite,
+        ));
+    };
+    if top_bit_exp > F64_MAX_BINARY_EXPONENT {
+        cold_path();
+        return Err(LaError::unrepresentable(
+            index,
+            UnrepresentableReason::NotFinite,
+        ));
+    }
+
+    if top_bit_exp >= F64_MIN_NORMAL_EXPONENT {
+        let mut significand = if bit_len <= F64_SIGNIFICAND_BITS {
+            let Some(magnitude) = shifted_magnitude_to_u64(value, 0) else {
+                cold_path();
+                unreachable!("nonzero integer must expose magnitude digits");
+            };
+            let shift = u32::try_from(F64_SIGNIFICAND_BITS - bit_len)
+                .unwrap_or_else(|_| unreachable!("normal significand shift must fit u32"));
+            magnitude
+                .checked_shl(shift)
+                .unwrap_or_else(|| unreachable!("normal significand must fit u64"))
+        } else {
+            let shift = u64::try_from(bit_len - F64_SIGNIFICAND_BITS)
+                .unwrap_or_else(|_| unreachable!("positive significand shift must fit u64"));
+            rounded_shifted_magnitude_to_u64(value, shift)
+                .unwrap_or_else(|| unreachable!("rounded binary64 significand must fit u64"))
+        };
+
+        if significand == 1_u64 << F64_SIGNIFICAND_BITS {
+            significand >>= 1;
+            top_bit_exp += 1;
+        }
+        if top_bit_exp > F64_MAX_BINARY_EXPONENT {
+            cold_path();
+            return Err(LaError::unrepresentable(
+                index,
+                UnrepresentableReason::NotFinite,
+            ));
+        }
+
+        let biased_exp = u64::try_from(top_bit_exp + F64_EXPONENT_BIAS)
+            .unwrap_or_else(|_| unreachable!("normal exponent must be positive"));
+        return Ok(f64::from_bits(
+            sign | (biased_exp << F64_FRACTION_BITS) | (significand & F64_FRACTION_MASK),
+        ));
+    }
+
+    let subnormal_shift = i64::from(exp) - F64_MIN_BINARY_EXPONENT;
+    let significand = if subnormal_shift >= 0 {
+        let Some(magnitude) = shifted_magnitude_to_u64(value, 0) else {
+            cold_path();
+            unreachable!("nonzero integer must expose magnitude digits");
+        };
+        let shift = u32::try_from(subnormal_shift)
+            .unwrap_or_else(|_| unreachable!("subnormal left shift must fit u32"));
+        magnitude
+            .checked_shl(shift)
+            .unwrap_or_else(|| unreachable!("subnormal significand must fit u64"))
+    } else {
+        let shift = u64::try_from(-subnormal_shift)
+            .unwrap_or_else(|_| unreachable!("subnormal right shift must fit u64"));
+        rounded_shifted_magnitude_to_u64(value, shift)
+            .unwrap_or_else(|| unreachable!("rounded subnormal significand must fit u64"))
+    };
+
+    if significand == 1_u64 << F64_FRACTION_BITS {
+        return Ok(f64::from_bits(sign | (1_u64 << F64_FRACTION_BITS)));
+    }
+    Ok(f64::from_bits(sign | significand))
+}
+
 /// Borrowed core for exact integer-and-exponent conversion.
 ///
 /// The normalized significand is read directly from the [`BigInt`] digits, so
@@ -609,15 +767,16 @@ fn big_int_exp_to_finite_f64(
     index: Option<usize>,
 ) -> Result<f64, LaError> {
     big_int_exp_ref_to_finite_f64(value, exp, index, || {
-        let exact = big_int_exp_to_big_rational(value.clone(), exp);
-        rounded_rational_unrepresentable_reason(&exact)
+        match big_int_exp_ref_to_rounded_f64(value, exp, index) {
+            Ok(_) => UnrepresentableReason::RequiresRounding,
+            Err(_) => UnrepresentableReason::NotFinite,
+        }
     })
 }
 
 /// Convert a `BigInt × 2^exp` determinant pair to a rounded finite `f64`.
-fn big_int_exp_to_rounded_f64(value: BigInt, exp: i32) -> Result<f64, LaError> {
-    let exact = big_int_exp_to_big_rational(value, exp);
-    exact_rational_to_rounded_f64(&exact, None)
+fn big_int_exp_to_rounded_f64(value: &BigInt, exp: i32) -> Result<f64, LaError> {
+    big_int_exp_ref_to_rounded_f64(value, exp, None)
 }
 
 // -----------------------------------------------------------------------
@@ -628,8 +787,9 @@ fn big_int_exp_to_rounded_f64(value: BigInt, exp: i32) -> Result<f64, LaError> {
 // systems) parse every f64 entry into a proof-bearing component, track the
 // minimum exponent across non-zero entries, and scale each entry by
 // `2^(exp − e_min)`. Determinants then use direct expansions for D≤4 and
-// fraction-free Bareiss elimination for D≥5; solves use Bareiss elimination on
-// the augmented system before rational back-substitution.
+// fraction-free Bareiss elimination for D≥5; solves scale the matrix and RHS
+// independently, use Bareiss elimination on the augmented system, and restore
+// their exact power-of-two scale ratio after rational back-substitution.
 
 /// Decomposed finite f64 in the form `(-1)^is_negative · mantissa · 2^exponent`.
 ///
@@ -712,7 +872,7 @@ mod decomposition {
         }
     }
 
-    /// A shared scaling exponent proven no greater than either input minimum.
+    /// A scaling exponent derived from a component collection's minimum.
     ///
     /// The private field prevents raw construction outside this proof-owning
     /// module.
@@ -734,28 +894,12 @@ mod decomposition {
             Self { value }
         }
 
-        /// Select a common scale for two decomposed collections.
-        pub(super) const fn shared<T, U>(left: &Decomposed<T>, right: &Decomposed<U>) -> Self {
-            let exponent = match (left.min_exponent(), right.min_exponent()) {
-                (Some(left), Some(right)) => {
-                    if left < right {
-                        left
-                    } else {
-                        right
-                    }
-                }
-                (Some(exponent), None) | (None, Some(exponent)) => exponent,
-                (None, None) => 0,
-            };
-            Self { value: exponent }
-        }
-
-        /// Return the proven common exponent.
+        /// Return the proven collection exponent.
         pub(super) const fn get(self) -> i32 {
             self.value
         }
 
-        /// Compute a non-negative shift from this proven common exponent.
+        /// Compute a non-negative shift from this proven collection exponent.
         ///
         /// # Panics
         /// Panics only if a private decomposition invariant is broken and an entry
@@ -765,7 +909,7 @@ mod decomposition {
                 unreachable!("finite f64 exponent difference cannot overflow");
             };
             let Ok(shift) = u32::try_from(shift) else {
-                unreachable!("common exponent cannot exceed a component exponent");
+                unreachable!("scale exponent cannot exceed a component exponent");
             };
             shift
         }
@@ -1113,9 +1257,10 @@ fn bareiss_solve_components<const D: usize>(
     matrix: &Decomposed<[[Component; D]; D]>,
     rhs: &Decomposed<[Component; D]>,
 ) -> Result<[BigRational; D], LaError> {
-    let scale = ScaleExponent::shared(matrix, rhs);
-    let mut a = build_big_int_matrix(matrix.components(), scale);
-    let mut rhs = build_big_int_vec(rhs.components(), scale);
+    let matrix_scale = ScaleExponent::for_decomposed(matrix);
+    let rhs_scale = ScaleExponent::for_decomposed(rhs);
+    let mut a = build_big_int_matrix(matrix.components(), matrix_scale);
+    let mut rhs = build_big_int_vec(rhs.components(), rhs_scale);
 
     match bareiss_forward_eliminate(&mut a, Some(&mut rhs)) {
         BareissResult::Upper { .. } => {}
@@ -1134,6 +1279,17 @@ fn bareiss_solve_components<const D: usize>(
         }
         let a_ii = BigRational::from_integer(take(&mut a[i][i]));
         x[i] = sum / &a_ii;
+    }
+
+    let solution_scale_exp = rhs_scale
+        .get()
+        .checked_sub(matrix_scale.get())
+        .unwrap_or_else(|| unreachable!("finite f64 scale difference cannot overflow i32"));
+    if solution_scale_exp != 0 {
+        let solution_scale = big_int_exp_to_big_rational(BigInt::from(1_u8), solution_scale_exp);
+        for component in &mut x {
+            *component *= &solution_scale;
+        }
     }
 
     Ok(x)
@@ -1173,7 +1329,7 @@ fn det_exact_f64_finite<const D: usize>(m: &Matrix<D>) -> Result<f64, LaError> {
 #[inline]
 fn det_exact_rounded_f64_finite<const D: usize>(m: &Matrix<D>) -> Result<f64, LaError> {
     let (det_int, total_exp) = exact_det_int_finite(m)?;
-    big_int_exp_to_rounded_f64(det_int, total_exp)
+    big_int_exp_to_rounded_f64(&det_int, total_exp)
 }
 
 /// Exact determinant sign for an already finite matrix.
@@ -1184,7 +1340,9 @@ fn det_exact_rounded_f64_finite<const D: usize>(m: &Matrix<D>) -> Result<f64, La
 ///
 #[inline]
 fn det_sign_exact_finite<const D: usize>(m: &Matrix<D>) -> DeterminantSign {
-    if let Some((det_f64, error_bound)) = m.det_filter() {
+    if let Ok(Some(estimate)) = m.det_direct_with_errbound() {
+        let det_f64 = estimate.determinant();
+        let error_bound = estimate.absolute_error_bound();
         if det_f64 > error_bound {
             return DeterminantSign::Positive;
         }
@@ -1340,8 +1498,11 @@ impl<const D: usize> Matrix<D> {
     /// # Algorithm
     ///
     /// Matrix and RHS entries are decomposed via IEEE 754 bit extraction and
-    /// scaled to a shared power-of-two base so the augmented system `(A | b)`
-    /// becomes integer-valued.  Forward elimination runs entirely in `BigInt`
+    /// independently scaled to their own power-of-two bases so both sides of
+    /// the augmented system `(A | b)` become integer-valued without needless
+    /// cross-side shifts. After solving that integer system, the exact
+    /// power-of-two ratio between the RHS and matrix scales is restored.
+    /// Forward elimination runs entirely in `BigInt`
     /// with fraction-free Bareiss updates — no `BigRational`, no GCD, no
     /// denominator tracking in the `O(D³)` phase.  Only the upper-triangular
     /// result is lifted into `BigRational` for back-substitution (the `O(D²)`
@@ -1515,8 +1676,8 @@ mod tests {
     /// Thin wrapper over [`decompose_f64`] that packs the mantissa/exponent
     /// pair into a fully-formed `BigRational` of the form `±m · 2^e`.  The
     /// production code paths (`exact_det_int_finite`, `bareiss_solve_finite`) instead
-    /// decompose every entry into a shared-scale `BigInt` matrix, which
-    /// avoids per-entry GCD work in the elimination loops — so this helper
+    /// decompose entries into scaled `BigInt` collections, which avoids
+    /// per-entry GCD work in the elimination loops — so this helper
     /// is not used by them and lives here to keep test assertions concise
     /// (e.g. `assert_eq!(x[0], f64_to_big_rational(3.0))`).
     ///
@@ -1968,6 +2129,41 @@ mod tests {
     }
 
     #[test]
+    fn direct_big_int_rounding_handles_extreme_negative_exponent_without_large_denominator() {
+        let positive = big_int_exp_ref_to_rounded_f64(&BigInt::from(1_u8), i32::MIN, None).unwrap();
+        let negative =
+            big_int_exp_ref_to_rounded_f64(&BigInt::from(-1_i8), i32::MIN, None).unwrap();
+
+        assert_eq!(positive.to_bits(), 0.0_f64.to_bits());
+        assert_eq!(negative.to_bits(), (-0.0_f64).to_bits());
+    }
+
+    proptest! {
+        #[test]
+        fn direct_big_int_rounding_matches_rational_oracle(
+            value in any::<i128>(),
+            exp in -1200_i32..=1200_i32,
+        ) {
+            let value = BigInt::from(value);
+            let direct = big_int_exp_ref_to_rounded_f64(&value, exp, None);
+            let exact = big_int_exp_to_big_rational(value, exp);
+            let oracle = exact_rational_to_rounded_f64(&exact, None);
+
+            match (direct, oracle) {
+                (Ok(actual), Ok(expected)) => {
+                    prop_assert_eq!(actual.to_bits(), expected.to_bits());
+                }
+                (Err(actual), Err(expected)) => {
+                    prop_assert_eq!(actual, expected);
+                }
+                (actual, expected) => {
+                    prop_assert_eq!(actual, expected);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn component_to_big_int_distinguishes_zero_from_nonzero_mantissa() {
         let baseline = Component::NonZero {
             mantissa: NonZeroU64::new(1).unwrap(),
@@ -2015,7 +2211,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_scale_is_no_greater_than_each_component_exponent() {
+    fn matrix_and_rhs_scales_are_derived_independently() {
         let tiny = f64::from_bits(1);
         let matrix = Matrix::<2>::try_from_rows([[f64::MAX, 0.0], [0.0, 1.0]]).unwrap();
         let rhs = Vector::<2>::try_new([tiny, 0.0]).unwrap();
@@ -2025,10 +2221,12 @@ mod tests {
         assert_eq!(matrix.min_exponent(), Some(0));
         assert_eq!(rhs.min_exponent(), Some(-1074));
 
-        let scale = ScaleExponent::shared(&matrix, &rhs);
-        assert_eq!(scale.get(), -1074);
-        assert_eq!(scale.shift_for(-1074), 0);
-        assert_eq!(scale.shift_for(0), 1074);
+        let matrix_scale = ScaleExponent::for_decomposed(&matrix);
+        let rhs_scale = ScaleExponent::for_decomposed(&rhs);
+        assert_eq!(matrix_scale.get(), 0);
+        assert_eq!(matrix_scale.shift_for(0), 0);
+        assert_eq!(rhs_scale.get(), -1074);
+        assert_eq!(rhs_scale.shift_for(-1074), 0);
     }
 
     proptest! {
@@ -2709,10 +2907,11 @@ mod tests {
     gen_solve_exact_large_finite_entries_tests!(5);
 
     /// Matrix and RHS entries span many orders of magnitude (from
-    /// `f64::MIN_POSITIVE` up through `1e100`).  This exercises the
-    /// shared `e_min` scaling: even the largest shift keeps every entry a
-    /// representable `BigInt`.  The D×D case alternates `huge`/`tiny`
-    /// along the diagonal with a matching RHS, giving `x = [1, …, 1]`.
+    /// `f64::MIN_POSITIVE` up through `1e100`). This exercises each
+    /// collection's independently derived minimum exponent: even the largest
+    /// within-collection shift remains a representable `BigInt`. The D×D case
+    /// alternates `huge`/`tiny` along the diagonal with a matching RHS, giving
+    /// `x = [1, …, 1]`.
     macro_rules! gen_solve_exact_mixed_magnitude_entries_tests {
         ($d:literal) => {
             paste! {
@@ -2743,6 +2942,32 @@ mod tests {
     gen_solve_exact_mixed_magnitude_entries_tests!(3);
     gen_solve_exact_mixed_magnitude_entries_tests!(4);
     gen_solve_exact_mixed_magnitude_entries_tests!(5);
+
+    #[test]
+    fn solve_exact_restores_independent_matrix_and_rhs_scales() {
+        let large = 2.0_f64.powi(500);
+        let tiny = 2.0_f64.powi(-1000);
+
+        let large_matrix = Matrix::<2>::try_from_rows([[large, 0.0], [0.0, large]]).unwrap();
+        let tiny_rhs = Vector::<2>::new([tiny, -2.0 * tiny]);
+        let small_solution = large_matrix.solve_exact(tiny_rhs).unwrap();
+        assert_eq!(
+            small_solution[0],
+            BigRational::new(BigInt::from(1_u8), BigInt::from(1_u8) << 1500_u32)
+        );
+        assert_eq!(
+            small_solution[1],
+            BigRational::new(BigInt::from(-1_i8), BigInt::from(1_u8) << 1499_u32)
+        );
+
+        let tiny_matrix = Matrix::<1>::try_from_rows([[tiny]]).unwrap();
+        let large_rhs = Vector::<1>::new([large]);
+        let large_solution = tiny_matrix.solve_exact(large_rhs).unwrap();
+        assert_eq!(
+            large_solution[0],
+            BigRational::from_integer(BigInt::from(1_u8) << 1500_u32)
+        );
+    }
 
     /// Subnormal RHS entries must survive the decomposition and
     /// back-substitution paths unchanged.  The D×D case uses the identity

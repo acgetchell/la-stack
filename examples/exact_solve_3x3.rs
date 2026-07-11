@@ -2,11 +2,12 @@
 
 //! Exact linear system solve for a near-singular 3×3 system.
 //!
-//! This example demonstrates `solve_exact()` and `solve_exact_f64()`. The exact
+//! This example demonstrates `solve_exact()` and [`ExactF64Conversion`]. The exact
 //! solve uses arbitrary-precision rational arithmetic to compute a provably
 //! correct solution — even when the matrix is so close to singular that the f64
-//! LU solve produces a wildly inaccurate result. The `solve_exact_f64()` helper
-//! only succeeds when every exact component is exactly representable as `f64`.
+//! LU solve produces a wildly inaccurate result. `try_to_f64()` only succeeds
+//! when every exact component is exactly representable as `f64`, while
+//! `to_rounded_f64()` explicitly opts into nearest-even rounding.
 //!
 //! Run with: `cargo run --features exact --example exact_solve_3x3`
 
@@ -63,15 +64,15 @@ fn main() -> Result<(), LaError> {
         Ok(x) => {
             let x = x.into_array();
             println!(
-                "solve_exact_f64():  x = [{:+.6e}, {:+.6e}, {:+.6e}]",
+                "exact try_to_f64(): x = [{:+.6e}, {:+.6e}, {:+.6e}]",
                 x[0], x[1], x[2]
             );
         }
         Err(err) if err.requires_rounding() => {
-            println!("solve_exact_f64():  {err}");
+            println!("exact try_to_f64(): {err}");
             let x = exact_x.to_rounded_f64()?.into_array();
             println!(
-                "rounded fallback:    x = [{:+.6e}, {:+.6e}, {:+.6e}]",
+                "exact to_rounded_f64(): x = [{:+.6e}, {:+.6e}, {:+.6e}]",
                 x[0], x[1], x[2]
             );
         }

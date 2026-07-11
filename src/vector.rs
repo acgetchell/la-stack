@@ -419,8 +419,19 @@ mod tests {
     }
 
     // Mirror delaunay-style multi-dimension tests.
+    gen_vector_tests!(1);
     gen_vector_tests!(2);
     gen_vector_tests!(3);
     gen_vector_tests!(4);
     gen_vector_tests!(5);
+
+    #[test]
+    fn zero_dimension_vector_has_zero_dot_and_norm() {
+        let vector = Vector::<0>::try_new([]).unwrap();
+
+        assert!(vector.as_array().is_empty());
+        assert!(vector.into_array().is_empty());
+        assert_eq!(vector.dot(&Vector::zero()), Ok(0.0));
+        assert_eq!(vector.norm2_sq(), Ok(0.0));
+    }
 }

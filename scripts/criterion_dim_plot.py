@@ -25,7 +25,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
 from typing import Final, Protocol, TypeGuard, cast
 
@@ -105,10 +105,55 @@ class Row:
             ("fa_lo", self.fa_lo),
             ("fa_hi", self.fa_hi),
         ):
-            _require_nonnegative_finite_time(value, field)
-        _require_confidence_interval(self.la_lo, self.la_time, self.la_hi, "la_stack row")
-        _require_confidence_interval(self.na_lo, self.na_time, self.na_hi, "nalgebra row")
-        _require_confidence_interval(self.fa_lo, self.fa_time, self.fa_hi, "faer row")
+            _require_positive_finite_time(value, field)
+        _require_confidence_interval(self.la_lo, self.la_hi, "la_stack row")
+        _require_confidence_interval(self.na_lo, self.na_hi, "nalgebra row")
+        _require_confidence_interval(self.fa_lo, self.fa_hi, "faer row")
+
+
+@dataclass(slots=True)
+class _CriterionSampleTransaction:
+    """Move stale samples aside and restore them atomically on timing failure."""
+
+    criterion_dir: Path
+    backup_root: Path
+    moved: list[Path] = dataclass_field(default_factory=list)
+
+    def stage(self) -> None:
+        """Move all existing vs_linalg `new` samples into the backup tree."""
+        for sample in _vs_linalg_new_samples(self.criterion_dir):
+            relative = sample.relative_to(self.criterion_dir)
+            backup = self.backup_root / relative
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            sample.replace(backup)
+            self.moved.append(relative)
+
+    def rollback(self, *, remove_fresh: bool) -> None:
+        """Restore moved samples, retaining backups when any step fails."""
+        errors: list[str] = []
+        if remove_fresh:
+            for sample in _vs_linalg_new_samples(self.criterion_dir):
+                try:
+                    shutil.rmtree(sample)
+                except OSError as exc:
+                    errors.append(f"could not remove fresh sample {sample}: {exc}")
+
+        for relative in reversed(self.moved):
+            source = self.backup_root / relative
+            destination = self.criterion_dir / relative
+            if not source.exists():
+                continue
+            if destination.exists():
+                errors.append(f"could not restore {destination}: destination already exists")
+                continue
+            try:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                source.replace(destination)
+            except OSError as exc:
+                errors.append(f"could not restore {destination}: {exc}")
+
+        if errors:
+            raise RuntimeError("; ".join(errors))
 
 
 class ReadmeMarkerError(ValueError):
@@ -121,6 +166,10 @@ class MarkerNotFoundError(ReadmeMarkerError):
 
 class MarkerOrderError(ReadmeMarkerError):
     """Raised when README markers are out of order."""
+
+
+class PublicationRollbackError(RuntimeError):
+    """Raised when artifact publication fails and rollback is incomplete."""
 
 
 class _ReadmeArgs(Protocol):
@@ -329,13 +378,17 @@ def _read_estimate(estimates_json: Path, stat: str) -> tuple[float, float, float
         raise KeyError(f"stat '{stat}' not found in {estimates_json}")
 
     point = _read_numeric_field(stat_obj, "point_estimate", estimates_json, stat)
-    ci = stat_obj.get("confidence_interval")
+    if "confidence_interval" not in stat_obj:
+        msg = f"field 'confidence_interval' for stat '{stat}' not found in {estimates_json}"
+        raise KeyError(msg)
+    ci = stat_obj["confidence_interval"]
     if not _is_parsed_object(ci):
-        return (point, point, point)
+        msg = f"field 'confidence_interval' for stat '{stat}' in {estimates_json} is not an object"
+        raise TypeError(msg)
 
-    lo = _read_numeric_field(ci, "lower_bound", estimates_json, stat, default=point)
-    hi = _read_numeric_field(ci, "upper_bound", estimates_json, stat, default=point)
-    _require_confidence_interval(lo, point, hi, f"{stat}.confidence_interval in {estimates_json}")
+    lo = _read_numeric_field(ci, "lower_bound", estimates_json, stat)
+    hi = _read_numeric_field(ci, "upper_bound", estimates_json, stat)
+    _require_confidence_interval(lo, hi, f"{stat}.confidence_interval in {estimates_json}")
     return (point, lo, hi)
 
 
@@ -353,12 +406,8 @@ def _read_numeric_field(
     field: str,
     estimates_json: Path,
     stat: str,
-    *,
-    default: float | None = None,
 ) -> float:
     if field not in obj:
-        if default is not None:
-            return default
         msg = f"field '{field}' for stat '{stat}' not found in {estimates_json}"
         raise KeyError(msg)
 
@@ -369,25 +418,22 @@ def _read_numeric_field(
 
     try:
         parsed = float(value)
-    except ValueError as err:
+    except (OverflowError, ValueError) as err:
         msg = f"field '{field}' for stat '{stat}' in {estimates_json} is not numeric: {value!r}"
         raise ValueError(msg) from err
-    return _require_nonnegative_finite_time(parsed, f"{stat}.{field} in {estimates_json}")
+    return _require_positive_finite_time(parsed, f"{stat}.{field} in {estimates_json}")
 
 
-def _require_nonnegative_finite_time(value: float, context: str) -> float:
-    if not math.isfinite(value) or value < 0.0:
-        msg = f"{context} must be finite and nonnegative: {value!r}"
+def _require_positive_finite_time(value: float, context: str) -> float:
+    if not math.isfinite(value) or value <= 0.0:
+        msg = f"{context} must be finite and positive: {value!r}"
         raise ValueError(msg)
     return value
 
 
-def _require_confidence_interval(lo: float, point: float, hi: float, context: str) -> None:
+def _require_confidence_interval(lo: float, hi: float, context: str) -> None:
     if lo > hi:
         msg = f"{context} lower bound must be <= upper bound: {lo!r} > {hi!r}"
-        raise ValueError(msg)
-    if not lo <= point <= hi:
-        msg = f"{context} point estimate must be inside confidence interval: {lo!r} <= {point!r} <= {hi!r}"
         raise ValueError(msg)
 
 
@@ -671,19 +717,39 @@ def _run_publication_benchmarks(root: Path) -> None:
     """Validate fixtures, then produce fresh README publication measurements."""
     _run_publication_command(root, _PUBLICATION_GATE)
     criterion_dir = root / "target" / "criterion"
-    with tempfile.TemporaryDirectory(prefix="la-stack-stale-criterion-") as tmp:
-        backup_root = Path(tmp)
-        moved = _stage_existing_new_samples(criterion_dir, backup_root)
+    criterion_dir.parent.mkdir(parents=True, exist_ok=True)
+    backup_root = Path(tempfile.mkdtemp(prefix="la-stack-stale-criterion-", dir=criterion_dir.parent))
+    transaction = _CriterionSampleTransaction(criterion_dir=criterion_dir, backup_root=backup_root)
+    preserve_backup = False
+    try:
+        try:
+            transaction.stage()
+        except OSError as primary:
+            try:
+                transaction.rollback(remove_fresh=False)
+            except RuntimeError as rollback:
+                preserve_backup = True
+                msg = f"could not stage Criterion samples and rollback failed: {rollback}; backups preserved at {backup_root}"
+                raise RuntimeError(msg) from primary
+            msg = f"could not stage existing Criterion samples: {primary}"
+            raise RuntimeError(msg) from primary
+
         try:
             _run_publication_command(root, _PUBLICATION_BENCHMARK)
-        except RuntimeError:
-            _remove_vs_linalg_new_samples(criterion_dir)
-            for relative in moved:
-                source = backup_root / relative
-                destination = criterion_dir / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                source.replace(destination)
+        except RuntimeError as primary:
+            try:
+                transaction.rollback(remove_fresh=True)
+            except RuntimeError as rollback:
+                preserve_backup = True
+                msg = f"{primary}\nCriterion sample rollback failed: {rollback}; backups preserved at {backup_root}"
+                raise RuntimeError(msg) from primary
             raise
+    finally:
+        if not preserve_backup:
+            try:
+                shutil.rmtree(backup_root)
+            except OSError as exc:
+                print(f"Warning: could not remove Criterion sample backup {backup_root}: {exc}", file=sys.stderr)
 
 
 def _run_publication_command(root: Path, command: tuple[str, ...]) -> None:
@@ -708,6 +774,9 @@ def _run_publication_command(root: Path, command: tuple[str, ...]) -> None:
         detail = f"\nstderr:\n{stderr}" if stderr else ""
         msg = f"publication command timed out after {exc.timeout} seconds: {' '.join(command)}{detail}"
         raise RuntimeError(msg) from exc
+    except OSError as exc:
+        msg = f"publication command could not start: {' '.join(command)}: {exc}"
+        raise RuntimeError(msg) from exc
 
 
 def _vs_linalg_new_samples(criterion_dir: Path) -> list[Path]:
@@ -726,29 +795,16 @@ def _vs_linalg_new_samples(criterion_dir: Path) -> list[Path]:
     )
 
 
-def _stage_existing_new_samples(criterion_dir: Path, backup_root: Path) -> list[Path]:
-    """Move stale `new` samples aside so only the fresh timing run can satisfy coverage."""
-    moved: list[Path] = []
-    for sample in _vs_linalg_new_samples(criterion_dir):
-        relative = sample.relative_to(criterion_dir)
-        backup = backup_root / relative
-        backup.parent.mkdir(parents=True, exist_ok=True)
-        sample.replace(backup)
-        moved.append(relative)
-    return moved
-
-
-def _remove_vs_linalg_new_samples(criterion_dir: Path) -> None:
-    """Remove partial current samples before restoring a failed publication run."""
-    for sample in _vs_linalg_new_samples(criterion_dir):
-        shutil.rmtree(sample)
-
-
 def _git_value(root: Path, args: list[str]) -> str:
     """Return deterministic Git provenance or an explicit unavailable label."""
     try:
         value = run_git_command(args, cwd=root).stdout.strip()
-    except ExecutableNotFoundError, subprocess.CalledProcessError:
+    except (
+        ExecutableNotFoundError,
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ):
         return "unavailable"
     return value or "unavailable"
 
@@ -760,7 +816,12 @@ def _git_status_metadata(root: Path) -> tuple[bool | None, str]:
             ["--no-pager", "status", "--porcelain=v1", "--untracked-files=all"],
             cwd=root,
         ).stdout
-    except ExecutableNotFoundError, subprocess.CalledProcessError:
+    except (
+        ExecutableNotFoundError,
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ):
         return (None, hashlib.sha256(b"unavailable").hexdigest())
     return (not status.strip(), hashlib.sha256(status.encode()).hexdigest())
 
@@ -835,7 +896,12 @@ def _rustc_version(root: Path) -> str:
             cwd=root,
             timeout=60,
         ).stdout.strip()
-    except ExecutableNotFoundError, subprocess.CalledProcessError:
+    except (
+        ExecutableNotFoundError,
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ):
         return "unavailable"
     return value or "unavailable"
 
@@ -974,14 +1040,43 @@ def _replace_staged_files(pairs: list[tuple[Path, Path]], backup_dir: Path) -> N
         for staged, destination in pairs:
             staged.replace(destination)
             replaced.append(destination)
-    except OSError:
+    except OSError as primary:
+        rollback_errors: list[str] = []
         for destination in reversed(replaced):
             backup = backups[destination]
-            if backup is None:
-                destination.unlink(missing_ok=True)
-            else:
-                backup.replace(destination)
+            try:
+                if backup is None:
+                    destination.unlink(missing_ok=True)
+                else:
+                    backup.replace(destination)
+            except OSError as rollback:
+                rollback_errors.append(f"could not restore {destination}: {rollback}")
+        if rollback_errors:
+            msg = f"artifact replacement failed ({primary}); rollback failed: {'; '.join(rollback_errors)}; backups preserved at {backup_dir}"
+            raise PublicationRollbackError(msg) from primary
         raise
+
+
+def _publish_staged_files(pairs: list[tuple[Path, Path]], root: Path) -> bool:
+    """Publish staged files together, preserving backups after rollback failure."""
+    backup_dir = Path(tempfile.mkdtemp(prefix=".criterion-dim-plot-backup-", dir=root))
+    preserve_backup = False
+    try:
+        _replace_staged_files(pairs, backup_dir)
+    except PublicationRollbackError as exc:
+        preserve_backup = True
+        print(f"could not publish benchmark artifacts atomically: {exc}", file=sys.stderr)
+        return False
+    except (OSError, ValueError) as exc:
+        print(f"could not publish benchmark artifacts atomically: {exc}", file=sys.stderr)
+        return False
+    finally:
+        if not preserve_backup:
+            try:
+                shutil.rmtree(backup_dir)
+            except OSError as exc:
+                print(f"Warning: could not remove artifact backup {backup_dir}: {exc}", file=sys.stderr)
+    return True
 
 
 def _stage_and_publish_outputs(  # noqa: PLR0913
@@ -1040,10 +1135,7 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
                 return 2
             pairs.append((staged_readme, readme_path))
 
-        try:
-            _replace_staged_files(pairs, stage_dir)
-        except (OSError, ValueError) as exc:
-            print(f"could not publish benchmark artifacts atomically: {exc}", file=sys.stderr)
+        if not _publish_staged_files(pairs, root):
             return 2
 
     if skipped:
@@ -1142,7 +1234,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
 
     out_svg, out_csv = _resolve_output_paths(root, args.metric, args.stat, args.out, args.csv)
 
-    rows, skipped = _collect_rows(criterion_dir, dims, metric, args.stat, args.sample)
+    try:
+        rows, skipped = _collect_rows(criterion_dir, dims, metric, args.stat, args.sample)
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        print(f"Invalid Criterion estimate data: {exc}", file=sys.stderr)
+        return 2
     if not rows:
         print(
             "No benchmark results found to plot for the selected metric/stat.\n"

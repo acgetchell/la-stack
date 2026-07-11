@@ -25,7 +25,7 @@ use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
 pub mod vs_linalg_common;
 
 use vs_linalg_common::{
-    faer_det_from_ldlt, faer_det_from_partial_piv_lu, la_stack_dot, la_stack_tolerance,
+    PreparedFaerLuDet, faer_det_from_ldlt, la_stack_dot, la_stack_tolerance,
     make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows, make_matrix_rows,
     make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
 };
@@ -117,7 +117,7 @@ where
             || &fa,
             |fa| {
                 let lu = black_box(fa).partial_piv_lu();
-                let det = faer_det_from_partial_piv_lu(&lu);
+                let det = PreparedFaerLuDet::new(&lu).det();
                 black_box(det);
             },
             BatchSize::SmallInput,
@@ -416,6 +416,7 @@ fn register_precomputed_lu_determinant_benchmarks<const D: usize>(
     let a_lu = require_ok(a.lu(DEFAULT_SINGULAR_TOL), "precomputed la_stack LU");
     let na_lu = na.lu();
     let fa_lu = fa.partial_piv_lu();
+    let fa_lu_det = PreparedFaerLuDet::new(&fa_lu);
 
     group.bench_function("la_stack_det_from_lu", |bencher| {
         bencher.iter(|| {
@@ -436,7 +437,7 @@ fn register_precomputed_lu_determinant_benchmarks<const D: usize>(
 
     group.bench_function("faer_det_from_lu", |bencher| {
         bencher.iter(|| {
-            let det = faer_det_from_partial_piv_lu(black_box(&fa_lu));
+            let det = black_box(&fa_lu_det).det();
             black_box(det);
         });
     });

@@ -12,7 +12,7 @@ use std::error::Error;
 use exact_bench::{
     ExactBenchConfigError, ExactInput, I16Range, SplitMix64, ValidatedExactInput, hilbert_input,
     large_entries_3x3_input, make_matrix_rows, make_random_input_corpus, make_vector_array,
-    near_singular_3x3_input, validate_exact_fixture,
+    near_singular_3x3_input, validate_exact_fixture, validate_f64_determinant_benchmarks,
 };
 use la_stack::{Matrix, Vector};
 use pastey::paste;
@@ -28,7 +28,8 @@ fn baseline_input<const D: usize>() -> ExactInput<D> {
 }
 
 fn validate_baseline_and_random_corpus<const D: usize>() {
-    let _ = validate_exact_fixture(baseline_input::<D>());
+    let baseline = validate_exact_fixture(baseline_input::<D>());
+    validate_f64_determinant_benchmarks(&baseline);
     for input in make_random_input_corpus::<D>() {
         let _ = validate_exact_fixture(input);
     }
@@ -145,6 +146,18 @@ fn validated_fixture_exposes_only_checked_inputs() {
 
     assert_eq!(validated.matrix(), &expected_matrix);
     assert_eq!(validated.rhs(), expected_rhs);
+}
+
+#[test]
+fn fixture_validation_covers_independently_scaled_exact_solve_inputs() {
+    let large = 2.0_f64.powi(500);
+    let tiny = 2.0_f64.powi(-1000);
+    let matrix = Matrix::<2>::try_from_rows([[large, 0.0], [0.0, large]])
+        .unwrap_or_else(|error| panic!("scaled fixture matrix must be finite: {error}"));
+    let rhs = Vector::<2>::try_new([tiny, -2.0 * tiny])
+        .unwrap_or_else(|error| panic!("scaled fixture RHS must be finite: {error}"));
+
+    let _ = validate_exact_fixture(ExactInput { matrix, rhs });
 }
 
 #[test]

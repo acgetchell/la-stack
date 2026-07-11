@@ -98,7 +98,7 @@ _ensure-git-cliff:
 _ensure-jq:
     #!/usr/bin/env bash
     set -euo pipefail
-    command -v jq >/dev/null || { echo "❌ 'jq' not found. See 'just setup' or install: brew install jq"; exit 1; }
+    command -v jq >/dev/null || { echo "❌ 'jq' not found. Install jq and re-run this command."; exit 1; }
 
 _ensure-rumdl:
     #!/usr/bin/env bash
@@ -201,8 +201,8 @@ bench:
 bench-compare baseline="last" suite="all" scope="release-signal": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    baseline="{{ baseline }}"
-    uv run --locked bench-compare "$baseline" --suite "{{ suite }}" --scope "{{ scope }}"
+    baseline={{ quote(baseline) }}
+    uv run --locked bench-compare "$baseline" --suite {{ quote(suite) }} --scope {{ quote(scope) }}
 
 # Compile benchmarks without running them, treating warnings as errors.
 # This catches bench/release-profile-only warnings that won't show up in normal debug-profile runs.
@@ -219,27 +219,27 @@ bench-latest: bench-vs-linalg-la-stack bench-exact
 
 # Run latest measurements and render the latest-vs-last performance report.
 bench-latest-vs-last baseline="last": bench-latest python-sync
-    uv run --locked bench-compare {{ baseline }}
+    uv run --locked bench-compare {{ quote(baseline) }}
 
 # Run only la-stack vs_linalg measurements and render a non-exact performance report.
 bench-vs-linalg-latest-vs baseline="last": bench-vs-linalg-la-stack python-sync
-    uv run --locked bench-compare {{ baseline }} --suite vs_linalg --scope release-signal
+    uv run --locked bench-compare {{ quote(baseline) }} --suite vs_linalg --scope release-signal
 
 # Save a Criterion baseline. Defaults to all release-signal benchmark suites.
 bench-save-baseline tag suite="all":
     #!/usr/bin/env bash
     set -euo pipefail
-    suite="{{ suite }}"
+    suite={{ quote(suite) }}
     case "$suite" in
         all)
-            cargo bench --locked --features bench --bench vs_linalg -- --save-baseline {{ tag }}
-            cargo bench --locked --features bench,exact --bench exact -- --save-baseline {{ tag }}
+            cargo bench --locked --features bench --bench vs_linalg -- --save-baseline {{ quote(tag) }}
+            cargo bench --locked --features bench,exact --bench exact -- --save-baseline {{ quote(tag) }}
             ;;
         exact)
-            cargo bench --locked --features bench,exact --bench exact -- --save-baseline {{ tag }}
+            cargo bench --locked --features bench,exact --bench exact -- --save-baseline {{ quote(tag) }}
             ;;
         vs_linalg)
-            cargo bench --locked --features bench --bench vs_linalg -- --save-baseline {{ tag }}
+            cargo bench --locked --features bench --bench vs_linalg -- --save-baseline {{ quote(tag) }}
             ;;
         *)
             echo "unknown benchmark suite: $suite" >&2
@@ -255,7 +255,7 @@ bench-save-last:
 bench-vs-linalg filter="":
     #!/usr/bin/env bash
     set -euo pipefail
-    filter="{{ filter }}"
+    filter={{ quote(filter) }}
     if [ -n "$filter" ]; then
         cargo bench --locked --features bench --bench vs_linalg -- "$filter"
     else
@@ -270,7 +270,7 @@ bench-vs-linalg-la-stack:
 bench-vs-linalg-quick filter="":
     #!/usr/bin/env bash
     set -euo pipefail
-    filter="{{ filter }}"
+    filter={{ quote(filter) }}
     if [ -n "$filter" ]; then
         cargo bench --locked --features bench --bench vs_linalg -- "$filter" --quick --noplot
     else
@@ -307,7 +307,7 @@ changelog: _ensure-git-cliff _ensure-rumdl python-sync
 changelog-unreleased version: _ensure-git-cliff _ensure-rumdl python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    GIT_CLIFF_OFFLINE=true git-cliff --tag {{ version }} -o CHANGELOG.md
+    GIT_CLIFF_OFFLINE=true git-cliff --tag {{ quote(version) }} -o CHANGELOG.md
     uv run --locked postprocess-changelog
     uv run --locked archive-changelog
     archive_files=()
@@ -404,12 +404,14 @@ examples:
         exe_suffix=".exe"
     fi
 
+    target_dir="${CARGO_TARGET_DIR:-target}"
+
     shopt -s nullglob
     for example_path in examples/*.rs; do
         [[ -f "${example_path}" ]] || continue
         example="${example_path##*/}"
         example="${example%.rs}"
-        "target/debug/examples/${example}${exe_suffix}"
+        "${target_dir}/debug/examples/${example}${exe_suffix}"
     done
 
 # Fix (mutating): apply formatters/auto-fixes
@@ -557,14 +559,14 @@ markdown-lint: markdown-check
 
 # Backward-compatible alias for the GitHub Actions release-asset comparison.
 performance-archive-published current_tag="" baseline_tag="":
-    just performance-github-assets "{{ current_tag }}" "{{ baseline_tag }}"
+    just performance-github-assets {{ quote(current_tag) }} {{ quote(baseline_tag) }}
 
 # Compare stored GitHub Actions release benchmark assets without local cargo runs.
 performance-github-assets current_tag="" baseline_tag="": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    current_tag="{{ current_tag }}"
-    baseline_tag="{{ baseline_tag }}"
+    current_tag={{ quote(current_tag) }}
+    baseline_tag={{ quote(baseline_tag) }}
     if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
         if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
             echo "current_tag and baseline_tag must be provided together" >&2
@@ -583,8 +585,8 @@ performance-local: python-sync
 performance-local-vs-linalg current_tag="" baseline_tag="": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    current_tag="{{ current_tag }}"
-    baseline_tag="{{ baseline_tag }}"
+    current_tag={{ quote(current_tag) }}
+    baseline_tag={{ quote(baseline_tag) }}
     if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
         if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
             echo "current_tag and baseline_tag must be provided together" >&2
@@ -599,8 +601,8 @@ performance-local-vs-linalg current_tag="" baseline_tag="": python-sync
 performance-release current_tag="" baseline_tag="": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    current_tag="{{ current_tag }}"
-    baseline_tag="{{ baseline_tag }}"
+    current_tag={{ quote(current_tag) }}
+    baseline_tag={{ quote(baseline_tag) }}
     if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
         if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
             echo "current_tag and baseline_tag must be provided together" >&2
@@ -615,11 +617,11 @@ performance-release current_tag="" baseline_tag="": python-sync
 plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_partial="false": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    args=(--metric "{{ metric }}" --stat "{{ stat }}" --sample "{{ sample }}")
-    if [ "{{ log_y }}" = "true" ]; then
+    args=(--metric {{ quote(metric) }} --stat {{ quote(stat) }} --sample {{ quote(sample) }})
+    if [ {{ quote(log_y) }} = "true" ]; then
         args+=(--log-y)
     fi
-    if [ "{{ allow_partial }}" = "true" ]; then
+    if [ {{ quote(allow_partial) }} = "true" ]; then
         args+=(--allow-partial)
     fi
     uv run --locked criterion-dim-plot "${args[@]}"
@@ -628,8 +630,8 @@ plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_
 plot-vs-linalg-readme metric="lu_solve" stat="median" sample="new" log_y="true": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    args=(--metric "{{ metric }}" --stat "{{ stat }}" --sample "{{ sample }}" --update-readme)
-    if [ "{{ log_y }}" = "true" ]; then
+    args=(--metric {{ quote(metric) }} --stat {{ quote(stat) }} --sample {{ quote(sample) }} --update-readme)
+    if [ {{ quote(log_y) }} = "true" ]; then
         args+=(--log-y)
     fi
     uv run --locked criterion-dim-plot "${args[@]}"
@@ -724,6 +726,17 @@ setup-tools:
 
     echo "🔧 Ensuring tooling required by just recipes is installed..."
     echo ""
+    uv_version="{{ uv_version }}"
+    if ! have uv; then
+        echo "❌ 'uv' not found. Install uv $uv_version and re-run: just setup-tools" >&2
+        exit 1
+    fi
+    verify_tool_version uv "$uv_version"
+    if ! have jq; then
+        echo "❌ 'jq' not found. Install jq and re-run: just setup-tools" >&2
+        exit 1
+    fi
+
     echo "Ensuring Rust components..."
     if ! have rustup; then
         echo "❌ 'rustup' not found. Install Rust via https://rustup.rs and re-run: just setup-tools"
@@ -777,21 +790,9 @@ setup-tools:
     fi
     echo ""
 
-    uv_version="{{ uv_version }}"
-    if have uv; then
-        echo "Ensuring uv-managed Python tools..."
-        uv sync --locked --group dev
-        echo ""
-    else
-        echo "❌ uv missing; cannot install project-managed Python tools."
-        echo "Install uv and re-run: just setup-tools"
-        exit 1
-    fi
-
-    if ! have jq; then
-        echo "❌ 'jq' not found. See 'just setup' or install: brew install jq"
-        echo ""
-    fi
+    echo "Ensuring uv-managed Python tools..."
+    uv sync --locked --group dev
+    echo ""
 
     echo ""
     echo "Verifying required commands and versions..."
@@ -876,11 +877,11 @@ spell-check: _ensure-typos
 
 # Create an annotated git tag from the CHANGELOG.md section for the given version
 tag version: python-sync
-    uv run --locked tag-release {{ version }}
+    uv run --locked tag-release {{ quote(version) }}
 
 # Recreate an existing tag (delete + recreate)
 tag-force version: python-sync
-    uv run --locked tag-release {{ version }} --force
+    uv run --locked tag-release {{ quote(version) }} --force
 
 # Testing: runnable Rust tests use nextest; rustdoc doctests remain on cargo test.
 test: test-lib test-doc

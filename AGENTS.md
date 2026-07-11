@@ -309,8 +309,8 @@ just examples         # Run all examples
 - Format: `cargo fmt` (or `just fmt`)
 - Integration tests: `just test-integration`
 - Benchmark-input smoke tests: `just test-bench-inputs`
-- Lint (Clippy): `cargo clippy --all-targets --all-features -- -D warnings` (or `just clippy`)
-- Lint (Clippy, exact feature): `cargo clippy --features exact --all-targets -- -D warnings` (or `just clippy-exact`)
+- Lint (Clippy, canonical default and all-feature passes): `just clippy`
+- Lint (Clippy, focused exact-feature pass): `just clippy-exact`
 - Lint/validate: `just check`
 - Cargo manifest/lockfile synchronization: `just cargo-lock-check`
 - Unused dependency check: `just unused-deps` (uses `cargo-machete`)

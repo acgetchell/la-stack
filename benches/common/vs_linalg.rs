@@ -108,16 +108,37 @@ fn permutation_is_odd_by_inversions(forward: &[usize]) -> bool {
     is_odd
 }
 
-/// Compute a determinant from a faer partial-pivot LU factorization.
+/// Borrow a faer partial-pivot LU factorization together with its precomputed
+/// permutation sign.
+///
+/// The private sign field is derived from the borrowed factorization, so callers
+/// cannot accidentally combine one LU decomposition with another permutation.
 #[must_use]
-pub fn faer_det_from_partial_piv_lu(lu: &PartialPivLu<f64>) -> f64 {
-    // For PA = LU with unit-lower L, det(A) = det(P) * det(U).
-    let u = lu.U();
-    let mut det = 1.0;
-    for i in 0..u.nrows() {
-        det *= u[(i, i)];
+pub struct PreparedFaerLuDet<'a> {
+    lu: &'a PartialPivLu<f64>,
+    permutation_sign: f64,
+}
+
+impl<'a> PreparedFaerLuDet<'a> {
+    /// Prepare repeated determinant queries for one borrowed LU factorization.
+    pub fn new(lu: &'a PartialPivLu<f64>) -> Self {
+        Self {
+            lu,
+            permutation_sign: faer_perm_sign(lu.P()),
+        }
     }
-    det * faer_perm_sign(lu.P())
+
+    /// Compute the determinant from the prepared factorization.
+    #[must_use]
+    pub fn det(&self) -> f64 {
+        // For PA = LU with unit-lower L, det(A) = det(P) * det(U).
+        let u = self.lu.U();
+        let mut det = 1.0;
+        for i in 0..u.nrows() {
+            det *= u[(i, i)];
+        }
+        det * self.permutation_sign
+    }
 }
 
 /// Compute a determinant from a faer LDLT factorization.

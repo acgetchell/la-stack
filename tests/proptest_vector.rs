@@ -63,7 +63,18 @@ macro_rules! gen_vector_proptests {
 }
 
 // Mirror delaunay-style multi-dimension tests.
+gen_vector_proptests!(1);
 gen_vector_proptests!(2);
 gen_vector_proptests!(3);
 gen_vector_proptests!(4);
 gen_vector_proptests!(5);
+
+#[test]
+fn zero_dimension_vector_obeys_empty_sum_contracts() {
+    let vector = Vector::<0>::try_new([]).unwrap();
+
+    assert!(vector.as_array().is_empty());
+    assert!(vector.into_array().is_empty());
+    assert_eq!(vector.dot(&Vector::zero()), Ok(0.0));
+    assert_eq!(vector.norm2_sq(), Ok(0.0));
+}

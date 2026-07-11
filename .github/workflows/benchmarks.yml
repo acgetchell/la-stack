@@ -18,6 +18,7 @@ on:
       - "benches/**"
       - "tests/exact_bench_config.rs"
       - "tests/vs_linalg_inputs.rs"
+      - ".config/nextest.toml"
       - "Cargo.toml"
       - "Cargo.lock"
       - "justfile"
@@ -31,6 +32,7 @@ on:
       - "benches/**"
       - "tests/exact_bench_config.rs"
       - "tests/vs_linalg_inputs.rs"
+      - ".config/nextest.toml"
       - "Cargo.toml"
       - "Cargo.lock"
       - "justfile"
@@ -67,10 +69,30 @@ jobs:
           cache: true
           cache-bin: false
 
+      - name: Read just version
+        id: just_version
+        run: |
+          version="$(grep '^just_version :=' justfile | cut -d '"' -f 2)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install just
+        uses: taiki-e/cache-cargo-install-action@417450f3c33ee20393705369577571770643d4c7 # v3.0.7
+        with:
+          tool: just@${{ steps.just_version.outputs.version }}
+
+      - name: Read cargo-nextest version
+        id: cargo_nextest_version
+        run: |
+          version="$(just --evaluate cargo_nextest_version)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install cargo-nextest
+        uses: taiki-e/cache-cargo-install-action@417450f3c33ee20393705369577571770643d4c7 # v3.0.7
+        with:
+          tool: cargo-nextest@${{ steps.cargo_nextest_version.outputs.version }}
+
       - name: Validate benchmark inputs
-        run: >
-          cargo test --locked --features bench,exact
-          --test vs_linalg_inputs --test exact_bench_config
+        run: just test-bench-inputs
 
       # ── PR: find and download the latest main baseline ──────────────
       - name: Find latest main baseline

@@ -42,6 +42,10 @@ baseline.
 
 Use the top-level `just` workflows for routine release and local comparisons:
 
+`performance-github-assets` always requires the GitHub CLI (`gh`) authenticated
+for the repository because it downloads release assets. Local-generation
+recipes require `gh` only when discovering published release tags.
+
 ```bash
 # Local development: compare the current tree with the latest release
 just performance-local
@@ -213,11 +217,13 @@ tag-annotation size limit.
 
 | Script | Purpose |
 |---|---|
+| `archive_changelog.py` | Split completed changelog minor series into archives |
 | `archive_performance.py` | Promote release performance docs and archive older comparisons |
 | `bench_compare.py` | Compare Criterion benchmark baselines and render Markdown reports |
+| `check_docs_version_sync.py` | Verify versioned documentation links and snippets stay synchronized |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
 | `tag_release.py` | Create annotated git tags from CHANGELOG.md sections |
-| `postprocess_changelog.py` | Strip trailing blank lines from git-cliff output |
+| `postprocess_changelog.py` | Normalize and reflow generated git-cliff Markdown safely |
 | `subprocess_utils.py` | Safe subprocess wrappers for git commands |
 
 See `docs/RELEASING.md` for the full release workflow.

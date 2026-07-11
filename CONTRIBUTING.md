@@ -7,11 +7,11 @@ clarity, and the fixed-dimension stack-allocation model.
 ## Getting Started
 
 Install Rust through [rustup](https://rustup.rs/), Git, Python 3.14,
-[uv](https://docs.astral.sh/uv/), and `just`. Install `just` from its locked
-dependency graph:
+[`uv` 0.11.28](https://docs.astral.sh/uv/), and `jq`. Install the repository's
+pinned `just` version from its locked dependency graph:
 
 ```bash
-cargo install --locked just
+cargo install --locked just --version 1.56.0
 ```
 
 Set up the remaining development tools and validate the checkout:

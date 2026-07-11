@@ -337,6 +337,35 @@ class TestCreateTag:
         mock_extract.assert_called_once()
         mock_git_input.assert_not_called()
 
+    def test_invalid_remote_does_not_replace_existing_tag(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Oversized-tag fallback validates its remote before mutating a tag."""
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text("# Changelog\n", encoding="utf-8")
+        section = "x" * (_GITHUB_TAG_ANNOTATION_LIMIT + 1)
+        marker = "release-token"
+
+        with (
+            patch("tag_release._tag_exists", return_value=True),
+            patch("tag_release.find_changelog", return_value=changelog),
+            patch("tag_release.extract_changelog_section", return_value=(section, changelog)),
+            patch("tag_release.run_git_command") as mock_git,
+            patch("tag_release.run_git_command_with_input") as mock_git_input,
+        ):
+            mock_git.return_value.stdout = f"https://github.com/acgetchell/la-stack.git?token={marker}"
+
+            with pytest.raises(ValueError, match="query parameters") as exc_info:
+                tag_release.create_tag("v1.0.0", force=True)
+
+        mock_git_input.assert_not_called()
+        output = capsys.readouterr()
+        assert marker not in str(exc_info.value)
+        assert marker not in output.out
+        assert marker not in output.err
+
 
 class TestRepoUrl:
     @pytest.mark.parametrize(
@@ -355,7 +384,51 @@ class TestRepoUrl:
 
     @patch("tag_release.run_git_command")
     def test_rejects_remote_urls_with_credentials(self, mock_git: MagicMock) -> None:
-        mock_git.return_value.stdout = "https://user:token@example.com/acgetchell/la-stack.git"
+        raw = "https://user:secret-token@github.com/acgetchell/la-stack.git"
+        mock_git.return_value.stdout = raw
 
-        with pytest.raises(ValueError, match="contain credentials"):
+        with pytest.raises(ValueError, match="contain credentials") as exc_info:
             _get_repo_url()
+
+        assert "secret-token" not in str(exc_info.value)
+        assert raw not in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "https://github.com/acgetchell/la-stack.git?token=secret-token",
+            "https://github.com/acgetchell/la-stack.git#secret-token",
+        ],
+    )
+    @patch("tag_release.run_git_command")
+    def test_rejects_query_and_fragment_without_echoing_them(self, mock_git: MagicMock, raw: str) -> None:
+        mock_git.return_value.stdout = raw
+
+        with pytest.raises(ValueError, match="query parameters or fragments") as exc_info:
+            _get_repo_url()
+
+        assert "secret-token" not in str(exc_info.value)
+        assert raw not in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "http://github.com/acgetchell/la-stack.git",
+            "https://example.com/acgetchell/la-stack.git",
+            "git@example.com:acgetchell/la-stack.git",
+            "ssh://developer@github.com/acgetchell/la-stack.git",
+            "https://github.com/acgetchell/la-stack/extra.git",
+            "file:///tmp/la-stack.git",
+            "/home/example/la-stack.git",
+            "../la-stack.git",
+            "https://[malformed",
+        ],
+    )
+    @patch("tag_release.run_git_command")
+    def test_rejects_unsupported_remotes_without_echoing_them(self, mock_git: MagicMock, raw: str) -> None:
+        mock_git.return_value.stdout = raw
+
+        with pytest.raises(ValueError, match="Origin remote") as exc_info:
+            _get_repo_url()
+
+        assert raw not in str(exc_info.value)

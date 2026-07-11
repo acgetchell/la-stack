@@ -3,6 +3,11 @@
 
 name: "Clippy Security Analysis"
 
+concurrency:
+  group: >-
+    clippy-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     branches: ["main"]

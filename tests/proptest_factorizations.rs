@@ -196,8 +196,6 @@ macro_rules! gen_factorization_proptests {
                 ) {
                     // Construct A = P^{-1} * L * U, where P swaps the first two rows.
                     // This ensures det(A) has an extra sign flip vs det(LU).
-                    prop_assume!($d >= 2);
-
                     let mut l = [[0.0f64; $d]; $d];
                     for i in 0..$d {
                         for j in 0..$d {

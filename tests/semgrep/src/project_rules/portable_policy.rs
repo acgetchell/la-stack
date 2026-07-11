@@ -2,6 +2,21 @@
 
 use num_traits::NumCast;
 
+pub fn stdio_diagnostic_fixture() {
+    // ruleid: la-stack.rust.no-stdio-diagnostics-in-src
+    eprintln!("fixture diagnostic");
+}
+
+pub fn nonfinite_default_fixture(value: Option<f64>) -> f64 {
+    // ruleid: la-stack.rust.no-nonfinite-unwrap-defaults
+    value.unwrap_or(f64::NAN)
+}
+
+// ruleid: la-stack.rust.public-error-enums-non-exhaustive
+pub enum FixtureError {
+    Example,
+}
+
 // ruleid: la-stack.rust.no-module-scope-cfg-test-use
 #[cfg(test)]
 use crate::FixtureOnlyImport;

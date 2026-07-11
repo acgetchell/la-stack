@@ -170,6 +170,9 @@ SUITE_CHOICES: tuple[str, ...] = ("all", "exact", "vs_linalg")
 SCOPE_CHOICES: tuple[str, ...] = ("release-signal", "all-benches")
 
 type ChangeAssessment = Literal["improvement", "regression", "inconclusive", "unknown"]
+type BenchmarkSuite = Literal["all", "exact", "vs_linalg"]
+type ComparisonScope = Literal["release-signal", "all-benches"]
+type Statistic = Literal["mean", "median"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,6 +182,23 @@ class CriterionEstimate:
     point_ns: float
     ci_lo_ns: float | None
     ci_hi_ns: float | None
+
+    def __post_init__(self) -> None:
+        """Keep every stored timing finite, positive, and interval-complete."""
+        for field, value in (
+            ("point_ns", self.point_ns),
+            ("ci_lo_ns", self.ci_lo_ns),
+            ("ci_hi_ns", self.ci_hi_ns),
+        ):
+            if value is not None and (not math.isfinite(value) or value <= 0):
+                msg = f"{field} must be finite and positive: {value!r}"
+                raise ValueError(msg)
+        if (self.ci_lo_ns is None) != (self.ci_hi_ns is None):
+            msg = "Criterion confidence interval must contain both bounds or neither"
+            raise ValueError(msg)
+        if self.ci_lo_ns is not None and self.ci_hi_ns is not None and self.ci_lo_ns > self.ci_hi_ns:
+            msg = f"Criterion confidence interval lower bound exceeds upper bound: {self.ci_lo_ns} > {self.ci_hi_ns}"
+            raise ValueError(msg)
 
     @property
     def has_confidence_interval(self) -> bool:
@@ -238,13 +258,11 @@ class Comparison:
     @property
     def speedup(self) -> float:
         """Return baseline/current, where values above one are faster."""
-        return self.baseline_ns / self.current_ns if self.current_ns > 0 else float("inf")
+        return self.baseline_ns / self.current_ns
 
     @property
     def pct_change(self) -> float:
         """Return signed point-estimate change, where negative is faster."""
-        if self.baseline_ns <= 0:
-            return 0.0
         return ((self.current_ns - self.baseline_ns) / self.baseline_ns) * 100.0
 
     @property
@@ -290,6 +308,16 @@ _DEFAULT_COMPARISON_POLICY = ComparisonPolicy()
 
 
 @dataclass(frozen=True, slots=True)
+class CriterionSelection:
+    """Requested Criterion settings that provenance must describe exactly."""
+
+    suite: BenchmarkSuite
+    scope: ComparisonScope
+    statistic: Statistic
+    sample: str
+
+
+@dataclass(frozen=True, slots=True)
 class HarnessProvenance:
     """Validated benchmark measurement and correctness provenance."""
 
@@ -299,8 +327,21 @@ class HarnessProvenance:
     baseline: str
     measurement: dict[str, object] | None = None
     publication: dict[str, object] | None = None
-    criterion: dict[str, object] | None = None
+    criterion: CriterionProvenance | None = None
     validation: dict[str, object] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CriterionProvenance:
+    """Validated Criterion settings and commands recorded for one report."""
+
+    suite: BenchmarkSuite
+    scope: ComparisonScope
+    statistic: Statistic
+    sample: str
+    criterion_version: str
+    baseline_command: tuple[str, ...]
+    current_command: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,9 +349,9 @@ class ReportSettings:
     """Settings rendered into the benchmark report header."""
 
     baseline_name: str | None
-    stat: str
-    suite: str
-    scope: str
+    stat: Statistic
+    suite: BenchmarkSuite
+    scope: ComparisonScope
     harness_provenance: HarnessProvenance | None = None
 
 
@@ -382,16 +423,21 @@ def _read_numeric_field(
         raise TypeError(msg)
     try:
         result = float(value)
-    except ValueError as err:
+    except (OverflowError, ValueError) as err:
         msg = f"field '{field}' for stat '{stat}' in {estimates_json} is not numeric: {value!r}"
         raise ValueError(msg) from err
-    if not math.isfinite(result) or result < 0:
-        msg = f"field '{field}' for stat '{stat}' in {estimates_json} must be finite and non-negative: {value!r}"
+    if not math.isfinite(result) or result <= 0:
+        msg = f"field '{field}' for stat '{stat}' in {estimates_json} must be finite and positive: {value!r}"
         raise ValueError(msg)
     return result
 
 
-def _read_harness_provenance(criterion_dir: Path, *, expected_baseline: str) -> HarnessProvenance | None:
+def _read_harness_provenance(
+    criterion_dir: Path,
+    *,
+    expected_baseline: str,
+    expected: CriterionSelection,
+) -> HarnessProvenance | None:
     """Read provenance tied to the exact Criterion samples being compared."""
     provenance_path = criterion_dir / ".la-stack-benchmark-harness.json"
     if not provenance_path.exists():
@@ -429,11 +475,15 @@ def _read_harness_provenance(criterion_dir: Path, *, expected_baseline: str) -> 
 
     measurement = _required_metadata_object(data, "measurement", provenance_path)
     publication = _required_metadata_object(data, "publication", provenance_path)
-    criterion = _required_metadata_object(data, "criterion", provenance_path)
+    criterion_data = _required_metadata_object(data, "criterion", provenance_path)
     validation = _required_metadata_object(data, "validation", provenance_path)
     _validate_measurement_metadata(measurement, mode=mode, path=provenance_path)
     _validate_environment_metadata(publication, path=provenance_path, context="publication")
-    _validate_criterion_metadata(criterion, path=provenance_path)
+    criterion = _parse_criterion_metadata(
+        criterion_data,
+        path=provenance_path,
+        expected=expected,
+    )
     _validate_validation_metadata(validation, path=provenance_path)
     _validate_baseline_api_compatibility(validation, baseline=baseline, path=provenance_path)
 
@@ -520,15 +570,64 @@ def _validate_measurement_metadata(data: dict[str, object], *, mode: object, pat
     raise ValueError(msg)
 
 
-def _validate_criterion_metadata(data: dict[str, object], *, path: Path) -> None:
-    """Validate the Criterion selection and exact commands used for the report."""
-    for field in ("suite", "scope", "statistic", "sample", "criterion_version"):
-        _required_metadata_string(data, field, path)
+def _parse_criterion_metadata(
+    data: dict[str, object],
+    *,
+    path: Path,
+    expected: CriterionSelection,
+) -> CriterionProvenance:
+    """Parse Criterion metadata and bind it to the requested report settings."""
+    suite = _required_metadata_string(data, "suite", path)
+    scope = _required_metadata_string(data, "scope", path)
+    statistic = _required_metadata_string(data, "statistic", path)
+    sample = _required_metadata_string(data, "sample", path)
+    criterion_version = _required_metadata_string(data, "criterion_version", path)
+
+    expected_fields = {
+        "suite": expected.suite,
+        "scope": expected.scope,
+        "statistic": expected.statistic,
+        "sample": expected.sample,
+    }
+    observed_fields = {
+        "suite": suite,
+        "scope": scope,
+        "statistic": statistic,
+        "sample": sample,
+    }
+    for field, expected_value in expected_fields.items():
+        observed = observed_fields[field]
+        if observed != expected_value:
+            msg = f"criterion.{field} {observed!r} in {path} does not match requested value {expected_value!r}"
+            raise ValueError(msg)
+
+    if suite not in SUITE_CHOICES:
+        msg = f"unsupported criterion.suite in {path}: {suite!r}"
+        raise ValueError(msg)
+    if scope not in SCOPE_CHOICES:
+        msg = f"unsupported criterion.scope in {path}: {scope!r}"
+        raise ValueError(msg)
+    if statistic not in {"mean", "median"}:
+        msg = f"unsupported criterion.statistic in {path}: {statistic!r}"
+        raise ValueError(msg)
+
+    commands: dict[str, tuple[str, ...]] = {}
     for field in ("baseline_command", "current_command"):
         value = data.get(field)
         if not isinstance(value, list) or not value or not all(isinstance(part, str) and part for part in value):
             msg = f"invalid or missing criterion.{field} in {path}"
             raise ValueError(msg)
+        commands[field] = tuple(cast("list[str]", value))
+
+    return CriterionProvenance(
+        suite=cast("BenchmarkSuite", suite),
+        scope=cast("ComparisonScope", scope),
+        statistic=cast("Statistic", statistic),
+        sample=sample,
+        criterion_version=criterion_version,
+        baseline_command=commands["baseline_command"],
+        current_command=commands["current_command"],
+    )
 
 
 def _validate_validation_metadata(data: dict[str, object], *, path: Path) -> None:
@@ -1182,14 +1281,47 @@ def _get_git_info(root: Path) -> tuple[str, str]:
     try:
         result = run_git_command(["--no-pager", "rev-parse", "--short", "HEAD"], cwd=root)
         short_hash = result.stdout.strip()
-    except ExecutableNotFoundError, subprocess.CalledProcessError:
+    except (
+        ExecutableNotFoundError,
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ):
         pass
     try:
         result = run_git_command(["--no-pager", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
         branch = result.stdout.strip()
-    except ExecutableNotFoundError, subprocess.CalledProcessError:
+    except (
+        ExecutableNotFoundError,
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ):
         pass
     return short_hash, branch
+
+
+def _get_git_source_date(root: Path) -> str:
+    """Return the reproducible source revision timestamp normalized to UTC."""
+    try:
+        result = run_git_command(["--no-pager", "show", "-s", "--format=%cI", "HEAD"], cwd=root)
+    except (
+        ExecutableNotFoundError,
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ):
+        return "unknown"
+    value = result.stdout.strip()
+    if not value:
+        return "unknown"
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return "unknown"
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return "unknown"
+    return parsed.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def _generate_markdown(
@@ -1200,12 +1332,14 @@ def _generate_markdown(
     """Generate the complete benchmark report content."""
     version = _read_cargo_version(root)
     short_hash, branch = _get_git_info(root)
-    now = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    source_date = _get_git_source_date(root)
 
     lines = [
         "# Benchmark Performance",
         "",
-        f"**la-stack** v{version} · `{short_hash}` ({branch}) · {now}",
+        f"**la-stack** v{version} · `{short_hash}` ({branch})",
+        f"**Source revision timestamp**: {source_date} (deterministic report metadata; not the benchmark measurement time)",
+        "**Benchmark measurement timestamp**: not recorded by Criterion; use the provenance below to identify the measured revisions and environment.",
         f"**Statistic**: {settings.stat}",
         f"**Suite**: {settings.suite}",
         f"**Scope**: {settings.scope}",
@@ -1289,8 +1423,6 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
     publication = provenance.publication
     criterion = provenance.criterion
     validation = provenance.validation
-    baseline_command = cast("list[str]", criterion["baseline_command"])
-    current_command = cast("list[str]", criterion["current_command"])
     if provenance.mode == "shared-current-harness":
         correctness_gate = (
             "- Correctness gate: `just test-bench-inputs` passed against both the current and baseline revisions using the shared current fixture harness."
@@ -1339,11 +1471,11 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
             f"- Publication source-state SHA-256: `{publication['source_state_sha256']}`",
             f"- Publication Cargo.lock SHA-256: `{publication['cargo_lock_sha256']}`",
             f"- Publication harness SHA-256: `{publication['harness_sha256']}`",
-            f"- Criterion suite/scope: `{criterion['suite']}` / `{criterion['scope']}`",
-            f"- Criterion statistic/sample: `{criterion['statistic']}` / `{criterion['sample']}`",
-            f"- Criterion dependency version: `{criterion['criterion_version']}`",
-            f"- Baseline command: `{' '.join(baseline_command)}`",
-            f"- Current command: `{' '.join(current_command)}`",
+            f"- Criterion suite/scope: `{criterion.suite}` / `{criterion.scope}`",
+            f"- Criterion statistic/sample: `{criterion.statistic}` / `{criterion.sample}`",
+            f"- Criterion dependency version: `{criterion.criterion_version}`",
+            f"- Baseline command: `{' '.join(criterion.baseline_command)}`",
+            f"- Current command: `{' '.join(criterion.current_command)}`",
             correctness_gate,
             (
                 f"- Validated current revision: `{validation['current_commit']}` "
@@ -1363,7 +1495,7 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
             f"- Baseline API compatibility: `{compatibility}` selects only source-compatible benchmark calls; "
             "rows outside the baseline's correctness domain remain explicitly unavailable."
         )
-        if compatibility == _V0_4_3_API_COMPATIBILITY and criterion["suite"] in {"all", "vs_linalg"}:
+        if compatibility == _V0_4_3_API_COMPATIBILITY and criterion.suite in {"all", "vs_linalg"}:
             lines.append(
                 "- Baseline-unavailable rows: `d8/la_stack_det_from_lu_balanced_range` and "
                 "`d8/la_stack_det_from_ldlt_balanced_range` were not timed because v0.4.3 returns zero for a fixture "
@@ -1450,9 +1582,13 @@ def _save_baseline_hint(suite: str, baseline: str) -> str:
     return f"just bench-save-baseline {baseline}"
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911
     """Generate a benchmark snapshot or comparison report from CLI arguments."""
     args = _parse_args(sys.argv[1:] if argv is None else argv)
+    stat = cast("Statistic", args.stat)
+    suite = cast("BenchmarkSuite", args.suite)
+    scope = cast("ComparisonScope", args.scope)
+    selection = CriterionSelection(suite=suite, scope=scope, statistic=stat, sample="new")
 
     root = _repo_root()
     criterion_dir = root / args.criterion_dir
@@ -1470,18 +1606,26 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
 
     if baseline_name:
         try:
-            harness_provenance = _read_harness_provenance(criterion_dir, expected_baseline=baseline_name)
+            harness_provenance = _read_harness_provenance(
+                criterion_dir,
+                expected_baseline=baseline_name,
+                expected=selection,
+            )
         except (OSError, TypeError, ValueError) as err:
             print(f"Invalid benchmark harness provenance: {err}", file=sys.stderr)
             return 2
 
-        collection = _collect_comparisons(
-            criterion_dir,
-            baseline_name,
-            args.stat,
-            args.suite,
-            _comparison_policy(args.scope, harness_provenance),
-        )
+        try:
+            collection = _collect_comparisons(
+                criterion_dir,
+                baseline_name,
+                stat,
+                suite,
+                _comparison_policy(scope, harness_provenance),
+            )
+        except (OSError, KeyError, TypeError, ValueError) as err:
+            print(f"Invalid Criterion estimate data: {err}", file=sys.stderr)
+            return 2
         if collection.gaps:
             print(
                 f"Incomplete benchmark coverage: {len(collection.gaps)} required comparison row(s) are missing; report publication aborted.",
@@ -1509,28 +1653,32 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
         coverage_errors = _snapshot_coverage_errors(
             criterion_dir,
             sample="new",
-            suite=args.suite,
-            scope=args.scope,
+            suite=suite,
+            scope=scope,
         )
         if coverage_errors:
             print("Incomplete benchmark coverage; snapshot publication aborted:", file=sys.stderr)
             for error in coverage_errors:
                 print(f"  - {error}", file=sys.stderr)
             return 2
-        results = _collect_results(criterion_dir, "new", args.stat, args.suite)
+        try:
+            results = _collect_results(criterion_dir, "new", stat, suite)
+        except (OSError, KeyError, TypeError, ValueError) as err:
+            print(f"Invalid Criterion estimate data: {err}", file=sys.stderr)
+            return 2
         if not results:
             print(
                 f"No benchmark results found.\nRun benchmarks first:\n  {_run_bench_hint(args.suite)}\n",
                 file=sys.stderr,
             )
             return 2
-        table = _snapshot_tables(results, args.stat)
+        table = _snapshot_tables(results, stat)
 
     settings = ReportSettings(
         baseline_name=baseline_name,
-        stat=args.stat,
-        suite=args.suite,
-        scope=args.scope,
+        stat=stat,
+        suite=suite,
+        scope=scope,
         harness_provenance=harness_provenance,
     )
     md = _generate_markdown(root, table, settings)
