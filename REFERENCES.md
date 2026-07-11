@@ -24,41 +24,47 @@ No generated content was used without human oversight.
 ### Absolute error bound for closed-form determinants
 
 `Matrix::det_errbound()` returns a conservative Shewchuk-style absolute error bound [8]
-for `Matrix::det_direct()` in dimensions 2–4. The bound has the form
-`ERR_COEFF_D · p(|A|)`, where `p(|A|)` is the absolute Leibniz sum (the cofactor-expansion
-tree with `|·|` at every leaf) and `ERR_COEFF_D ∈ {ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4}`
-is a dimension-specific constant derived from the rounding-event count of `det_direct`.
+for `Matrix::det_direct()` in dimensions 2–4 when every rounded intermediate is normal
+or an exact structural zero. The bound has the form
+`ERR_COEFF_D · p(|A|)`, where `p(|A|) = perm(|A|)` is the absolute Leibniz sum—the
+combinatorial permanent of the entrywise-absolute matrix—and
+`ERR_COEFF_D ∈ {ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4}` is a dimension-specific constant
+derived from the rounding-event count of `det_direct`.
+The method returns `None` when gradual underflow could violate the relative-error model.
 The same bound is used internally by `det_sign_exact()`'s fast filter, but
 `det_errbound()` itself is available without the `exact` feature, so downstream crates
 can build custom adaptive-precision logic with pure f64 arithmetic.
 
-### Exact determinant sign (adaptive-precision Bareiss)
+### Exact determinant sign (adaptive-precision integer arithmetic)
 
 `det_sign_exact()` uses a Shewchuk-style f64 error-bound filter [8] (the same bound exposed
-by `det_errbound()` above) backed by integer-only Bareiss elimination [7] in `BigInt`. Each
-f64 entry is decomposed into `mantissa × 2^exponent`, scaled to a common integer base, and
-eliminated without any `BigRational` or GCD overhead.
+by `det_errbound()` above) backed by exact `BigInt` arithmetic. Each f64 entry is decomposed
+into `mantissa × 2^exponent` and scaled to a common integer base. Dimensions 0–4 use direct
+integer determinant expansions; D ≥ 5 uses integer-only Bareiss elimination [7]. Neither
+path constructs `BigRational` values or performs GCD normalization.
 See `src/exact.rs` for the full architecture description.
 
 ### Exact linear system solve (hybrid Bareiss / BigRational)
 
-`solve_exact()` and `solve_exact_f64()` share the BigInt core used for determinants. Matrix
-and RHS entries are decomposed via IEEE 754 bit extraction [9] and scaled to a shared base
-`2^e_min` so the augmented system `(A | b)` becomes a `BigInt` matrix.  Forward elimination
-runs in `BigInt` using Bareiss fraction-free updates [7] — no `BigRational` and no GCD
+`solve_exact()` and `solve_exact_f64()` share the determinant path's exact f64 decomposition
+and integer scaling. Matrix and RHS entries are decomposed via IEEE 754 bit extraction [9]
+and scaled to a shared base `2^e_min` so the augmented system `(A | b)` becomes a `BigInt`
+matrix. Forward elimination runs in `BigInt` using Bareiss fraction-free updates [7]—no
+`BigRational` and no GCD
 normalisation in the `O(D³)` phase. The upper-triangular result is then lifted into
 `BigRational` for back-substitution, where fractions are inherent and the cost is only
 `O(D²)`. Row swaps from first-non-zero pivoting are applied to both the matrix and the
 RHS; because power-of-two scaling is applied uniformly to both sides of `A x = b`, the
 solution is unchanged by the scale factor.
 
-### f64 → integer decomposition (`f64_decompose`)
+### f64 → integer decomposition (`decompose_f64`)
 
-Both the determinant and solve paths convert f64 entries via `f64_decompose`, which extracts
+Both the determinant and solve paths convert f64 entries via `decompose_f64`, which extracts
 the IEEE 754 binary64 sign, unbiased exponent, and significand [9] and strips trailing zeros
 from the significand so `|x| = m · 2^e` with `m` odd.  The integer matrix is then assembled
-by shifting each mantissa left by `exp − e_min`, giving a GCD-free, Bareiss-ready starting
-point. A one-shot wrapper `f64_to_bigrational` (used only in tests) packages the same
+by shifting each mantissa left by `exp − e_min`, giving a GCD-free exact-integer starting
+point. Solves and D ≥ 5 determinants then apply Bareiss elimination; D ≤ 4 determinants use
+direct expansions. A one-shot wrapper `f64_to_big_rational` (used only in tests) packages the same
 decomposition into a single `BigRational`. See Goldberg [10] for background on IEEE 754
 representation and exact rational reconstruction.
 

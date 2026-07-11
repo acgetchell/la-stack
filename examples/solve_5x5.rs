@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Solve a 5×5 linear system via LU factorization (with pivoting).
 
 use la_stack::prelude::*;

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import BinaryIO, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -102,31 +103,68 @@ class TestRunGitCommandWithInput:
         )
         # git hash-object of "hello\n" is a well-known SHA
         assert result.returncode == 0
-        assert result.stdout.strip()  # should be a 40-char hex hash
+        assert result.stdout.strip() == "ce013625030ba8dba906f756967f9e9ca394464a"
 
-    @patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/git")
-    @patch("subprocess_utils.subprocess.run")
-    def test_input_data_forwarded(self, mock_run: MagicMock, _mock_exe: MagicMock) -> None:
-        """Verify input_data is passed as the 'input' kwarg to subprocess.run."""
-        run_git_command_with_input(["tag", "-a", "v1.0.0", "-F", "-"], input_data="tag body")
+    def test_input_data_forwarded_as_raw_utf8(self) -> None:
+        """Verify stdin bytes preserve LF even when subprocess output is text."""
+        observed_input = b""
+
+        def capture_run(*_args: object, **kwargs: object) -> subprocess_utils.subprocess.CompletedProcess[str]:
+            nonlocal observed_input
+            stdin = cast("BinaryIO", kwargs["stdin"])
+            observed_input = stdin.read()
+            return subprocess_utils.subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
+
+        with (
+            patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/git") as mock_executable,
+            patch("subprocess_utils.subprocess.run", side_effect=capture_run) as mock_run,
+        ):
+            run_git_command_with_input(["tag", "-a", "v1.0.0", "-F", "-"], input_data="tag body\n")
+        mock_executable.assert_called_once_with("git")
         mock_run.assert_called_once()
         _args, kwargs = mock_run.call_args
-        assert kwargs["input"] == "tag body"
+        assert observed_input == b"tag body\n"
+        assert "input" not in kwargs
+        assert kwargs["text"] is True
+
+    def test_binary_input_forwarded_without_newline_or_encoding_changes(self) -> None:
+        observed_input = b""
+
+        def capture_run(*_args: object, **kwargs: object) -> subprocess_utils.subprocess.CompletedProcess[str]:
+            nonlocal observed_input
+            stdin = cast("BinaryIO", kwargs["stdin"])
+            observed_input = stdin.read()
+            return subprocess_utils.subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
+
+        payload = b"line\r\n\x00\xff"
+        with (
+            patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/git"),
+            patch("subprocess_utils.subprocess.run", side_effect=capture_run),
+        ):
+            run_git_command_with_input(["apply", "--binary"], input_data=payload)
+
+        assert observed_input == payload
 
 
 class TestAdditionalHelpers:
-    @patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/cargo")
-    @patch("subprocess_utils.subprocess.run")
-    def test_run_cargo_command_uses_safe_executable(self, mock_run: MagicMock, _mock_exe: MagicMock) -> None:
-        run_cargo_command(["--version"])
+    def test_run_cargo_command_uses_safe_executable(self) -> None:
+        with (
+            patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/cargo") as mock_executable,
+            patch("subprocess_utils.subprocess.run") as mock_run,
+        ):
+            run_cargo_command(["--version"])
+        mock_executable.assert_called_once_with("cargo")
         mock_run.assert_called_once()
         args, _kwargs = mock_run.call_args
         assert args[0] == ["/usr/bin/cargo", "--version"]
 
-    @patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/gnuplot")
-    @patch("subprocess_utils.subprocess.run")
-    def test_run_safe_command_uses_safe_executable(self, mock_run: MagicMock, _mock_exe: MagicMock) -> None:
-        run_safe_command("gnuplot", ["--version"])
+    def test_run_safe_command_uses_safe_executable(self) -> None:
+        with (
+            patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/gnuplot") as mock_executable,
+            patch("subprocess_utils.subprocess.run") as mock_run,
+        ):
+            run_safe_command("gnuplot", ["--version"])
+        mock_executable.assert_called_once_with("gnuplot")
         mock_run.assert_called_once()
         args, _kwargs = mock_run.call_args
         assert args[0] == ["/usr/bin/gnuplot", "--version"]

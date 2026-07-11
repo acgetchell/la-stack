@@ -1,10 +1,13 @@
+#![forbid(unsafe_code)]
+
 //! Exact linear system solve for a near-singular 3×3 system.
 //!
-//! This example demonstrates `solve_exact()` and `solve_exact_f64()`. The exact
+//! This example demonstrates `solve_exact()` and [`ExactF64Conversion`]. The exact
 //! solve uses arbitrary-precision rational arithmetic to compute a provably
 //! correct solution — even when the matrix is so close to singular that the f64
-//! LU solve produces a wildly inaccurate result. The `solve_exact_f64()` helper
-//! only succeeds when every exact component is exactly representable as `f64`.
+//! LU solve produces a wildly inaccurate result. `try_to_f64()` only succeeds
+//! when every exact component is exactly representable as `f64`, while
+//! `to_rounded_f64()` explicitly opts into nearest-even rounding.
 //!
 //! Run with: `cargo run --features exact --example exact_solve_3x3`
 
@@ -27,18 +30,18 @@ fn main() -> Result<(), LaError> {
 
     // f64 LU solve (using zero pivot tolerance since the matrix is nearly singular
     // and would be rejected by DEFAULT_SINGULAR_TOL).
-    let lu_x = a.lu(Tolerance::new(0.0)?)?.solve(b)?.into_array();
+    let lu_x = a.lu(Tolerance::try_new(0.0)?)?.solve(b)?.into_array();
 
     // Exact solve.
     let exact_x = a.solve_exact(b)?;
     println!("Near-singular 3×3 system (perturbation = 2^-50 ≈ {perturbation:.2e}):");
-    for r in 0..3 {
+    for row in a.as_rows() {
         print!("  [");
-        for c in 0..3 {
-            if c > 0 {
+        for (col, value) in row.iter().enumerate() {
+            if col > 0 {
                 print!(", ");
             }
-            print!("{:22.18}", a.get_checked(r, c)?);
+            print!("{value:22.18}");
         }
         println!("]");
     }
@@ -57,19 +60,19 @@ fn main() -> Result<(), LaError> {
         "solve_exact():      x = [{}, {}, {}]",
         exact_x[0], exact_x[1], exact_x[2]
     );
-    match a.solve_exact_f64(b) {
+    match exact_x.try_to_f64() {
         Ok(x) => {
             let x = x.into_array();
             println!(
-                "solve_exact_f64():  x = [{:+.6e}, {:+.6e}, {:+.6e}]",
+                "exact try_to_f64(): x = [{:+.6e}, {:+.6e}, {:+.6e}]",
                 x[0], x[1], x[2]
             );
         }
         Err(err) if err.requires_rounding() => {
-            println!("solve_exact_f64():  {err}");
-            let x = a.solve_exact_rounded_f64(b)?.into_array();
+            println!("exact try_to_f64(): {err}");
+            let x = exact_x.to_rounded_f64()?.into_array();
             println!(
-                "rounded fallback:    x = [{:+.6e}, {:+.6e}, {:+.6e}]",
+                "exact to_rounded_f64(): x = [{:+.6e}, {:+.6e}, {:+.6e}]",
                 x[0], x[1], x[2]
             );
         }

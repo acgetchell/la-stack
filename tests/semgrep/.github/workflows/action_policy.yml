@@ -1,0 +1,76 @@
+name: Action policy fixtures
+on:
+  workflow_dispatch:
+  # ruleid: la-stack.github-actions.no-pull-request-target
+  pull_request_target:
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Allowed pinned checkout
+        # ok: la-stack.github-actions.external-action-sha-pinned
+        # ok: la-stack.github-actions.external-action-approved-allowlist
+        # ok: la-stack.github-actions.external-action-version-comment
+        # ok: la-stack.github-actions.checkout-persist-credentials-false
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Checkout without explicit credential persistence
+        # ruleid: la-stack.github-actions.checkout-persist-credentials-false
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Moving tag action
+        # ruleid: la-stack.github-actions.external-action-sha-pinned
+        uses: actions/checkout@v7
+
+      - name: Unapproved external action
+        # ruleid: la-stack.github-actions.external-action-approved-allowlist
+        uses: unapproved/example-action@1111111111111111111111111111111111111111 # v1.0.0
+
+      - name: Missing readable version comment
+        # ruleid: la-stack.github-actions.external-action-version-comment
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+
+      - name: Allowed setup-python action
+        # ok: la-stack.github-actions.external-action-approved-allowlist
+        # ok: la-stack.github-actions.external-action-sha-pinned
+        # ok: la-stack.github-actions.external-action-version-comment
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+
+      - name: Allowed Rust cache action
+        # ok: la-stack.github-actions.external-action-approved-allowlist
+        # ok: la-stack.github-actions.external-action-sha-pinned
+        # ok: la-stack.github-actions.external-action-version-comment
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Local action
+        # ok: la-stack.github-actions.external-action-sha-pinned
+        # ok: la-stack.github-actions.external-action-approved-allowlist
+        # ok: la-stack.github-actions.external-action-version-comment
+        uses: ./.github/actions/local-action
+
+      - name: Interpolated github-script
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          # ruleid: la-stack.github-actions.github-script-no-expression-interpolation
+          script: |
+            core.info("${{ github.ref_name }}");
+
+      - name: Env-backed github-script
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SAFE_REF_NAME: ${{ github.ref_name }}
+        with:
+          # ok: la-stack.github-actions.github-script-no-expression-interpolation
+          script: |
+            core.info(process.env.SAFE_REF_NAME);
+
+      - name: Unlocked uv sync
+        # ruleid: la-stack.github-actions.uv-sync-locked-in-workflows
+        run: uv sync
+
+      - name: Locked uv sync
+        # ok: la-stack.github-actions.uv-sync-locked-in-workflows
+        run: uv sync --locked

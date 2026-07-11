@@ -160,13 +160,11 @@ class TestParseChangelog:
         assert unreleased == ""
         assert len(blocks) == 2
 
-    def test_skips_non_semver_headings(self) -> None:
+    def test_rejects_non_semver_headings(self) -> None:
         text = _PREAMBLE + _V072 + "## [CustomLabel]\n\n- Something\n\n" + _V071
-        _, _, blocks = parse_changelog(text)
-        # The non-semver heading should be silently skipped.
-        assert len(blocks) == 2
-        assert blocks[0][0] == "0.7.2"
-        assert blocks[1][0] == "0.7.1"
+
+        with pytest.raises(ValueError, match="Unrecognized changelog version heading"):
+            parse_changelog(text)
 
 
 class TestGroupByMinor:
@@ -296,6 +294,24 @@ class TestBuildRoot:
 
 
 class TestArchiveChangelog:
+    def test_unknown_heading_preserves_root_and_archives(self, tmp_path: Path) -> None:
+        """An unknown version-like heading fails before any output is rewritten."""
+        changelog = tmp_path / "CHANGELOG.md"
+        original = _PREAMBLE + _V072 + "## [CustomLabel]\n\n- Preserve me\n\n" + _V062
+        changelog.write_text(original, encoding="utf-8")
+        archive_dir = tmp_path / "docs" / "archive" / "changelog"
+        archive_dir.mkdir(parents=True)
+        existing_archive = archive_dir / "0.5.md"
+        existing = "# Changelog - 0.5.x\n\nHistorical content\n"
+        existing_archive.write_text(existing, encoding="utf-8")
+
+        with pytest.raises(ValueError, match="CustomLabel"):
+            archive_changelog(changelog, archive_dir)
+
+        assert changelog.read_text(encoding="utf-8") == original
+        assert existing_archive.read_text(encoding="utf-8") == existing
+        assert sorted(path.name for path in archive_dir.iterdir()) == ["0.5.md"]
+
     def test_splits_and_archives(self, tmp_path: Path) -> None:
         changelog = tmp_path / "CHANGELOG.md"
         changelog.write_text(_full_changelog(), encoding="utf-8")
@@ -438,18 +454,22 @@ class TestArchiveChangelog:
         assert str(archive_dir) in caplog.text
         assert str(changelog_dir) in caplog.text
 
-    def test_archive_dir_relpath_value_error_uses_absolute_fallback(
+    def test_archive_dir_relpath_value_error_preserves_changelog(
         self,
         tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Archive splitting survives Windows-style relpath failures across drives."""
+        """Cross-volume paths fail without publishing absolute archive links."""
         changelog_dir = tmp_path / "repo"
         changelog_dir.mkdir()
         changelog = changelog_dir / "CHANGELOG.md"
-        changelog.write_text(_full_changelog(), encoding="utf-8")
+        original = _full_changelog()
+        changelog.write_text(original, encoding="utf-8")
         archive_dir = tmp_path / "outside" / "archive"
+        archive_dir.mkdir(parents=True)
+        existing_archive = archive_dir / "0.5.md"
+        existing = "# Changelog - 0.5.x\n\nHistorical content\n"
+        existing_archive.write_text(existing, encoding="utf-8")
 
         def raise_cross_drive_value_error(_path: Path, _start: Path) -> str:
             msg = "path is on mount 'D:', start on mount 'C:'"
@@ -457,14 +477,18 @@ class TestArchiveChangelog:
 
         monkeypatch.setattr("archive_changelog.os.path.relpath", raise_cross_drive_value_error)
 
-        with caplog.at_level(logging.WARNING, logger="archive_changelog"):
+        with pytest.raises(ValueError, match="different filesystem roots") as exc_info:
             archive_changelog(changelog, archive_dir)
 
         root = changelog.read_text(encoding="utf-8")
-        assert f"- [0.6.x]({archive_dir.as_posix()}/0.6.md)" in root
-        assert "path is on mount 'D:', start on mount 'C:'" in caplog.text
-        assert str(archive_dir) in caplog.text
-        assert str(changelog_dir) in caplog.text
+        assert root == original
+        assert str(archive_dir) not in root
+        assert archive_dir.as_posix() not in root
+        assert str(archive_dir) not in str(exc_info.value)
+        assert archive_dir.as_posix() not in str(exc_info.value)
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert existing_archive.read_text(encoding="utf-8") == existing
+        assert sorted(path.name for path in archive_dir.iterdir()) == ["0.5.md"]
 
 
 # ---------------------------------------------------------------------------

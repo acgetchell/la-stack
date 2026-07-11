@@ -4,51 +4,145 @@
 
 use faer::linalg::solvers::{Ldlt as FaerLdlt, PartialPivLu};
 use faer::perm::PermRef;
+use la_stack::{LaError, Tolerance, Vector};
 use nalgebra::SMatrix;
+
+/// Evaluate la-stack's dot product through the ownership contract used by the
+/// selected library revision.
+///
+/// # Errors
+///
+/// Returns the selected revision's typed error if finite inputs overflow during
+/// dot-product accumulation.
+#[cfg(not(la_stack_v0_4_3_api))]
+#[inline]
+pub fn la_stack_dot<const D: usize>(left: &Vector<D>, right: &Vector<D>) -> Result<f64, LaError> {
+    left.dot(right)
+}
+
+/// Evaluate the v0.4.3 by-value dot-product API without changing benchmark
+/// inputs or the mathematical operation.
+///
+/// # Errors
+///
+/// Returns v0.4.3's typed error if finite inputs overflow during dot-product
+/// accumulation.
+#[cfg(la_stack_v0_4_3_api)]
+#[inline]
+pub fn la_stack_dot<const D: usize>(left: &Vector<D>, right: &Vector<D>) -> Result<f64, LaError> {
+    (*left).dot(*right)
+}
+
+/// Parse a tolerance through the constructor exposed by the selected library
+/// revision.
+///
+/// # Errors
+///
+/// Returns a typed error when `value` is negative or non-finite.
+#[cfg(not(la_stack_v0_4_3_api))]
+#[inline]
+pub const fn la_stack_tolerance(value: f64) -> Result<Tolerance, LaError> {
+    Tolerance::try_new(value)
+}
+
+/// Parse a tolerance through v0.4.3's pre-`try_` constructor name.
+///
+/// # Errors
+///
+/// Returns a typed error when `value` is negative or non-finite.
+#[cfg(la_stack_v0_4_3_api)]
+#[inline]
+pub const fn la_stack_tolerance(value: f64) -> Result<Tolerance, LaError> {
+    Tolerance::new(value)
+}
 
 /// Return `det(P)` for faer's permutation representation.
 ///
 /// Sign(det(P)) is +1 for even permutations and -1 for odd. Parity is computed
-/// from the number of cycles: `sign = (-1)^(n - cycles)`.
+/// from the number of cycles: `sign = (-1)^(n - cycles)`. The benchmark
+/// dimensions use an allocation-free bit mask; larger permutations use an
+/// allocation-free inversion count so the function remains total.
+#[must_use]
 pub fn faer_perm_sign(p: PermRef<'_, usize>) -> f64 {
     let (forward, _inverse) = p.arrays();
-    let n = forward.len();
+    let is_odd = if forward.len() <= u128::BITS as usize {
+        permutation_is_odd_by_cycles(forward)
+    } else {
+        permutation_is_odd_by_inversions(forward)
+    };
 
-    let mut seen = vec![false; n];
+    if is_odd { -1.0 } else { 1.0 }
+}
+
+/// Return whether a permutation of at most 128 elements is odd.
+fn permutation_is_odd_by_cycles(forward: &[usize]) -> bool {
+    let mut seen = 0u128;
     let mut cycles = 0usize;
 
-    for start in 0..n {
-        if seen[start] {
+    for start in 0..forward.len() {
+        if seen & (1u128 << start) != 0 {
             continue;
         }
         cycles += 1;
 
-        let mut i = start;
-        while !seen[i] {
-            seen[i] = true;
-            i = forward[i];
+        let mut index = start;
+        while seen & (1u128 << index) == 0 {
+            seen |= 1u128 << index;
+            index = forward[index];
         }
     }
 
-    if (n - cycles).is_multiple_of(2) {
-        1.0
-    } else {
-        -1.0
-    }
+    !(forward.len() - cycles).is_multiple_of(2)
 }
 
-/// Compute a determinant from a faer partial-pivot LU factorization.
-pub fn faer_det_from_partial_piv_lu(lu: &PartialPivLu<f64>) -> f64 {
-    // For PA = LU with unit-lower L, det(A) = det(P) * det(U).
-    let u = lu.U();
-    let mut det = 1.0;
-    for i in 0..u.nrows() {
-        det *= u[(i, i)];
+/// Return whether a permutation is odd using an allocation-free fallback.
+fn permutation_is_odd_by_inversions(forward: &[usize]) -> bool {
+    let mut is_odd = false;
+
+    for (index, &left) in forward.iter().enumerate() {
+        for &right in &forward[index + 1..] {
+            is_odd ^= left > right;
+        }
     }
-    det * faer_perm_sign(lu.P())
+
+    is_odd
+}
+
+/// Borrow a faer partial-pivot LU factorization together with its precomputed
+/// permutation sign.
+///
+/// The private sign field is derived from the borrowed factorization, so callers
+/// cannot accidentally combine one LU decomposition with another permutation.
+#[must_use]
+pub struct PreparedFaerLuDet<'a> {
+    lu: &'a PartialPivLu<f64>,
+    permutation_sign: f64,
+}
+
+impl<'a> PreparedFaerLuDet<'a> {
+    /// Prepare repeated determinant queries for one borrowed LU factorization.
+    pub fn new(lu: &'a PartialPivLu<f64>) -> Self {
+        Self {
+            lu,
+            permutation_sign: faer_perm_sign(lu.P()),
+        }
+    }
+
+    /// Compute the determinant from the prepared factorization.
+    #[must_use]
+    pub fn det(&self) -> f64 {
+        // For PA = LU with unit-lower L, det(A) = det(P) * det(U).
+        let u = self.lu.U();
+        let mut det = 1.0;
+        for i in 0..u.nrows() {
+            det *= u[(i, i)];
+        }
+        det * self.permutation_sign
+    }
 }
 
 /// Compute a determinant from a faer LDLT factorization.
+#[must_use]
 pub fn faer_det_from_ldlt(ldlt: &FaerLdlt<f64>) -> f64 {
     let d = ldlt.D().column_vector();
     let mut det = 1.0;
@@ -60,7 +154,11 @@ pub fn faer_det_from_ldlt(ldlt: &FaerLdlt<f64>) -> f64 {
 
 /// Return a deterministic, strictly diagonally-dominant benchmark matrix entry.
 #[inline]
-#[allow(clippy::cast_precision_loss)] // D, r, c are small integers, precision loss is not an issue.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "benchmark dimensions and indices are small enough to be represented exactly as f64"
+)]
+#[must_use]
 pub fn matrix_entry<const D: usize>(r: usize, c: usize) -> f64 {
     if r == c {
         // Strict diagonal dominance for stability.
@@ -73,6 +171,7 @@ pub fn matrix_entry<const D: usize>(r: usize, c: usize) -> f64 {
 
 /// Build the shared matrix rows used by all crates for a dimension.
 #[inline]
+#[must_use]
 pub fn make_matrix_rows<const D: usize>() -> [[f64; D]; D] {
     let mut rows = [[0.0; D]; D];
 
@@ -85,15 +184,68 @@ pub fn make_matrix_rows<const D: usize>() -> [[f64; D]; D] {
     rows
 }
 
+/// Build a well-conditioned matrix whose first LU column requires a row swap.
+#[inline]
+#[must_use]
+pub fn make_pivoting_matrix_rows<const D: usize>() -> [[f64; D]; D] {
+    let mut rows = make_matrix_rows();
+    if D > 1 {
+        rows.swap(0, 1);
+    }
+    rows
+}
+
+/// Build a positive-definite diagonal matrix spanning 112 binary exponents at D=8.
+///
+/// Each successive pivot is `2^-16` times the previous one. Benchmarks use a
+/// zero tolerance so the complete, finite factorization remains in scope. The
+/// fixed return dimension prevents extending the progression until a diagonal
+/// entry underflows to zero and destroys positive-definiteness.
+#[inline]
+#[must_use]
+pub fn make_ill_conditioned_matrix_rows() -> [[f64; 8]; 8] {
+    let mut rows = [[0.0; 8]; 8];
+    let mut diagonal = 1.0;
+    for (index, row) in rows.iter_mut().enumerate() {
+        row[index] = diagonal;
+        diagonal *= 1.0 / 65_536.0;
+    }
+    rows
+}
+
+/// Build a positive diagonal matrix whose factors underflow in sequential order
+/// but whose balanced exact product is one when `D` is a multiple of four.
+#[inline]
+#[must_use]
+pub fn make_balanced_dynamic_range_rows<const D: usize>() -> [[f64; D]; D] {
+    const TWO_NEG_800: f64 = f64::from_bits(223_u64 << 52);
+    const TWO_POS_800: f64 = f64::from_bits(1823_u64 << 52);
+
+    let mut rows = [[0.0; D]; D];
+    for (index, row) in rows.iter_mut().enumerate() {
+        row[index] = if index % 4 < 2 {
+            TWO_NEG_800
+        } else {
+            TWO_POS_800
+        };
+    }
+    rows
+}
+
 /// Return a deterministic benchmark vector entry.
 #[inline]
-#[allow(clippy::cast_precision_loss)] // i is a small integer, precision loss is not an issue.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "benchmark vector indices are small enough to be represented exactly as f64"
+)]
+#[must_use]
 pub fn vector_entry(i: usize, offset: f64) -> f64 {
     (i as f64) + 1.0 + offset
 }
 
 /// Build the shared vector input used by all crates for a dimension.
 #[inline]
+#[must_use]
 pub fn make_vector_array<const D: usize>(offset: f64) -> [f64; D] {
     let mut data = [0.0; D];
 
@@ -106,6 +258,7 @@ pub fn make_vector_array<const D: usize>(offset: f64) -> [f64; D] {
 
 /// Compute nalgebra's matrix infinity norm using la-stack's row-sum convention.
 #[inline]
+#[must_use]
 pub fn nalgebra_inf_norm<const D: usize>(m: &SMatrix<f64, D, D>) -> f64 {
     // Infinity norm = max absolute row sum.
     let mut max_row_sum = 0.0;

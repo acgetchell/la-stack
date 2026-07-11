@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Compile-time 4×4 determinant via `det_direct()`.
 //!
 //! Because `det_direct` is a `const fn` (Rust 1.94+), the determinant is
@@ -23,13 +25,13 @@ fn main() -> Result<(), LaError> {
     let mat = MAT?;
 
     println!("4×4 matrix:");
-    for r in 0..4 {
+    for row in mat.as_rows() {
         print!("  [");
-        for c in 0..4 {
-            if c > 0 {
+        for (col, value) in row.iter().enumerate() {
+            if col > 0 {
                 print!(", ");
             }
-            print!("{:5.1}", mat.get_checked(r, c)?);
+            print!("{value:5.1}");
         }
         println!("]");
     }
