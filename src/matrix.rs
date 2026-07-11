@@ -155,6 +155,52 @@ impl<const TRACK_UNDERFLOW: bool> FilterArithmetic<TRACK_UNDERFLOW> {
     }
 }
 
+/// A finite D=4 matrix proven safe for shared-minor determinant and permanent
+/// evaluation.
+///
+/// Construction proves both the fixed dimension and that every coefficient in
+/// the first two rows is non-zero. The latter makes every shared 2×2 minor part
+/// of an active Leibniz term, so the dense kernel cannot evaluate an overflowing
+/// minor solely for a mathematically absent term.
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+struct Det4SharedMinorInput<'a, const D: usize> {
+    matrix: &'a Matrix<D>,
+}
+
+impl<'a, const D: usize> Det4SharedMinorInput<'a, D> {
+    /// Parse a matrix into the shared-minor D=4 domain.
+    ///
+    /// `None` selects the guarded determinant path; it does not represent an
+    /// invalid public matrix.
+    #[expect(
+        clippy::inline_always,
+        reason = "the D=4 determinant hot path must eliminate its proof wrapper"
+    )]
+    #[inline(always)]
+    const fn try_new(matrix: &'a Matrix<D>) -> Option<Self> {
+        if D != 4 {
+            return None;
+        }
+
+        let r = &matrix.rows;
+        let shared_minors_are_active = (r[0][0] != 0.0)
+            && (r[0][1] != 0.0)
+            && (r[0][2] != 0.0)
+            && (r[0][3] != 0.0)
+            && (r[1][0] != 0.0)
+            && (r[1][1] != 0.0)
+            && (r[1][2] != 0.0)
+            && (r[1][3] != 0.0);
+
+        if shared_minors_are_active {
+            Some(Self { matrix })
+        } else {
+            None
+        }
+    }
+}
+
 impl<const D: usize> SymmetricMatrix<D> {
     /// Construct a symmetric matrix proof without checking the invariant.
     ///
@@ -872,28 +918,14 @@ impl<const D: usize> Matrix<D> {
                 [self.rows[2][0], self.rows[2][1], self.rows[2][2]],
             )),
             4 => {
-                let r = &self.rows;
-
-                // The dense hot path shares the six unique 2×2 minors across
-                // all four cofactors. Requiring non-zero coefficients in the
-                // first two rows keeps this equivalent to the guarded path
-                // below: no mathematically absent term can force evaluation of
-                // an overflowing minor.
-                let dense = (r[0][0] != 0.0)
-                    && (r[0][1] != 0.0)
-                    && (r[0][2] != 0.0)
-                    && (r[0][3] != 0.0)
-                    && (r[1][0] != 0.0)
-                    && (r[1][1] != 0.0)
-                    && (r[1][2] != 0.0)
-                    && (r[1][3] != 0.0);
-                if !TRACK_UNDERFLOW && dense {
+                if !TRACK_UNDERFLOW && let Some(input) = Det4SharedMinorInput::try_new(self) {
                     return Some(FilterArithmetic {
-                        value: Self::det4_dense_elements(r),
+                        value: Self::det4_dense_elements(input),
                         underflow_safe: true,
                     });
                 }
 
+                let r = &self.rows;
                 let mut det = if r[0][3] == 0.0 {
                     FilterArithmetic {
                         value: 0.0,
@@ -952,12 +984,7 @@ impl<const D: usize> Matrix<D> {
         }
     }
 
-    /// Evaluate the dense 4×4 cofactor expansion with shared 2×2 minors.
-    ///
-    /// Callers must establish that the first two rows contain no zero
-    /// coefficients. That proof makes every minor part of an active Leibniz
-    /// term, so evaluating all six shared minors cannot introduce a non-finite
-    /// result through a mathematically absent term.
+    /// Evaluate the proof-bearing 4×4 cofactor expansion with shared 2×2 minors.
     ///
     /// When no intermediate undergoes gradual underflow, the rounding error is
     /// bounded by `ERR_COEFF_4 · p(|A|)`, where `p(|A|)` is the absolute Leibniz
@@ -969,7 +996,8 @@ impl<const D: usize> Matrix<D> {
         reason = "the D=4 determinant hot path must inline its shared-minor expansion"
     )]
     #[inline(always)]
-    const fn det4_dense_elements(r: &[[f64; D]; D]) -> f64 {
+    const fn det4_dense_elements(input: Det4SharedMinorInput<'_, D>) -> f64 {
+        let r = &input.matrix.rows;
         let s23 = r[2][2].mul_add(r[3][3], -(r[2][3] * r[3][2]));
         let s13 = r[2][1].mul_add(r[3][3], -(r[2][3] * r[3][1]));
         let s12 = r[2][1].mul_add(r[3][2], -(r[2][2] * r[3][1]));
@@ -985,6 +1013,47 @@ impl<const D: usize> Matrix<D> {
         r[0][0].mul_add(
             c00,
             (-r[0][1]).mul_add(c01, r[0][2].mul_add(c02, -(r[0][3] * c03))),
+        )
+    }
+
+    /// Evaluate the dense 4×4 absolute permanent with shared 2×2 minors.
+    ///
+    /// The proof carried by `input` makes every shared minor part of an active
+    /// Leibniz term. The caller separately establishes a wide exponent margin,
+    /// so this branch-free kernel cannot hide gradual underflow or evaluate an
+    /// overflowing minor for a mathematically absent term.
+    #[expect(
+        clippy::inline_always,
+        reason = "the D=4 determinant filter must inline its shared-minor permanent"
+    )]
+    #[inline(always)]
+    const fn det4_dense_abs_permanent_elements(input: Det4SharedMinorInput<'_, D>) -> f64 {
+        let r = &input.matrix.rows;
+        let sp23 = (r[2][2] * r[3][3]).abs() + (r[2][3] * r[3][2]).abs();
+        let sp13 = (r[2][1] * r[3][3]).abs() + (r[2][3] * r[3][1]).abs();
+        let sp12 = (r[2][1] * r[3][2]).abs() + (r[2][2] * r[3][1]).abs();
+        let sp03 = (r[2][0] * r[3][3]).abs() + (r[2][3] * r[3][0]).abs();
+        let sp02 = (r[2][0] * r[3][2]).abs() + (r[2][2] * r[3][0]).abs();
+        let sp01 = (r[2][0] * r[3][1]).abs() + (r[2][1] * r[3][0]).abs();
+
+        let pc0 = r[1][3]
+            .abs()
+            .mul_add(sp12, r[1][2].abs().mul_add(sp13, r[1][1].abs() * sp23));
+        let pc1 = r[1][3]
+            .abs()
+            .mul_add(sp02, r[1][2].abs().mul_add(sp03, r[1][0].abs() * sp23));
+        let pc2 = r[1][3]
+            .abs()
+            .mul_add(sp01, r[1][1].abs().mul_add(sp03, r[1][0].abs() * sp13));
+        let pc3 = r[1][2]
+            .abs()
+            .mul_add(sp01, r[1][1].abs().mul_add(sp02, r[1][0].abs() * sp12));
+
+        r[0][3].abs().mul_add(
+            pc3,
+            r[0][2]
+                .abs()
+                .mul_add(pc2, r[0][1].abs().mul_add(pc1, r[0][0].abs() * pc0)),
         )
     }
 
@@ -1265,73 +1334,85 @@ impl<const D: usize> Matrix<D> {
                 );
                 Self::certified_error_bound(ERR_COEFF_3, permanent)
             }
-            4 => {
-                let r = &self.rows;
-                let mut permanent = if r[0][3] == 0.0 {
-                    FilterArithmetic {
-                        value: 0.0,
-                        underflow_safe: true,
-                    }
-                } else {
-                    let pc3 = Self::det3_abs_permanent_elements::<TRACK_UNDERFLOW>(
-                        [r[1][0], r[1][1], r[1][2]],
-                        [r[2][0], r[2][1], r[2][2]],
-                        [r[3][0], r[3][1], r[3][2]],
-                    );
-                    let mut term =
-                        FilterArithmetic::<TRACK_UNDERFLOW>::multiply(r[0][3].abs(), pc3.value);
-                    term.underflow_safe &= pc3.underflow_safe;
-                    term
-                };
-                if r[0][2] != 0.0 {
-                    let pc2 = Self::det3_abs_permanent_elements::<TRACK_UNDERFLOW>(
-                        [r[1][0], r[1][1], r[1][3]],
-                        [r[2][0], r[2][1], r[2][3]],
-                        [r[3][0], r[3][1], r[3][3]],
-                    );
-                    let prior_safe = permanent.underflow_safe && pc2.underflow_safe;
-                    permanent = FilterArithmetic::<TRACK_UNDERFLOW>::mul_add(
-                        r[0][2].abs(),
-                        pc2.value,
-                        permanent.value,
-                    );
-                    permanent.underflow_safe &= prior_safe;
-                }
-                if r[0][1] != 0.0 {
-                    let pc1 = Self::det3_abs_permanent_elements::<TRACK_UNDERFLOW>(
-                        [r[1][0], r[1][2], r[1][3]],
-                        [r[2][0], r[2][2], r[2][3]],
-                        [r[3][0], r[3][2], r[3][3]],
-                    );
-                    let prior_safe = permanent.underflow_safe && pc1.underflow_safe;
-                    permanent = FilterArithmetic::<TRACK_UNDERFLOW>::mul_add(
-                        r[0][1].abs(),
-                        pc1.value,
-                        permanent.value,
-                    );
-                    permanent.underflow_safe &= prior_safe;
-                }
-                if r[0][0] != 0.0 {
-                    let pc0 = Self::det3_abs_permanent_elements::<TRACK_UNDERFLOW>(
-                        [r[1][1], r[1][2], r[1][3]],
-                        [r[2][1], r[2][2], r[2][3]],
-                        [r[3][1], r[3][2], r[3][3]],
-                    );
-                    let prior_safe = permanent.underflow_safe && pc0.underflow_safe;
-                    permanent = FilterArithmetic::<TRACK_UNDERFLOW>::mul_add(
-                        r[0][0].abs(),
-                        pc0.value,
-                        permanent.value,
-                    );
-                    permanent.underflow_safe &= prior_safe;
-                }
-                Self::certified_error_bound(ERR_COEFF_4, permanent)
-            }
+            4 => self.det4_errbound::<TRACK_UNDERFLOW>(),
             _ => {
                 cold_path();
                 Ok(None)
             }
         }
+    }
+
+    /// Compute the D=4 determinant error bound after the dimension dispatch.
+    const fn det4_errbound<const TRACK_UNDERFLOW: bool>(&self) -> Result<Option<f64>, LaError> {
+        if !TRACK_UNDERFLOW && let Some(input) = Det4SharedMinorInput::try_new(self) {
+            return Self::certified_error_bound(
+                ERR_COEFF_4,
+                FilterArithmetic::<TRACK_UNDERFLOW> {
+                    value: Self::det4_dense_abs_permanent_elements(input),
+                    underflow_safe: true,
+                },
+            );
+        }
+
+        let r = &self.rows;
+        let mut permanent = if r[0][3] == 0.0 {
+            FilterArithmetic {
+                value: 0.0,
+                underflow_safe: true,
+            }
+        } else {
+            let pc3 = Self::det3_abs_permanent_elements::<TRACK_UNDERFLOW>(
+                [r[1][0], r[1][1], r[1][2]],
+                [r[2][0], r[2][1], r[2][2]],
+                [r[3][0], r[3][1], r[3][2]],
+            );
+            let mut term = FilterArithmetic::<TRACK_UNDERFLOW>::multiply(r[0][3].abs(), pc3.value);
+            term.underflow_safe &= pc3.underflow_safe;
+            term
+        };
+        if r[0][2] != 0.0 {
+            let pc2 = Self::det3_abs_permanent_elements::<TRACK_UNDERFLOW>(
+                [r[1][0], r[1][1], r[1][3]],
+                [r[2][0], r[2][1], r[2][3]],
+                [r[3][0], r[3][1], r[3][3]],
+            );
+            let prior_safe = permanent.underflow_safe && pc2.underflow_safe;
+            permanent = FilterArithmetic::<TRACK_UNDERFLOW>::mul_add(
+                r[0][2].abs(),
+                pc2.value,
+                permanent.value,
+            );
+            permanent.underflow_safe &= prior_safe;
+        }
+        if r[0][1] != 0.0 {
+            let pc1 = Self::det3_abs_permanent_elements::<TRACK_UNDERFLOW>(
+                [r[1][0], r[1][2], r[1][3]],
+                [r[2][0], r[2][2], r[2][3]],
+                [r[3][0], r[3][2], r[3][3]],
+            );
+            let prior_safe = permanent.underflow_safe && pc1.underflow_safe;
+            permanent = FilterArithmetic::<TRACK_UNDERFLOW>::mul_add(
+                r[0][1].abs(),
+                pc1.value,
+                permanent.value,
+            );
+            permanent.underflow_safe &= prior_safe;
+        }
+        if r[0][0] != 0.0 {
+            let pc0 = Self::det3_abs_permanent_elements::<TRACK_UNDERFLOW>(
+                [r[1][1], r[1][2], r[1][3]],
+                [r[2][1], r[2][2], r[2][3]],
+                [r[3][1], r[3][2], r[3][3]],
+            );
+            let prior_safe = permanent.underflow_safe && pc0.underflow_safe;
+            permanent = FilterArithmetic::<TRACK_UNDERFLOW>::mul_add(
+                r[0][0].abs(),
+                pc0.value,
+                permanent.value,
+            );
+            permanent.underflow_safe &= prior_safe;
+        }
+        Self::certified_error_bound(ERR_COEFF_4, permanent)
     }
 
     /// Evaluate a 3×3 determinant expansion with a guarded sparse fallback.
@@ -1413,6 +1494,19 @@ impl<const D: usize> Matrix<D> {
         r1: [f64; 3],
         r2: [f64; 3],
     ) -> FilterArithmetic<TRACK_UNDERFLOW> {
+        let dense = (r0[0] != 0.0) && (r0[1] != 0.0) && (r0[2] != 0.0);
+        if !TRACK_UNDERFLOW && dense {
+            let pm00 = (r1[1] * r2[2]).abs() + (r1[2] * r2[1]).abs();
+            let pm01 = (r1[0] * r2[2]).abs() + (r1[2] * r2[0]).abs();
+            let pm02 = (r1[0] * r2[1]).abs() + (r1[1] * r2[0]).abs();
+            return FilterArithmetic {
+                value: r0[2]
+                    .abs()
+                    .mul_add(pm02, r0[1].abs().mul_add(pm01, r0[0].abs() * pm00)),
+                underflow_safe: true,
+            };
+        }
+
         let mut permanent = if r0[2] == 0.0 {
             FilterArithmetic {
                 value: 0.0,
@@ -1770,6 +1864,25 @@ mod tests {
     }
 
     #[test]
+    fn det_direct_d3_dense_reports_legitimate_overflow() {
+        // The unscaled matrix has determinant 54, so scaling every entry by
+        // 1.6e102 gives a determinant of approximately 2.21e308.
+        let scale = 1.6e102;
+        let m = black_box(
+            Matrix::<3>::try_from_rows([
+                [4.0 * scale, scale, scale],
+                [scale, 4.0 * scale, scale],
+                [scale, scale, 4.0 * scale],
+            ])
+            .unwrap(),
+        );
+        let expected = LaError::non_finite_computation_scalar(ArithmeticOperation::Determinant);
+
+        assert_eq!(m.det_direct(), Err(expected));
+        assert_eq!(m.det(), Err(expected));
+    }
+
+    #[test]
     fn det_direct_d3_nonsingular() {
         // [[2,1,0],[0,3,1],[1,0,2]] → det = 2*(6-0) - 1*(0-1) + 0 = 13
         let m = black_box(
@@ -1820,6 +1933,26 @@ mod tests {
 
         assert_abs_diff_eq!(direct, 112.0, epsilon = 1e-12);
         assert_eq!(paired.determinant().to_bits(), direct.to_bits());
+    }
+
+    #[test]
+    fn det_direct_d4_dense_reports_legitimate_overflow() {
+        // The unscaled matrix has determinant 189, so scaling every entry by
+        // 3.2e76 gives a determinant of approximately 1.98e308.
+        let scale = 3.2e76;
+        let m = black_box(
+            Matrix::<4>::try_from_rows([
+                [4.0 * scale, scale, scale, scale],
+                [scale, 4.0 * scale, scale, scale],
+                [scale, scale, 4.0 * scale, scale],
+                [scale, scale, scale, 4.0 * scale],
+            ])
+            .unwrap(),
+        );
+        let expected = LaError::non_finite_computation_scalar(ArithmeticOperation::Determinant);
+
+        assert_eq!(m.det_direct(), Err(expected));
+        assert_eq!(m.det(), Err(expected));
     }
 
     #[test]

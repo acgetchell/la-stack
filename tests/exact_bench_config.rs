@@ -37,6 +37,16 @@ fn validate_baseline_and_random_corpus<const D: usize>() {
     }
 }
 
+/// Report whether `det_sign_exact` can certify this fixture through its direct filter.
+///
+/// Both a missing bound and a direct-path error select the exact fallback.
+fn fast_filter_is_conclusive<const D: usize>(input: ExactInput<D>) -> bool {
+    match input.matrix.det_direct_with_errbound() {
+        Ok(Some(estimate)) => estimate.determinant().abs() > estimate.absolute_error_bound(),
+        Ok(None) | Err(_) => false,
+    }
+}
+
 #[test]
 fn i16_range_rejects_unordered_bounds() {
     let Err(err) = I16Range::try_new(5, 4) else {
@@ -136,6 +146,19 @@ fn exact_adversarial_benchmark_fixtures_are_correct() {
     }
     let _ = validate_exact_fixture(hilbert_input::<4>());
     let _ = validate_exact_fixture(hilbert_input::<5>());
+}
+
+#[test]
+fn det_sign_exact_benchmark_filter_paths_are_stable() {
+    assert!(fast_filter_is_conclusive(baseline_input::<2>()));
+    assert!(fast_filter_is_conclusive(baseline_input::<3>()));
+    assert!(fast_filter_is_conclusive(baseline_input::<4>()));
+    assert!(!fast_filter_is_conclusive(baseline_input::<5>()));
+
+    assert!(!fast_filter_is_conclusive(near_singular_3x3_input()));
+    assert!(!fast_filter_is_conclusive(large_entries_3x3_input()));
+    assert!(fast_filter_is_conclusive(hilbert_input::<4>()));
+    assert!(!fast_filter_is_conclusive(hilbert_input::<5>()));
 }
 
 #[test]
