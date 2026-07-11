@@ -44,6 +44,10 @@ This PR should primarily include version bumps, changelog updates, benchmark
 comparison updates, and documentation updates. All major code changes should
 already be on `main`.
 
+Finalize release-facing metadata and documentation in this dedicated release
+PR. Ordinary feature, fix, review, and hygiene work should not preemptively
+bump versions or prepare release artifacts.
+
 Small, critical fixes discovered during the release process may be included,
 but keep them minimal and release-critical.
 
@@ -69,7 +73,27 @@ Update release metadata to match the crate version:
 - `CITATION.cff`: update `version` and `date-released`
 - `pyproject.toml`: update `[project] version` for the Python utility package
 
+Review the citation identity fields at the same time: author name and contact,
+ORCID, repository URL, and license. Preserve la-stack's Zenodo concept DOI
+(`all versions`) unless the archival policy is deliberately changed; do not
+replace it with a release-specific DOI.
+
+Refresh both committed lockfiles after those manual metadata edits:
+
+```bash
+cargo metadata --format-version 1 --no-deps > /dev/null
+uv lock
+```
+
 Review version references in documentation:
+
+```bash
+uv run --locked check-docs-version-sync
+```
+
+The automated check covers package metadata, lockfiles, README dependency
+snippets, and release-pinned README links. Then review historical references
+that intentionally remain on older versions:
 
 ```bash
 rg -n "\bv?[0-9]+\.[0-9]+\.[0-9]+\b" README.md docs/ CITATION.cff pyproject.toml || true
@@ -92,14 +116,15 @@ under `docs/archive/changelog/`.
 4. Run benchmarks and update the README comparison table
 
 ```bash
-# Run vs_linalg benchmarks (la-stack vs nalgebra vs faer) and update the
-# README benchmark table + SVG plot
-just bench-vs-linalg
+# Validate inputs, run a fresh complete vs_linalg benchmark, and atomically
+# update the README table plus CSV/SVG/JSON-provenance assets
 just plot-vs-linalg-readme
 ```
 
-Review the updated table in `README.md` and the plot in `docs/assets/` for
-accuracy.
+Review the updated table in `README.md`, the plot and CSV in `docs/assets/`, and
+the adjacent provenance JSON. The publication command fails if the independent
+correctness gate, canonical-dimension coverage, or required provenance is
+incomplete.
 
 5. Update the release performance comparison
 
@@ -116,10 +141,16 @@ lexicographically sorted filenames such as `v0.4.2-vs-v0.4.1.md`. Iterative
 local reports still live under `target/bench-reports/`. For an explicit release
 repair, run `just performance-release <current-tag> <previous-tag>`. To compare
 the stored GitHub Actions release assets instead of running cargo locally, use
-`just performance-github-assets`.
+`just performance-github-assets`. The local release workflow validates and then
+compiles both library revisions with the current checkout's hashed benchmark
+harness, recording source-state, environment, toolchain, dependency, Criterion,
+and validation provenance. Stored release assets retain their original
+per-release harnesses; unavailable historical measurement metadata is labelled
+explicitly rather than treated as an isolated library-code comparison.
 
 After the GitHub Release is published, the `Release Benchmarks` workflow checks
-out the release tag, saves a full Criterion baseline, and attaches
+out the release tag, runs the independent benchmark-input tests, saves a full
+Criterion baseline, and attaches
 `la-stack-$TAG-criterion-baseline.tar.gz` to the release. That release asset is
 the durable archive for historical baseline comparisons; the workflow also
 uploads a short-lived Actions artifact for debugging the run.
@@ -131,6 +162,7 @@ comparison command reference.
 
 ```bash
 just ci
+just cargo-lock-check
 just citation-check
 cargo publish --locked --allow-dirty --dry-run
 ```
@@ -138,7 +170,7 @@ cargo publish --locked --allow-dirty --dry-run
 7. Stage and commit release artifacts
 
 ```bash
-git add Cargo.toml Cargo.lock CITATION.cff pyproject.toml CHANGELOG.md README.md docs/
+git add Cargo.toml Cargo.lock CITATION.cff pyproject.toml uv.lock CHANGELOG.md README.md docs/
 
 git commit -m "chore(release): release $TAG
 
@@ -226,6 +258,29 @@ gh release create "$TAG" --title "$TAG" --notes-from-tag
 
 Always set the GitHub release title to the exact tag string, including the
 leading `v`.
+
+7. Verify the durable Criterion baseline asset
+
+After the `Release Benchmarks` workflow completes, verify that the GitHub
+release contains the expected long-lived baseline archive:
+
+```bash
+gh release view "$TAG" --json assets \
+  --jq ".assets[] | select(.name == \"la-stack-$TAG-criterion-baseline.tar.gz\") | .name" | cat
+```
+
+The command must print `la-stack-$TAG-criterion-baseline.tar.gz`. An Actions
+artifact alone is not a durable release baseline.
+
+8. Clean up the merged release branch
+
+After publishing and asset verification succeed, remove the release branch
+locally and on the remote:
+
+```bash
+git branch -d "release/$TAG"
+git push origin --delete "release/$TAG"
+```
 
 ---
 

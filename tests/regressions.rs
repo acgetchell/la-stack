@@ -1,5 +1,8 @@
+#![forbid(unsafe_code)]
+
 //! Regression tests for bugs caught in public API behavior.
 
+use la_stack::ERR_COEFF_3;
 use la_stack::prelude::*;
 
 #[test]
@@ -17,13 +20,14 @@ fn det_exact_f64_preserves_min_positive_subnormal() -> Result<(), LaError> {
 fn det_exact_f64_strict_vs_rounded_inexact_det() -> Result<(), LaError> {
     let m = Matrix::<2>::try_from_rows([[1.0 + f64::EPSILON, 0.0], [0.0, 1.0 - f64::EPSILON]])?;
 
-    assert_eq!(
+    assert!(matches!(
         m.det_exact_f64(),
         Err(LaError::Unrepresentable {
             index: None,
             reason: UnrepresentableReason::RequiresRounding,
+            ..
         })
-    );
+    ));
     assert_eq!(
         m.det_exact_rounded_f64().unwrap().to_bits(),
         1.0f64.to_bits()
@@ -37,13 +41,14 @@ fn solve_exact_f64_strict_vs_rounded_non_dyadic() -> Result<(), LaError> {
     let a = Matrix::<1>::try_from_rows([[3.0]])?;
     let b = Vector::<1>::try_new([1.0])?;
 
-    assert_eq!(
+    assert!(matches!(
         a.solve_exact_f64(b),
         Err(LaError::Unrepresentable {
             index: Some(0),
             reason: UnrepresentableReason::RequiresRounding,
+            ..
         })
-    );
+    ));
     assert_eq!(
         a.solve_exact_rounded_f64(b).unwrap().into_array()[0].to_bits(),
         (1.0f64 / 3.0).to_bits()
@@ -64,6 +69,33 @@ fn requires_rounding_error_can_fall_back_to_rounded_solve() -> Result<(), LaErro
     };
 
     assert_eq!(rounded.into_array()[0].to_bits(), (1.0f64 / 3.0).to_bits());
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "exact")]
+fn exact_determinant_overflow_midpoint_is_not_recoverable_by_rounding() -> Result<(), LaError> {
+    let above_overflow_midpoint = 3.0 * 2.0_f64.powi(969);
+    let m = Matrix::<2>::try_from_rows([[f64::MAX, -above_overflow_midpoint], [1.0, 1.0]])?;
+
+    let strict = m.det_exact_f64().unwrap_err();
+    assert!(matches!(
+        strict,
+        LaError::Unrepresentable {
+            index: None,
+            reason: UnrepresentableReason::NotFinite,
+            ..
+        }
+    ));
+    assert!(!strict.requires_rounding());
+    assert!(matches!(
+        m.det_exact_rounded_f64(),
+        Err(LaError::Unrepresentable {
+            reason: UnrepresentableReason::NotFinite,
+            ..
+        })
+    ));
+
     Ok(())
 }
 

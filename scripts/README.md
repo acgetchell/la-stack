@@ -4,13 +4,25 @@ This directory contains Python utilities used during development of the `la-stac
 
 ## Setup
 
-The Python tooling in this repo is managed with [`uv`](https://github.com/astral-sh/uv).
+The Python 3.14 support tooling in this repo is managed with
+[`uv`](https://github.com/astral-sh/uv) and resolved from `uv.lock`.
 
 ```bash
 just python-sync
 # or:
-uv sync --group dev
+uv sync --locked --group dev
 ```
+
+## Python maintenance rules
+
+- Keep Python 3.14 code precisely typed and add focused pytest coverage for
+  changed behavior and error paths.
+- Mock subprocess results as `subprocess.CompletedProcess[str]`, matching the
+  production boundary.
+- Catch only specific, recoverable exceptions; do not use broad
+  `except Exception` handlers.
+- Give writer/parser pairs round-trip tests and explicit malformed-input tests.
+- Update this README whenever Python entry points in `pyproject.toml` change.
 
 ## How to use it
 
@@ -24,8 +36,9 @@ The comparison script reads Criterion output and writes a local report to
 just bench-compare
 ```
 
-Use `uv run bench-compare --snapshot` for a no-baseline snapshot, or
-`uv run bench-compare <baseline>` to compare against a named saved baseline.
+Use `uv run --locked bench-compare --snapshot` for a no-baseline snapshot, or
+`uv run --locked bench-compare <baseline>` to compare against a named saved
+baseline.
 
 Use the top-level `just` workflows for routine release and local comparisons:
 
@@ -39,6 +52,14 @@ just performance-release
 # GitHub Actions release assets, without local cargo benchmark runs
 just performance-github-assets
 ```
+
+The local release workflows run the independent benchmark-input correctness gate
+and then measure both library revisions with one hashed current benchmark
+harness. Reports record source-state, environment, toolchain, dependency,
+Criterion, harness, and validation provenance and fail on incomplete selected
+coverage. Direct comparisons of separately published artifacts retain their
+original per-release harnesses and label unavailable historical measurement
+metadata explicitly.
 
 See `docs/BENCHMARKING.md` for the current command matrix, local saved-baseline
 workflow, explicit tag arguments, output locations, and release-artifact
@@ -54,12 +75,14 @@ And writes:
 
 - `docs/assets/bench/vs_linalg_{metric}_{stat}.csv`
 - `docs/assets/bench/vs_linalg_{metric}_{stat}.svg`
+- `docs/assets/bench/vs_linalg_{metric}_{stat}.provenance.json`
 
 To generate the single “time vs dimension” chart:
 
 By default, the benchmark suite runs for dimensions 2–5, 8, 16, 32, and 64.
 
-1. Run the benchmarks you want to plot (this produces `target/criterion/...`):
+1. For exploratory plots, run the benchmarks you want to plot (this produces
+   `target/criterion/...`):
 
 ```bash
 # full run (takes longer, better for README plots)
@@ -69,18 +92,28 @@ just bench-vs-linalg lu_solve
 just bench-vs-linalg-quick lu_solve
 ```
 
-2. Generate the chart (median or mean):
+2. Generate an exploratory chart (median or mean):
 
 ```bash
 # median (recommended)
 just plot-vs-linalg lu_solve median new true
 
-# median + update README's benchmark table (between BENCH_TABLE markers)
-just plot-vs-linalg-readme lu_solve median new true
-
 # or mean
 just plot-vs-linalg lu_solve mean new true
 ```
+
+Use the dedicated publication path to update README's benchmark table (between
+`BENCH_TABLE` markers):
+
+```bash
+just plot-vs-linalg-readme lu_solve median new true
+```
+
+That recipe runs the benchmark-input gate and a fresh full `vs_linalg` benchmark,
+requires la-stack/nalgebra/faer results at every canonical dimension, and then
+publishes CSV, SVG, JSON provenance, and README together. Partial dimensions are
+available only through the plotter's explicit `--allow-partial` exploratory
+option and cannot update README.
 
 This writes:
 
@@ -94,32 +127,32 @@ This writes:
 Plot a different metric:
 
 ```bash
-uv run criterion-dim-plot --metric dot --stat median --sample new
-uv run criterion-dim-plot --metric inf_norm --stat median --sample new
+uv run --locked criterion-dim-plot --metric dot --stat median --sample new
+uv run --locked criterion-dim-plot --metric inf_norm --stat median --sample new
 ```
 
 Plot a different statistic:
 
 ```bash
-uv run criterion-dim-plot --metric lu_solve --stat mean --sample new
+uv run --locked criterion-dim-plot --metric lu_solve --stat mean --sample new
 ```
 
 Plot the previous (baseline) sample instead of the newest run:
 
 ```bash
-uv run criterion-dim-plot --metric lu_solve --stat median --sample base
+uv run --locked criterion-dim-plot --metric lu_solve --stat median --sample base
 ```
 
 Use a log-scale y-axis:
 
 ```bash
-uv run criterion-dim-plot --metric lu_solve --stat median --sample new --log-y
+uv run --locked criterion-dim-plot --metric lu_solve --stat median --sample new --log-y
 ```
 
 Write to custom output paths:
 
 ```bash
-uv run criterion-dim-plot \
+uv run --locked criterion-dim-plot \
   --metric lu_solve --stat median --sample new \
   --csv docs/assets/bench/custom.csv \
   --out docs/assets/bench/custom.svg
@@ -128,7 +161,7 @@ uv run criterion-dim-plot \
 CSV only (skip SVG/gnuplot):
 
 ```bash
-uv run criterion-dim-plot --no-plot --metric lu_solve --stat median --sample new
+uv run --locked criterion-dim-plot --no-plot --metric lu_solve --stat median --sample new
 ```
 
 ### gnuplot
@@ -161,9 +194,9 @@ just changelog
 just changelog-unreleased v0.3.0
 ```
 
-`just changelog` runs `git-cliff -o CHANGELOG.md` followed by
-`postprocess-changelog` (strips trailing blank lines). Configuration
-lives in `cliff.toml` at the repo root.
+`just changelog` runs `git-cliff -o CHANGELOG.md`, strips trailing blank
+lines, archives completed changelog series, and formats the generated Markdown.
+Configuration lives in `cliff.toml` at the repo root.
 
 ### Creating a release tag
 

@@ -1,0 +1,36 @@
+{
+  "artifact": "README vs_linalg dimension plot",
+  "artifact_files": {
+    "csv_sha256": "9422bc1f7000b8c7d4c009306c7d5f1e7ac73011189e5611ca7446054ad948b9",
+    "svg_sha256": "00a08cf79a7193d88563c6f07f6d5c351d3426020b26a358355393f2b9f47894"
+  },
+  "criterion": {
+    "benchmark_command": "unavailable",
+    "confidence_interval_configuration": "unavailable; bounds are preserved in the CSV",
+    "criterion_dependency": "unavailable",
+    "dimensions": [
+      2,
+      3,
+      4,
+      5,
+      8,
+      16,
+      32,
+      64
+    ],
+    "log_y": true,
+    "metric": "lu_solve",
+    "sample": "new",
+    "statistic": "median"
+  },
+  "measurement": {
+    "reason": "the v0.4.3 assets predate deterministic measurement-provenance capture",
+    "status": "unavailable"
+  },
+  "publication": {
+    "artifact_commit": "925cbb72be101aa10e612f80b07c1cad8e298434",
+    "release": "v0.4.3",
+    "status": "historical"
+  },
+  "schema": 1
+}

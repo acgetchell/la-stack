@@ -82,34 +82,47 @@ def _semgrep_results() -> SemgrepResults | None:
     return SemgrepResults(results=tuple(parsed_results))
 
 
-def main() -> int:
-    path = _path_argument(sys.argv)
-    if path is None:
-        return 1
-
+def _expected_rule_counts(path: Path) -> collections.Counter[str]:
     expected: collections.Counter[str] = collections.Counter()
     for line in path.read_text(encoding="utf-8").splitlines():
         for match in RULE_ANNOTATION.finditer(line):
             expected.update(rule_id.strip() for rule_id in match.group(1).split(",") if rule_id.strip())
+    return expected
+
+
+def _actual_rule_counts(semgrep: SemgrepResults) -> collections.Counter[str] | None:
+    actual: collections.Counter[str] = collections.Counter()
+    malformed_results: list[str] = []
+    for index, result in enumerate(semgrep.results):
+        check_id = result.get("check_id")
+        if isinstance(check_id, str):
+            actual.update([check_id])
+        else:
+            malformed_results.append(f"result {index} is missing string field 'check_id'")
+
+    if not malformed_results:
+        return actual
+
+    print("Invalid SEMGREP_JSON shape:", file=sys.stderr)
+    for malformed in malformed_results:
+        print(f"  {malformed}", file=sys.stderr)
+    return None
+
+
+def main() -> int:
+    """Compare expected fixture annotations with the supplied Semgrep results."""
+    path = _path_argument(sys.argv)
+    if path is None:
+        return 1
+
+    expected = _expected_rule_counts(path)
 
     semgrep = _semgrep_results()
     if semgrep is None:
         return 1
 
-    actual: collections.Counter[str] = collections.Counter()
-    malformed_results: list[str] = []
-    for index, result in enumerate(semgrep.results):
-        check_id = result.get("check_id")
-        if not isinstance(check_id, str):
-            malformed_results.append(f"result {index} is missing string field 'check_id'")
-            continue
-
-        actual.update([check_id])
-
-    if malformed_results:
-        print("Invalid SEMGREP_JSON shape:", file=sys.stderr)
-        for malformed in malformed_results:
-            print(f"  {malformed}", file=sys.stderr)
+    actual = _actual_rule_counts(semgrep)
+    if actual is None:
         return 1
 
     if actual == expected:

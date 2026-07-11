@@ -233,18 +233,19 @@ class TestCreateTag:
     @patch("tag_release.extract_changelog_section")
     def test_creates_annotated_tag(
         self,
-        _mock_extract: MagicMock,
+        mock_extract: MagicMock,
         mock_find: MagicMock,
-        _mock_exists: MagicMock,
+        mock_exists: MagicMock,
         mock_git_input: MagicMock,
         tmp_path: Path,
     ) -> None:
         changelog = tmp_path / "CHANGELOG.md"
         changelog.write_text(_SAMPLE_CHANGELOG, encoding="utf-8")
         mock_find.return_value = changelog
-        _mock_extract.return_value = ("### Added\n\n- Something new", changelog)
+        mock_extract.return_value = ("### Added\n\n- Something new", changelog)
 
         tag_release.create_tag("v1.0.0")
+        mock_exists.assert_called_once_with("v1.0.0")
 
         mock_git_input.assert_called_once()
         call_args = mock_git_input.call_args
@@ -258,8 +259,8 @@ class TestCreateTag:
     def test_oversized_creates_reference_tag(
         self,
         mock_find: MagicMock,
-        _mock_exists: MagicMock,
-        _mock_url: MagicMock,
+        mock_exists: MagicMock,
+        mock_url: MagicMock,
         mock_git_input: MagicMock,
         tmp_path: Path,
     ) -> None:
@@ -275,6 +276,8 @@ class TestCreateTag:
         with patch("tag_release.extract_changelog_section", return_value=(big_section, changelog)):
             tag_release.create_tag("v1.0.0")
 
+        mock_exists.assert_called_once_with("v1.0.0")
+        mock_url.assert_called_once_with()
         mock_git_input.assert_called_once()
         tag_message = mock_git_input.call_args[1]["input_data"]
         assert "See full changelog" in tag_message
@@ -282,9 +285,10 @@ class TestCreateTag:
         assert len(tag_message) < 1000
 
     @patch("tag_release._tag_exists", return_value=True)
-    def test_existing_tag_without_force_exits(self, _mock_exists: MagicMock) -> None:
+    def test_existing_tag_without_force_exits(self, mock_exists: MagicMock) -> None:
         with pytest.raises(SystemExit):
             tag_release.create_tag("v1.0.0", force=False)
+        mock_exists.assert_called_once_with("v1.0.0")
 
     @patch("tag_release.run_git_command_with_input")
     @patch("tag_release._tag_exists", return_value=True)
@@ -292,19 +296,20 @@ class TestCreateTag:
     @patch("tag_release.extract_changelog_section")
     def test_force_recreates_tag(
         self,
-        _mock_extract: MagicMock,
+        mock_extract: MagicMock,
         mock_find: MagicMock,
-        _mock_exists: MagicMock,
+        mock_exists: MagicMock,
         mock_git_input: MagicMock,
         tmp_path: Path,
     ) -> None:
         changelog = tmp_path / "CHANGELOG.md"
         changelog.write_text(_SAMPLE_CHANGELOG, encoding="utf-8")
         mock_find.return_value = changelog
-        _mock_extract.return_value = ("### Fixed\n\n- Bug fix", changelog)
+        mock_extract.return_value = ("### Fixed\n\n- Bug fix", changelog)
 
         tag_release.create_tag("v1.0.0", force=True)
 
+        mock_exists.assert_called_once_with("v1.0.0")
         mock_git_input.assert_called_once()
         assert mock_git_input.call_args[0][0] == ["tag", "-f", "-a", "v1.0.0", "-F", "-", "--cleanup=verbatim"]
 
@@ -315,9 +320,9 @@ class TestCreateTag:
     def test_force_does_not_delete_tag_if_changelog_fails(
         self,
         mock_git_input: MagicMock,
-        _mock_extract: MagicMock,
+        mock_extract: MagicMock,
         mock_find: MagicMock,
-        _mock_exists: MagicMock,
+        mock_exists: MagicMock,
         tmp_path: Path,
     ) -> None:
         """Tag must not be deleted if changelog extraction fails."""
@@ -328,6 +333,8 @@ class TestCreateTag:
         with pytest.raises(LookupError):
             tag_release.create_tag("v1.0.0", force=True)
 
+        mock_exists.assert_called_once_with("v1.0.0")
+        mock_extract.assert_called_once()
         mock_git_input.assert_not_called()
 
 

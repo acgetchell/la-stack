@@ -32,9 +32,14 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           cache: false
+
+      - name: Validate benchmark inputs
+        run: >
+          cargo test --locked --features bench,exact
+          --test vs_linalg_inputs --test exact_bench_config
 
       - name: Save release Criterion baseline
         env:
@@ -42,8 +47,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          cargo bench --features bench --bench vs_linalg -- --save-baseline "$RELEASE_TAG"
-          cargo bench --features bench,exact --bench exact -- --save-baseline "$RELEASE_TAG"
+          cargo bench --locked --features bench --bench vs_linalg -- --save-baseline "$RELEASE_TAG"
+          cargo bench --locked --features bench,exact --bench exact -- --save-baseline "$RELEASE_TAG"
 
       - name: Package release Criterion baseline
         id: package-baseline

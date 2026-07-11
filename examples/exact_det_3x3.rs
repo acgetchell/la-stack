@@ -1,9 +1,10 @@
+#![forbid(unsafe_code)]
+
 //! Exact determinant value for a near-singular 3×3 matrix.
 //!
-//! This example demonstrates `det_exact()` and `det_exact_f64()`, which use
-//! arbitrary-precision rational arithmetic to compute the provably correct
-//! determinant value — even when the matrix is so close to singular that f64
-//! rounding could lose significant digits.
+//! This example demonstrates `det_exact()` and [`ExactF64Conversion`], retaining
+//! the provably correct rational determinant before converting that same value
+//! to binary64 without repeating exact evaluation.
 //!
 //! Run with: `cargo run --features exact --example exact_det_3x3`
 
@@ -28,23 +29,23 @@ fn main() -> Result<(), LaError> {
         unreachable!("D=3 is supported by det_direct");
     };
     let det_exact = m.det_exact()?;
-    let det_exact_as_f64 = m.det_exact_f64()?;
+    let det_exact_as_f64 = det_exact.try_to_f64()?;
 
     println!("Near-singular 3×3 matrix (perturbation = 2^-50 ≈ {perturbation:.2e}):");
-    for r in 0..3 {
+    for row in m.as_rows() {
         print!("  [");
-        for c in 0..3 {
-            if c > 0 {
+        for (col, value) in row.iter().enumerate() {
+            if col > 0 {
                 print!(", ");
             }
-            print!("{:22.18}", m.get_checked(r, c)?);
+            print!("{value:22.18}");
         }
         println!("]");
     }
     println!();
     println!("f64 det_direct()   = {det_f64_approx:+.6e}");
     println!("det_exact()        = {det_exact}");
-    println!("det_exact_f64()    = {det_exact_as_f64:+.6e}");
+    println!("exact.try_to_f64() = {det_exact_as_f64:+.6e}");
     println!();
     println!("The exact determinant is −3/2^50 ≈ −2.66e-15.");
     Ok(())

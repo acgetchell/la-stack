@@ -104,29 +104,38 @@ class TestRunGitCommandWithInput:
         assert result.returncode == 0
         assert result.stdout.strip()  # should be a 40-char hex hash
 
-    @patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/git")
-    @patch("subprocess_utils.subprocess.run")
-    def test_input_data_forwarded(self, mock_run: MagicMock, _mock_exe: MagicMock) -> None:
+    def test_input_data_forwarded(self) -> None:
         """Verify input_data is passed as the 'input' kwarg to subprocess.run."""
-        run_git_command_with_input(["tag", "-a", "v1.0.0", "-F", "-"], input_data="tag body")
+        with (
+            patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/git") as mock_executable,
+            patch("subprocess_utils.subprocess.run") as mock_run,
+        ):
+            run_git_command_with_input(["tag", "-a", "v1.0.0", "-F", "-"], input_data="tag body")
+        mock_executable.assert_called_once_with("git")
         mock_run.assert_called_once()
         _args, kwargs = mock_run.call_args
         assert kwargs["input"] == "tag body"
 
 
 class TestAdditionalHelpers:
-    @patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/cargo")
-    @patch("subprocess_utils.subprocess.run")
-    def test_run_cargo_command_uses_safe_executable(self, mock_run: MagicMock, _mock_exe: MagicMock) -> None:
-        run_cargo_command(["--version"])
+    def test_run_cargo_command_uses_safe_executable(self) -> None:
+        with (
+            patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/cargo") as mock_executable,
+            patch("subprocess_utils.subprocess.run") as mock_run,
+        ):
+            run_cargo_command(["--version"])
+        mock_executable.assert_called_once_with("cargo")
         mock_run.assert_called_once()
         args, _kwargs = mock_run.call_args
         assert args[0] == ["/usr/bin/cargo", "--version"]
 
-    @patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/gnuplot")
-    @patch("subprocess_utils.subprocess.run")
-    def test_run_safe_command_uses_safe_executable(self, mock_run: MagicMock, _mock_exe: MagicMock) -> None:
-        run_safe_command("gnuplot", ["--version"])
+    def test_run_safe_command_uses_safe_executable(self) -> None:
+        with (
+            patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/gnuplot") as mock_executable,
+            patch("subprocess_utils.subprocess.run") as mock_run,
+        ):
+            run_safe_command("gnuplot", ["--version"])
+        mock_executable.assert_called_once_with("gnuplot")
         mock_run.assert_called_once()
         args, _kwargs = mock_run.call_args
         assert args[0] == ["/usr/bin/gnuplot", "--version"]

@@ -11,24 +11,46 @@ repository = "https://github.com/acgetchell/la-stack"
 homepage = "https://github.com/acgetchell/la-stack"
 categories = [ "mathematics", "science" ]
 keywords = [ "linear-algebra", "geometry", "const-generics", "exact-arithmetic", "robust-predicates" ]
+include = [
+    "/Cargo.toml",
+    "/CHANGELOG.md",
+    "/CITATION.cff",
+    "/CONTRIBUTING.md",
+    "/LICENSE",
+    "/README.md",
+    "/REFERENCES.md",
+    "/SECURITY.md",
+    "/benches/**/*.rs",
+    "/docs/**/*.md",
+    "/docs/assets/**/*.csv",
+    "/docs/assets/**/*.jpg",
+    "/docs/assets/**/*.png",
+    "/docs/assets/**/*.svg",
+    "/examples/**/*.rs",
+    "/src/**/*.rs",
+    "/tests/*.proptest-regressions",
+    "/tests/*.rs",
+]
 
 [dependencies]
 # All runtime deps are optional; see [features] below.
-criterion = { version = "0.8.2", features = [ "html_reports" ], optional = true }
-faer = { version = "0.24.0", default-features = false, features = [ "std", "linalg" ], optional = true }
-nalgebra = { version = "0.35.0", optional = true }
+# Must stay in sync with num-rational
 num-bigint = { version = "0.4.6", optional = true }
 num-rational = { version = "0.4.2", features = [ "num-bigint-std" ], optional = true }
 num-traits = { version = "0.2.19", optional = true }
 
 [dev-dependencies]
 approx = "0.5.1"
+criterion = { version = "0.8.2", features = [ "html_reports" ] }
+faer = { version = "0.24.4", default-features = false, features = [ "std", "linalg" ] }
+nalgebra = { version = "0.35.0", default-features = false, features = [ "std" ] }
 pastey = "0.2.3"
 proptest = "1.11.0"
 
 [features]
 default = [  ]
-bench = [ "dep:criterion", "dep:faer", "dep:nalgebra" ]
+# cfg-only feature gate for benchmark-only fixtures.
+bench = [  ]
 exact = [ "dep:num-bigint", "dep:num-rational", "dep:num-traits" ]
 
 [[example]]
@@ -61,12 +83,16 @@ codegen-units = 1
 features = [ "exact" ]
 
 [lints.rust]
+warnings = { level = "deny", priority = -1 }
 unsafe_code = "forbid"
-missing_docs = "deny"
-dead_code = "deny"
+missing_docs = { level = "deny", priority = 0 }
+dead_code = { level = "deny", priority = 0 }
+unreachable_pub = { level = "deny", priority = 0 }
 
 [lints.rustdoc]
+bare_urls = "deny"
 broken_intra_doc_links = "deny"
 
 [lints.clippy]
+extra_unused_type_parameters = "warn"
 pedantic = { level = "warn", priority = -1 }

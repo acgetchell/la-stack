@@ -31,6 +31,26 @@ rules:
               ...
           }
       - pattern-not-inside: |
+          #[cfg(any(test, ...))]
+          mod $MOD {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(any(test, ...))]
+          fn $FUNC(...) {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(test)]
+          impl $TYPE {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(any(test, ...))]
+          impl $TYPE {
+              ...
+          }
+      - pattern-not-inside: |
           #[cfg(test)]
           fn $FUNC(...) {
               ...
@@ -57,6 +77,9 @@ rules:
       - pattern: $VALUE.unwrap_or_else(|| f64::NAN)
       - pattern: $VALUE.unwrap_or_else(|| f64::INFINITY)
       - pattern: $VALUE.unwrap_or_else(|| f64::NEG_INFINITY)
+      - pattern: $VALUE.unwrap_or_else(|| std::f64::NAN)
+      - pattern: $VALUE.unwrap_or_else(|| std::f64::INFINITY)
+      - pattern: $VALUE.unwrap_or_else(|| std::f64::NEG_INFINITY)
 
   - id: la-stack.rust.no-public-infallible-raw-f64-constructors
     languages:
@@ -74,24 +97,94 @@ rules:
       include:
         - "/src/**/*.rs"
         - "/tests/semgrep/src/project_rules/raw_f64_constructors.rs"
-    pattern-regex: '(?m)^\s*pub\s+(?:const\s+)?fn\s+(?:new|from_rows)\s*\([^)]*(?:\[\s*f64\s*;\s*D\s*\]|\[\s*\[\s*f64\s*;\s*D\s*\]\s*;\s*D\s*\])[^)]*\)\s*->\s*(?:Self|(?:Matrix|Vector)\s*<)'
+    pattern-regex: '(?m)^\s*pub\s+(?:const\s+)?fn\s+(?:new|from_rows)\s*\([^)]*(?:\[\s*f64\s*;\s*D\s*\]|\[\s*\[\s*f64\s*;\s*D\s*\]\s*;\s*D\s*\])[^)]*\)\s*->\s*(?:Self|(?:Matrix|Vector)\s*<)' # yamllint disable-line rule:line-length
 
   - id: la-stack.rust.no-public-unchecked-finite-constructors
     languages:
       - rust
     severity: WARNING
-    message: "Unchecked Matrix/Vector constructors must stay crate-private; public callers must parse through fallible constructors."
+    message: "Finite Matrix/Vector escape hatches must stay module-private; crate-visible helpers can forge invalid proof values."
     metadata:
       category: correctness
       rationale: >-
-        Matrix and Vector are finite proof types. Public unchecked constructors
-        would let downstream callers bypass parsing and construct invalid finite
-        proofs.
+        Matrix and Vector are finite proof types. Public or crate-visible raw
+        constructors and mutable-storage accessors let other modules bypass
+        parsing, so later computations can no longer trust those proofs.
     paths:
       include:
-        - "/src/**/*.rs"
+        - "/src/matrix.rs"
+        - "/src/vector.rs"
         - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
-    pattern-regex: '(?m)^\s*pub\s+(?:const\s+)?fn\s+(?:new_unchecked|from_rows_unchecked)\s*\('
+    pattern-regex: '(?m)^\s*pub(?:\s*\(\s*(?:crate|super|in\s+[^)]+)\s*\))?\s+(?:const\s+)?fn\s+(?:new_unchecked(?:_[A-Za-z0-9_]+)?|from_rows_unchecked(?:_[A-Za-z0-9_]+)?|rows_mut_unchecked(?:_[A-Za-z0-9_]+)?)\s*\(' # yamllint disable-line rule:line-length
+
+  - id: la-stack.rust.det-sign-exact-must-be-infallible
+    languages:
+      - generic
+    severity: WARNING
+    message: "det_sign_exact is total for every finite Matrix and must return DeterminantSign directly."
+    metadata:
+      category: correctness
+      rationale: >-
+        Matrix carries finite-entry evidence, filter range failures fall back to
+        exact integer arithmetic, and determinant sign does not need value-scale
+        bookkeeping. Returning Result would discard that proof and invite
+        defensive rescanning on the hot path.
+    paths:
+      include:
+        - "/src/exact.rs"
+        - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
+    pattern-regex: '(?m)^\s*pub\s+(?:const\s+)?fn\s+det_sign_exact\s*\([^)]*\)\s*->(?!\s*DeterminantSign\b)\s*[^{;\n]+' # yamllint disable-line rule:line-length
+
+  - id: la-stack.rust.exact-benchmark-validation-must-return-proof
+    languages:
+      - generic
+    severity: WARNING
+    message: "validate_exact_fixture must return ValidatedExactInput directly so callers cannot discard validation evidence."
+    metadata:
+      category: correctness
+      rationale: >-
+        Criterion registration and timed helpers must accept only a validated
+        fixture, so every standalone benchmark run proves its inputs before
+        measurement rather than relying on a separately invoked smoke test.
+    paths:
+      include:
+        - "/benches/common/exact.rs"
+        - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
+    pattern-regex: '(?ms)^\s*pub\s+fn\s+validate_exact_fixture\b(?:(?!\{).|\n){0,500}\)(?!\s*->\s*ValidatedExactInput\s*<)\s*(?:->[^\{]+)?\{' # yamllint disable-line rule:line-length
+
+  - id: la-stack.rust.validated-exact-input-fields-private
+    languages:
+      - regex
+    severity: WARNING
+    message: "ValidatedExactInput fields must stay private so validation evidence cannot be replaced after construction."
+    metadata:
+      category: correctness
+      rationale: >-
+        A validated benchmark fixture is a proof-bearing type, not a passive
+        DTO. Private fields plus infallible accessors keep the checked matrix/RHS
+        pair intact through benchmark registration and timing.
+    paths:
+      include:
+        - "/benches/common/exact.rs"
+        - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
+    pattern-regex: '(?ms)^\s*pub\s+struct\s+ValidatedExactInput\s*(?:<[^>{]*>)?\s*\{(?:(?!^\s*\}).|\n)*^\s*pub(?:\s*\(\s*(?:crate|super|in\s+[^)]+)\s*\))?\s+(?:matrix|rhs)\s*:' # yamllint disable-line rule:line-length
+
+  - id: la-stack.rust.exact-benchmark-helpers-require-validated-input
+    languages:
+      - generic
+    severity: WARNING
+    message: "Exact benchmark execution helpers must accept ValidatedExactInput, not raw ExactInput fixtures."
+    metadata:
+      category: correctness
+      rationale: >-
+        Keeping raw fixtures out of registration and timed helper signatures
+        makes independent oracle validation a type-checked prerequisite for
+        every measured exact operation.
+    paths:
+      include:
+        - "/benches/exact.rs"
+        - "/tests/semgrep/src/project_rules/finite_api_contract.rs"
+    pattern-regex: '(?ms)^\s*fn\s+(?:run_|bench_|register_)[A-Za-z0-9_]*\b(?:(?!\{).|\n){0,800}\bExactInput\s*<' # yamllint disable-line rule:line-length
 
   - id: la-stack.rust.no-public-matrix-vector-storage-fields
     languages:
@@ -118,9 +211,9 @@ rules:
     metadata:
       category: api
       rationale: >-
-        The matrix and vector modules contain crate-internal unchecked helpers.
-        Making the modules public would expose implementation details that
-        bypass the clean API surface.
+        The matrix and vector modules own raw storage and internal
+        invariant-preserving construction details. Making the modules public
+        would expose implementation details that bypass the curated API surface.
     paths:
       include:
         - "/src/**/*.rs"
@@ -166,7 +259,7 @@ rules:
       include:
         - "/src/**/*.rs"
         - "/tests/semgrep/src/project_rules/public_api_panic_paths.rs"
-    pattern-regex: '(?ms)^\s*pub\s+(?:const\s+|async\s+|unsafe\s+)*fn\s+[A-Za-z_][A-Za-z0-9_]*[^;{]*\{(?:(?!^\s*\}).|\n){0,1000}(?:panic!|assert!|debug_assert!|unreachable!|\.unwrap\s*\(|\.expect\s*\()'
+    pattern-regex: '(?ms)^\s*pub\s+(?:const\s+|async\s+|unsafe\s+)*fn\s+[A-Za-z_][A-Za-z0-9_]*[^;{]*\{(?:(?!^\s*\}).|\n){0,1000}(?:panic!|assert!|debug_assert!|unreachable!|\.unwrap\s*\(|\.expect\s*\()' # yamllint disable-line rule:line-length
 
   - id: la-stack.rust.public-error-enums-non-exhaustive
     languages:
@@ -248,6 +341,8 @@ rules:
       include:
         - "/.github/workflows/**/*.yml"
         - "/.github/workflows/**/*.yaml"
+        - "/tests/semgrep/.github/workflows/**/*.yml"
+        - "/tests/semgrep/.github/workflows/**/*.yaml"
     patterns:
       - pattern-regex: '(?m)^\s*uses:\s*(?!\./)(?!docker://)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?@(?![a-fA-F0-9]{40}(?:\s+#|$))[^\s#]+'
 
@@ -263,8 +358,10 @@ rules:
       include:
         - "/.github/workflows/**/*.yml"
         - "/.github/workflows/**/*.yaml"
+        - "/tests/semgrep/.github/workflows/**/*.yml"
+        - "/tests/semgrep/.github/workflows/**/*.yaml"
     patterns:
-      - pattern-regex: '(?m)^\s*uses:\s*(?!\./)(?!docker://)(?!(?:actions/checkout|actions/cache|actions/download-artifact|actions/github-script|actions/setup-python|actions/upload-artifact|actions-rust-lang/setup-rust-toolchain|astral-sh/setup-uv|codacy/codacy-analysis-cli-action|codecov/codecov-action|github/codeql-action/(?:upload-sarif|init|analyze)|taiki-e/cache-cargo-install-action|zizmorcore/zizmor-action)@)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?@'
+      - pattern-regex: '(?m)^\s*uses:\s*(?!\./)(?!docker://)(?!(?:actions/checkout|actions/cache|actions/download-artifact|actions/github-script|actions/setup-python|actions/upload-artifact|actions-rust-lang/setup-rust-toolchain|astral-sh/setup-uv|codecov/codecov-action|github/codeql-action/(?:upload-sarif|init|analyze)|swatinem/rust-cache|taiki-e/cache-cargo-install-action|zizmorcore/zizmor-action)@)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?@' # yamllint disable-line rule:line-length
 
   - id: la-stack.github-actions.external-action-version-comment
     languages:
@@ -278,6 +375,8 @@ rules:
       include:
         - "/.github/workflows/**/*.yml"
         - "/.github/workflows/**/*.yaml"
+        - "/tests/semgrep/.github/workflows/**/*.yml"
+        - "/tests/semgrep/.github/workflows/**/*.yaml"
     patterns:
       - pattern-regex: '(?m)^\s*uses:\s*(?!\./)(?!docker://)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?@[a-fA-F0-9]{40}\s*$'
 
@@ -285,17 +384,609 @@ rules:
     languages:
       - regex
     severity: WARNING
-    message: "Document non-mutating just check commands before mutating just fix commands."
+    message: "Document non-mutating just checks before mutating just fixers."
     metadata:
       category: maintainability
-      rationale: "User-facing workflow docs should encourage validation before mutation."
+      rationale: >-
+        User-facing workflow examples should show non-mutating checks before
+        mutating fixers so formatting drift is inspected before files are
+        rewritten.
     paths:
       include:
-        - "/AGENTS.md"
+        - "/**/*.md"
+        - "/justfile"
+    pattern-either:
+      - pattern-regex: '(?ms)^\s*(?:@echo\s+"?\s*)?just\s+fix\b[^\n]*(?:\n\s*(?:#[^\n]*)?)*?\n\s*(?:@echo\s+"?\s*)?just\s+check\b' # yamllint disable-line rule:line-length
+      - pattern-regex: '(?ms)^\s*(?:@echo\s+"?\s*)?just\s+python-fix\b[^\n]*(?:\n\s*(?:#[^\n]*)?)*?\n\s*(?:@echo\s+"?\s*)?just\s+python-check\b' # yamllint disable-line rule:line-length
+      - pattern-regex: '(?ms)^\s*(?:@echo\s+"?\s*)?just\s+yaml-fix\b[^\n]*(?:\n\s*(?:#[^\n]*)?)*?\n\s*(?:@echo\s+"?\s*)?just\s+yaml-check\b' # yamllint disable-line rule:line-length
+      - pattern-regex: '(?ms)^\s*(?:@echo\s+"?\s*)?just\s+markdown-fix\b[^\n]*(?:\n\s*(?:#[^\n]*)?)*?\n\s*(?:@echo\s+"?\s*)?just\s+markdown-check\b' # yamllint disable-line rule:line-length
+      - pattern-regex: '(?ms)^\s*(?:@echo\s+"?\s*)?just\s+toml-fix\b[^\n]*(?:\n\s*(?:#[^\n]*)?)*?\n\s*(?:@echo\s+"?\s*)?just\s+toml-check\b' # yamllint disable-line rule:line-length
+      - pattern-regex: '(?ms)^\s*(?:@echo\s+"?\s*)?just\s+shell-fix\b[^\n]*(?:\n\s*(?:#[^\n]*)?)*?\n\s*(?:@echo\s+"?\s*)?just\s+shell-check\b' # yamllint disable-line rule:line-length
+
+  - id: la-stack.github-actions.checkout-persist-credentials-false
+    languages:
+      - regex
+    severity: WARNING
+    message: "Set persist-credentials: false on actions/checkout steps."
+    metadata:
+      category: security
+      rationale: >-
+        Checkout credentials should not remain available to later workflow steps
+        unless a job explicitly needs them.
+    paths:
+      include:
+        - "/.github/workflows/**/*.yml"
+        - "/.github/workflows/**/*.yaml"
+        - "/tests/semgrep/.github/workflows/**/*.yml"
+        - "/tests/semgrep/.github/workflows/**/*.yaml"
+    patterns:
+      - pattern-regex: '(?m)^[ \t]*(?:-[ \t]*)?uses:[ \t]*actions/checkout@[a-fA-F0-9]{40}[^\n]*\n(?!(?:[ \t]*with:\n)?(?:[ \t]{10,}\S[^\n]*\n){0,8}[ \t]{10,}persist-credentials:[ \t]*false\b)' # yamllint disable-line rule:line-length
+
+  - id: la-stack.github-actions.no-pull-request-target
+    languages:
+      - regex
+    severity: WARNING
+    message: "Avoid pull_request_target; use pull_request unless a workflow has a documented security review."
+    metadata:
+      category: security
+      rationale: >-
+        pull_request_target runs with base-repository privileges and is risky
+        for workflows that touch untrusted PR content.
+    paths:
+      include:
+        - "/.github/workflows/**/*.yml"
+        - "/.github/workflows/**/*.yaml"
+        - "/tests/semgrep/.github/workflows/**/*.yml"
+        - "/tests/semgrep/.github/workflows/**/*.yaml"
+    pattern-regex: '(?m)^\s*pull_request_target\s*:'
+
+  - id: la-stack.github-actions.github-script-no-expression-interpolation
+    languages:
+      - regex
+    severity: WARNING
+    message: "Pass GitHub expression values to actions/github-script through env instead of interpolating inside script blocks."
+    metadata:
+      category: security
+      rationale: >-
+        Interpolating GitHub expressions directly into JavaScript can turn
+        workflow context strings into executable code.
+    paths:
+      include:
+        - "/.github/workflows/**/*.yml"
+        - "/.github/workflows/**/*.yaml"
+        - "/tests/semgrep/.github/workflows/**/*.yml"
+        - "/tests/semgrep/.github/workflows/**/*.yaml"
+    patterns:
+      - pattern-regex: '(?ms)^\s*script:\s*\|\n(?:(?!^\s*-\s+(?:name|uses):).)*\$\{\{' # yamllint disable-line rule:line-length
+
+  - id: la-stack.github-actions.uv-sync-locked-in-workflows
+    languages:
+      - regex
+    severity: WARNING
+    message: "Use uv sync --locked in GitHub Actions workflows."
+    metadata:
+      category: reproducibility
+      rationale: "Workflow dependency installs should fail on lockfile drift instead of silently resolving new versions."
+    paths:
+      include:
+        - "/.github/workflows/**/*.yml"
+        - "/.github/workflows/**/*.yaml"
+        - "/tests/semgrep/.github/workflows/**/*.yml"
+        - "/tests/semgrep/.github/workflows/**/*.yaml"
+    patterns:
+      - pattern-regex: '(?m)^\s*(?:run:\s*)?uv\s+sync\b(?![^\n]*\s--locked\b)[^\n]*$' # yamllint disable-line rule:line-length
+
+  - id: la-stack.rust.no-silent-conversion-fallbacks
+    languages:
+      - rust
+    severity: WARNING
+    message: "Handle numeric conversion failures explicitly instead of hiding them behind unwrap_or fallbacks."
+    metadata:
+      category: correctness
+      rationale: >-
+        Exact and floating-point paths should preserve conversion failure context
+        instead of silently substituting sentinel values.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    patterns:
+      - pattern-either:
+          - pattern: NumCast::from($VALUE).unwrap_or($FALLBACK)
+          - pattern: NumCast::from($VALUE).unwrap_or_else($FALLBACK)
+          - pattern: num_traits::NumCast::from($VALUE).unwrap_or($FALLBACK)
+          - pattern: num_traits::NumCast::from($VALUE).unwrap_or_else($FALLBACK)
+          - pattern: cast::<$FROM, $TO>($VALUE).unwrap_or($FALLBACK)
+          - pattern: cast::<$FROM, $TO>($VALUE).unwrap_or_else($FALLBACK)
+          - pattern: num_traits::cast::<$FROM, $TO>($VALUE).unwrap_or($FALLBACK)
+          - pattern: num_traits::cast::<$FROM, $TO>($VALUE).unwrap_or_else($FALLBACK)
+          - patterns:
+              - pattern: $SAFE(...).unwrap_or($FALLBACK)
+              - metavariable-regex:
+                  metavariable: $SAFE
+                  regex: safe_[A-Za-z0-9_]+
+      - pattern-not-inside: |
+          mod tests {
+              ...
+          }
+
+  - id: la-stack.rust.no-silent-conversion-fallbacks-in-public-samples
+    languages:
+      - rust
+    severity: WARNING
+    message: "Handle numeric conversion failures explicitly in public samples."
+    metadata:
+      category: correctness
+      rationale: >-
+        Examples, benchmarks, and integration tests should model explicit
+        conversion-failure handling instead of silently substituting values.
+    paths:
+      include:
+        - "/examples/**/*.rs"
+        - "/benches/**/*.rs"
+        - "/tests/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    pattern-either:
+      - pattern: NumCast::from($VALUE).unwrap_or($FALLBACK)
+      - pattern: NumCast::from($VALUE).unwrap_or_else($FALLBACK)
+      - pattern: num_traits::NumCast::from($VALUE).unwrap_or($FALLBACK)
+      - pattern: num_traits::NumCast::from($VALUE).unwrap_or_else($FALLBACK)
+      - pattern: cast::<$FROM, $TO>($VALUE).unwrap_or($FALLBACK)
+      - pattern: cast::<$FROM, $TO>($VALUE).unwrap_or_else($FALLBACK)
+      - pattern: num_traits::cast::<$FROM, $TO>($VALUE).unwrap_or($FALLBACK)
+      - pattern: num_traits::cast::<$FROM, $TO>($VALUE).unwrap_or_else($FALLBACK)
+      - patterns:
+          - pattern: $SAFE(...).unwrap_or($FALLBACK)
+          - metavariable-regex:
+              metavariable: $SAFE
+              regex: safe_[A-Za-z0-9_]+
+
+  - id: la-stack.rust.no-partial-cmp-ordering-defaults
+    languages:
+      - rust
+    severity: WARNING
+    message: "Handle incomparable partial_cmp results explicitly instead of defaulting to an Ordering."
+    metadata:
+      category: correctness
+      rationale: >-
+        Floating-point ordering code must not silently fold NaN comparisons into
+        Equal, Less, or Greater.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    patterns:
+      - pattern-either:
+          - pattern: $LEFT.partial_cmp($RIGHT).unwrap_or(Ordering::$ORDER)
+          - pattern: $LEFT.partial_cmp($RIGHT).unwrap_or(std::cmp::Ordering::$ORDER)
+          - pattern: $LEFT.partial_cmp($RIGHT).unwrap_or_else($FALLBACK)
+      - pattern-not-inside: |
+          mod tests {
+              ...
+          }
+
+  - id: la-stack.rust.no-function-local-use-in-src
+    languages:
+      - rust
+    severity: WARNING
+    message: "Move production imports to module scope instead of declaring use items inside functions."
+    metadata:
+      category: maintainability
+      rationale: "Module-scope imports keep production dependency shape visible."
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    patterns:
+      - pattern: use $PATH;
+      - pattern-inside: |
+          fn $FUNC(...) {
+              ...
+          }
+      - pattern-not-inside: |
+          mod tests {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(test)]
+          mod $MOD {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(any(test, ...))]
+          mod $MOD {
+              ...
+          }
+
+  - id: la-stack.rust.no-module-scope-cfg-test-use
+    languages:
+      - generic
+    severity: WARNING
+    message: "Move test-only imports into the test module instead of gating module-scope use items with #[cfg(test)]."
+    metadata:
+      category: maintainability
+      rationale: "Unit-test dependencies should live inside the test module that uses them."
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/*.rs"
+        - "/benches/**/*.rs"
+        - "/examples/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    pattern-regex: '(?m)^[ \t]*#\[cfg\(test\)\][ \t]*\n[ \t]*use[ \t]+[^;]+;'
+
+  - id: la-stack.rust.no-public-api-cfg-test-shim
+    languages:
+      - generic
+    severity: WARNING
+    message: "Do not expose public APIs through cfg(test); use a real feature gate or keep helpers inside mod tests."
+    metadata:
+      category: api
+      rationale: >-
+        Public APIs should not exist only to satisfy unit tests. Use a real
+        feature gate for downstream functionality or private test helpers.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/*.rs"
+        - "/benches/**/*.rs"
+        - "/examples/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    pattern-regex: '(?m)^[ \t]*#\[cfg\((?:test|any\([^\]\n]*\btest\b[^\]\n]*\))\)\][^\n]*\n(?:[ \t]*#\[[^\]\n]*\][^\n]*\n|[ \t]*#\[[^\n]*\n(?:[ \t]+[^\n]*\n){0,8}[ \t]*[)\]]+[^\n]*\n|[ \t]*///[^\n]*\n|[ \t]*\n){0,8}[ \t]*pub[ \t]+(?:use|(?:const[ \t]+)?fn)\b' # yamllint disable-line rule:line-length
+
+  - id: la-stack.rust.borrowed-view-types-require-lifetime
+    languages:
+      - generic
+    severity: WARNING
+    message: "Types named *View must be lifetime-bound borrowed observations of canonical storage."
+    metadata:
+      category: correctness
+      rationale: >-
+        A View name promises a borrowed observation, not an owned snapshot.
+        Detached values should be named Handle, Key, Snapshot, or Report.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/*.rs"
+        - "/benches/**/*.rs"
+        - "/examples/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    pattern-regex: >-
+      (?m)^\s*(?:pub(?:\s*\([^)]*\))?\s+)?struct\s+[A-Za-z0-9_]*View\s*(?:<\s*(?!')[^>{}]*>|where|\{|;|\()
+
+  - id: la-stack.rust.no-public-unchecked-apis
+    languages:
+      - generic
+    severity: WARNING
+    message: "Keep *_unchecked APIs private so invalid-state escape hatches do not become public contracts."
+    metadata:
+      category: correctness
+      rationale: >-
+        Unchecked helpers should remain behind validated constructors, parsers,
+        or setters instead of becoming downstream API contracts.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    pattern-regex: '^\s*pub\s+(?:const\s+|async\s+|unsafe\s+)?fn\s+(?:[A-Za-z_][A-Za-z0-9_]*_unchecked|from_unchecked_[A-Za-z0-9_]*)\s*\(' # yamllint disable-line rule:line-length
+
+  - id: la-stack.rust.no-unwrap-expect-in-markdown-examples
+    languages:
+      - generic
+    severity: WARNING
+    message: "Use fallible Result/? flow instead of unwrap*() or expect() in public Markdown examples."
+    metadata:
+      category: correctness
+      rationale: "Public examples should teach typed error handling instead of panic-based control flow."
+    paths:
+      include:
         - "/README.md"
         - "/docs/**/*.md"
-        - "/justfile"
+        - "/tests/semgrep/docs/**/*.md"
       exclude:
         - "/docs/archive/**"
+    pattern-regex: '\.(?:unwrap(?:_[A-Za-z0-9_]+)?|expect)\s*\('
+
+  - id: la-stack.rust.no-box-dyn-error-in-doctests
+    languages:
+      - generic
+    severity: WARNING
+    message: "Use Result<_, LaError> or another typed error in doctests instead of erased dynamic errors."
+    metadata:
+      category: maintainability
+      rationale: "Public documentation should model the crate's typed error surface."
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/doctests/**/*.txt"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    pattern-regex: '^\s*//[!/].*(?:Box\s*<\s*dyn\s+(?:std::error::Error|Error)|&\s*dyn\s+(?:std::error::Error|Error)|anyhow::Error|anyhow::Result)' # yamllint disable-line rule:line-length
+
+  - id: la-stack.rust.prefer-assert-matches-in-doctests
+    languages:
+      - generic
+    severity: WARNING
+    message: "Use core::assert_matches! instead of assert!(matches!(...)) in public documentation examples."
+    metadata:
+      category: maintainability
+      rationale: "assert_matches! reports the unmatched value instead of only a bare boolean."
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/doctests/**/*.txt"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    pattern-regex: '^\s*//[!/].*\bassert!\s*\(\s*matches!\s*\('
+
+  - id: la-stack.rust.no-box-dyn-error-in-src
+    languages:
+      - rust
+    severity: WARNING
+    message: "Use a typed error enum instead of Box<dyn Error>, &dyn Error, or anyhow::Error."
+    metadata:
+      category: maintainability
+      rationale: "Production fallible paths should preserve typed error contracts."
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
     patterns:
-      - pattern-regex: '(?ms)\bjust\s+fix\b.{0,400}\bjust\s+check\b|\bjust\s+python-fix\b.{0,400}\bjust\s+python-check\b'
+      - pattern-regex: >-
+          ^[ \t]*[^\n]*(\bBox\s*<\s*dyn\s+(std::error::)?Error\b|&\s*dyn\s+(std::error::)?Error\b|\banyhow::Error\b)
+      - pattern-not-regex: '^[ \t]*(//|///|/\*|\*)'
+      - pattern-not-inside: |
+          mod tests {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(test)]
+          mod $MOD {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(any(test, ...))]
+          mod $MOD {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(test)]
+          fn $FUNC(...) {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(any(test, ...))]
+          fn $FUNC(...) {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(test)]
+          impl $TYPE {
+              ...
+          }
+      - pattern-not-inside: |
+          #[cfg(any(test, ...))]
+          impl $TYPE {
+              ...
+          }
+
+  - id: la-stack.rust.no-ignored-fallible-results
+    languages:
+      - generic
+    severity: WARNING
+    message: "Do not discard fallible values with let _ =; inspect the value or use explicit drop(...)."
+    metadata:
+      category: correctness
+      rationale: "Tests and samples should prove what a fallible call returned, not only that it did not error."
+    paths:
+      include:
+        - "/tests/*.rs"
+        - "/benches/**/*.rs"
+        - "/examples/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    pattern-regex: '(?ms)^\s*let\s+_\s*=\s*(?:(?!;).)*?(?:\?\s*;|\.(?:unwrap|expect|or_abort)\s*\()'
+
+  - id: la-stack.rust.no-box-dyn-error-in-examples-benches
+    languages:
+      - rust
+    severity: WARNING
+    message: "Use concrete crate errors in examples and benchmarks instead of dynamic error erasure."
+    metadata:
+      category: maintainability
+      rationale: "Examples and benchmarks should model typed error handling that users can copy."
+    paths:
+      include:
+        - "/examples/**/*.rs"
+        - "/benches/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    patterns:
+      - pattern-regex: >-
+          ^[ \t]*[^\n]*(\bBox\s*<\s*dyn\s+(std::error::)?Error\b|&\s*dyn\s+(std::error::)?Error\b|\banyhow::Error\b)
+      - pattern-not-regex: '^[ \t]*(//|///|/\*|\*)'
+
+  - id: la-stack.rust.no-clippy-allow-lints
+    languages:
+      - rust
+    severity: WARNING
+    message: "Use #[expect(..., reason = ...)] instead of #[allow(...)] for Clippy suppressions."
+    metadata:
+      category: maintainability
+      rationale: >-
+        Clippy suppressions should be checked by the compiler and carry a
+        stable reason so stale suppressions are noticed during linting.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/*.rs"
+        - "/benches/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    pattern-regex: '^\s*#\s*\[\s*allow\s*\(\s*clippy::'
+
+  - id: la-stack.rust.no-ignored-tests
+    languages:
+      - generic
+    severity: WARNING
+    message: "Gate slow tests with an explicit cfg feature instead of #[ignore]."
+    metadata:
+      category: maintainability
+      rationale: "Explicit test buckets keep nextest and local test commands aligned."
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/*.rs"
+        - "/benches/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    pattern-regex: '^\s*#\s*\[\s*ignore(?:\s|=|\])'
+
+  - id: la-stack.rust.expect-requires-reason
+    languages:
+      - rust
+    severity: WARNING
+    message: 'Add reason = "..." to #[expect(...)] so lint suppressions remain auditable.'
+    metadata:
+      category: maintainability
+      rationale: "Documented lint expectations make stale suppressions reviewable."
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/tests/*.rs"
+        - "/benches/**/*.rs"
+        - "/tests/semgrep/src/project_rules/portable_policy.rs"
+    patterns:
+      - pattern-regex: '^\s*#\s*\[\s*expect\s*\([^\]\n]*\)\s*\]'
+      - pattern-not-regex: '\breason\s*='
+
+  - id: la-stack.python.no-broad-exception
+    languages:
+      - python
+    severity: WARNING
+    message: "Catch a specific exception type instead of broad Exception."
+    metadata:
+      category: maintainability
+      rationale: "Python tooling should surface expected failure modes explicitly."
+    paths:
+      include:
+        - "/scripts/**/*.py"
+        - "/tests/semgrep/scripts/tests/python_exceptions.py"
+    pattern-regex: '^\s*except\s+Exception(?:\s+as\s+\w+)?\s*:'
+
+  - id: la-stack.python.no-raw-exception-in-tests
+    languages:
+      - python
+    severity: WARNING
+    message: "Raise a specific exception type in Python tests instead of raw Exception."
+    metadata:
+      category: maintainability
+      rationale: "Typed exceptions make expected failures easier to diagnose."
+    paths:
+      include:
+        - "/scripts/tests/**/*.py"
+        - "/tests/semgrep/scripts/tests/python_exceptions.py"
+    pattern: raise Exception(...)
+
+  - id: la-stack.python.no-adhoc-completedprocess-mock
+    languages:
+      - python
+    severity: WARNING
+    message: "Use subprocess.CompletedProcess[str] instead of ad hoc Mock stdout/returncode objects."
+    metadata:
+      category: maintainability
+      rationale: "Command-wrapper mocks should stay aligned with the real subprocess result shape."
+    paths:
+      include:
+        - "/scripts/tests/**/*.py"
+        - "/tests/semgrep/scripts/tests/python_exceptions.py"
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: |
+                  $PROC = Mock(...)
+                  ...
+                  $PROC.stdout = ...
+              - pattern: |
+                  $PROC = unittest.mock.Mock(...)
+                  ...
+                  $PROC.stdout = ...
+              - pattern: |
+                  $PROC = mock.Mock(...)
+                  ...
+                  $PROC.stdout = ...
+              - pattern: |
+                  $PROC = MagicMock(...)
+                  ...
+                  $PROC.stdout = ...
+              - pattern: |
+                  $PROC = unittest.mock.MagicMock(...)
+                  ...
+                  $PROC.stdout = ...
+              - pattern: |
+                  $PROC = mock.MagicMock(...)
+                  ...
+                  $PROC.stdout = ...
+      - patterns:
+          - pattern-either:
+              - pattern: |
+                  $PROC = Mock(...)
+                  ...
+                  $PROC.returncode = ...
+              - pattern: |
+                  $PROC = unittest.mock.Mock(...)
+                  ...
+                  $PROC.returncode = ...
+              - pattern: |
+                  $PROC = mock.Mock(...)
+                  ...
+                  $PROC.returncode = ...
+              - pattern: |
+                  $PROC = MagicMock(...)
+                  ...
+                  $PROC.returncode = ...
+              - pattern: |
+                  $PROC = unittest.mock.MagicMock(...)
+                  ...
+                  $PROC.returncode = ...
+              - pattern: |
+                  $PROC = mock.MagicMock(...)
+                  ...
+                  $PROC.returncode = ...
+      - pattern: Mock(..., stdout=..., ...)
+      - pattern: unittest.mock.Mock(..., stdout=..., ...)
+      - pattern: mock.Mock(..., stdout=..., ...)
+      - pattern: MagicMock(..., stdout=..., ...)
+      - pattern: unittest.mock.MagicMock(..., stdout=..., ...)
+      - pattern: mock.MagicMock(..., stdout=..., ...)
+      - pattern: Mock(..., returncode=..., ...)
+      - pattern: unittest.mock.Mock(..., returncode=..., ...)
+      - pattern: mock.Mock(..., returncode=..., ...)
+      - pattern: MagicMock(..., returncode=..., ...)
+      - pattern: unittest.mock.MagicMock(..., returncode=..., ...)
+      - pattern: mock.MagicMock(..., returncode=..., ...)
+
+  - id: la-stack.python.no-direct-subprocess-run-outside-wrapper
+    languages:
+      - python
+    severity: WARNING
+    message: "Use subprocess_utils command wrappers instead of calling subprocess.run directly."
+    metadata:
+      category: security
+      rationale: "Support scripts should inherit the repository's subprocess hardening."
+    paths:
+      include:
+        - "/scripts/**/*.py"
+        - "/tests/semgrep/scripts/tests/python_exceptions.py"
+      exclude:
+        - "/scripts/subprocess_utils.py"
+        - "/scripts/tests/**/*.py"
+    pattern: subprocess.run(...)
+
+  - id: la-stack.python.no-untyped-defs-in-scripts
+    languages:
+      - python
+    severity: WARNING
+    message: "Add an explicit return annotation to script functions."
+    metadata:
+      category: maintainability
+      rationale: "Typed script helpers are easier for ty and reviewers to reason about."
+    paths:
+      include:
+        - "/scripts/**/*.py"
+        - "/tests/semgrep/scripts/tests/python_exceptions.py"
+    pattern-regex: '^( {0,4}|\t)(async\s+)?def\s+[A-Za-z_][A-Za-z0-9_]*\([^#\n]*\)\s*:'

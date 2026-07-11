@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Compute the determinant of a 5×5 matrix via explicit LU factorization.
 
 use la_stack::prelude::*;

@@ -181,7 +181,7 @@ def check_git_repo() -> bool:
     """Return true when the current directory is inside a git repository."""
     try:
         run_git_command(["rev-parse", "--git-dir"])
-    except (ExecutableNotFoundError, subprocess.CalledProcessError):
+    except ExecutableNotFoundError, subprocess.CalledProcessError:
         return False
     else:
         return True
@@ -191,7 +191,7 @@ def check_git_history() -> bool:
     """Return true when the current git repository has at least one commit."""
     try:
         run_git_command(["log", "--oneline", "-n", "1"])
-    except (ExecutableNotFoundError, subprocess.CalledProcessError):
+    except ExecutableNotFoundError, subprocess.CalledProcessError:
         return False
     else:
         return True

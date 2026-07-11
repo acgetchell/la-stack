@@ -25,7 +25,7 @@ import re
 import sys
 from pathlib import Path
 
-# markdownlint MD013 line-length limit used by this project.
+# rumdl MD013 line-length limit used by this project.
 MAX_LINE_WIDTH = 160
 
 # Tokenise a line into atomic markdown units that must not be split.
@@ -538,8 +538,8 @@ def _normalize_indented_heading(line: str) -> str:
 
     git-cliff indents commit bodies under each changelog entry. If a historical
     commit body contains an ATX heading such as ``## Correctness Fixes``, the
-    rendered changelog contains ``  ## Correctness Fixes``. Markdownlint still
-    treats that as a heading, but MD023 requires headings to start at column 0.
+    rendered changelog contains ``  ## Correctness Fixes``. rumdl still treats
+    that as a heading, but MD023 requires headings to start at column 0.
     Keeping the text as bold prose preserves readability without changing the
     generated changelog hierarchy.
     """

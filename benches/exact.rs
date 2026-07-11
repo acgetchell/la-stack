@@ -11,48 +11,36 @@
 //!    reproducible input.
 //! 2. **Adversarial / extreme-input benches** — matrices chosen to
 //!    stress specific corners of the exact-arithmetic pipeline:
-//!    near-singularity (forces the Bareiss fallback), large f64 entries
+//!    near-singularity (forces the exact integer fallback), large f64 entries
 //!    (stresses intermediate `BigInt` growth), and Hilbert-style
 //!    ill-conditioning (wide range of `(mantissa, exponent)` pairs in
-//!    the `f64_decompose → BigInt` path).  These measure tail behaviour
+//!    the `decompose_f64 → BigInt` path).  These measure tail behaviour
 //!    that fixed well-conditioned inputs miss and provide stronger
 //!    empirical evidence for `docs/PERFORMANCE.md`.
-//! 3. **Random percentile benches** (`exact_random_percentile_d{2..5}`) —
-//!    a fixed-seed corpus of diagonally-dominant random matrices per
-//!    dimension.  Each operation is pre-timed across the corpus to select
-//!    p50/p95/p99 cumulative input subsets, then measured with Criterion.
+//! 3. **Random corpus benches** (`exact_random_corpus_d{2..5}`) — a
+//!    fixed-seed corpus of diagonally-dominant random matrices per dimension.
+//!    Every measured iteration executes the full corpus in its stable order,
+//!    so current and baseline revisions receive identical workloads.
 //!
 //! Fallible exact-to-f64 conversions use a `_result` suffix. Those rows measure
 //! the full `Result` path, including valid `Err(Unrepresentable)` outcomes for
 //! inputs whose exact answer cannot be represented as finite binary64.
 
-use std::array;
-use std::cell::Cell;
 use std::fmt::Display;
 use std::hint::black_box;
-use std::num::NonZeroUsize;
-use std::time::Instant;
 
-use criterion::{BatchSize, BenchmarkGroup, Criterion, measurement::WallTime};
-use pastey::paste;
+use criterion::{BenchmarkGroup, Criterion, Throughput, measurement::WallTime};
 
 use la_stack::{Matrix, Vector};
 
-mod common {
-    pub mod exact;
-}
+#[path = "common/exact.rs"]
+pub mod exact_bench;
 
-use common::exact::{ExactBenchConfigError, I16Range, SplitMix64};
-
-const RANDOM_INPUTS_PER_DIM: SampleCount = SampleCount::new_unchecked(50);
-const RANDOM_INPUT_ARRAY_LEN: usize = RANDOM_INPUTS_PER_DIM.get();
-const RANDOM_TIMING_PASSES: SampleCount = SampleCount::new_unchecked(5);
-const RANDOM_SEED: [u8; 32] = [0; 32];
-const RANDOM_PERCENTILES: [RandomPercentile; 3] = [
-    RandomPercentile::P50,
-    RandomPercentile::P95,
-    RandomPercentile::P99,
-];
+use exact_bench::{
+    ExactInput, RANDOM_INPUT_ARRAY_LEN, ValidatedExactInput, hilbert_input,
+    large_entries_3x3_input, make_matrix_rows, make_random_input_corpus, make_vector_array,
+    near_singular_3x3_input, validate_exact_fixture,
+};
 
 /// Return a successful benchmark operation result or panic with the named operation.
 fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
@@ -62,114 +50,9 @@ fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
     }
 }
 
-/// Non-zero sample count used when selecting percentile benchmark inputs.
+/// Exact operation measured by a benchmark group.
 #[derive(Clone, Copy)]
-struct SampleCount {
-    len: NonZeroUsize,
-}
-
-impl SampleCount {
-    /// Construct a sample count for compile-time constants with visible nonzero values.
-    const fn new_unchecked(len: usize) -> Self {
-        match NonZeroUsize::new(len) {
-            Some(len) => Self { len },
-            None => panic!("random input corpus must be nonempty"),
-        }
-    }
-
-    /// Validate a runtime sample count before percentile calculations use it.
-    const fn new(len: usize) -> Result<Self, ExactBenchConfigError> {
-        if let Some(len) = NonZeroUsize::new(len) {
-            Ok(Self { len })
-        } else {
-            Err(ExactBenchConfigError::EmptyCorpus)
-        }
-    }
-
-    /// Return the proven nonzero sample count as a raw `usize`.
-    const fn get(self) -> usize {
-        self.len.get()
-    }
-}
-
-/// Percentiles selected from a pre-timed random-input corpus.
-#[derive(Clone, Copy)]
-enum RandomPercentile {
-    P50,
-    P95,
-    P99,
-}
-
-impl RandomPercentile {
-    /// Return the percentile value as an integer percentage.
-    const fn value(self) -> usize {
-        match self {
-            Self::P50 => 50,
-            Self::P95 => 95,
-            Self::P99 => 99,
-        }
-    }
-
-    /// Return the benchmark-name suffix for this percentile.
-    const fn name(self) -> &'static str {
-        match self {
-            Self::P50 => "p50",
-            Self::P95 => "p95",
-            Self::P99 => "p99",
-        }
-    }
-}
-
-/// Return a deterministic, strictly diagonally-dominant benchmark matrix entry.
-#[inline]
-#[allow(clippy::cast_precision_loss)]
-const fn matrix_entry<const D: usize>(r: usize, c: usize) -> f64 {
-    if r == c {
-        (r as f64).mul_add(1.0e-3, (D as f64) + 1.0)
-    } else {
-        0.1 / ((r + c + 1) as f64)
-    }
-}
-
-/// Build the deterministic baseline matrix rows for dimension `D`.
-#[inline]
-const fn make_matrix_rows<const D: usize>() -> [[f64; D]; D] {
-    let mut rows = [[0.0; D]; D];
-    let mut r = 0;
-    while r < D {
-        let mut c = 0;
-        while c < D {
-            rows[r][c] = matrix_entry::<D>(r, c);
-            c += 1;
-        }
-        r += 1;
-    }
-    rows
-}
-
-/// Build the deterministic baseline right-hand-side vector for dimension `D`.
-#[inline]
-#[allow(clippy::cast_precision_loss)]
-fn make_vector_array<const D: usize>() -> [f64; D] {
-    let mut data = [0.0; D];
-    let mut i = 0;
-    while i < D {
-        data[i] = (i as f64) + 1.0;
-        i += 1;
-    }
-    data
-}
-
-/// Matrix/RHS pair used by random percentile exact-arithmetic benchmarks.
-#[derive(Clone, Copy)]
-struct ExactRandomInput<const D: usize> {
-    matrix: Matrix<D>,
-    rhs: Vector<D>,
-}
-
-/// Exact operation timed when selecting representative random inputs.
-#[derive(Clone, Copy)]
-enum ExactRandomOperation {
+enum ExactOperation {
     DetSignExact,
     DetExact,
     DetExactF64Result,
@@ -179,7 +62,7 @@ enum ExactRandomOperation {
     SolveExactRoundedF64,
 }
 
-impl ExactRandomOperation {
+impl ExactOperation {
     /// Return the benchmark-name stem for this exact operation.
     const fn name(self) -> &'static str {
         match self {
@@ -194,101 +77,60 @@ impl ExactRandomOperation {
     }
 }
 
-/// Derive a stable per-dimension seed from the global random benchmark seed.
-#[allow(clippy::cast_possible_truncation)]
-fn random_seed_for_dim<const D: usize>() -> u64 {
-    let mut seed =
-        0xC0DE_CAFE_D15C_A11Au64 ^ require_ok(u64::try_from(D), "dimension seed conversion");
-    for (i, byte) in RANDOM_SEED.iter().copied().enumerate() {
-        let shift = require_ok(u32::try_from((i % 8) * 8), "seed shift conversion");
-        seed ^= u64::from(byte) << shift;
-        seed = seed.rotate_left(7) ^ require_ok(u64::try_from(i), "seed index conversion");
-    }
-    seed
-}
+const GENERAL_OPERATIONS: &[ExactOperation] = &[
+    ExactOperation::DetExact,
+    ExactOperation::DetExactF64Result,
+    ExactOperation::DetExactRoundedF64,
+    ExactOperation::DetSignExact,
+    ExactOperation::SolveExact,
+    ExactOperation::SolveExactF64Result,
+    ExactOperation::SolveExactRoundedF64,
+];
 
-/// Build a fixed random corpus of finite, strictly diagonally-dominant inputs.
-fn make_random_input_corpus<const D: usize>() -> [ExactRandomInput<D>; RANDOM_INPUT_ARRAY_LEN] {
-    let mut rng = SplitMix64::new(random_seed_for_dim::<D>());
-    let entry_range = require_ok(I16Range::new(-10, 10), "random integer range");
-    array::from_fn(|_| {
-        let mut rows = [[0.0; D]; D];
-        let mut diag = [0_i16; D];
+const CORPUS_AND_EXTREME_OPERATIONS: &[ExactOperation] = &[
+    ExactOperation::DetSignExact,
+    ExactOperation::DetExact,
+    ExactOperation::SolveExact,
+    ExactOperation::SolveExactF64Result,
+    ExactOperation::SolveExactRoundedF64,
+];
 
-        for (r, row) in rows.iter_mut().enumerate() {
-            for (c, entry) in row.iter_mut().enumerate() {
-                if r == c {
-                    diag[r] = rng.next_i16(entry_range);
-                } else {
-                    *entry = f64::from(rng.next_i16(entry_range));
-                }
-            }
-        }
-
-        let shift =
-            f64::from(require_ok(u8::try_from(D), "dimension shift conversion")).mul_add(10.0, 1.0);
-        for (i, row) in rows.iter_mut().enumerate() {
-            row[i] = if diag[i] >= 0 {
-                f64::from(diag[i]) + shift
-            } else {
-                f64::from(diag[i]) - shift
-            };
-        }
-
-        let rhs = array::from_fn(|_| f64::from(rng.next_i16(entry_range)));
-
-        ExactRandomInput {
-            matrix: require_ok(
-                Matrix::<D>::try_from_rows(rows),
-                "random matrix construction",
-            ),
-            rhs: require_ok(Vector::<D>::try_new(rhs), "random RHS vector construction"),
-        }
-    })
-}
-
-/// Execute one exact operation on a random benchmark input.
-fn run_random_operation<const D: usize>(
-    operation: ExactRandomOperation,
-    input: ExactRandomInput<D>,
-) {
+/// Execute one exact operation on a borrowed, independently validated input.
+fn run_exact_operation<const D: usize>(operation: ExactOperation, input: &ValidatedExactInput<D>) {
     match operation {
-        ExactRandomOperation::DetSignExact => {
-            let sign = require_ok(
-                black_box(input.matrix).det_sign_exact(),
-                "exact determinant sign",
-            );
-            black_box(sign);
+        ExactOperation::DetSignExact => {
+            let sign = black_box(input.matrix()).det_sign_exact();
+            let _ = black_box(sign);
         }
-        ExactRandomOperation::DetExact => {
-            let det = require_ok(black_box(input.matrix).det_exact(), "exact determinant");
+        ExactOperation::DetExact => {
+            let det = require_ok(black_box(input.matrix()).det_exact(), "exact determinant");
             black_box(det);
         }
-        ExactRandomOperation::DetExactF64Result => {
-            let det = black_box(input.matrix).det_exact_f64();
+        ExactOperation::DetExactF64Result => {
+            let det = black_box(input.matrix()).det_exact_f64();
             let _ = black_box(det);
         }
-        ExactRandomOperation::DetExactRoundedF64 => {
+        ExactOperation::DetExactRoundedF64 => {
             let det = require_ok(
-                black_box(input.matrix).det_exact_rounded_f64(),
+                black_box(input.matrix()).det_exact_rounded_f64(),
                 "exact determinant rounded to f64",
             );
             let _ = black_box(det);
         }
-        ExactRandomOperation::SolveExact => {
+        ExactOperation::SolveExact => {
             let x = require_ok(
-                black_box(input.matrix).solve_exact(black_box(input.rhs)),
+                black_box(input.matrix()).solve_exact(black_box(input.rhs())),
                 "exact linear solve",
             );
             let _ = black_box(x);
         }
-        ExactRandomOperation::SolveExactF64Result => {
-            let x = black_box(input.matrix).solve_exact_f64(black_box(input.rhs));
+        ExactOperation::SolveExactF64Result => {
+            let x = black_box(input.matrix()).solve_exact_f64(black_box(input.rhs()));
             let _ = black_box(x);
         }
-        ExactRandomOperation::SolveExactRoundedF64 => {
+        ExactOperation::SolveExactRoundedF64 => {
             let x = require_ok(
-                black_box(input.matrix).solve_exact_rounded_f64(black_box(input.rhs)),
+                black_box(input.matrix()).solve_exact_rounded_f64(black_box(input.rhs())),
                 "exact linear solve rounded to f64",
             );
             let _ = black_box(x);
@@ -296,171 +138,32 @@ fn run_random_operation<const D: usize>(
     }
 }
 
-/// Add one exact-arithmetic operation benchmark over a fixed input pair.
+/// Add one exact-arithmetic operation benchmark over a validated fixed input pair.
 fn bench_exact_operation<const D: usize>(
     group: &mut BenchmarkGroup<'_, WallTime>,
-    operation: ExactRandomOperation,
-    matrix: Matrix<D>,
-    rhs: Vector<D>,
+    operation: ExactOperation,
+    input: &ValidatedExactInput<D>,
 ) {
     group.bench_function(operation.name(), |bencher| {
         bencher.iter(|| {
-            run_random_operation(operation, ExactRandomInput { matrix, rhs });
+            run_exact_operation(operation, input);
         });
     });
 }
 
-/// Time one exact operation on one random input in nanoseconds.
-fn time_random_operation<const D: usize>(
-    operation: ExactRandomOperation,
-    input: ExactRandomInput<D>,
-) -> u128 {
-    let start = Instant::now();
-    run_random_operation(operation, input);
-    start.elapsed().as_nanos()
-}
-
-/// Time one exact operation repeatedly on one random input.
-fn time_random_operation_repeated<const D: usize>(
-    operation: ExactRandomOperation,
-    input: ExactRandomInput<D>,
-) -> u128 {
-    let mut elapsed = 0;
-    for _ in 0..RANDOM_TIMING_PASSES.get() {
-        elapsed += time_random_operation(operation, input);
-    }
-    elapsed
-}
-
-/// Convert a percentile request into an index in a sorted timing corpus.
-const fn percentile_index(count: SampleCount, percentile: RandomPercentile) -> usize {
-    ((count.get() - 1) * percentile.value() + 50) / 100
-}
-
-/// Select cumulative corpus index sets by pre-timing every input for one operation.
-fn percentile_input_indices<const D: usize>(
-    corpus: &[ExactRandomInput<D>; RANDOM_INPUT_ARRAY_LEN],
-    operation: ExactRandomOperation,
-) -> [Vec<usize>; RANDOM_PERCENTILES.len()] {
-    let input_count = require_ok(SampleCount::new(corpus.len()), "random input corpus size");
-    let mut timings = [(0_u128, 0_usize); RANDOM_INPUT_ARRAY_LEN];
-    for (i, input) in corpus.iter().copied().enumerate() {
-        timings[i] = (time_random_operation_repeated(operation, input), i);
-    }
-    timings.sort_unstable();
-
-    RANDOM_PERCENTILES.map(|percentile| {
-        let timing_idx = percentile_index(input_count, percentile);
-        let threshold = timings[timing_idx].0;
-        let selected_len = timings.partition_point(|&(elapsed, _)| elapsed <= threshold);
-        timings[..selected_len]
-            .iter()
-            .map(|&(_, input_idx)| input_idx)
-            .collect()
-    })
-}
-
-/// Add p50/p95/p99 Criterion benches over percentile input sets.
-fn bench_random_percentile_operation<const D: usize>(
+/// Add one Criterion benchmark that executes the complete validated random corpus.
+fn bench_random_corpus_operation<const D: usize>(
     group: &mut BenchmarkGroup<'_, WallTime>,
-    corpus: &[ExactRandomInput<D>; RANDOM_INPUT_ARRAY_LEN],
-    operation: ExactRandomOperation,
+    corpus: &[ValidatedExactInput<D>; RANDOM_INPUT_ARRAY_LEN],
+    operation: ExactOperation,
 ) {
-    let index_sets = percentile_input_indices(corpus, operation);
-
-    for (percentile, input_indices) in RANDOM_PERCENTILES.into_iter().zip(index_sets) {
-        let input_count = require_ok(
-            SampleCount::new(input_indices.len()),
-            "percentile input set size",
-        );
-        let cursor = Cell::new(0);
-        group.bench_function(
-            format!("{}_{}", operation.name(), percentile.name()),
-            move |bencher| {
-                bencher.iter_batched(
-                    || {
-                        let cursor_pos = cursor.get();
-                        cursor.set((cursor_pos + 1) % input_count.get());
-                        corpus[input_indices[cursor_pos]]
-                    },
-                    |sample| run_random_operation(operation, sample),
-                    BatchSize::SmallInput,
-                );
-            },
-        );
-    }
-}
-
-/// Near-singular matrix: base singular matrix + tiny perturbation.
-///
-/// The base `[[1,2,3],[4,5,6],[7,8,9]]` is exactly singular; adding
-/// `2^-50` to entry (0,0) makes `det = -3 × 2^-50 ≠ 0`.  The f64 filter
-/// in `det_sign_exact` cannot resolve this sign, so Bareiss is forced;
-/// `solve_exact` is the primary use case for near-degenerate inputs
-/// (exact circumcenter etc.) and exercises the largest intermediate
-/// `BigInt` values in the hybrid solve.
-#[inline]
-fn near_singular_3x3() -> Matrix<3> {
-    let perturbation = f64::from_bits(0x3CD0_0000_0000_0000); // 2^-50
-    require_ok(
-        Matrix::<3>::try_from_rows([
-            [1.0 + perturbation, 2.0, 3.0],
-            [4.0, 5.0, 6.0],
-            [7.0, 8.0, 9.0],
-        ]),
-        "near-singular matrix construction",
-    )
-}
-
-/// Large-entry 3×3: strictly diagonally-dominant matrix with diagonal
-/// entries near `f64::MAX / 2` and ones elsewhere.
-///
-/// Each big entry decomposes into a 53-bit mantissa with exponent `~970`;
-/// the unit off-diagonals have exponent `0`, so the shared `e_min = 0`
-/// shift in `component_to_bigint` produces `BigInt`s of `~1023` bits for
-/// the diagonal and small integers elsewhere.  Bareiss fraction-free
-/// updates then multiply these together, stressing the big-integer
-/// multiply and allocator along the full `O(D³)` elimination phase.  The
-/// matrix is non-singular (det ≈ `big³`) so both `det_*` and `solve_*`
-/// paths complete.
-#[inline]
-fn large_entries_3x3() -> Matrix<3> {
-    let big = f64::MAX / 2.0;
-    require_ok(
-        Matrix::<3>::try_from_rows([[big, 1.0, 1.0], [1.0, big, 1.0], [1.0, 1.0, big]]),
-        "large-entry matrix construction",
-    )
-}
-
-/// Hilbert matrix `H[i][j] = 1 / (i + j + 1)`.
-///
-/// Most entries (`1/3`, `1/5`, `1/6`, `1/7`, …) are non-terminating in
-/// binary, so every cell has a distinct 53-bit mantissa and a small
-/// negative exponent.  `f64_decompose` therefore produces a wide mix of
-/// `(mantissa, exponent)` pairs with no shared power-of-two factors,
-/// and the scaling shift to the common `e_min` yields `BigInt` values
-/// of varied bit-lengths — a different kind of adversarial input from
-/// the large-entries case.  Hilbert matrices are also classically
-/// ill-conditioned (condition number grows exponentially with D), so
-/// they are a realistic stand-in for the near-degenerate geometric
-/// predicate inputs that motivate exact arithmetic.
-#[inline]
-#[allow(clippy::cast_precision_loss)]
-fn hilbert<const D: usize>() -> Matrix<D> {
-    let mut rows = [[0.0; D]; D];
-    let mut r = 0;
-    while r < D {
-        let mut c = 0;
-        while c < D {
-            rows[r][c] = 1.0 / ((r + c + 1) as f64);
-            c += 1;
-        }
-        r += 1;
-    }
-    require_ok(
-        Matrix::<D>::try_from_rows(rows),
-        "Hilbert matrix construction",
-    )
+    group.bench_function(operation.name(), |bencher| {
+        bencher.iter(|| {
+            for input in corpus {
+                run_exact_operation(operation, input);
+            }
+        });
+    });
 }
 
 /// Populate a Criterion group with the five headline exact-arithmetic
@@ -472,119 +175,114 @@ fn hilbert<const D: usize>() -> Matrix<D> {
 /// operations, making the resulting tables directly comparable.
 fn bench_extreme_group<const D: usize>(
     group: &mut BenchmarkGroup<'_, WallTime>,
-    m: Matrix<D>,
-    rhs: Vector<D>,
+    input: &ValidatedExactInput<D>,
 ) {
-    bench_exact_operation(group, ExactRandomOperation::DetSignExact, m, rhs);
-    bench_exact_operation(group, ExactRandomOperation::DetExact, m, rhs);
-    bench_exact_operation(group, ExactRandomOperation::SolveExact, m, rhs);
-    bench_exact_operation(group, ExactRandomOperation::SolveExactF64Result, m, rhs);
-    bench_exact_operation(group, ExactRandomOperation::SolveExactRoundedF64, m, rhs);
+    for &operation in CORPUS_AND_EXTREME_OPERATIONS {
+        bench_exact_operation(group, operation, input);
+    }
+}
+
+/// Add the direct-determinant baseline for a dimension that supports it.
+fn bench_det_direct<const D: usize>(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    input: &ValidatedExactInput<D>,
+) {
+    let Some(_) = require_ok(input.matrix().det_direct(), "direct determinant setup") else {
+        panic!("det_direct must support this benchmark dimension");
+    };
+    group.bench_function("det_direct", |bencher| {
+        bencher.iter(|| {
+            let det = require_ok(
+                black_box(input.matrix()).det_direct(),
+                "direct f64 determinant",
+            );
+            let Some(det) = det else {
+                panic!("det_direct support changed after benchmark setup");
+            };
+            black_box(det);
+        });
+    });
+}
+
+macro_rules! register_det_direct_benchmark {
+    ($group:expr, $input:expr, supported) => {{
+        bench_det_direct(&mut $group, &$input);
+    }};
+    ($group:expr, $matrix:expr, unsupported) => {};
 }
 
 macro_rules! gen_exact_benches_for_dim {
-    ($c:expr, $d:literal) => {
-        paste! {{
-            let a = require_ok(
+    ($c:expr, $d:literal, $direct:ident) => {{
+        let input = validate_exact_fixture(ExactInput {
+            matrix: require_ok(
                 Matrix::<$d>::try_from_rows(make_matrix_rows::<$d>()),
                 "benchmark matrix construction",
-            );
-            let rhs = require_ok(
+            ),
+            rhs: require_ok(
                 Vector::<$d>::try_new(make_vector_array::<$d>()),
                 "benchmark RHS vector construction",
-            );
+            ),
+        });
 
-            let mut [<group_d $d>] = ($c).benchmark_group(concat!("exact_d", stringify!($d)));
+        let mut group = ($c).benchmark_group(concat!("exact_d", stringify!($d)));
 
-            // === f64 baselines ===
-            [<group_d $d>].bench_function("det", |bencher| {
-                bencher.iter(|| {
-                    let det = require_ok(black_box(a).det(), "f64 determinant");
-                    black_box(det);
-                });
+        // === f64 baselines ===
+        group.bench_function("det", |bencher| {
+            bencher.iter(|| {
+                let det = require_ok(black_box(input.matrix()).det(), "f64 determinant");
+                black_box(det);
             });
+        });
 
-            [<group_d $d>].bench_function("det_direct", |bencher| {
-                bencher.iter(|| {
-                    let det = black_box(a).det_direct();
-                    black_box(det);
-                });
-            });
+        register_det_direct_benchmark!(group, input, $direct);
 
-            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::DetExact, a, rhs);
-            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::DetExactF64Result, a, rhs);
-            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::DetExactRoundedF64, a, rhs);
-            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::DetSignExact, a, rhs);
-            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::SolveExact, a, rhs);
-            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::SolveExactF64Result, a, rhs);
-            bench_exact_operation(&mut [<group_d $d>], ExactRandomOperation::SolveExactRoundedF64, a, rhs);
+        for &operation in GENERAL_OPERATIONS {
+            bench_exact_operation(&mut group, operation, &input);
+        }
 
-            [<group_d $d>].finish();
-        }};
-    };
+        group.finish();
+    }};
 }
 
-macro_rules! gen_random_percentile_benches_for_dim {
-    ($c:expr, $d:literal) => {
-        paste! {{
-            let corpus = make_random_input_corpus::<$d>();
-            let mut [<group_random_percentile_d $d>] =
-                ($c).benchmark_group(concat!("exact_random_percentile_d", stringify!($d)));
+macro_rules! gen_random_corpus_benches_for_dim {
+    ($c:expr, $d:literal) => {{
+        let corpus = make_random_input_corpus::<$d>().map(validate_exact_fixture);
 
-            bench_random_percentile_operation(
-                &mut [<group_random_percentile_d $d>],
-                &corpus,
-                ExactRandomOperation::DetSignExact,
-            );
-            bench_random_percentile_operation(
-                &mut [<group_random_percentile_d $d>],
-                &corpus,
-                ExactRandomOperation::DetExact,
-            );
-            bench_random_percentile_operation(
-                &mut [<group_random_percentile_d $d>],
-                &corpus,
-                ExactRandomOperation::SolveExact,
-            );
-            bench_random_percentile_operation(
-                &mut [<group_random_percentile_d $d>],
-                &corpus,
-                ExactRandomOperation::SolveExactF64Result,
-            );
-            bench_random_percentile_operation(
-                &mut [<group_random_percentile_d $d>],
-                &corpus,
-                ExactRandomOperation::SolveExactRoundedF64,
-            );
+        let mut group = ($c).benchmark_group(concat!("exact_random_corpus_d", stringify!($d)));
+        let input_count = require_ok(
+            u64::try_from(corpus.len()),
+            "random corpus throughput conversion",
+        );
+        group.throughput(Throughput::Elements(input_count));
 
-            [<group_random_percentile_d $d>].finish();
-        }};
-    };
+        for &operation in CORPUS_AND_EXTREME_OPERATIONS {
+            bench_random_corpus_operation(&mut group, &corpus, operation);
+        }
+
+        group.finish();
+    }};
 }
 
 fn main() {
     let mut c = Criterion::default().configure_from_args();
 
-    #[allow(unused_must_use)]
     {
-        gen_exact_benches_for_dim!(&mut c, 2);
-        gen_exact_benches_for_dim!(&mut c, 3);
-        gen_exact_benches_for_dim!(&mut c, 4);
-        gen_exact_benches_for_dim!(&mut c, 5);
+        gen_exact_benches_for_dim!(&mut c, 2, supported);
+        gen_exact_benches_for_dim!(&mut c, 3, supported);
+        gen_exact_benches_for_dim!(&mut c, 4, supported);
+        gen_exact_benches_for_dim!(&mut c, 5, unsupported);
     }
 
-    // === Random percentile groups ===
+    // === Fixed random-corpus groups ===
     //
-    // Each dimension uses a fixed-seed corpus of strictly
-    // diagonally-dominant integer matrices.  For each operation, the corpus
-    // is pre-timed repeatedly to select cumulative p50/p95/p99 input sets,
-    // then Criterion cycles through each set with normal sampling.
-    #[allow(unused_must_use)]
+    // Each measured iteration executes all 50 strictly diagonally-dominant
+    // integer inputs in their fixed-seed order. Baseline and current revisions
+    // therefore receive exactly the same workload.
     {
-        gen_random_percentile_benches_for_dim!(&mut c, 2);
-        gen_random_percentile_benches_for_dim!(&mut c, 3);
-        gen_random_percentile_benches_for_dim!(&mut c, 4);
-        gen_random_percentile_benches_for_dim!(&mut c, 5);
+        gen_random_corpus_benches_for_dim!(&mut c, 2);
+        gen_random_corpus_benches_for_dim!(&mut c, 3);
+        gen_random_corpus_benches_for_dim!(&mut c, 4);
+        gen_random_corpus_benches_for_dim!(&mut c, 5);
     }
 
     // === Adversarial / extreme-input groups ===
@@ -595,63 +293,38 @@ fn main() {
     // via `bench_extreme_group`, so the resulting tables are directly
     // comparable across input classes.
 
-    // Near-singular 3×3: forces Bareiss fallback in det_sign_exact and
-    // exercises the largest intermediate BigInt values in solve_exact
-    // (the primary motivating use case for exact solve).
+    // Near-singular 3×3: forces the direct BigInt fallback in det_sign_exact
+    // and exercises an ill-conditioned exact solve.
     {
+        let input = validate_exact_fixture(near_singular_3x3_input());
         let mut group = c.benchmark_group("exact_near_singular_3x3");
-        bench_extreme_group(
-            &mut group,
-            near_singular_3x3(),
-            require_ok(
-                Vector::<3>::try_new([1.0, 2.0, 3.0]),
-                "near-singular RHS vector construction",
-            ),
-        );
+        bench_extreme_group(&mut group, &input);
         group.finish();
     }
 
     // Large-entry 3×3: diagonal entries near `f64::MAX / 2` stress
     // BigInt growth during Bareiss forward elimination.
     {
+        let input = validate_exact_fixture(large_entries_3x3_input());
         let mut group = c.benchmark_group("exact_large_entries_3x3");
-        bench_extreme_group(
-            &mut group,
-            large_entries_3x3(),
-            require_ok(
-                Vector::<3>::try_new([1.0, 1.0, 1.0]),
-                "large-entry RHS vector construction",
-            ),
-        );
+        bench_extreme_group(&mut group, &input);
         group.finish();
     }
 
     // Hilbert 4×4 and 5×5: classically ill-conditioned matrices whose
-    // entries span many orders of magnitude in `(mantissa, exponent)`
-    // space, exercising the f64 → BigInt scaling path.
+    // entries have varied binary mantissas and exponents, exercising the
+    // f64 → BigInt scaling path.
     {
+        let input = validate_exact_fixture(hilbert_input::<4>());
         let mut group = c.benchmark_group("exact_hilbert_4x4");
-        bench_extreme_group(
-            &mut group,
-            hilbert::<4>(),
-            require_ok(
-                Vector::<4>::try_new([1.0; 4]),
-                "Hilbert RHS vector construction",
-            ),
-        );
+        bench_extreme_group(&mut group, &input);
         group.finish();
     }
 
     {
+        let input = validate_exact_fixture(hilbert_input::<5>());
         let mut group = c.benchmark_group("exact_hilbert_5x5");
-        bench_extreme_group(
-            &mut group,
-            hilbert::<5>(),
-            require_ok(
-                Vector::<5>::try_new([1.0; 5]),
-                "Hilbert RHS vector construction",
-            ),
-        );
+        bench_extreme_group(&mut group, &input);
         group.finish();
     }
 

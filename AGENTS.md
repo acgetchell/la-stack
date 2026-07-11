@@ -6,9 +6,10 @@ Essential guidance for AI assistants working in this repository.
 
 When making changes in this repo, prioritize (in order):
 
-- Correctness
-- Speed
-- Coverage (but keep the code idiomatic Rust)
+- Mathematical correctness and invariant preservation
+- API stability and composability
+- Idiomatic, well-tested Rust
+- Performance within the documented scope
 
 ## Design Principles
 
@@ -20,28 +21,48 @@ invariant over the convenient edit.
 
 ### Mathematical correctness as an invariant
 
-- Exact paths (`*_exact`) never silently lose precision. When f64 output
-  is required, a separate `*_exact_f64` method returns
-  [`LaError::Overflow`] on unrepresentability — not a truncation.
-- Any f64 operation that can accumulate rounding error either documents
-  its absolute bound (`det_errbound`, `ERR_COEFF_*`) or explicitly states
+- Arbitrary-precision paths (`det_exact`, `solve_exact`) never silently lose
+  precision. Strict exact-to-`f64` methods (`det_exact_f64`,
+  `solve_exact_f64`) return [`LaError::Unrepresentable`] rather than rounding:
+  [`UnrepresentableReason::RequiresRounding`] means a finite `f64` is available
+  only after rounding, while [`UnrepresentableReason::NotFinite`] means no
+  finite `f64` can represent the result. The explicit `*_exact_rounded_f64`
+  methods opt into rounding but still return `NotFinite` when rounding cannot
+  produce a finite value.
+- New or changed f64 operations that can accumulate rounding error document
+  their absolute bound (`det_errbound`, `ERR_COEFF_*`) or explicitly state
   that no bound is provided.
-- Non-finite values (NaN, ±∞) always surface as
-  `LaError::NonFinite { row, col }` with source-location metadata. No
-  silent NaN propagation, no `unwrap_or(f64::NAN)`.
+- Non-finite matrix/vector inputs and arithmetic intermediates surface as
+  `LaError::NonFinite` with typed `NonFiniteOrigin` and `NonFiniteLocation`
+  metadata; do not silently propagate NaN or use `unwrap_or(f64::NAN)`.
+  Computed failures name their `ArithmeticOperation`, while raw matrix/vector
+  values use input origins and exact source locations.
+- Exact singularity and tolerance-based rejection remain distinguishable through
+  `SingularityReason`; numerical failures preserve the factorization, observed
+  pivot magnitude, and tolerance.
+- Parse raw tolerances through `Tolerance::try_new`; failures use typed
+  `InvalidToleranceReason`. Exact-to-f64 output failures use
+  `LaError::Unrepresentable`.
 - Algorithms cite their source (Shewchuk, Bareiss, Goldberg, …) via
   `REFERENCES.md` and document their conditioning behaviour.
+- `Matrix::det()` uses closed forms through D=4. Its D≥5 zero-tolerance LU
+  fallback preserves `LaError::Singular` when elimination cannot produce a
+  non-zero pivot; floating-point factorization must not relabel that numerical
+  failure as an exact `0.0`. Use the exact determinant APIs when exact
+  singularity classification is required.
 
 ### Public-API stability
 
-- Error enums are `#[non_exhaustive]`; public wrapper types are
+- Public error enums and struct-style error variants are `#[non_exhaustive]`;
+  downstream matches include wildcard arms and `..`. Public wrapper types are
   `#[must_use]`.
 - New functionality is additive by default: use the prelude for ergonomic
   re-exports, and avoid churn for its own sake.
 - Pre-1.0 semver: any `0.x.y` release may include breaking API changes when
-  they materially improve correctness, orthogonality, or long-term API clarity.
-  Do not keep compatibility aliases that weaken the public model; document
-  intentional breaks clearly in release notes and commit messages.
+  they materially improve correctness, orthogonality, performance, or
+  long-term API clarity. Do not keep compatibility aliases that weaken the
+  public model; document intentional breaks clearly in release notes and commit
+  messages.
 - Do **not** automatically update the library version in `Cargo.toml`,
   `Cargo.lock`, README dependency snippets, or related docs during ordinary
   feature, fix, review, or hygiene work. Version bumps are maintainer-driven
@@ -61,9 +82,13 @@ invariant over the convenient edit.
 
 - `const fn` wherever possible — not for micro-optimisation, but because
   compile-time evaluation forces a pure function of inputs.
-- `Result<_, LaError>` for all fallible operations. Panics are reserved
-  for debug-only precondition violations (e.g. LDLT symmetry check) and
-  documented on the method.
+- Use `Result<_, LaError>` for all fallible operations. Public library code
+  must not panic on user input.
+- Panics are reserved for truly unreachable internal invariant violations and
+  must be documented when callers could observe them.
+- Validation belongs to the lowest type or module that owns the invariant.
+  Higher-level APIs preserve and propagate typed `LaError` values rather than
+  stringifying them.
 - Public APIs that return plain values must be genuinely infallible for all
   representable inputs. If callers can observe failure, return `Result` or
   `Option` instead of relying on `panic!`, `assert!`, `unwrap`, or `expect`.
@@ -93,14 +118,24 @@ invariant over the convenient edit.
   `det_errbound`). Problems outside this scope — large or dynamic
   dimensions, sparse matrices, parallelism — belong to `nalgebra` or
   `faer` (see anti-goals in `README.md`).
-- Within scope, prefer allocation-free paths, `const fn` wherever the
-  inputs allow, and FMA where applicable. Validate any performance
-  claim against the `bench-vs-linalg` (vs nalgebra / faer) or
-  `bench-exact` (exact-arithmetic) suites before relying on it.
+- Within scope, prefer allocation-free paths, `const fn` wherever the inputs
+  allow, and FMA where applicable.
+- Performance-sensitive changes require comparable before-and-after evidence
+  from the same representative benchmark command, inputs, features, and
+  environment. Use `bench-vs-linalg` (vs nalgebra / faer) or `bench-exact`
+  (exact arithmetic), as appropriate.
+- Preserve benchmark provenance and distinguish descriptive point-estimate
+  ratios from statistically supported performance claims. Marginal Criterion
+  interval separation is not a paired confidence interval for the change.
+- Measurements from runs that violate documented invariants are invalid
+  performance evidence.
 
 ### Testing mirrors the principles
 
 - Unit tests cover known values, error paths, and dimension-generic
+- Error-path tests match the exact variant, typed reason/origin/location, and
+  structured fields; do not replace an unexpected error with a numeric sentinel
+  or assert only `is_err()`.
   correctness across D=2..=5 (see **Dimension Coverage** below).
 - Proptests under `tests/proptest_*.rs` cover algebraic invariants
   (round-trip, residual, sign agreement) — not just "does it not panic".
@@ -120,6 +155,8 @@ invariant over the convenient edit.
   `git --no-pager log`, `git --no-pager show`, `git --no-pager blame`) to inspect changes/history
 - **ALWAYS** use `git --no-pager` when reading git output
 - Suggest git commands that modify version control state for the user to run manually
+- Do not revert user changes. The worktree may be dirty; preserve unrelated
+  changes and work around overlapping edits.
 - When suggesting branch names, prefer `{type}/{issue}-descriptor-or-two`, e.g. `fix/307-topology-validation`,
   `perf/315-bench-profile`, or `doc/329-branch-guidance`. If an environment requires an owner/tool prefix,
   keep this structure after the prefix, e.g. `codex/fix/307-topology-validation`.
@@ -136,21 +173,30 @@ When user requests commit message generation:
 
 ### Code Quality
 
+- **Unsafe Rust is forbidden.** Keep the manifest-level `unsafe_code = "forbid"`
+  lint and crate/module `#![forbid(unsafe_code)]` enforcement intact.
 - **ALLOWED**: Run formatters/linters: `cargo fmt`, `cargo clippy`, `cargo doc`, `taplo fmt`, `taplo lint`,
-  `uv run ruff check --fix`, `uv run ruff format`, `shfmt -w`, `shellcheck -x`, `rumdl`, `dprint`,
+  `uv run --locked ruff check --fix`, `uv run --locked ruff format`, `rumdl`, `dprint`,
   `typos`, `actionlint`
 - **NEVER**: Use `sed`, `awk`, `perl` for code edits
-- **ALWAYS**: Use `edit_files` tool for edits (and `create_file` for new files)
+- **ALWAYS**: Use the provided structured patch/edit tool for manual edits.
+- **FALLBACK**: Direct patch rejects and backup files outside the repository
+  and clean them immediately.
 - **EXCEPTION**: Shell text tools OK for read-only analysis only
 
 ### Validation
 
+- Select validators proportionally to the changed surfaces. Use focused recipes
+  for documentation, configuration, Python, test-only, benchmark-only, or
+  example-only changes; compose each relevant validator once when a patch spans
+  multiple surfaces. Core Rust or public-behavior changes require final
+  `just ci`.
 - **JSON**: Validate with `jq empty <file>.json` after editing (or `just validate-json`)
 - **TOML**: Lint/format with taplo: `just toml-lint`, `just toml-fmt-check`, `just toml-fmt`
 - **GitHub Actions**: Validate workflows with `just action-lint` (uses `actionlint`)
 - **Spell check**: Run `just spell-check` after editing; add legitimate technical terms to
   `typos.toml` under `[default.extend-words]`
-- **Shell scripts**: Run `shfmt -w scripts/*.sh` and `shellcheck -x scripts/*.sh` after editing
+- **Shell scripts**: Run `just shell-fix` and `just shell-check` after editing
 - **YAML**: Use `just yaml-lint` and `just yaml-fix`
 - **Markdown**: Use `just markdown-check` and `just markdown-fix`
 
@@ -210,9 +256,9 @@ testable.
 
 #### Reference examples
 
-- `src/matrix.rs` — `gen_public_api_matrix_tests!`
-- `src/lu.rs` — `gen_public_api_pivoting_solve_and_det_tests!`, `gen_public_api_tridiagonal_smoke_solve_and_det_tests!`
-- `src/ldlt.rs` — `gen_public_api_ldlt_identity_tests!`, `gen_public_api_ldlt_diagonal_tests!`
+- `src/matrix.rs` — `gen_matrix_tests!`
+- `src/lu.rs` — `gen_pivoting_solve_and_det_tests!`, `gen_tridiagonal_smoke_solve_and_det_tests!`
+- `src/ldlt.rs` — `gen_ldlt_identity_tests!`, `gen_ldlt_diagonal_tests!`
 - `src/exact.rs` — `gen_det_exact_tests!`, `gen_det_exact_f64_tests!`, `gen_solve_exact_tests!`, `gen_solve_exact_f64_tests!`
 
 #### When single-dimension tests are acceptable
@@ -223,7 +269,8 @@ macro-ification.
 
 ### Python
 
-- Use `uv run` for all Python scripts (never `python3` or `python` directly)
+- Python support tooling targets Python 3.14.
+- Use `uv run --locked` for all Python scripts (never `python3` or `python` directly)
 - Use pytest for tests (not unittest)
 - **Type checking**: `just python-check` includes type checking (blocking - all code must pass type checks)
 - Add type hints to new code
@@ -235,22 +282,24 @@ just check            # Lint/validators (non-mutating)
 just fix              # Apply formatters/auto-fixes (mutating)
 just ci               # Full CI simulation (checks + tests + examples + bench compile)
 just test             # Lib + doc tests (fast)
-just test-all         # All tests (Rust + Python)
+just test-all         # All tests (Rust, benchmark inputs, and Python)
 just examples         # Run all examples
 ```
 
 ### Detailed Command Reference
 
-- All tests (Rust + Python): `just test-all`
-- Benchmark comparison (generate `docs/PERFORMANCE.md`): `just bench-compare` (snapshot) or `just bench-compare v0.4.1` (vs baseline)
-- Benchmarks: `cargo bench` (or `just bench`)
+- All tests (Rust, exact-feature doctests, benchmark-input smoke tests, and Python): `just test-all`
+- Benchmark comparison (local report): `just bench-compare [baseline] [suite] [scope]`
+- Benchmarks: `cargo bench --locked --features bench` (or `just bench`)
 - Benchmarks (exact arithmetic): `just bench-exact`
 - Benchmarks (la-stack vs nalgebra/faer): `just bench-vs-linalg [filter]` (full run) or `just bench-vs-linalg-quick [filter]` (reduced)
-- Benchmarks (plot vs_linalg CSV/SVG): `just plot-vs-linalg [metric] [stat] [sample] [update_readme]` / `just plot-vs-linalg-readme [metric] [stat] [sample] [update_readme]`
+- Benchmarks (plot vs_linalg CSV/SVG/JSON provenance): `just plot-vs-linalg [metric] [stat] [sample] [log_y]`;
+  publish a freshly gated full run to README with
+  `just plot-vs-linalg-readme [metric] [stat] [sample] [log_y]`
 - Benchmarks (save baseline): `just bench-save-baseline v0.4.1`
 - Build (debug): `cargo build` (or `just build`)
 - Build (release): `cargo build --release` (or `just build-release`)
-- Changelog (generate full): `just changelog` (runs `git-cliff -o CHANGELOG.md` + post-processing)
+- Changelog (generate full): `just changelog` (generates, post-processes, archives, and formats changelog files)
 - Changelog (prepend unreleased): `just changelog-unreleased v0.4.1`
 - Coverage (CI XML): `just coverage-ci`
 - Coverage (HTML): `just coverage`
@@ -259,17 +308,19 @@ just examples         # Run all examples
 - Fast Rust tests (lib + doc): `just test`
 - Format: `cargo fmt` (or `just fmt`)
 - Integration tests: `just test-integration`
+- Benchmark-input smoke tests: `just test-bench-inputs`
 - Lint (Clippy): `cargo clippy --all-targets --all-features -- -D warnings` (or `just clippy`)
 - Lint (Clippy, exact feature): `cargo clippy --features exact --all-targets -- -D warnings` (or `just clippy-exact`)
 - Lint/validate: `just check`
+- Cargo manifest/lockfile synchronization: `just cargo-lock-check`
+- Unused dependency check: `just unused-deps` (uses `cargo-machete`)
 - Pre-commit validation / CI simulation: `just ci` (lint + tests + examples + bench compile)
-- Python setup: `uv sync --group dev` (or `just python-sync`)
+- Python setup from the lockfile: `uv sync --locked --group dev` (or `just python-sync`)
 - Python tests: `just test-python`
-- Run a single test (by name filter): `cargo test solve_2x2_basic` (or the full path: `cargo test lu::tests::solve_2x2_basic`)
-  Cargo accepts only one positional test filter. To run multiple focused
-  filters, run separate `cargo test <filter>` commands rather than passing
-  multiple filter arguments.
-- Run exact-feature tests: `cargo test --features exact --verbose` (or `just test-exact`)
+- Run one runnable test by substring: `cargo nextest run solve_2x2_basic`
+  - For an exact full-path match, use `cargo nextest run -- --exact lu::tests::solve_2x2_basic`.
+- Run exact-feature tests: `cargo nextest run --profile ci --features exact --verbose`
+  (or `just test-exact`, which also runs exact-feature doctests)
 - Run examples: `just examples` (or `cargo run --example det_5x5` / `cargo run --example solve_5x5` /
   `cargo run --example ldlt_solve_3x3` / `cargo run --example const_det_4x4` /
   `cargo run --features exact --example exact_det_3x3` /
@@ -318,7 +369,9 @@ When using `gh` to view issues, PRs, or other GitHub objects:
 Use the `gh` CLI to read, create, and edit issues:
 
 - **Read**: `gh issue view <number> --json title,body,labels,milestone | cat`
-- **List**: `gh issue list --json number,title,labels --jq '.[] | "#\(.number) \(.title)"' | cat` (add `--label enhancement`, `--milestone v0.4.1`, etc. to filter)
+- **List**:
+  `gh issue list --json number,title,labels --jq '.[] | "#\(.number) \(.title)"' | cat`
+  (add `--label enhancement`, `--milestone v0.4.1`, etc. to filter)
 - **Create**: `gh issue create --title "..." --body "..." --label enhancement --label rust`
 - **Edit**: `gh issue edit <number> --add-label "..."`, `--milestone "..."`, `--title "..."`
 - **Comment**: `gh issue comment <number> --body "..."`
@@ -343,52 +396,91 @@ When creating or updating issues:
 ## Feature flags
 
 - `exact` — enables exact arithmetic methods via `BigRational`:
-  `det_exact()`, `det_exact_f64()`, `det_sign_exact()`, `solve_exact()`, and `solve_exact_f64()`.
-  Re-exports `BigInt`, `BigRational`, and the commonly needed `num-traits`
-  items (`FromPrimitive`, `ToPrimitive`, and `Signed`) from the crate root and prelude
-  (so consumers get usable `from_f64` / `to_f64` / `is_positive` etc. without adding
-  `num-bigint` / `num-rational` / `num-traits` as their own deps).
-  Gates `src/exact.rs`, additional tests, and the `exact_det_3x3`/`exact_sign_3x3`/`exact_solve_3x3` examples.
-  Clippy, doc builds, and test commands have dedicated `--features exact` variants.
+  `det_exact()`, `det_exact_f64()`, `det_exact_rounded_f64()`,
+  `det_sign_exact()`, `solve_exact()`, `solve_exact_f64()`, and
+  `solve_exact_rounded_f64()`. `det_sign_exact()` is infallible for every
+  finite-by-construction `Matrix`; the exact-value, conversion, and solve APIs
+  remain fallible for their genuine scale, representation, and singularity
+  failures. `ExactF64Conversion` converts an already-computed
+  exact determinant or solution under the strict or rounded contract without
+  rerunning exact elimination. Feature-gated re-exports include
+  `DeterminantSign`, `ExactF64Conversion`, `BigInt`, `BigRational`, and the
+  commonly needed `num-traits` items (`FromPrimitive`, `ToPrimitive`, and `Signed`).
+  `UnrepresentableReason` and the other typed `LaError` category enums remain
+  available without `exact`; callers should not need optional arithmetic
+  dependencies merely to match errors.
+  Gates `src/exact.rs`, additional tests, and the exact-arithmetic examples.
+  Clippy, doc builds, and test commands have dedicated `--features exact`
+  variants.
+- `bench` — cfg-only gate required by the benchmark targets and
+  `tests/vs_linalg_inputs.rs`. Benchmark libraries remain dev-dependencies.
 
 ## Code structure (big picture)
 
 - This is a single Rust *library crate* (no `src/main.rs`). The crate root is `src/lib.rs`.
 - The linear algebra implementation is split across:
-  - `src/lib.rs`: crate root + shared items (`LaError`, `DEFAULT_SINGULAR_TOL`) + re-exports
+  - `src/lib.rs`: crate root, public module wiring, and re-exports
+  - `src/error.rs`: `LaError` plus typed singularity, non-finite,
+    positive-semidefinite, tolerance, factorization, arithmetic-operation, and
+    exact-conversion categories
+  - `src/tolerance.rs`: validated singular-tolerance policy
   - `src/vector.rs`: `Vector<const D: usize>` (`[f64; D]`)
-  - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `set`, `inf_norm`, `det`, `det_direct`)
+  - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `try_get`, `set`, `inf_norm`, `det`, `det_direct`)
   - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve`, `det`)
   - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for symmetric SPD/PSD matrices (`solve`, `det`)
   - `src/exact.rs`: exact arithmetic behind `features = ["exact"]`:
-    - Determinants: `det_exact()`, `det_exact_f64()`, `det_sign_exact()` via integer-only
-      Bareiss in `BigInt` (`bareiss_det_int`); `det_sign_exact()` adds a Shewchuk-style
-      f64 filter for fast sign resolution
-    - Linear system solve: `solve_exact()`, `solve_exact_f64()` via Gaussian elimination
-      with first-non-zero pivoting in `BigRational`
+    - Determinants: `det_exact()`, strict `det_exact_f64()`, rounded
+      `det_exact_rounded_f64()`, and `det_sign_exact()` via a scaled `BigInt`
+      determinant core (`exact_det_int_finite`): direct expansions for D≤4 and
+      fraction-free Bareiss elimination for D≥5. `det_sign_exact()` infallibly
+      returns a `DeterminantSign` and adds a Shewchuk-style f64 filter for fast
+      sign resolution in D≤4
+    - Exact-to-`f64` conversion failures retain an `UnrepresentableReason` so
+      callers can distinguish required rounding from non-finite output
+    - Linear system solve: `solve_exact()`, strict `solve_exact_f64()`, and
+      rounded `solve_exact_rounded_f64()` use fraction-free Bareiss forward
+      elimination in `BigInt` with first-non-zero pivoting, followed by
+      `BigRational` back-substitution
 - Rust unit tests are inline `#[cfg(test)]` modules in each `src/*.rs` file.
 - Property-based tests live under `tests/proptest_*.rs` (uses the `proptest`
   dev-dependency): `proptest_matrix.rs`, `proptest_vector.rs`,
   `proptest_factorizations.rs`, and `proptest_exact.rs` (the last gated on
   the `exact` feature). They run as integration tests via
   `just test-integration` or `just test-all`.
-- Python tests live in `scripts/tests/` and run via `just test-python` (`uv run pytest`).
+- Python tests live in `scripts/tests/` and run via `just test-python` (`uv run --locked pytest`).
 - The public API re-exports these items from `src/lib.rs`.
 - The `justfile` defines all dev workflows (see `just --list`).
 - Dev-only benchmarks live in `benches/vs_linalg.rs` (Criterion + nalgebra/faer comparison)
   and `benches/exact.rs` (exact arithmetic across D=2–5, plus adversarial-input groups
   `exact_near_singular_3x3`, `exact_large_entries_3x3`, `exact_hilbert_4x4`, `exact_hilbert_5x5`).
-- Python scripts under `scripts/`:
-  - `bench_compare.py`: exact-arithmetic benchmark comparison across releases (generates `docs/PERFORMANCE.md`)
-  - `criterion_dim_plot.py`: benchmark plotting (CSV + SVG + README table update)
+  Exact Criterion helpers accept only `ValidatedExactInput`, so independent
+  oracle validation is a type-checked prerequisite outside timed closures.
+- Key Python scripts under `scripts/`:
+  - `bench_compare.py`: exact and vs-linalg Criterion comparison reports under
+    `target/bench-reports/`
+  - `archive_performance.py`: promote and archive curated release performance reports
+  - `criterion_dim_plot.py`: benchmark plotting and fail-closed README publication
+    (CSV + SVG + JSON provenance + README table)
   - `tag_release.py`: annotated tag creation from CHANGELOG.md sections
-  - `postprocess_changelog.py`: strips trailing blank lines from git-cliff output
+  - `archive_changelog.py`: archive completed changelog minor series
+  - `postprocess_changelog.py`: inject summaries, reflow and normalize Markdown,
+    and strip trailing blank lines from git-cliff output
   - `subprocess_utils.py`: safe subprocess wrappers for git commands
 - Release workflow is documented in `docs/RELEASING.md`.
 
+## Agent Expectations
+
+- Prefer small, focused patches and the simplest maintainable correct solution.
+- Search existing documentation and nearby code before inventing conventions.
+- Fix small, clearly related issues discovered in a touched area when doing so
+  improves correctness, clarity, tests, or maintainability.
+- Avoid broad mechanical churn; separate repository-wide cleanup from focused
+  work.
+
 ## Publishing note
 
-- If you publish this crate to crates.io, prefer updating documentation *before* publishing a new version (doc-only changes still require a version bump on crates.io).
+- If you publish this crate to crates.io, prefer updating documentation
+  *before* publishing a new version (doc-only changes still require a version bump on crates.io).
 
 ## Editing tools policy
 

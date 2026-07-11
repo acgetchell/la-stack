@@ -16,16 +16,26 @@ on:
     paths:
       - "src/**"
       - "benches/**"
+      - "tests/exact_bench_config.rs"
+      - "tests/vs_linalg_inputs.rs"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "justfile"
+      - "rust-toolchain.toml"
+      - ".github/workflows/benchmarks.yml"
   pull_request:
     branches:
       - main
     paths:
       - "src/**"
       - "benches/**"
+      - "tests/exact_bench_config.rs"
+      - "tests/vs_linalg_inputs.rs"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "justfile"
+      - "rust-toolchain.toml"
+      - ".github/workflows/benchmarks.yml"
   workflow_dispatch:
 
 concurrency:
@@ -52,9 +62,15 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           cache: true
+          cache-bin: false
+
+      - name: Validate benchmark inputs
+        run: >
+          cargo test --locked --features bench,exact
+          --test vs_linalg_inputs --test exact_bench_config
 
       # ── PR: find and download the latest main baseline ──────────────
       - name: Find latest main baseline
@@ -116,14 +132,16 @@ jobs:
 
           if [ -d target/criterion/exact_d2/det/main ]; then
             echo "::notice::Baseline found — comparing against main"
+            echo "comparison_available=true" >> "$GITHUB_OUTPUT"
             # --baseline-lenient rather than --baseline: benches added on the
             # PR branch that don't yet exist in the main baseline get a
             # "no baseline data" notice instead of aborting the whole run.
-            cargo bench --features bench,exact --bench exact \
+            cargo bench --locked --features bench,exact --bench exact \
               -- --baseline-lenient main 2>&1 | tee bench-output.txt
           else
             echo "::notice::No baseline found — running without comparison"
-            cargo bench --features bench,exact --bench exact \
+            echo "comparison_available=false" >> "$GITHUB_OUTPUT"
+            cargo bench --locked --features bench,exact --bench exact \
               2>&1 | tee bench-output.txt
           fi
 
@@ -139,8 +157,12 @@ jobs:
           (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
           github.ref == 'refs/heads/main'
         run: >
-          cargo bench --features bench,exact --bench exact
+          cargo bench --locked --features bench,exact --bench exact
           -- --save-baseline main
+
+      - name: Run benchmarks (manual ref)
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: cargo bench --locked --features bench,exact --bench exact
 
       - name: Upload baseline artifact
         if: >
@@ -150,7 +172,7 @@ jobs:
         with:
           name: bench-baseline-main
           path: target/criterion
-          retention-days: 30
+          retention-days: 90
           if-no-files-found: error
 
       # ── PR: report results ──────────────────────────────────────────
@@ -159,16 +181,17 @@ jobs:
         run: |
           set -euo pipefail
 
+          comparison_available="${BENCH_COMPARISON_AVAILABLE:-}"
           regression="${BENCH_REGRESSION:-}"
 
-          if [ -z "$regression" ]; then
+          if [ "$comparison_available" != "true" ] || [ -z "$regression" ]; then
             {
               echo "### ❓ Benchmark Comparison Unavailable"
               echo ""
-              echo "The benchmark step did not produce a result."
-              echo "This may indicate a build failure or missing baseline."
+              echo "No usable comparison against the main baseline was produced."
+              echo "The benchmark still ran, but no regression claim can be made."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::Benchmark comparison produced no output"
+            echo "::warning::Benchmark comparison unavailable"
           elif [ "$regression" = "true" ]; then
             {
               echo "### ⚠️ Performance Regression Detected"
@@ -189,4 +212,5 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
         env:
+          BENCH_COMPARISON_AVAILABLE: ${{ steps.bench-compare.outputs.comparison_available }}
           BENCH_REGRESSION: ${{ steps.bench-compare.outputs.regression }}
