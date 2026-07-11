@@ -55,6 +55,7 @@ _COMMAND_TIMEOUT_SECONDS = 600
 _HOW_TO_UPDATE_RE = re.compile(r"(?ms)^## How to Update\n.*\Z")
 _BENCHMARK_HARNESS_DIRS = ("benches",)
 _BENCHMARK_HARNESS_FILES = (
+    ".config/nextest.toml",
     "Cargo.toml",
     "Cargo.lock",
     "rust-toolchain.toml",
@@ -64,6 +65,9 @@ _BENCHMARK_HARNESS_FILES = (
 )
 _BENCHMARK_HARNESS_METADATA = ".la-stack-benchmark-harness.json"
 _BENCHMARK_INPUT_GATE = ("just", "test-bench-inputs")
+_COMPARISON_LINT_CAP = "--cap-lints=warn"
+_V0_4_3_API_CFG = "la_stack_v0_4_3_api"
+_V0_4_3_TAG = "v0.4.3"
 type BaselineSource = Literal["local", "github-assets"]
 
 
@@ -152,6 +156,7 @@ class BaselineRun:
     harness_sha256: str
     git_clean: bool
     source_state_sha256: str
+    api_compatibility: str | None
 
 
 def normalize_tag(tag: str) -> str:
@@ -580,6 +585,7 @@ def _write_local_run_provenance(
     """Tie locally generated samples to their shared harness and environment."""
     publication = _environment_metadata(worktree, harness_sha256=baseline_run.harness_sha256)
     measurement = {
+        "baseline_api_compatibility": baseline_run.api_compatibility or "none",
         "baseline_commit": baseline_run.commit,
         "cargo_lock_sha256": publication["cargo_lock_sha256"],
         "cpu": publication["cpu"],
@@ -606,6 +612,7 @@ def _write_local_run_provenance(
         "publication": publication,
         "schema": 2,
         "validation": {
+            "baseline_api_compatibility": baseline_run.api_compatibility or "none",
             "baseline_commit": baseline_run.commit,
             "baseline_git_clean": baseline_run.git_clean,
             "baseline_revision": "passed",
@@ -648,6 +655,7 @@ def _write_historical_asset_provenance(
         "publication": publication,
         "schema": 2,
         "validation": {
+            "baseline_api_compatibility": baseline_run.api_compatibility or "none",
             "baseline_commit": baseline_run.commit,
             "baseline_git_clean": baseline_run.git_clean,
             "baseline_revision": "passed",
@@ -686,6 +694,40 @@ def _benchmark_env(checkout: Path) -> dict[str, str] | None:
         return None
     env = os.environ.copy()
     env["RUSTUP_TOOLCHAIN"] = toolchain
+    return env
+
+
+def _append_rustflag(env: dict[str, str], flag: str) -> None:
+    """Append one rustc flag without discarding caller-selected codegen flags."""
+    encoded = env.get("CARGO_ENCODED_RUSTFLAGS")
+    if encoded is not None:
+        env["CARGO_ENCODED_RUSTFLAGS"] = "\x1f".join(part for part in (encoded, flag) if part)
+        return
+
+    rustflags = env.get("RUSTFLAGS", "").strip()
+    env["RUSTFLAGS"] = f"{rustflags} {flag}".strip()
+
+
+def _baseline_api_compatibility(baseline_tag: str) -> str | None:
+    """Return the shared-harness API adapter required by one baseline tag."""
+    return _V0_4_3_API_CFG if normalize_tag(baseline_tag) == _V0_4_3_TAG else None
+
+
+def _comparison_benchmark_env(checkout: Path, *, baseline_tag: str | None = None) -> dict[str, str]:
+    """Build a comparable benchmark environment for current or historical code."""
+    env = _benchmark_env(checkout)
+    if env is None:
+        env = os.environ.copy()
+
+    # The shared current manifest can enable lints unknown to historical source.
+    # Cap diagnostics for both revisions so lint-policy drift cannot prevent a
+    # performance comparison; the cap changes diagnostics, not code generation.
+    _append_rustflag(env, _COMPARISON_LINT_CAP)
+
+    if baseline_tag is not None:
+        compatibility = _baseline_api_compatibility(baseline_tag)
+        if compatibility is not None:
+            _append_rustflag(env, f"--cfg={compatibility}")
     return env
 
 
@@ -852,6 +894,18 @@ def _latest_recipe_args(*, suite: str) -> list[str]:
             raise ValueError(msg)
 
 
+def _fallback_current_command(*, suite: str) -> tuple[str, ...]:
+    """Return the Cargo command used when current benchmark recipes are unavailable."""
+    match suite:
+        case "all" | "exact":
+            return ("cargo", "bench", "--locked", "--features", "bench,exact", "--bench", "exact")
+        case "vs_linalg":
+            return ("cargo", "bench", "--locked", "--features", "bench", "--bench", "vs_linalg")
+        case _:
+            msg = f"unsupported benchmark suite: {suite}"
+            raise ValueError(msg)
+
+
 def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> BaselineRun:
     baseline_worktree = tmp_dir / "baseline-worktree"
     _run_git(["worktree", "add", "--detach", str(baseline_worktree), baseline_tag], cwd=repo_root)
@@ -865,7 +919,8 @@ def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path
             suite=suite,
             baseline_worktree=baseline_worktree,
         )
-        benchmark_env = _benchmark_env(repo_root)
+        api_compatibility = _baseline_api_compatibility(baseline_tag)
+        benchmark_env = _comparison_benchmark_env(repo_root, baseline_tag=baseline_tag)
         _run_benchmark_input_gate(baseline_worktree, env=benchmark_env)
         _run_tool(
             baseline_command,
@@ -887,6 +942,7 @@ def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path
             harness_sha256=harness_sha256,
             git_clean=_git_clean(baseline_worktree),
             source_state_sha256=_source_state_digest(baseline_worktree),
+            api_compatibility=api_compatibility,
         )
     finally:
         try:
@@ -920,13 +976,18 @@ def _validate_release_revision(
             source=harness_source,
             destination=validation_worktree,
         )
-        _run_benchmark_input_gate(validation_worktree, env=_benchmark_env(repo_root))
+        api_compatibility = _baseline_api_compatibility(revision)
+        _run_benchmark_input_gate(
+            validation_worktree,
+            env=_comparison_benchmark_env(repo_root, baseline_tag=revision),
+        )
         return BaselineRun(
             commit=_checkout_commit(validation_worktree),
             command=("historical-release-asset", revision),
             harness_sha256=harness_sha256,
             git_clean=_git_clean(validation_worktree),
             source_state_sha256=_source_state_digest(validation_worktree),
+            api_compatibility=api_compatibility,
         )
     finally:
         try:
@@ -1029,7 +1090,7 @@ def _run_benchmarks_and_render_report(
     config: GenerationConfig,
     baseline_run: BaselineRun,
 ) -> None:
-    benchmark_env = _benchmark_env(config.repo_root)
+    benchmark_env = _comparison_benchmark_env(config.repo_root)
     _run_benchmark_input_gate(worktree, env=benchmark_env)
     _purge_criterion_new_samples(
         criterion_dir=worktree / "target" / "criterion",
@@ -1038,7 +1099,7 @@ def _run_benchmarks_and_render_report(
     if _has_current_release_signal_tooling(worktree):
         current_command = ("just", *_latest_recipe_args(suite=config.suite))
     else:
-        current_command = ("cargo", "bench", "--locked", "--features", "bench,exact", "--bench", "exact")
+        current_command = _fallback_current_command(suite=config.suite)
     _run_tool(
         current_command[0],
         list(current_command[1:]),
@@ -1082,7 +1143,10 @@ def _generate_report_in_temp_worktree(
                     harness_source=worktree,
                     tmp_dir=tmp_dir,
                 )
-                _run_benchmark_input_gate(worktree, env=_benchmark_env(config.repo_root))
+                _run_benchmark_input_gate(
+                    worktree,
+                    env=_comparison_benchmark_env(config.repo_root),
+                )
                 _write_historical_asset_provenance(
                     worktree=worktree,
                     config=config,

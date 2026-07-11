@@ -101,6 +101,7 @@ def _schema2_provenance_data() -> dict[str, object]:
         "publication": environment,
         "schema": 2,
         "validation": {
+            "baseline_api_compatibility": "la_stack_v0_4_3_api",
             "baseline_commit": "baseline-commit",
             "baseline_git_clean": False,
             "baseline_revision": "passed",
@@ -379,7 +380,7 @@ def test_collect_comparisons(tmp_path: Path) -> None:
         tmp_path,
         "v0.3.0",
         "median",
-        scope="all-benches",
+        policy=bench_compare.ComparisonPolicy(scope="all-benches"),
     )
     all_comparisons = all_collection.comparisons
     assert len(all_comparisons) == 15
@@ -438,7 +439,7 @@ def test_collect_comparisons_reports_wholly_absent_selected_suite(tmp_path: Path
         "last",
         "median",
         suite="all",
-        scope="all-benches",
+        policy=bench_compare.ComparisonPolicy(scope="all-benches"),
     )
 
     assert any(gap.suite == "vs_linalg" and gap.group == "(entire suite)" and gap.bench == "all selected rows" for gap in collection.gaps)
@@ -493,15 +494,88 @@ def test_collect_comparisons_classifies_from_criterion_intervals(tmp_path: Path)
     }
 
 
-def test_d8_release_signal_rows_are_explicit_and_report_missing_baselines(tmp_path: Path) -> None:
+@pytest.mark.parametrize("compatibility", [None, "unknown-adapter"])
+def test_d8_release_signal_rows_are_explicit_and_report_missing_baselines(
+    tmp_path: Path,
+    compatibility: str | None,
+) -> None:
     group = tmp_path / "d8"
     for bench in bench_compare.VS_LINALG_D8_RELEASE_SIGNAL_BENCHES:
         _write_estimates(group / bench / "new" / "estimates.json", "median", 10.0)
 
-    collection = bench_compare._collect_comparisons(tmp_path, "last", "median", suite="vs_linalg")
+    collection = bench_compare._collect_comparisons(
+        tmp_path,
+        "last",
+        "median",
+        suite="vs_linalg",
+        policy=bench_compare.ComparisonPolicy(baseline_api_compatibility=compatibility),
+    )
     special_gaps = [gap for gap in collection.gaps if gap.bench in bench_compare.VS_LINALG_D8_RELEASE_SIGNAL_BENCHES]
     assert [gap.bench for gap in special_gaps] == bench_compare.VS_LINALG_D8_RELEASE_SIGNAL_BENCHES
     assert all(not gap.missing_current and gap.missing_baseline for gap in special_gaps)
+
+
+def test_v043_adapter_allows_only_known_unavailable_d8_baselines(tmp_path: Path) -> None:
+    group = tmp_path / "d8"
+    for bench in bench_compare.VS_LINALG_D8_RELEASE_SIGNAL_BENCHES:
+        _write_estimates(group / bench / "new" / "estimates.json", "median", 10.0)
+    _write_estimates(
+        group / "la_stack_det_from_lu_balanced_range" / "v0.4.3" / "estimates.json",
+        "median",
+        1.0,
+    )
+
+    collection = bench_compare._collect_comparisons(
+        tmp_path,
+        "v0.4.3",
+        "median",
+        suite="vs_linalg",
+        policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
+    )
+
+    special_gaps = [gap for gap in collection.gaps if gap.bench in bench_compare.VS_LINALG_D8_RELEASE_SIGNAL_BENCHES]
+    assert [gap.bench for gap in special_gaps] == [
+        "la_stack_lu_pivoting",
+        "la_stack_lu_ill_conditioned",
+        "la_stack_ldlt_ill_conditioned",
+    ]
+    assert all(not gap.missing_current and gap.missing_baseline for gap in special_gaps)
+    assert not any("balanced_range" in comparison.bench for comparison in collection.comparisons)
+
+
+def test_v043_adapter_still_requires_current_balanced_range_sample(tmp_path: Path) -> None:
+    group = tmp_path / "d8"
+    _write_estimates(
+        group / "la_stack_det_from_lu_balanced_range" / "new" / "estimates.json",
+        "median",
+        10.0,
+    )
+
+    collection = bench_compare._collect_comparisons(
+        tmp_path,
+        "v0.4.3",
+        "median",
+        suite="vs_linalg",
+        policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
+    )
+
+    balanced_gaps = [gap for gap in collection.gaps if "balanced_range" in gap.bench]
+    assert [(gap.bench, gap.missing_current, gap.missing_baseline) for gap in balanced_gaps] == [("la_stack_det_from_ldlt_balanced_range", True, False)]
+
+
+def test_v043_adapter_validates_current_balanced_range_sample(tmp_path: Path) -> None:
+    estimate = tmp_path / "d8" / "la_stack_det_from_lu_balanced_range" / "new" / "estimates.json"
+    estimate.parent.mkdir(parents=True)
+    estimate.write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="malformed Criterion estimates JSON"):
+        bench_compare._collect_comparisons(
+            tmp_path,
+            "v0.4.3",
+            "median",
+            suite="vs_linalg",
+            policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
+        )
 
 
 def test_collect_vs_linalg_release_signal_uses_baseline_peer_context(tmp_path: Path) -> None:
@@ -523,7 +597,13 @@ def test_collect_vs_linalg_release_signal_uses_baseline_peer_context(tmp_path: P
 
 def test_collect_vs_linalg_all_benches_includes_latest_peer_rows(tmp_path: Path) -> None:
     _build_vs_linalg_tree(tmp_path)
-    collection = bench_compare._collect_comparisons(tmp_path, "last", "median", suite="vs_linalg", scope="all-benches")
+    collection = bench_compare._collect_comparisons(
+        tmp_path,
+        "last",
+        "median",
+        suite="vs_linalg",
+        policy=bench_compare.ComparisonPolicy(scope="all-benches"),
+    )
     comparisons = collection.comparisons
 
     assert [c.bench for c in comparisons] == [
@@ -654,6 +734,34 @@ def test_read_schema2_provenance_records_versions_dirty_source_and_both_gates(tm
     assert "Criterion dependency version: `0.7.0`" in rendered
     assert "Current Git clean: `false`" in rendered
     assert "Validated baseline revision: `baseline-commit`" in rendered
+    assert "Baseline API compatibility: `la_stack_v0_4_3_api`" in rendered
+    assert "d8/la_stack_det_from_lu_balanced_range" in rendered
+    assert "d8/la_stack_det_from_ldlt_balanced_range" in rendered
+    assert "exact determinant is one" in rendered
+    assert bench_compare._comparison_policy("release-signal", provenance) == bench_compare.ComparisonPolicy(
+        scope="release-signal",
+        baseline_api_compatibility="la_stack_v0_4_3_api",
+    )
+
+
+def test_historical_asset_provenance_uses_mode_appropriate_gate_wording(tmp_path: Path) -> None:
+    data = _schema2_provenance_data()
+    data["mode"] = "historical-assets"
+    data["measurement"] = {
+        "status": "unavailable",
+        "reason": "historical release assets do not record the timing environment",
+    }
+    (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
+
+    provenance = bench_compare._read_harness_provenance(tmp_path, expected_baseline="v0.4.3")
+
+    assert provenance is not None
+    rendered = "\n".join(bench_compare._provenance_markdown(provenance))
+    assert "historical release assets do not record the timing environment" in rendered
+    assert "passed for both referenced source revisions during publication" in rendered
+    assert "separately from the historical timing measurements" in rendered
+    assert "shared current fixture harness" not in rendered
+    assert "both samples under one shared current harness" not in rendered
 
 
 def test_read_schema2_provenance_requires_criterion_version(tmp_path: Path) -> None:
@@ -665,6 +773,15 @@ def test_read_schema2_provenance_requires_criterion_version(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="criterion_version"):
         bench_compare._read_harness_provenance(tmp_path, expected_baseline="v0.4.3")
+
+
+def test_read_schema2_provenance_rejects_v043_adapter_for_other_baseline(tmp_path: Path) -> None:
+    data = _schema2_provenance_data()
+    data["baseline"] = "v0.4.4"
+    (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"valid only for baseline 'v0\.4\.3'"):
+        bench_compare._read_harness_provenance(tmp_path, expected_baseline="v0.4.4")
 
 
 def test_read_harness_provenance_rejects_different_requested_baseline(tmp_path: Path) -> None:
@@ -771,6 +888,36 @@ def test_main_comparison_refuses_incomplete_coverage_before_writing(tmp_path: Pa
     error = capsys.readouterr().err
     assert "Incomplete benchmark coverage" in error
     assert "## Incomplete Comparison Coverage" in error
+
+
+def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(tmp_path: Path) -> None:
+    criterion_dir = tmp_path / "criterion"
+    unavailable = bench_compare._V0_4_3_UNAVAILABLE_BASELINE_ROWS
+    for dimension in bench_compare.VS_LINALG_CANONICAL_DIMS:
+        group = f"d{dimension}"
+        benches = {
+            *bench_compare.VS_LINALG_LA_STACK_BENCHES,
+            *bench_compare.VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM.get(dimension, []),
+        }
+        for bench in benches:
+            _write_estimates(criterion_dir / group / bench / "new" / "estimates.json", "median", 10.0)
+            if (group, bench) not in unavailable:
+                _write_estimates(criterion_dir / group / bench / "v0.4.3" / "estimates.json", "median", 20.0)
+
+    provenance = _schema2_provenance_data()
+    criterion = provenance["criterion"]
+    assert isinstance(criterion, dict)
+    cast("dict[str, object]", criterion)["suite"] = "vs_linalg"
+    (criterion_dir / ".la-stack-benchmark-harness.json").write_text(json.dumps(provenance), encoding="utf-8")
+    output = tmp_path / "report.md"
+
+    rc = bench_compare.main(["v0.4.3", "--suite", "vs_linalg", "--criterion-dir", str(criterion_dir), "--output", str(output)])
+
+    assert rc == 0
+    rendered = output.read_text(encoding="utf-8")
+    assert "d8/la_stack_det_from_lu_balanced_range" in rendered
+    assert "d8/la_stack_det_from_ldlt_balanced_range" in rendered
+    assert "no speedup is claimed" in rendered
 
 
 def test_generate_markdown_labels_absent_provenance_unavailable(tmp_path: Path) -> None:

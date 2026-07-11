@@ -120,6 +120,22 @@ def test_find_version_mismatches_reports_readme_tag_links(tmp_path: Path) -> Non
     assert [mismatch.reference.version for mismatch in mismatches] == ["1.2.2", "1.2.1"]
 
 
+@pytest.mark.parametrize(
+    "version",
+    ["1.2.3", "1.2.3-rc.1", "1.2.3+build.7", "1.2.3-rc.1+build.7"],
+)
+def test_readme_tag_references_accept_semver_suffixes(tmp_path: Path, version: str) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        f"[tagged](https://github.com/acgetchell/la-stack/blob/v{version}/README.md)\n",
+        encoding="utf-8",
+    )
+
+    references = check_docs_version_sync._readme_tag_references(readme)
+
+    assert [(reference.line, reference.version) for reference in references] == [(1, version)]
+
+
 def test_find_version_mismatches_ignores_historical_docs_and_test_fixtures(tmp_path: Path) -> None:
     _write_project(tmp_path)
     archive = tmp_path / "docs" / "archive"

@@ -137,6 +137,16 @@ VS_LINALG_D8_RELEASE_SIGNAL_BENCHES: list[str] = [
     "la_stack_det_from_lu_balanced_range",
     "la_stack_det_from_ldlt_balanced_range",
 ]
+_V0_4_3_API_COMPATIBILITY = "la_stack_v0_4_3_api"
+_V0_4_3_UNAVAILABLE_BASELINE_ROWS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("d8", "la_stack_det_from_lu_balanced_range"),
+        ("d8", "la_stack_det_from_ldlt_balanced_range"),
+    }
+)
+_UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY: dict[str, frozenset[tuple[str, str]]] = {
+    _V0_4_3_API_COMPATIBILITY: _V0_4_3_UNAVAILABLE_BASELINE_ROWS,
+}
 VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM: dict[int, list[str]] = {
     8: VS_LINALG_D8_RELEASE_SIGNAL_BENCHES,
 }
@@ -266,6 +276,17 @@ class ComparisonCollection:
 
     comparisons: list[Comparison]
     gaps: list[CoverageGap]
+
+
+@dataclass(frozen=True, slots=True)
+class ComparisonPolicy:
+    """Coverage policy for one baseline comparison."""
+
+    scope: str = "release-signal"
+    baseline_api_compatibility: str | None = None
+
+
+_DEFAULT_COMPARISON_POLICY = ComparisonPolicy()
 
 
 @dataclass(frozen=True, slots=True)
@@ -414,6 +435,7 @@ def _read_harness_provenance(criterion_dir: Path, *, expected_baseline: str) -> 
     _validate_environment_metadata(publication, path=provenance_path, context="publication")
     _validate_criterion_metadata(criterion, path=provenance_path)
     _validate_validation_metadata(validation, path=provenance_path)
+    _validate_baseline_api_compatibility(validation, baseline=baseline, path=provenance_path)
 
     sha256: str | None = None
     if measurement.get("status") == "recorded":
@@ -528,6 +550,18 @@ def _validate_validation_metadata(data: dict[str, object], *, path: Path) -> Non
         if not isinstance(data.get(field), bool):
             msg = f"invalid or missing validation.{field} in {path}"
             raise TypeError(msg)
+    compatibility = data.get("baseline_api_compatibility")
+    if compatibility is not None and (not isinstance(compatibility, str) or not compatibility):
+        msg = f"invalid validation.baseline_api_compatibility in {path}"
+        raise TypeError(msg)
+
+
+def _validate_baseline_api_compatibility(data: dict[str, object], *, baseline: str, path: Path) -> None:
+    """Reject compatibility adapters attached to an unrelated baseline."""
+    compatibility = data.get("baseline_api_compatibility")
+    if compatibility == _V0_4_3_API_COMPATIBILITY and baseline != "v0.4.3":
+        msg = f"validation.baseline_api_compatibility {_V0_4_3_API_COMPATIBILITY!r} in {path} is valid only for baseline 'v0.4.3', got {baseline!r}"
+        raise ValueError(msg)
 
 
 def _assess_change(baseline: CriterionEstimate, current: CriterionEstimate) -> ChangeAssessment:
@@ -710,6 +744,21 @@ def _ordered_vs_linalg_comparison_benches(group_dir: Path, baseline_name: str, s
     return [*ordered, *extras]
 
 
+def _vs_linalg_dimension_groups(criterion_dir: Path, scope: str) -> list[tuple[int, Path]]:
+    """Return canonical or discovered dimension groups for a comparison."""
+    if scope == "release-signal":
+        return [(dim, criterion_dir / f"d{dim}") for dim in VS_LINALG_CANONICAL_DIMS]
+
+    groups: list[tuple[int, Path]] = []
+    for group_dir in criterion_dir.iterdir():
+        if not group_dir.is_dir():
+            continue
+        dim = _dim_from_vs_linalg_group(group_dir.name)
+        if dim is not None:
+            groups.append((dim, group_dir))
+    return groups
+
+
 def _read_optional_estimate(estimates_json: Path, stat: str) -> CriterionEstimate | None:
     """Read an optional Criterion estimate."""
     if not estimates_json.exists():
@@ -745,31 +794,41 @@ def _collect_vs_linalg_comparisons(
     criterion_dir: Path,
     baseline_name: str,
     stat: str,
-    scope: str,
+    policy: ComparisonPolicy,
 ) -> ComparisonCollection:
     """Compare vs_linalg results while retaining one-sided rows."""
     comparisons: list[Comparison] = []
     gaps: list[CoverageGap] = []
-    dim_groups: list[tuple[int, Path]] = []
-
-    if scope == "release-signal":
-        dim_groups.extend((dim, criterion_dir / f"d{dim}") for dim in VS_LINALG_CANONICAL_DIMS)
-    else:
-        for group_dir in criterion_dir.iterdir():
-            if not group_dir.is_dir():
-                continue
-            dim = _dim_from_vs_linalg_group(group_dir.name)
-            if dim is None:
-                continue
-            dim_groups.append((dim, group_dir))
+    unavailable_baseline_rows = _UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY.get(
+        policy.baseline_api_compatibility or "",
+        frozenset(),
+    )
+    dim_groups = _vs_linalg_dimension_groups(criterion_dir, policy.scope)
 
     for _dim, group_dir in sorted(dim_groups, key=lambda item: item[0]):
-        expected_benches = _ordered_vs_linalg_comparison_benches(group_dir, baseline_name, scope)
+        expected_benches = _ordered_vs_linalg_comparison_benches(group_dir, baseline_name, policy.scope)
         for bench in expected_benches:
             new_path = group_dir / bench / "new" / "estimates.json"
             base_path = group_dir / bench / baseline_name / "estimates.json"
             missing_current = not new_path.exists()
             missing_baseline = not base_path.exists()
+            baseline_unavailable = (group_dir.name, bench) in unavailable_baseline_rows
+
+            if baseline_unavailable:
+                if missing_current:
+                    gaps.append(
+                        CoverageGap(
+                            suite="vs_linalg",
+                            group=group_dir.name,
+                            bench=bench,
+                            baseline_bench=bench,
+                            missing_current=True,
+                            missing_baseline=False,
+                        )
+                    )
+                else:
+                    _read_estimate(new_path, stat)
+                continue
 
             if missing_current or missing_baseline:
                 gaps.append(
@@ -883,17 +942,17 @@ def _collect_comparisons(
     baseline_name: str,
     stat: str,
     suite: str = "all",
-    scope: str = "release-signal",
+    policy: ComparisonPolicy = _DEFAULT_COMPARISON_POLICY,
 ) -> ComparisonCollection:
     """Compare current results and report every expected coverage gap."""
     comparisons: list[Comparison] = []
     gaps: list[CoverageGap] = []
     if suite in ("all", "exact"):
-        exact = _collect_exact_comparisons(criterion_dir, baseline_name, stat, scope)
+        exact = _collect_exact_comparisons(criterion_dir, baseline_name, stat, policy.scope)
         comparisons.extend(exact.comparisons)
         gaps.extend(exact.gaps)
     if suite in ("all", "vs_linalg"):
-        vs_linalg = _collect_vs_linalg_comparisons(criterion_dir, baseline_name, stat, scope)
+        vs_linalg = _collect_vs_linalg_comparisons(criterion_dir, baseline_name, stat, policy)
         comparisons.extend(vs_linalg.comparisons)
         gaps.extend(vs_linalg.gaps)
     return ComparisonCollection(comparisons=comparisons, gaps=gaps)
@@ -1232,6 +1291,15 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
     validation = provenance.validation
     baseline_command = cast("list[str]", criterion["baseline_command"])
     current_command = cast("list[str]", criterion["current_command"])
+    if provenance.mode == "shared-current-harness":
+        correctness_gate = (
+            "- Correctness gate: `just test-bench-inputs` passed against both the current and baseline revisions using the shared current fixture harness."
+        )
+    else:
+        correctness_gate = (
+            "- Correctness gate: `just test-bench-inputs` passed for both referenced source revisions "
+            "during publication; this gate validates benchmark inputs separately from the historical timing measurements."
+        )
     lines = ["### Reproducibility Provenance", ""]
     if measurement["status"] == "recorded":
         lines.extend(
@@ -1276,7 +1344,7 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
             f"- Criterion dependency version: `{criterion['criterion_version']}`",
             f"- Baseline command: `{' '.join(baseline_command)}`",
             f"- Current command: `{' '.join(current_command)}`",
-            "- Correctness gate: `just test-bench-inputs` passed against both the current and baseline revisions using the shared current fixture harness.",
+            correctness_gate,
             (
                 f"- Validated current revision: `{validation['current_commit']}` "
                 f"(Git clean: `{str(validation['current_git_clean']).lower()}`, "
@@ -1289,6 +1357,18 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
             ),
         ]
     )
+    compatibility = validation.get("baseline_api_compatibility")
+    if isinstance(compatibility, str) and compatibility != "none":
+        lines.append(
+            f"- Baseline API compatibility: `{compatibility}` selects only source-compatible benchmark calls; "
+            "rows outside the baseline's correctness domain remain explicitly unavailable."
+        )
+        if compatibility == _V0_4_3_API_COMPATIBILITY and criterion["suite"] in {"all", "vs_linalg"}:
+            lines.append(
+                "- Baseline-unavailable rows: `d8/la_stack_det_from_lu_balanced_range` and "
+                "`d8/la_stack_det_from_ldlt_balanced_range` were not timed because v0.4.3 returns zero for a fixture "
+                "whose exact determinant is one; current samples remain required, but no speedup is claimed."
+            )
     return lines
 
 
@@ -1343,6 +1423,17 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _comparison_policy(scope: str, provenance: HarnessProvenance | None) -> ComparisonPolicy:
+    """Build comparison coverage policy from validated provenance."""
+    if provenance is None or provenance.validation is None:
+        return ComparisonPolicy(scope=scope)
+    compatibility = provenance.validation.get("baseline_api_compatibility")
+    return ComparisonPolicy(
+        scope=scope,
+        baseline_api_compatibility=compatibility if isinstance(compatibility, str) else None,
+    )
+
+
 def _run_bench_hint(suite: str) -> str:
     if suite == "exact":
         return "just bench-exact"
@@ -1384,7 +1475,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
             print(f"Invalid benchmark harness provenance: {err}", file=sys.stderr)
             return 2
 
-        collection = _collect_comparisons(criterion_dir, baseline_name, args.stat, args.suite, args.scope)
+        collection = _collect_comparisons(
+            criterion_dir,
+            baseline_name,
+            args.stat,
+            args.suite,
+            _comparison_policy(args.scope, harness_provenance),
+        )
         if collection.gaps:
             print(
                 f"Incomplete benchmark coverage: {len(collection.gaps)} required comparison row(s) are missing; report publication aborted.",

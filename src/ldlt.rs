@@ -647,6 +647,22 @@ mod tests {
     }
 
     #[test]
+    fn small_positive_pivot_does_not_mask_earlier_non_finite_update() {
+        let a = Matrix::<3>::try_from_rows(black_box([
+            [1.0, 1.0, f64::MAX],
+            [1.0, 1.0 + f64::EPSILON, -f64::MAX],
+            [f64::MAX, -f64::MAX, 1.0],
+        ]))
+        .unwrap();
+
+        let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();
+        assert_eq!(
+            err,
+            LaError::non_finite_computation_matrix(ArithmeticOperation::LdltFactorization, 2, 1)
+        );
+    }
+
+    #[test]
     fn negative_initial_diagonal_reports_not_positive_semidefinite() {
         let a = Matrix::<2>::try_from_rows(black_box([[-1.0, 0.0], [0.0, 1.0]])).unwrap();
         let err = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap_err();

@@ -7,7 +7,7 @@ use core::cmp::Ordering;
 use std::fmt::{self, Display};
 use std::num::NonZeroU64;
 
-use la_stack::{DeterminantSign, LaError, Matrix, UnrepresentableReason, Vector};
+use la_stack::{LaError, Matrix, UnrepresentableReason, Vector};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{FromPrimitive, Signed, ToPrimitive, Zero};
@@ -19,8 +19,10 @@ pub const RANDOM_SEED: [u8; 32] = [0; 32];
 
 /// Configuration errors for exact-arithmetic benchmark input generation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ExactBenchConfigError {
     /// The inclusive lower bound was greater than the inclusive upper bound.
+    #[non_exhaustive]
     UnorderedRange {
         /// Inclusive lower bound.
         min: i16,
@@ -151,6 +153,29 @@ fn require_ok<T, E: Display>(result: Result<T, E>, operation: &str) -> T {
         Ok(value) => value,
         Err(err) => panic!("{operation} failed: {err}"),
     }
+}
+
+/// Return one matrix entry through the bounds-checked API shared by current and
+/// v0.4.3 releases.
+fn stored_matrix_entry<const D: usize>(matrix: &Matrix<D>, row: usize, col: usize) -> f64 {
+    matrix
+        .get(row, col)
+        .unwrap_or_else(|| panic!("matrix entry ({row}, {col}) is outside dimension {D}"))
+}
+
+/// Normalize the exact determinant-sign API across the v0.4.3 compatibility
+/// boundary used only by historical benchmark worktrees.
+#[cfg(not(la_stack_v0_4_3_api))]
+fn checked_det_sign<const D: usize>(matrix: &Matrix<D>) -> i8 {
+    matrix.det_sign_exact().as_i8()
+}
+
+#[cfg(la_stack_v0_4_3_api)]
+fn checked_det_sign<const D: usize>(matrix: &Matrix<D>) -> i8 {
+    require_ok(
+        matrix.det_sign_exact(),
+        "exact determinant sign oracle check",
+    )
 }
 
 /// Return a deterministic, strictly diagonally-dominant matrix entry.
@@ -349,14 +374,13 @@ fn next_permutation(values: &mut [usize]) -> bool {
 
 /// Compute a determinant with the independent factorial-time Leibniz formula.
 fn determinant_leibniz<const D: usize>(matrix: &Matrix<D>) -> BigRational {
-    let rows = matrix.as_rows();
     let mut determinant = BigRational::zero();
     let mut permutation: [usize; D] = from_fn(|index| index);
 
     loop {
         let mut term = BigRational::from_integer(BigInt::from(1));
         for (row, &col) in permutation.iter().enumerate() {
-            term *= rational_from_f64(rows[row][col]);
+            term *= rational_from_f64(stored_matrix_entry(matrix, row, col));
         }
         if permutation_is_even(&permutation) {
             determinant += term;
@@ -372,11 +396,11 @@ fn determinant_leibniz<const D: usize>(matrix: &Matrix<D>) -> BigRational {
 }
 
 /// Return the exact determinant sign implied by an independent rational value.
-fn determinant_sign(exact: &BigRational) -> DeterminantSign {
+fn determinant_sign(exact: &BigRational) -> i8 {
     match exact.cmp(&BigRational::zero()) {
-        Ordering::Less => DeterminantSign::Negative,
-        Ordering::Equal => DeterminantSign::Zero,
-        Ordering::Greater => DeterminantSign::Positive,
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
     }
 }
 
@@ -474,7 +498,7 @@ fn assert_exact_residual<const D: usize>(input: &ExactInput<D>, solution: &[BigR
     for row in 0..D {
         let mut observed = BigRational::zero();
         for (col, value) in solution.iter().enumerate() {
-            observed += rational_from_f64(input.matrix.as_rows()[row][col]) * value;
+            observed += rational_from_f64(stored_matrix_entry(&input.matrix, row, col)) * value;
         }
         assert_eq!(observed, rational_from_f64(input.rhs.as_array()[row]));
     }
@@ -499,7 +523,7 @@ pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> Validated
         determinant
     );
     assert_eq!(
-        input.matrix.det_sign_exact(),
+        checked_det_sign(&input.matrix),
         determinant_sign(&determinant)
     );
     assert_strict_scalar(input.matrix.det_exact_f64(), &determinant, None);

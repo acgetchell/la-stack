@@ -14,6 +14,7 @@ Ported from the delaunay project's scripts/subprocess_utils.py (minimal subset).
 
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -207,7 +208,7 @@ def run_git_command_with_input(
 
     Args:
         args: Git command arguments (without 'git' prefix)
-        input_data: Data to send to stdin
+        input_data: Text to encode and send to stdin without newline translation
         cwd: Working directory for the command
         **kwargs: Additional arguments passed to subprocess.run
 
@@ -221,12 +222,17 @@ def run_git_command_with_input(
     """
     git_path = get_safe_executable("git")
     run_kwargs = _build_run_kwargs("run_git_command_with_input", **kwargs)
-    return subprocess.run(  # noqa: S603,PLW1510
-        [git_path, *args],
-        cwd=cwd,
-        input=input_data,
-        **run_kwargs,
-    )
+    encoding: str = run_kwargs.get("encoding") or "utf-8"
+    errors: str = run_kwargs.get("errors") or "strict"
+    with tempfile.TemporaryFile() as stdin:
+        stdin.write(input_data.encode(encoding, errors))
+        stdin.seek(0)
+        return subprocess.run(  # noqa: S603,PLW1510
+            [git_path, *args],
+            cwd=cwd,
+            stdin=stdin,
+            **run_kwargs,
+        )
 
 
 class ProjectRootNotFoundError(Exception):

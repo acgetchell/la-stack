@@ -25,6 +25,7 @@ include = [
     "/docs/assets/**/*.csv",
     "/docs/assets/**/*.jpg",
     "/docs/assets/**/*.png",
+    "/docs/assets/**/*.provenance.json",
     "/docs/assets/**/*.svg",
     "/examples/**/*.rs",
     "/src/**/*.rs",
@@ -88,6 +89,7 @@ unsafe_code = "forbid"
 missing_docs = { level = "deny", priority = 0 }
 dead_code = { level = "deny", priority = 0 }
 unreachable_pub = { level = "deny", priority = 0 }
+unexpected_cfgs = { level = "deny", priority = 0, check-cfg = [ 'cfg(la_stack_v0_4_3_api)' ] }
 
 [lints.rustdoc]
 bare_urls = "deny"

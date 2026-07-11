@@ -4,7 +4,57 @@
 
 use faer::linalg::solvers::{Ldlt as FaerLdlt, PartialPivLu};
 use faer::perm::PermRef;
+use la_stack::{LaError, Tolerance, Vector};
 use nalgebra::SMatrix;
+
+/// Evaluate la-stack's dot product through the ownership contract used by the
+/// selected library revision.
+///
+/// # Errors
+///
+/// Returns the selected revision's typed error if finite inputs overflow during
+/// dot-product accumulation.
+#[cfg(not(la_stack_v0_4_3_api))]
+#[inline]
+pub fn la_stack_dot<const D: usize>(left: &Vector<D>, right: &Vector<D>) -> Result<f64, LaError> {
+    left.dot(right)
+}
+
+/// Evaluate the v0.4.3 by-value dot-product API without changing benchmark
+/// inputs or the mathematical operation.
+///
+/// # Errors
+///
+/// Returns v0.4.3's typed error if finite inputs overflow during dot-product
+/// accumulation.
+#[cfg(la_stack_v0_4_3_api)]
+#[inline]
+pub fn la_stack_dot<const D: usize>(left: &Vector<D>, right: &Vector<D>) -> Result<f64, LaError> {
+    (*left).dot(*right)
+}
+
+/// Parse a tolerance through the constructor exposed by the selected library
+/// revision.
+///
+/// # Errors
+///
+/// Returns a typed error when `value` is negative or non-finite.
+#[cfg(not(la_stack_v0_4_3_api))]
+#[inline]
+pub const fn la_stack_tolerance(value: f64) -> Result<Tolerance, LaError> {
+    Tolerance::try_new(value)
+}
+
+/// Parse a tolerance through v0.4.3's pre-`try_` constructor name.
+///
+/// # Errors
+///
+/// Returns a typed error when `value` is negative or non-finite.
+#[cfg(la_stack_v0_4_3_api)]
+#[inline]
+pub const fn la_stack_tolerance(value: f64) -> Result<Tolerance, LaError> {
+    Tolerance::new(value)
+}
 
 /// Return `det(P)` for faer's permutation representation.
 ///
@@ -127,11 +177,13 @@ pub fn make_pivoting_matrix_rows<const D: usize>() -> [[f64; D]; D] {
 /// Build a positive-definite diagonal matrix spanning 112 binary exponents at D=8.
 ///
 /// Each successive pivot is `2^-16` times the previous one. Benchmarks use a
-/// zero tolerance so the complete, finite factorization remains in scope.
+/// zero tolerance so the complete, finite factorization remains in scope. The
+/// fixed return dimension prevents extending the progression until a diagonal
+/// entry underflows to zero and destroys positive-definiteness.
 #[inline]
 #[must_use]
-pub fn make_ill_conditioned_matrix_rows<const D: usize>() -> [[f64; D]; D] {
-    let mut rows = [[0.0; D]; D];
+pub fn make_ill_conditioned_matrix_rows() -> [[f64; 8]; 8] {
+    let mut rows = [[0.0; 8]; 8];
     let mut diagonal = 1.0;
     for (index, row) in rows.iter_mut().enumerate() {
         row[index] = diagonal;

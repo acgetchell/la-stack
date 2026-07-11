@@ -111,6 +111,7 @@ def _write_unsafe_baseline_archive(path: Path) -> None:
 
 
 def _write_current_benchmark_tooling(worktree: Path) -> None:
+    (worktree / ".config").mkdir(parents=True, exist_ok=True)
     (worktree / "scripts").mkdir(parents=True, exist_ok=True)
     (worktree / "benches" / "common").mkdir(parents=True, exist_ok=True)
     (worktree / "src").mkdir(parents=True, exist_ok=True)
@@ -120,6 +121,7 @@ def _write_current_benchmark_tooling(worktree: Path) -> None:
     (worktree / "src" / "lib.rs").write_text("pub fn fixture() {}\n", encoding="utf-8")
     (worktree / "tests" / "exact_bench_config.rs").write_text("// exact fixture\n", encoding="utf-8")
     (worktree / "tests" / "vs_linalg_inputs.rs").write_text("// linalg fixture\n", encoding="utf-8")
+    (worktree / ".config" / "nextest.toml").write_text("[profile.ci]\nretries = 1\n", encoding="utf-8")
     (worktree / "Cargo.toml").write_text(
         '[package]\nname = "fixture"\nversion = "0.1.0"\n[dev-dependencies]\ncriterion = "0.7.0"\n',
         encoding="utf-8",
@@ -149,6 +151,7 @@ def test_shared_benchmark_harness_replaces_baseline_content_and_has_stable_diges
     (baseline / "benches" / "vs_linalg.rs").write_text("fn obsolete() {}\n", encoding="utf-8")
     (baseline / "Cargo.lock").write_text("version = 3\n", encoding="utf-8")
     (baseline / "justfile").write_text("obsolete-benchmark-recipe:\n", encoding="utf-8")
+    (baseline / ".config" / "nextest.toml").write_text("[profile.default]\nretries = 0\n", encoding="utf-8")
 
     digest = archive_performance._install_shared_benchmark_harness(
         source=current,
@@ -159,6 +162,7 @@ def test_shared_benchmark_harness_replaces_baseline_content_and_has_stable_diges
     assert digest == archive_performance._benchmark_harness_digest(baseline)
     assert (baseline / "benches" / "vs_linalg.rs").read_text(encoding="utf-8") == "fn main() {}\n"
     assert (baseline / "justfile").read_text(encoding="utf-8") == (current / "justfile").read_text(encoding="utf-8")
+    assert (baseline / ".config" / "nextest.toml").read_text(encoding="utf-8") == (current / ".config" / "nextest.toml").read_text(encoding="utf-8")
 
 
 def test_github_release_assets_discard_embedded_shared_harness_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -444,6 +448,45 @@ def test_benchmark_env_respects_existing_toolchain_override(tmp_path: Path, monk
     assert archive_performance._benchmark_env(tmp_path) is None
 
 
+def test_comparison_benchmark_env_preserves_flags_and_selects_v043_adapter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CARGO_ENCODED_RUSTFLAGS", raising=False)
+    monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
+    monkeypatch.setenv("RUSTFLAGS", "-C target-cpu=native")
+    (tmp_path / "rust-toolchain.toml").write_text(
+        '[toolchain]\nchannel = "1.96.0"\n',
+        encoding="utf-8",
+    )
+
+    current = archive_performance._comparison_benchmark_env(tmp_path)
+    baseline = archive_performance._comparison_benchmark_env(
+        tmp_path,
+        baseline_tag="v0.4.3",
+    )
+
+    assert current["RUSTFLAGS"] == "-C target-cpu=native --cap-lints=warn"
+    assert baseline["RUSTFLAGS"] == ("-C target-cpu=native --cap-lints=warn --cfg=la_stack_v0_4_3_api")
+    assert current["RUSTUP_TOOLCHAIN"] == "1.96.0"
+
+
+def test_comparison_benchmark_env_extends_encoded_rustflags(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RUSTUP_TOOLCHAIN", "nightly")
+    monkeypatch.setenv("CARGO_ENCODED_RUSTFLAGS", "-C\x1ftarget-cpu=native")
+
+    env = archive_performance._comparison_benchmark_env(
+        tmp_path,
+        baseline_tag="0.4.3",
+    )
+
+    assert env["CARGO_ENCODED_RUSTFLAGS"] == ("-C\x1ftarget-cpu=native\x1f--cap-lints=warn\x1f--cfg=la_stack_v0_4_3_api")
+    assert env["RUSTUP_TOOLCHAIN"] == "nightly"
+
+
 @pytest.mark.parametrize("suite", ["exact", "vs_linalg"])
 def test_fallback_baseline_cargo_commands_enforce_lockfile(
     tmp_path: Path,
@@ -461,6 +504,21 @@ def test_fallback_baseline_cargo_commands_enforce_lockfile(
 
     assert command == "cargo"
     assert args[:2] == ["bench", "--locked"]
+
+
+@pytest.mark.parametrize(
+    ("suite", "expected"),
+    [
+        ("all", ("cargo", "bench", "--locked", "--features", "bench,exact", "--bench", "exact")),
+        ("exact", ("cargo", "bench", "--locked", "--features", "bench,exact", "--bench", "exact")),
+        ("vs_linalg", ("cargo", "bench", "--locked", "--features", "bench", "--bench", "vs_linalg")),
+    ],
+)
+def test_fallback_current_cargo_command_matches_suite(
+    suite: str,
+    expected: tuple[str, ...],
+) -> None:
+    assert archive_performance._fallback_current_command(suite=suite) == expected
 
 
 def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path: Path) -> None:

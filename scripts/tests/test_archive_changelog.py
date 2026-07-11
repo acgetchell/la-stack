@@ -438,17 +438,17 @@ class TestArchiveChangelog:
         assert str(archive_dir) in caplog.text
         assert str(changelog_dir) in caplog.text
 
-    def test_archive_dir_relpath_value_error_uses_absolute_fallback(
+    def test_archive_dir_relpath_value_error_preserves_changelog(
         self,
         tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Archive splitting survives Windows-style relpath failures across drives."""
+        """Cross-volume paths fail without publishing absolute archive links."""
         changelog_dir = tmp_path / "repo"
         changelog_dir.mkdir()
         changelog = changelog_dir / "CHANGELOG.md"
-        changelog.write_text(_full_changelog(), encoding="utf-8")
+        original = _full_changelog()
+        changelog.write_text(original, encoding="utf-8")
         archive_dir = tmp_path / "outside" / "archive"
 
         def raise_cross_drive_value_error(_path: Path, _start: Path) -> str:
@@ -457,14 +457,14 @@ class TestArchiveChangelog:
 
         monkeypatch.setattr("archive_changelog.os.path.relpath", raise_cross_drive_value_error)
 
-        with caplog.at_level(logging.WARNING, logger="archive_changelog"):
+        with pytest.raises(ValueError, match="different filesystem roots") as exc_info:
             archive_changelog(changelog, archive_dir)
 
         root = changelog.read_text(encoding="utf-8")
-        assert f"- [0.6.x]({archive_dir.as_posix()}/0.6.md)" in root
-        assert "path is on mount 'D:', start on mount 'C:'" in caplog.text
-        assert str(archive_dir) in caplog.text
-        assert str(changelog_dir) in caplog.text
+        assert root == original
+        assert archive_dir.as_posix() not in root
+        assert archive_dir.as_posix() not in str(exc_info.value)
+        assert isinstance(exc_info.value.__cause__, ValueError)
 
 
 # ---------------------------------------------------------------------------

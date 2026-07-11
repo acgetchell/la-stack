@@ -81,6 +81,20 @@ Criterion selection/commands, and both correctness-gate results. The report
 reader rejects malformed or mismatched provenance and incomplete selected-suite
 coverage.
 
+The shared harness carries an explicit v0.4.3-only API adapter for renamed or
+ownership-adjusted calls (`det_sign_exact`, `Tolerance`, and vector dot
+products). The adapter changes only how the same operation is invoked; it does
+not patch either library implementation. Comparison builds cap lint diagnostics
+at warning for both revisions because the current manifest's lint policy may
+reject historical source that predates a lint, even though that source remains
+valid benchmark input.
+
+The v0.4.3 LU/LDLT balanced-range determinant paths return an incorrect zero,
+so their two D=8 stress rows are deliberately not timed as baselines. Reports
+leave those baselines explicitly unavailable rather than presenting invalid
+performance evidence. The other v0.4.3 D=8 pivoting and ill-conditioned rows
+remain in the comparison.
+
 This command does not depend on existing local `target/criterion/` baselines.
 It is slower than reusing a saved baseline, but less sensitive to stale local
 benchmark state.

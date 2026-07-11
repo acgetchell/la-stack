@@ -143,16 +143,13 @@ impl ScaledProduct {
         self.mantissa *= factor.mantissa;
         self.exponent += factor.exponent;
 
-        // Both operands were in [1, 2), so the exact product is below 4.0.
-        // Rounding can produce 4.0 at the upper boundary; normalize twice in
-        // that exceptional case to preserve `mantissa < 2`.
+        // Both operands were in [1, 2), and even the two largest binary64
+        // mantissas multiply to a value that rounds below 4.0. Therefore one
+        // factor-of-two normalization is sufficient to preserve
+        // `mantissa < 2`.
         if self.mantissa >= 2.0 {
             self.mantissa *= 0.5;
             self.exponent += 1;
-            if self.mantissa >= 2.0 {
-                self.mantissa *= 0.5;
-                self.exponent += 1;
-            }
         }
     }
 
@@ -236,6 +233,42 @@ mod tests {
         product.multiply(left);
         product.multiply(right);
         product.finish().map(f64::to_bits)
+    }
+
+    #[test]
+    fn mantissa_product_is_renormalized_once() {
+        assert_eq!(scaled_product_bits(1.5, 1.5), Some(2.25_f64.to_bits()));
+    }
+
+    #[test]
+    fn signed_zero_tracks_later_factor_signs() {
+        let mut product = ScaledProduct::new(false);
+        product.multiply(-0.0);
+        product.multiply(-2.0);
+
+        assert_eq!(product.finish().map(f64::to_bits), Some(0.0_f64.to_bits()));
+    }
+
+    #[test]
+    fn empty_product_preserves_initial_sign() {
+        assert_eq!(
+            ScaledProduct::new(false).finish().map(f64::to_bits),
+            Some(1.0_f64.to_bits())
+        );
+        assert_eq!(
+            ScaledProduct::new(true).finish().map(f64::to_bits),
+            Some((-1.0_f64).to_bits())
+        );
+    }
+
+    #[test]
+    fn non_finite_factors_make_the_product_unrepresentable() {
+        for factor in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+            let mut product = ScaledProduct::new(false);
+            product.multiply(factor);
+
+            assert_eq!(product.finish(), None);
+        }
     }
 
     #[test]

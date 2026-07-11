@@ -259,7 +259,7 @@ def _dependency_references(path: Path, package_name: str) -> list[VersionReferen
 
 _README_TAG_LINK_RE = re.compile(
     r"https://(?:github\.com/acgetchell/la-stack/(?:blob|raw|tree)/|raw\.githubusercontent\.com/acgetchell/la-stack/)"
-    r"v(?P<version>[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)(?=/|\b)"
+    r"v(?P<version>[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)(?=/|\b)"
 )
 
 

@@ -845,12 +845,28 @@ mod tests {
     #[test]
     fn unrepresentable_helpers_preserve_recovery_reason() {
         let rounding = LaError::unrepresentable(Some(2), UnrepresentableReason::RequiresRounding);
+        let scalar_rounding =
+            LaError::unrepresentable(None, UnrepresentableReason::RequiresRounding);
+        let indexed_not_finite =
+            LaError::unrepresentable(Some(2), UnrepresentableReason::NotFinite);
         let not_finite = LaError::unrepresentable(None, UnrepresentableReason::NotFinite);
         assert_eq!(
             rounding.unrepresentable_reason(),
             Some(UnrepresentableReason::RequiresRounding)
         );
         assert!(rounding.requires_rounding());
+        assert_eq!(
+            rounding.to_string(),
+            "exact result requires rounding to fit finite f64 at index 2"
+        );
+        assert_eq!(
+            scalar_rounding.to_string(),
+            "exact result requires rounding to fit finite f64"
+        );
+        assert_eq!(
+            indexed_not_finite.to_string(),
+            "exact result has no finite f64 representation after rounding at index 2"
+        );
         assert_eq!(
             not_finite.to_string(),
             "exact result has no finite f64 representation after rounding"
@@ -878,6 +894,10 @@ mod tests {
         assert_eq!(
             LaError::invalid_tolerance(-1.0).to_string(),
             "invalid tolerance -1; expected value >= 0"
+        );
+        assert_eq!(
+            LaError::invalid_tolerance(f64::NEG_INFINITY).to_string(),
+            "invalid tolerance -inf; expected a finite value"
         );
     }
 

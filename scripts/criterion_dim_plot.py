@@ -700,6 +700,14 @@ def _run_publication_command(root: Path, command: tuple[str, ...]) -> None:
         detail = f"\nstderr:\n{stderr}" if stderr else ""
         msg = f"publication command failed ({exc.returncode}): {' '.join(command)}{detail}"
         raise RuntimeError(msg) from exc
+    except ExecutableNotFoundError as exc:
+        msg = f"publication command could not start: {' '.join(command)}: {exc}"
+        raise RuntimeError(msg) from exc
+    except subprocess.TimeoutExpired as exc:
+        stderr = exc.stderr.strip() if isinstance(exc.stderr, str) else ""
+        detail = f"\nstderr:\n{stderr}" if stderr else ""
+        msg = f"publication command timed out after {exc.timeout} seconds: {' '.join(command)}{detail}"
+        raise RuntimeError(msg) from exc
 
 
 def _vs_linalg_new_samples(criterion_dir: Path) -> list[Path]:

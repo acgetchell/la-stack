@@ -855,9 +855,20 @@ def test_publication_gate_failure_stops_before_timing(monkeypatch: pytest.Monkey
     assert calls == [("just", ("test-bench-inputs",))]
 
 
+@pytest.mark.parametrize(
+    ("failure_kind", "expected_details", "cause_type"),
+    [
+        ("process", ("timing failed",), subprocess.CalledProcessError),
+        ("missing", ("Required executable 'cargo' not found in PATH",), criterion_dim_plot.ExecutableNotFoundError),
+        ("timeout", ("timed out after 17 seconds", "timing stalled"), subprocess.TimeoutExpired),
+    ],
+)
 def test_failed_timing_restores_staged_new_samples(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    failure_kind: str,
+    expected_details: tuple[str, ...],
+    cause_type: type[Exception],
 ) -> None:
     old_estimate = tmp_path / "target" / "criterion" / "d2" / "la_stack_lu" / "new" / "estimates.json"
     old_estimate.parent.mkdir(parents=True)
@@ -867,15 +878,22 @@ def test_failed_timing_restores_staged_new_samples(
         if command == "cargo":
             old_estimate.parent.mkdir(parents=True, exist_ok=True)
             old_estimate.write_text("partial\n", encoding="utf-8")
-            raise subprocess.CalledProcessError(1, [command, *args], stderr="timing failed")
+            if failure_kind == "process":
+                raise subprocess.CalledProcessError(1, [command, *args], stderr="timing failed")
+            if failure_kind == "missing":
+                msg = "Required executable 'cargo' not found in PATH"
+                raise criterion_dim_plot.ExecutableNotFoundError(msg)
+            raise subprocess.TimeoutExpired([command, *args], 17, stderr="timing stalled")
         return SimpleNamespace(stdout="")
 
     monkeypatch.setattr(criterion_dim_plot, "run_safe_command", fail_timing)
 
-    with pytest.raises(RuntimeError, match="cargo bench"):
+    with pytest.raises(RuntimeError, match="cargo bench") as exc_info:
         criterion_dim_plot._run_publication_benchmarks(tmp_path)
 
     assert old_estimate.read_text(encoding="utf-8") == "old\n"
+    assert all(detail in str(exc_info.value) for detail in expected_details)
+    assert isinstance(exc_info.value.__cause__, cause_type)
 
 
 def test_readme_publication_cannot_reuse_stale_new_samples(

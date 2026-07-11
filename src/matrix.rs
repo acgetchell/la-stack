@@ -2263,6 +2263,29 @@ mod tests {
     }
 
     #[test]
+    fn symmetry_epsilon_scales_terms_when_row_sum_overflows() {
+        let matrix =
+            Matrix::<2>::try_from_rows([[f64::MAX, f64::MAX], [f64::MAX / 2.0, f64::MAX]]).unwrap();
+
+        assert_eq!(
+            matrix.inf_norm(),
+            Err(LaError::non_finite_computation_matrix(
+                ArithmeticOperation::MatrixInfinityNorm,
+                0,
+                1
+            ))
+        );
+        assert_eq!(
+            matrix.first_asymmetry(Tolerance::try_new(0.25).unwrap()),
+            Ok(None)
+        );
+        assert_eq!(
+            matrix.first_asymmetry(Tolerance::try_new(0.125).unwrap()),
+            Ok(Some((0, 1)))
+        );
+    }
+
+    #[test]
     fn first_asymmetry_returns_lexicographically_first_pair() {
         // Two asymmetric pairs: (0, 2) and (1, 2).  We must get (0, 2) first.
         let a = Matrix::<3>::try_from_rows([[1.0, 0.0, 2.0], [0.0, 1.0, 3.0], [-2.0, -3.0, 1.0]])

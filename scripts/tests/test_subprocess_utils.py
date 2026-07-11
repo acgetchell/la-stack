@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import BinaryIO, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -102,19 +103,29 @@ class TestRunGitCommandWithInput:
         )
         # git hash-object of "hello\n" is a well-known SHA
         assert result.returncode == 0
-        assert result.stdout.strip()  # should be a 40-char hex hash
+        assert result.stdout.strip() == "ce013625030ba8dba906f756967f9e9ca394464a"
 
-    def test_input_data_forwarded(self) -> None:
-        """Verify input_data is passed as the 'input' kwarg to subprocess.run."""
+    def test_input_data_forwarded_as_raw_utf8(self) -> None:
+        """Verify stdin bytes preserve LF even when subprocess output is text."""
+        observed_input = b""
+
+        def capture_run(*_args: object, **kwargs: object) -> subprocess_utils.subprocess.CompletedProcess[str]:
+            nonlocal observed_input
+            stdin = cast("BinaryIO", kwargs["stdin"])
+            observed_input = stdin.read()
+            return subprocess_utils.subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
+
         with (
             patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/git") as mock_executable,
-            patch("subprocess_utils.subprocess.run") as mock_run,
+            patch("subprocess_utils.subprocess.run", side_effect=capture_run) as mock_run,
         ):
-            run_git_command_with_input(["tag", "-a", "v1.0.0", "-F", "-"], input_data="tag body")
+            run_git_command_with_input(["tag", "-a", "v1.0.0", "-F", "-"], input_data="tag body\n")
         mock_executable.assert_called_once_with("git")
         mock_run.assert_called_once()
         _args, kwargs = mock_run.call_args
-        assert kwargs["input"] == "tag body"
+        assert observed_input == b"tag body\n"
+        assert "input" not in kwargs
+        assert kwargs["text"] is True
 
 
 class TestAdditionalHelpers:

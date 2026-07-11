@@ -19,15 +19,15 @@ use faer::mat::AsMatRef;
 use faer::{Mat, Side};
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 
-use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Tolerance, Vector};
+use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
 
 #[path = "common/vs_linalg.rs"]
 pub mod vs_linalg_common;
 
 use vs_linalg_common::{
-    faer_det_from_ldlt, faer_det_from_partial_piv_lu, make_balanced_dynamic_range_rows,
-    make_ill_conditioned_matrix_rows, make_matrix_rows, make_pivoting_matrix_rows,
-    make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
+    faer_det_from_ldlt, faer_det_from_partial_piv_lu, la_stack_dot, la_stack_tolerance,
+    make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows, make_matrix_rows,
+    make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
 };
 
 /// Return a successful benchmark operation result or panic with the named operation.
@@ -489,7 +489,7 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
 
     group.bench_function("la_stack_dot", |bencher| {
         bencher.iter(|| {
-            let result = require_ok(black_box(&v1).dot(black_box(&v2)), "la_stack dot");
+            let result = require_ok(la_stack_dot(black_box(&v1), black_box(&v2)), "la_stack dot");
             black_box(result);
         });
     });
@@ -577,22 +577,19 @@ fn register_matrix_norm_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_
 }
 
 /// Register D=8 stress cases that exercise pivoting, conditioning, and scaled products.
-fn register_stress_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, WallTime>) {
-    if D != 8 {
-        return;
-    }
-
-    let zero_tolerance = require_ok(Tolerance::try_new(0.0), "zero benchmark tolerance");
+fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
+    let zero_tolerance = require_ok(la_stack_tolerance(0.0), "zero benchmark tolerance");
     let pivoting = require_ok(
-        Matrix::<D>::try_from_rows(make_pivoting_matrix_rows()),
+        Matrix::<8>::try_from_rows(make_pivoting_matrix_rows()),
         "pivoting benchmark matrix construction",
     );
     let ill_conditioned = require_ok(
-        Matrix::<D>::try_from_rows(make_ill_conditioned_matrix_rows()),
+        Matrix::<8>::try_from_rows(make_ill_conditioned_matrix_rows()),
         "ill-conditioned benchmark matrix construction",
     );
+    #[cfg(not(la_stack_v0_4_3_api))]
     let balanced = require_ok(
-        Matrix::<D>::try_from_rows(make_balanced_dynamic_range_rows()),
+        Matrix::<8>::try_from_rows(make_balanced_dynamic_range_rows()),
         "balanced-range benchmark matrix construction",
     );
 
@@ -638,15 +635,18 @@ fn register_stress_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
         );
     });
 
+    #[cfg(not(la_stack_v0_4_3_api))]
     let balanced_lu = require_ok(
         balanced.lu(zero_tolerance),
         "balanced-range LU factorization",
     );
+    #[cfg(not(la_stack_v0_4_3_api))]
     let balanced_ldlt = require_ok(
         balanced.ldlt(zero_tolerance),
         "balanced-range LDLT factorization",
     );
 
+    #[cfg(not(la_stack_v0_4_3_api))]
     group.bench_function("la_stack_det_from_lu_balanced_range", |bencher| {
         bencher.iter(|| {
             let det = require_ok(
@@ -657,6 +657,7 @@ fn register_stress_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
         });
     });
 
+    #[cfg(not(la_stack_v0_4_3_api))]
     group.bench_function("la_stack_det_from_ldlt_balanced_range", |bencher| {
         bencher.iter(|| {
             let det = require_ok(
@@ -669,7 +670,7 @@ fn register_stress_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
 }
 
 macro_rules! define_vs_linalg_benches_for_dim {
-    ($fn_name:ident, $d:literal) => {
+    ($fn_name:ident, $d:literal $(, $register_stress:ident)?) => {
         fn $fn_name(c: &mut Criterion) {
             let mut group = c.benchmark_group(concat!("d", stringify!($d)));
             register_determinant_benchmarks::<$d>(&mut group);
@@ -682,7 +683,9 @@ macro_rules! define_vs_linalg_benches_for_dim {
             register_precomputed_ldlt_determinant_benchmarks::<$d>(&mut group);
             register_vector_benchmarks::<$d>(&mut group);
             register_matrix_norm_benchmarks::<$d>(&mut group);
-            register_stress_benchmarks::<$d>(&mut group);
+            $(
+                $register_stress(&mut group);
+            )?
             group.finish();
         }
     };
@@ -692,7 +695,7 @@ define_vs_linalg_benches_for_dim!(bench_d2, 2);
 define_vs_linalg_benches_for_dim!(bench_d3, 3);
 define_vs_linalg_benches_for_dim!(bench_d4, 4);
 define_vs_linalg_benches_for_dim!(bench_d5, 5);
-define_vs_linalg_benches_for_dim!(bench_d8, 8);
+define_vs_linalg_benches_for_dim!(bench_d8, 8, register_stress_benchmarks);
 define_vs_linalg_benches_for_dim!(bench_d16, 16);
 define_vs_linalg_benches_for_dim!(bench_d32, 32);
 define_vs_linalg_benches_for_dim!(bench_d64, 64);

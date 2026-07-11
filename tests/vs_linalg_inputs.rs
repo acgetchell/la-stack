@@ -10,15 +10,16 @@ use faer::perm::PermRef;
 use faer::{Mat, Side};
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 
-use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Tolerance, Vector};
+use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
 
 #[path = "../benches/common/vs_linalg.rs"]
 pub mod vs_linalg_common;
 
 use vs_linalg_common::{
-    faer_det_from_ldlt, faer_det_from_partial_piv_lu, faer_perm_sign,
-    make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows, make_matrix_rows,
-    make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
+    faer_det_from_ldlt, faer_det_from_partial_piv_lu, faer_perm_sign, la_stack_dot,
+    la_stack_tolerance, make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows,
+    make_matrix_rows, make_pivoting_matrix_rows, make_vector_array, matrix_entry,
+    nalgebra_inf_norm, vector_entry,
 };
 
 /// Assert scalar agreement with a tolerance that scales for larger magnitudes.
@@ -168,9 +169,7 @@ fn assert_vector_operation_agreement<const D: usize>() {
     let fv1 = Mat::<f64>::from_fn(D, 1, |i, _| vector_entry(i, 0.0));
     let fv2 = Mat::<f64>::from_fn(D, 1, |i, _| vector_entry(i, 1.0));
 
-    let la_dot = v1
-        .dot(&v2)
-        .unwrap_or_else(|err| panic!("la_stack dot failed: {err}"));
+    let la_dot = la_stack_dot(&v1, &v2).unwrap_or_else(|err| panic!("la_stack dot failed: {err}"));
     assert_close("nalgebra_dot", nv1.dot(&nv2), la_dot);
     let mut fa_dot = 0.0;
     for i in 0..D {
@@ -238,8 +237,27 @@ fn faer_permutation_sign_handles_large_permutations_without_allocation() {
 }
 
 #[test]
+fn ill_conditioned_fixture_is_fixed_positive_definite_d8() {
+    let rows = make_ill_conditioned_matrix_rows();
+
+    for (row_index, row) in rows.iter().enumerate() {
+        for (col_index, &value) in row.iter().enumerate() {
+            if row_index == col_index {
+                assert!(value.is_normal() && value.is_sign_positive());
+            } else {
+                assert_eq!(value.to_bits(), 0.0f64.to_bits());
+            }
+        }
+    }
+    assert_eq!(
+        rows[7][7].to_bits(),
+        f64::from_bits(911_u64 << 52).to_bits()
+    );
+}
+
+#[test]
 fn stress_inputs_exercise_pivoting_conditioning_and_scaled_products() {
-    let zero_tolerance = Tolerance::try_new(0.0).unwrap();
+    let zero_tolerance = la_stack_tolerance(0.0).unwrap();
 
     let pivoting_rows = make_pivoting_matrix_rows::<8>();
     assert!(pivoting_rows[1][0].abs() > pivoting_rows[0][0].abs());
@@ -270,9 +288,12 @@ fn stress_inputs_exercise_pivoting_conditioning_and_scaled_products() {
         expected_ill_conditioned_det.to_bits()
     );
 
-    let balanced = Matrix::<8>::try_from_rows(make_balanced_dynamic_range_rows()).unwrap();
-    assert_eq!(balanced.lu(zero_tolerance).unwrap().det(), Ok(1.0));
-    assert_eq!(balanced.ldlt(zero_tolerance).unwrap().det(), Ok(1.0));
+    #[cfg(not(la_stack_v0_4_3_api))]
+    {
+        let balanced = Matrix::<8>::try_from_rows(make_balanced_dynamic_range_rows()).unwrap();
+        assert_eq!(balanced.lu(zero_tolerance).unwrap().det(), Ok(1.0));
+        assert_eq!(balanced.ldlt(zero_tolerance).unwrap().det(), Ok(1.0));
+    }
 }
 
 /// Check matrix infinity-norm agreement for one benchmark dimension.
