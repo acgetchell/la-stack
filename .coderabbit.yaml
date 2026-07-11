@@ -1,4 +1,16 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 ---
+language: en-US
+early_access: false
 reviews:
+  profile: chill
   request_changes_workflow: true
+  # Publish only the legacy commit status consumed by the main-branch ruleset.
+  # The review-progress path creates a second GitHub check run for the same review.
+  review_progress: false
+  commit_status: true
+  fail_commit_status: false
+  tools:
+    github-checks:
+      enabled: true
+      timeout_ms: 90000

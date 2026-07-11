@@ -958,6 +958,12 @@ impl<const D: usize> Matrix<D> {
     /// coefficients. That proof makes every minor part of an active Leibniz
     /// term, so evaluating all six shared minors cannot introduce a non-finite
     /// result through a mathematically absent term.
+    ///
+    /// When no intermediate undergoes gradual underflow, the rounding error is
+    /// bounded by `ERR_COEFF_4 · p(|A|)`, where `p(|A|)` is the absolute Leibniz
+    /// sum. This helper returns only the determinant; use
+    /// [`Self::det_errbound`] or [`Self::det_direct_with_errbound`] to obtain the
+    /// certified bound.
     #[expect(
         clippy::inline_always,
         reason = "the D=4 determinant hot path must inline its shared-minor expansion"
@@ -1747,6 +1753,20 @@ mod tests {
                 .unwrap(),
         );
         assert_abs_diff_eq!(m.det_direct().unwrap().unwrap(), 0.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn det_direct_d3_dense_known_value() {
+        // det = 1*(5*8 - 7*6) - 2*(4*8 - 7*2) + 3*(4*6 - 5*2) = 4
+        let m = black_box(
+            Matrix::<3>::try_from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 7.0], [2.0, 6.0, 8.0]])
+                .unwrap(),
+        );
+        let direct = m.det_direct().unwrap().unwrap();
+        let paired = m.det_direct_with_errbound().unwrap().unwrap();
+
+        assert_abs_diff_eq!(direct, 4.0, epsilon = 1e-12);
+        assert_eq!(paired.determinant().to_bits(), direct.to_bits());
     }
 
     #[test]
