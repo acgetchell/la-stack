@@ -529,6 +529,10 @@ pub fn validate_f64_determinant_benchmarks<const D: usize>(input: &ValidatedExac
                 panic!("the baseline fixture must have a certified D={D} determinant bound");
             };
             assert_eq!(estimate.determinant().to_bits(), direct.to_bits());
+            assert!(
+                estimate.determinant().abs() > estimate.absolute_error_bound(),
+                "the headline D={D} det_sign_exact benchmark must exercise the fast filter",
+            );
             let observed_error = (rational_from_f64(direct) - &exact).abs();
             let certified_bound = rational_from_f64(estimate.absolute_error_bound());
             assert!(

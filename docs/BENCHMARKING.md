@@ -352,6 +352,16 @@ claim that every timed sample is revalidated. Criterion closures remain free of
 oracle work so their measurements cover only the named operation; the operation
 is deterministic for the already-validated input.
 
+The original v0.4.2-to-v0.4.3 report is not library-only evidence for its
+headline `det_sign_exact` rows. The v0.4.3 harness routed those calls through an
+operation enum and constructed a complete matrix/RHS input inside each timed
+iteration, while the saved v0.4.2 samples used direct closures. The current
+shared harness borrows a prevalidated input for both revisions. It also verifies
+that the D=2–4 headline fixtures resolve through the floating-point filter, so
+those rows continue to measure the intended common path. Use a current
+shared-harness comparison before attributing the historical D=2 or D=3 changes
+to the library implementation.
+
 For exact-arithmetic comparisons against v0.4.2 or older baselines, rows such
 as `det_exact_rounded_f64 (vs det_exact_f64)` mean the current rounded API is
 being compared to the historical lossy `*_exact_f64` benchmark. Rows such as
