@@ -518,15 +518,11 @@ impl<const D: usize> Matrix<D> {
             let mut c = 0;
             while c < D {
                 row_sum += row[c].abs();
-                if !row_sum.is_finite() {
-                    cold_path();
-                    return Err(LaError::non_finite_computation_matrix(
-                        ArithmeticOperation::MatrixInfinityNorm,
-                        r,
-                        c,
-                    ));
-                }
                 c += 1;
+            }
+            if !row_sum.is_finite() {
+                cold_path();
+                return Err(Self::inf_norm_overflow_error(row, r));
             }
             if row_sum > max_row_sum {
                 max_row_sum = row_sum;
@@ -535,6 +531,37 @@ impl<const D: usize> Matrix<D> {
         }
 
         Ok(max_row_sum)
+    }
+
+    /// Replay an overflowed infinity-norm row to locate the first non-finite sum.
+    ///
+    /// This runs only after the success-path traversal has found a non-finite
+    /// completed row sum. Because stored entries are finite and their absolute
+    /// values are non-negative, replaying the same additions must find the
+    /// first column whose addition overflowed; if every earlier prefix is
+    /// finite, the final column is that first failure.
+    #[cold]
+    const fn inf_norm_overflow_error(row: &[f64; D], row_index: usize) -> LaError {
+        let mut row_sum = 0.0;
+        let mut col = 0;
+        let last_col = D.saturating_sub(1);
+        while col < last_col {
+            row_sum += row[col].abs();
+            if !row_sum.is_finite() {
+                return LaError::non_finite_computation_matrix(
+                    ArithmeticOperation::MatrixInfinityNorm,
+                    row_index,
+                    col,
+                );
+            }
+            col += 1;
+        }
+
+        LaError::non_finite_computation_matrix(
+            ArithmeticOperation::MatrixInfinityNorm,
+            row_index,
+            last_col,
+        )
     }
 
     /// Returns `true` if the matrix is approximately symmetric within a relative tolerance.
@@ -1758,18 +1785,54 @@ mod tests {
                 fn [<matrix_inf_norm_max_row_sum_ $d d>]() {
                     let mut rows = [[0.0f64; $d]; $d];
 
-                    // Row 0 has absolute row sum = D.
+                    // Row 0 has a smaller absolute row sum.
                     for c in 0..$d {
-                        rows[0][c] = -1.0;
+                        rows[0][c] = 0.5;
                     }
 
-                    // Row 1 has smaller absolute row sum.
+                    // The last row has absolute row sum = D.
                     for c in 0..$d {
-                        rows[1][c] = 0.5;
+                        rows[$d - 1][c] = -1.0;
                     }
 
                     let m = Matrix::<$d>::try_from_rows(rows).unwrap();
                     assert_abs_diff_eq!(m.inf_norm().unwrap(), f64::from($d), epsilon = 0.0);
+                }
+
+                #[test]
+                fn [<matrix_inf_norm_reports_first_overflowing_column_ $d d>]() {
+                    let mut rows = [[0.0f64; $d]; $d];
+                    rows[$d - 1][0] = f64::MAX;
+                    rows[$d - 1][1] = f64::MAX;
+
+                    let m = Matrix::<$d>::try_from_rows(rows).unwrap();
+                    assert_eq!(
+                        m.inf_norm(),
+                        Err(LaError::non_finite_computation_matrix(
+                            ArithmeticOperation::MatrixInfinityNorm,
+                            $d - 1,
+                            1,
+                        ))
+                    );
+                }
+
+                #[test]
+                fn [<matrix_inf_norm_reports_first_overflowing_row_ $d d>]() {
+                    let mut rows = [[0.0f64; $d]; $d];
+                    rows[0][0] = f64::MAX;
+                    rows[0][$d - 1] = f64::MAX;
+                    rows[$d - 1][0] = f64::MAX;
+                    rows[$d - 1][1] = f64::MAX;
+
+                    let m = Matrix::<$d>::try_from_rows(rows).unwrap();
+                    assert_eq!(
+                        m.inf_norm(),
+                        Err(LaError::non_finite_computation_matrix(
+                            ArithmeticOperation::MatrixInfinityNorm,
+                            0,
+                            $d - 1,
+                        ))
+                    );
                 }
 
                 #[test]
@@ -1817,6 +1880,16 @@ mod tests {
     gen_matrix_tests!(3);
     gen_matrix_tests!(4);
     gen_matrix_tests!(5);
+
+    #[test]
+    fn matrix_inf_norm_preserves_left_to_right_row_sum_order() {
+        let large = 9_007_199_254_740_992.0;
+        let matrix =
+            Matrix::<4>::try_from_rows([[large, 1.0, 1.0, 1.0], [0.0; 4], [0.0; 4], [0.0; 4]])
+                .unwrap();
+
+        assert_eq!(matrix.inf_norm(), Ok(large));
+    }
 
     // === det_direct tests ===
 
