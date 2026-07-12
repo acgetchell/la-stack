@@ -139,6 +139,22 @@ gen_exact_benchmark_fixture_tests!(3);
 gen_exact_benchmark_fixture_tests!(4);
 gen_exact_benchmark_fixture_tests!(5);
 
+macro_rules! gen_det_sign_exact_baseline_filter_path_tests {
+    ($d:literal, $expected:literal) => {
+        paste! {
+            #[test]
+            fn [<det_sign_exact_baseline_filter_path_is_stable_ $d d>]() {
+                assert_eq!(fast_filter_is_conclusive(baseline_input::<$d>()), $expected);
+            }
+        }
+    };
+}
+
+gen_det_sign_exact_baseline_filter_path_tests!(2, true);
+gen_det_sign_exact_baseline_filter_path_tests!(3, true);
+gen_det_sign_exact_baseline_filter_path_tests!(4, true);
+gen_det_sign_exact_baseline_filter_path_tests!(5, false);
+
 #[test]
 fn exact_adversarial_benchmark_fixtures_are_correct() {
     for input in [near_singular_3x3_input(), large_entries_3x3_input()] {
@@ -149,12 +165,7 @@ fn exact_adversarial_benchmark_fixtures_are_correct() {
 }
 
 #[test]
-fn det_sign_exact_benchmark_filter_paths_are_stable() {
-    assert!(fast_filter_is_conclusive(baseline_input::<2>()));
-    assert!(fast_filter_is_conclusive(baseline_input::<3>()));
-    assert!(fast_filter_is_conclusive(baseline_input::<4>()));
-    assert!(!fast_filter_is_conclusive(baseline_input::<5>()));
-
+fn det_sign_exact_adversarial_benchmark_filter_paths_are_stable() {
     assert!(!fast_filter_is_conclusive(near_singular_3x3_input()));
     assert!(!fast_filter_is_conclusive(large_entries_3x3_input()));
     assert!(fast_filter_is_conclusive(hilbert_input::<4>()));

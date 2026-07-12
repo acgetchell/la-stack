@@ -1,6 +1,6 @@
 [toolchain]
 # Pin to MSRV as specified in Cargo.toml
-channel = "1.96.0"
+channel = "1.97.0"
 
 # Essential repository components. Keep checkout and CI setup lean; workflows
 # install additional targets or components when they need them.

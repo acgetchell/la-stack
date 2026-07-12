@@ -6,7 +6,8 @@ If you use this library in your research or project, please cite it using the in
 [CITATION.cff](CITATION.cff). This file contains structured citation metadata that can be
 processed by GitHub and other platforms.
 
-A Zenodo DOI will be added for tagged releases.
+Tagged releases are archived on Zenodo under the all-versions concept DOI
+[10.5281/zenodo.18158926](https://doi.org/10.5281/zenodo.18158926).
 
 ## AI-Assisted Development Tools
 
@@ -46,27 +47,29 @@ See `src/exact.rs` for the full architecture description.
 
 ### Exact linear system solve (hybrid Bareiss / BigRational)
 
-`solve_exact()` and `solve_exact_f64()` share the determinant path's exact f64 decomposition
-and integer scaling. Matrix and RHS entries are decomposed via IEEE 754 bit extraction [9]
-and scaled to a shared base `2^e_min` so the augmented system `(A | b)` becomes a `BigInt`
-matrix. Forward elimination runs in `BigInt` using Bareiss fraction-free updates [7]—no
-`BigRational` and no GCD
-normalisation in the `O(D³)` phase. The upper-triangular result is then lifted into
-`BigRational` for back-substitution, where fractions are inherent and the cost is only
-`O(D²)`. Row swaps from first-non-zero pivoting are applied to both the matrix and the
-RHS; because power-of-two scaling is applied uniformly to both sides of `A x = b`, the
-solution is unchanged by the scale factor.
+`solve_exact()`, `solve_exact_f64()`, and `solve_exact_rounded_f64()` share the determinant
+path's exact f64 decomposition and integer scaling. Matrix and RHS entries are decomposed via
+IEEE 754 bit extraction [9]. Each collection is scaled independently to its own minimum
+exponent, producing a `BigInt` matrix and RHS without inflating one side to accommodate the
+other's range. Forward elimination runs in `BigInt` using Bareiss fraction-free updates
+[7]—no `BigRational` and no GCD normalisation in the `O(D³)` phase. The upper-triangular
+result is then lifted into `BigRational` for back-substitution, where fractions are inherent
+and the cost is only `O(D²)`. Row swaps from first-non-zero pivoting are applied to both the
+matrix and RHS. After back-substitution, multiplying by the exact power-of-two scale ratio
+`2^(e_rhs − e_matrix)` recovers the solution to the original `A x = b` system.
 
-### f64 → integer decomposition (`decompose_f64`)
+### f64 → integer decomposition (`decompose_proven_finite_f64`)
 
-Both the determinant and solve paths convert f64 entries via `decompose_f64`, which extracts
-the IEEE 754 binary64 sign, unbiased exponent, and significand [9] and strips trailing zeros
-from the significand so `|x| = m · 2^e` with `m` odd.  The integer matrix is then assembled
-by shifting each mantissa left by `exp − e_min`, giving a GCD-free exact-integer starting
-point. Solves and D ≥ 5 determinants then apply Bareiss elimination; D ≤ 4 determinants use
-direct expansions. A one-shot wrapper `f64_to_big_rational` (used only in tests) packages the same
-decomposition into a single `BigRational`. See Goldberg [10] for background on IEEE 754
-representation and exact rational reconstruction.
+Both the determinant and solve paths convert their finite-by-construction entries via
+`decompose_proven_finite_f64`, which extracts the IEEE 754 binary64 sign, unbiased exponent,
+and significand [9] and strips trailing zeros from the significand so `|x| = m · 2^e` with
+`m` odd. The integer matrix is then assembled by shifting each mantissa left by
+`exp − e_min`, giving a GCD-free exact-integer starting point. Solves and D ≥ 5 determinants
+then apply Bareiss elimination; D ≤ 4 determinants use direct expansions. The test-only
+fallible wrapper `decompose_f64` verifies rejection of non-finite raw scalars, while the
+test-only `f64_to_big_rational` helper packages the same decomposition into a single
+`BigRational`. See Goldberg [10] for background on IEEE 754 representation and exact rational
+reconstruction.
 
 ### LDL^T factorization (symmetric SPD/PSD)
 

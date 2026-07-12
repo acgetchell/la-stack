@@ -1883,6 +1883,26 @@ mod tests {
     }
 
     #[test]
+    fn det_errbound_d3_dense_reports_legitimate_overflow() {
+        // The unscaled matrix has determinant 54, so scaling every entry by
+        // 1.6e102 gives a determinant of approximately 2.21e308.
+        let scale = 1.6e102;
+        let m = black_box(
+            Matrix::<3>::try_from_rows([
+                [4.0 * scale, scale, scale],
+                [scale, 4.0 * scale, scale],
+                [scale, scale, 4.0 * scale],
+            ])
+            .unwrap(),
+        );
+        let expected =
+            LaError::non_finite_computation_scalar(ArithmeticOperation::DeterminantErrorBound);
+
+        assert_eq!(m.det_errbound(), Err(expected));
+        assert_eq!(m.det_direct_with_errbound(), Err(expected));
+    }
+
+    #[test]
     fn det_direct_d3_nonsingular() {
         // [[2,1,0],[0,3,1],[1,0,2]] → det = 2*(6-0) - 1*(0-1) + 0 = 13
         let m = black_box(
@@ -1953,6 +1973,27 @@ mod tests {
 
         assert_eq!(m.det_direct(), Err(expected));
         assert_eq!(m.det(), Err(expected));
+    }
+
+    #[test]
+    fn det_errbound_d4_dense_reports_legitimate_overflow() {
+        // The unscaled matrix has determinant 189, so scaling every entry by
+        // 3.2e76 gives a determinant of approximately 1.98e308.
+        let scale = 3.2e76;
+        let m = black_box(
+            Matrix::<4>::try_from_rows([
+                [4.0 * scale, scale, scale, scale],
+                [scale, 4.0 * scale, scale, scale],
+                [scale, scale, 4.0 * scale, scale],
+                [scale, scale, scale, 4.0 * scale],
+            ])
+            .unwrap(),
+        );
+        let expected =
+            LaError::non_finite_computation_scalar(ArithmeticOperation::DeterminantErrorBound);
+
+        assert_eq!(m.det_errbound(), Err(expected));
+        assert_eq!(m.det_direct_with_errbound(), Err(expected));
     }
 
     #[test]

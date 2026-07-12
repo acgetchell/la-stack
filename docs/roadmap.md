@@ -138,6 +138,10 @@ the small fixed-dimension API model.
 - [#155](https://github.com/acgetchell/la-stack/issues/155) - Investigate
   `Vector::dot` and `Vector::norm2_sq` performance against `nalgebra` and
   `faer`.
+- [#174](https://github.com/acgetchell/la-stack/issues/174) - Raise the stable
+  Rust baseline to 1.97.0 and audit its new bit helpers. Retain the existing
+  primitive and `num-bigint` operations where the new helpers do not simplify
+  current hot paths or preserve benchmark performance.
 
 The goal is targeted profiling and implementation cleanup for operations where
 `vs_linalg` shows a meaningful peer-crate gap. Release scope should stay limited

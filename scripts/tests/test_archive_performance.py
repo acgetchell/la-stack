@@ -127,7 +127,7 @@ def _write_current_benchmark_tooling(worktree: Path) -> None:
         encoding="utf-8",
     )
     (worktree / "Cargo.lock").write_text("version = 4\n", encoding="utf-8")
-    (worktree / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.96.0"\n', encoding="utf-8")
+    (worktree / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
     (worktree / "justfile").write_text(
         'bench-save-baseline tag suite="all":\nbench-latest: bench-vs-linalg-la-stack bench-exact\n',
         encoding="utf-8",
@@ -590,17 +590,17 @@ def test_resolve_archive_request_current_vs_latest_uses_package_version_and_late
 
 def test_benchmark_env_uses_current_repo_toolchain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
-    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.96.0"\n', encoding="utf-8")
+    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
 
     env = archive_performance._benchmark_env(tmp_path)
 
     assert env is not None
-    assert env["RUSTUP_TOOLCHAIN"] == "1.96.0"
+    assert env["RUSTUP_TOOLCHAIN"] == "1.97.0"
 
 
 def test_benchmark_env_respects_existing_toolchain_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RUSTUP_TOOLCHAIN", "nightly")
-    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.96.0"\n', encoding="utf-8")
+    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
 
     assert archive_performance._benchmark_env(tmp_path) is None
 
@@ -643,7 +643,7 @@ def test_comparison_benchmark_env_preserves_flags_and_selects_v043_adapter(
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
     monkeypatch.setenv("RUSTFLAGS", "-C target-cpu=native")
     (tmp_path / "rust-toolchain.toml").write_text(
-        '[toolchain]\nchannel = "1.96.0"\n',
+        '[toolchain]\nchannel = "1.97.0"\n',
         encoding="utf-8",
     )
 
@@ -655,7 +655,7 @@ def test_comparison_benchmark_env_preserves_flags_and_selects_v043_adapter(
 
     assert current["RUSTFLAGS"] == "-C target-cpu=native --cap-lints=warn"
     assert baseline["RUSTFLAGS"] == ("-C target-cpu=native --cap-lints=warn --cfg=la_stack_v0_4_3_api")
-    assert current["RUSTUP_TOOLCHAIN"] == "1.96.0"
+    assert current["RUSTUP_TOOLCHAIN"] == "1.97.0"
 
 
 def test_comparison_benchmark_env_extends_encoded_rustflags(
@@ -1101,7 +1101,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
-    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.96.0"\n', encoding="utf-8")
+    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
@@ -1124,7 +1124,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
         if command == "just" and args == ["bench-save-baseline", "v0.4.2"]:
-            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.96.0"
+            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
             assert cwd is not None
             assert "bench-latest" in (cwd / "justfile").read_text(encoding="utf-8")
             criterion_dir = cwd / "target" / "criterion"
@@ -1135,7 +1135,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
                 estimates.parent.mkdir(parents=True, exist_ok=True)
                 estimates.write_text("{}\n", encoding="utf-8")
         if command == "just" and args == ["bench-latest"]:
-            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.96.0"
+            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
             assert cwd is not None
             criterion_dir = cwd / "target" / "criterion" / "exact_d2" / "det_exact"
             assert not (criterion_dir / "new").exists()
@@ -1202,7 +1202,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
 
 def test_generate_report_vs_linalg_suite_uses_copied_current_baseline_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
-    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.96.0"\n', encoding="utf-8")
+    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
     output = tmp_path / "target" / "bench-reports" / "performance.md"
     calls: list[RunnerCall] = []
 
@@ -1224,14 +1224,14 @@ def test_generate_report_vs_linalg_suite_uses_copied_current_baseline_recipe(tmp
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
         if command == "just" and args == ["bench-save-baseline", "v0.4.2", "vs_linalg"]:
-            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.96.0"
+            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
             assert cwd is not None
             assert "bench-latest" in (cwd / "justfile").read_text(encoding="utf-8")
             criterion_dir = cwd / "target" / "criterion"
             criterion_dir.mkdir(parents=True)
             (criterion_dir / "baseline.txt").write_text("baseline\n", encoding="utf-8")
         if command == "just" and args == ["bench-vs-linalg-la-stack"]:
-            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.96.0"
+            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
         if command == "uv":
             report = Path(args[args.index("--output") + 1])
             report.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
@@ -1547,7 +1547,7 @@ def test_failed_atomic_replace_preserves_existing_report(tmp_path: Path, monkeyp
 
 def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
-    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.96.0"\n', encoding="utf-8")
+    (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     current.parent.mkdir(parents=True)
@@ -1573,13 +1573,13 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path: Path
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
         if command == "just" and args == ["bench-save-baseline", "v0.4.2"]:
-            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.96.0"
+            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
             assert cwd is not None
             criterion_dir = cwd / "target" / "criterion"
             criterion_dir.mkdir(parents=True)
             (criterion_dir / "baseline.txt").write_text("baseline\n", encoding="utf-8")
         if command == "just" and args == ["bench-latest"]:
-            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.96.0"
+            assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
         if command == "uv":
             output = Path(args[args.index("--output") + 1])
             output.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")

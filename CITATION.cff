@@ -3,7 +3,7 @@ message: "If you use this software, please cite it as below."
 type: software
 title: "la-stack: Fast, stack-allocated linear algebra for fixed dimensions in Rust"
 version: 0.4.3
-date-released: 2026-06-04
+date-released: 2026-06-09
 url: "https://github.com/acgetchell/la-stack"
 repository-code: "https://github.com/acgetchell/la-stack"
 identifiers:
