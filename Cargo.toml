@@ -36,7 +36,7 @@ include = [
 [dependencies]
 # All runtime deps are optional; see [features] below.
 # Must stay in sync with num-rational
-num-bigint = { version = "0.4.6", optional = true }
+num-bigint = { version = "0.5.1", optional = true }
 num-rational = { version = "0.4.2", features = [ "num-bigint-std" ], optional = true }
 num-traits = { version = "0.2.19", optional = true }
 
