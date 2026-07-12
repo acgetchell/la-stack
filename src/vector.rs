@@ -192,13 +192,41 @@ impl<const D: usize> Vector<D> {
         let mut i = 0;
         while i < D {
             acc = lhs[i].mul_add(rhs[i], acc);
+            i += 1;
+        }
+        if acc.is_finite() {
+            Ok(acc)
+        } else {
+            cold_path();
+            Err(Self::dot_non_finite_error(lhs, rhs, operation))
+        }
+    }
+
+    /// Replay a non-finite dot product to locate the first failing step.
+    ///
+    /// This runs only after the success-path traversal has produced a non-finite
+    /// final accumulator. Stored entries are finite, so once a fused multiply-add
+    /// produces a non-finite accumulator, later steps cannot make it finite again.
+    /// Replaying the same left-to-right operations must therefore find the first
+    /// failing index.
+    #[cold]
+    const fn dot_non_finite_error(
+        lhs: &[f64; D],
+        rhs: &[f64; D],
+        operation: ArithmeticOperation,
+    ) -> LaError {
+        let mut acc = 0.0;
+        let mut i = 0;
+        let last = D.saturating_sub(1);
+        while i < last {
+            acc = lhs[i].mul_add(rhs[i], acc);
             if !acc.is_finite() {
-                cold_path();
-                return Err(LaError::non_finite_computation_step(operation, i));
+                return LaError::non_finite_computation_step(operation, i);
             }
             i += 1;
         }
-        Ok(acc)
+
+        LaError::non_finite_computation_step(operation, last)
     }
 
     /// Squared Euclidean norm.
@@ -424,6 +452,130 @@ mod tests {
     gen_vector_tests!(3);
     gen_vector_tests!(4);
     gen_vector_tests!(5);
+
+    macro_rules! gen_vector_replay_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<vector_dot_and_norm2_sq_report_last_overflowing_step_ $d d>]() {
+                    let mut dot_lhs = [1.0f64; $d];
+                    dot_lhs[$d - 1] = f64::MAX;
+                    let mut dot_rhs = [1.0f64; $d];
+                    dot_rhs[$d - 1] = 2.0;
+                    let dot_lhs = Vector::<$d>::new(dot_lhs);
+                    let dot_rhs = Vector::<$d>::new(dot_rhs);
+
+                    assert_eq!(
+                        dot_lhs.dot(&dot_rhs),
+                        Err(LaError::non_finite_computation_step(
+                            ArithmeticOperation::VectorDotProduct,
+                            $d - 1,
+                        ))
+                    );
+
+                    let mut norm_data = [1.0f64; $d];
+                    norm_data[$d - 1] = f64::MAX;
+                    let vector = Vector::<$d>::new(norm_data);
+
+                    assert_eq!(
+                        vector.norm2_sq(),
+                        Err(LaError::non_finite_computation_step(
+                            ArithmeticOperation::VectorSquaredNorm,
+                            $d - 1,
+                        ))
+                    );
+                }
+            }
+        };
+    }
+
+    gen_vector_replay_tests!(2);
+    gen_vector_replay_tests!(3);
+    gen_vector_replay_tests!(4);
+    gen_vector_replay_tests!(5);
+
+    macro_rules! gen_vector_const_eval_tests {
+        ($d:literal, $dot:literal, $norm2_sq:literal) => {
+            paste! {
+                #[test]
+                fn [<vector_dot_and_norm2_sq_const_eval_ $d d>]() {
+                    const DOT: Result<f64, LaError> = Vector::<$d>::new([1.0; $d])
+                        .dot(&Vector::<$d>::new([2.0; $d]));
+                    const NORM2_SQ: Result<f64, LaError> =
+                        Vector::<$d>::new([1.0; $d]).norm2_sq();
+
+                    assert_eq!(DOT, Ok($dot));
+                    assert_eq!(NORM2_SQ, Ok($norm2_sq));
+                }
+            }
+        };
+    }
+
+    gen_vector_const_eval_tests!(2, 4.0, 2.0);
+    gen_vector_const_eval_tests!(3, 6.0, 3.0);
+    gen_vector_const_eval_tests!(4, 8.0, 4.0);
+    gen_vector_const_eval_tests!(5, 10.0, 5.0);
+
+    #[test]
+    fn vector_dot_and_norm2_sq_overflow_const_eval() {
+        const DOT: Result<f64, LaError> =
+            Vector::<2>::new([f64::MAX; 2]).dot(&Vector::<2>::new([1.0; 2]));
+        const NORM2_SQ: Result<f64, LaError> = Vector::<2>::new([f64::MAX; 2]).norm2_sq();
+
+        assert_eq!(
+            DOT,
+            Err(LaError::non_finite_computation_step(
+                ArithmeticOperation::VectorDotProduct,
+                1,
+            ))
+        );
+        assert_eq!(
+            NORM2_SQ,
+            Err(LaError::non_finite_computation_step(
+                ArithmeticOperation::VectorSquaredNorm,
+                0,
+            ))
+        );
+    }
+
+    #[test]
+    fn vector_dot_and_norm2_sq_preserve_fma_and_left_to_right_order() {
+        let dot_large = 9_007_199_254_740_992.0;
+        let dot_lhs = Vector::<4>::new([dot_large, 1.0, 1.0, 1.0]);
+        let dot_rhs = Vector::<4>::new([1.0; 4]);
+        assert_eq!(dot_lhs.dot(&dot_rhs), Ok(dot_large));
+
+        let fused_lhs = Vector::<2>::new([f64::MAX, f64::MAX]);
+        let fused_rhs = Vector::<2>::new([-1.0, 2.0]);
+        assert_eq!(fused_lhs.dot(&fused_rhs), Ok(f64::MAX));
+
+        let norm_large = 134_217_728.0;
+        let vector = Vector::<4>::new([norm_large, 1.0, 1.0, 1.0]);
+        assert_eq!(vector.norm2_sq(), Ok(norm_large * norm_large));
+    }
+
+    #[test]
+    fn vector_dot_and_norm2_sq_report_first_middle_overflowing_step() {
+        let dot_lhs = Vector::<3>::new([f64::MAX, f64::MAX, 1.0]);
+        let dot_rhs = Vector::<3>::new([1.0; 3]);
+        assert_eq!(
+            dot_lhs.dot(&dot_rhs),
+            Err(LaError::non_finite_computation_step(
+                ArithmeticOperation::VectorDotProduct,
+                1,
+            ))
+        );
+
+        let norm_large = 1.0e154;
+        let vector = Vector::<3>::new([norm_large, norm_large, 1.0]);
+        assert_eq!(
+            vector.norm2_sq(),
+            Err(LaError::non_finite_computation_step(
+                ArithmeticOperation::VectorSquaredNorm,
+                1,
+            ))
+        );
+    }
 
     #[test]
     fn zero_dimension_vector_has_zero_dot_and_norm() {
