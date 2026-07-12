@@ -70,6 +70,8 @@ _EXACT_DIMENSION_BENCHES: list[str] = [
 _EXACT_DIMENSION_BENCHES_WITH_DIRECT: list[str] = [
     "det",
     "det_direct",
+    "det_direct_with_errbound",
+    "det_errbound",
     *_EXACT_DIMENSION_BENCHES[1:],
 ]
 
@@ -140,6 +142,9 @@ VS_LINALG_D8_RELEASE_SIGNAL_BENCHES: list[str] = [
 _V0_4_3_API_COMPATIBILITY = "la_stack_v0_4_3_api"
 _V0_4_3_UNAVAILABLE_BASELINE_ROWS: frozenset[tuple[str, str]] = frozenset(
     {
+        ("exact_d2", "det_direct_with_errbound"),
+        ("exact_d3", "det_direct_with_errbound"),
+        ("exact_d4", "det_direct_with_errbound"),
         ("d8", "la_stack_det_from_lu_balanced_range"),
         ("d8", "la_stack_det_from_ldlt_balanced_range"),
     }
@@ -772,14 +777,18 @@ def _collect_exact_comparisons(
     criterion_dir: Path,
     baseline_name: str,
     stat: str,
-    scope: str,
+    policy: ComparisonPolicy,
 ) -> ComparisonCollection:
     """Compare exact results while retaining every missing expected row."""
     comparisons: list[Comparison] = []
     gaps: list[CoverageGap] = []
+    unavailable_baseline_rows = _UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY.get(
+        policy.baseline_api_compatibility or "",
+        frozenset(),
+    )
 
     for group, benches in EXACT_GROUPS.items():
-        if scope == "release-signal" and group not in EXACT_RELEASE_SIGNAL_GROUPS:
+        if policy.scope == "release-signal" and group not in EXACT_RELEASE_SIGNAL_GROUPS:
             continue
 
         group_dir = criterion_dir / group
@@ -788,6 +797,23 @@ def _collect_exact_comparisons(
             baseline_bench, base_path = _exact_baseline_path(group_dir, bench, baseline_name)
             missing_current = not new_path.exists()
             missing_baseline = not base_path.exists()
+            baseline_unavailable = (group, bench) in unavailable_baseline_rows
+
+            if baseline_unavailable:
+                if missing_current:
+                    gaps.append(
+                        CoverageGap(
+                            suite="exact",
+                            group=group,
+                            bench=bench,
+                            baseline_bench=baseline_bench,
+                            missing_current=True,
+                            missing_baseline=False,
+                        )
+                    )
+                else:
+                    _read_estimate(new_path, stat)
+                continue
 
             if missing_current or missing_baseline:
                 gaps.append(
@@ -817,7 +843,7 @@ def _collect_exact_comparisons(
                 )
             )
 
-    expected_groups = [group for group in EXACT_GROUPS if scope != "release-signal" or group in EXACT_RELEASE_SIGNAL_GROUPS]
+    expected_groups = [group for group in EXACT_GROUPS if policy.scope != "release-signal" or group in EXACT_RELEASE_SIGNAL_GROUPS]
     if not any((criterion_dir / group).is_dir() for group in expected_groups):
         gaps.append(_entire_suite_gap("exact"))
 
@@ -1047,7 +1073,7 @@ def _collect_comparisons(
     comparisons: list[Comparison] = []
     gaps: list[CoverageGap] = []
     if suite in ("all", "exact"):
-        exact = _collect_exact_comparisons(criterion_dir, baseline_name, stat, policy.scope)
+        exact = _collect_exact_comparisons(criterion_dir, baseline_name, stat, policy)
         comparisons.extend(exact.comparisons)
         gaps.extend(exact.gaps)
     if suite in ("all", "vs_linalg"):
@@ -1500,6 +1526,12 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
                 "- Baseline-unavailable rows: `d8/la_stack_det_from_lu_balanced_range` and "
                 "`d8/la_stack_det_from_ldlt_balanced_range` were not timed because v0.4.3 returns zero for a fixture "
                 "whose exact determinant is one; current samples remain required, but no speedup is claimed."
+            )
+        if compatibility == _V0_4_3_API_COMPATIBILITY and criterion.suite in {"all", "exact"}:
+            lines.append(
+                "- Baseline-unavailable rows: `exact_d2/det_direct_with_errbound`, "
+                "`exact_d3/det_direct_with_errbound`, and `exact_d4/det_direct_with_errbound` were not timed because "
+                "v0.4.3 predates the paired API; the comparable `det_errbound` baselines remain required."
             )
     return lines
 

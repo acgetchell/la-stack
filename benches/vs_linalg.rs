@@ -6,7 +6,8 @@
 //! fixed dimensions.
 //!
 //! Notes:
-//! - Determinant is benchmarked via LU on all sides (nalgebra uses closed-forms for 1×1/2×2/3×3).
+//! - Determinant groups distinguish factorization-inclusive LU, `Matrix::det`,
+//!   precomputed LU determinant queries, and precomputed LDLT/Cholesky queries.
 //! - Matrix infinity norm is the maximum absolute row sum on all sides.
 
 use std::hint::black_box;

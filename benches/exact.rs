@@ -8,7 +8,8 @@
 //! 1. **General-case benches** (`exact_d{2..5}`) — a single
 //!    well-conditioned diagonally-dominant matrix per dimension.  These
 //!    measure typical-case performance and track regressions against a
-//!    reproducible input.
+//!    reproducible input. D=2..=4 also include the direct determinant and
+//!    certified error-bound f64 baselines.
 //! 2. **Adversarial / extreme-input benches** — matrices chosen to
 //!    stress specific corners of the exact-arithmetic pipeline:
 //!    near-singularity (forces the exact integer fallback), large f64 entries
@@ -200,9 +201,57 @@ fn bench_det_direct<const D: usize>(
     });
 }
 
-macro_rules! register_det_direct_benchmark {
+/// Add the standalone certified determinant-bound baseline.
+fn bench_det_errbound<const D: usize>(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    input: &ValidatedExactInput<D>,
+) {
+    let bound = input
+        .matrix()
+        .det_errbound()
+        .or_abort("determinant error-bound setup")
+        .or_abort("determinant error-bound setup");
+    black_box(bound);
+    group.bench_function("det_errbound", |bencher| {
+        bencher.iter(|| {
+            let bound = black_box(input.matrix())
+                .det_errbound()
+                .or_abort("f64 determinant error bound")
+                .or_abort("f64 determinant error bound");
+            black_box(bound);
+        });
+    });
+}
+
+/// Add the paired direct-determinant and certified-bound baseline.
+#[cfg(not(la_stack_v0_4_3_api))]
+fn bench_det_direct_with_errbound<const D: usize>(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    input: &ValidatedExactInput<D>,
+) {
+    let estimate = input
+        .matrix()
+        .det_direct_with_errbound()
+        .or_abort("paired determinant-bound setup")
+        .or_abort("paired determinant-bound setup");
+    black_box((estimate.determinant(), estimate.absolute_error_bound()));
+    group.bench_function("det_direct_with_errbound", |bencher| {
+        bencher.iter(|| {
+            let estimate = black_box(input.matrix())
+                .det_direct_with_errbound()
+                .or_abort("paired f64 determinant and error bound")
+                .or_abort("paired f64 determinant and error bound");
+            black_box((estimate.determinant(), estimate.absolute_error_bound()));
+        });
+    });
+}
+
+macro_rules! register_det_filter_benchmarks {
     ($group:expr, $input:expr, supported) => {{
         bench_det_direct(&mut $group, &$input);
+        #[cfg(not(la_stack_v0_4_3_api))]
+        bench_det_direct_with_errbound(&mut $group, &$input);
+        bench_det_errbound(&mut $group, &$input);
     }};
     ($group:expr, $matrix:expr, unsupported) => {};
 }
@@ -227,7 +276,7 @@ macro_rules! gen_exact_benches_for_dim {
             });
         });
 
-        register_det_direct_benchmark!(group, input, $direct);
+        register_det_filter_benchmarks!(group, input, $direct);
 
         for &operation in GENERAL_OPERATIONS {
             bench_exact_operation(&mut group, operation, &input);

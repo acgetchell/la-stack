@@ -6,18 +6,16 @@ use core::hint::cold_path;
 
 use crate::ldlt::Ldlt;
 use crate::lu::Lu;
-use crate::{
-    ArithmeticOperation, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError, SymmetricMatrix, Tolerance,
-};
+use crate::{ArithmeticOperation, ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4, LaError, Tolerance};
 
 /// A closed-form determinant and its certified absolute error bound.
 ///
 /// Values of this type are produced by
 /// [`Matrix::det_direct_with_errbound`]. The paired result guarantees that the
-/// determinant and bound came from one traversal of the same rounded
-/// arithmetic tree. The guarantee is unavailable when gradual underflow could
-/// invalidate the relative-error analysis or when the matrix dimension exceeds
-/// the closed-form D ≤ 4 scope.
+/// determinant was evaluated once and that its matching bound was computed for
+/// the same matrix in one call. The guarantee is unavailable when gradual
+/// underflow could invalidate the relative-error analysis or when the matrix
+/// dimension exceeds the closed-form D ≤ 4 scope.
 #[must_use]
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -75,6 +73,16 @@ impl DeterminantWithErrorBound {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Matrix<const D: usize> {
     rows: [[f64; D]; D],
+}
+
+/// A finite [`Matrix`] proven exactly symmetric for LDLT factorization.
+///
+/// Mirrored entries have equal numeric values; IEEE-754 signed zeros may have
+/// different bit patterns because `+0.0 == -0.0`.
+#[must_use]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct SymmetricMatrix<const D: usize> {
+    matrix: Matrix<D>,
 }
 
 /// Rounded arithmetic result together with proof that gradual underflow could
@@ -202,6 +210,12 @@ impl<'a, const D: usize> Det4SharedMinorInput<'a, D> {
 }
 
 impl<const D: usize> SymmetricMatrix<D> {
+    /// Consume the wrapper and return the underlying matrix.
+    #[inline]
+    pub(crate) const fn into_matrix(self) -> Matrix<D> {
+        self.matrix
+    }
+
     /// Construct a symmetric matrix proof without checking the invariant.
     ///
     /// This constructor is only for paths that have already validated exact
@@ -677,6 +691,8 @@ impl<const D: usize> Matrix<D> {
     /// `D = 0` follows the empty-matrix convention: factorization succeeds,
     /// [`Lu::det`](crate::Lu::det) returns `1.0`, and solving a length-zero
     /// right-hand side returns a length-zero [`Vector`](crate::Vector).
+    /// Partial pivoting is a practical finite-precision strategy, not a
+    /// certified accuracy guarantee; see `REFERENCES.md` \[1-3, 11-12\].
     ///
     /// # Examples
     /// ```
@@ -731,8 +747,13 @@ impl<const D: usize> Matrix<D> {
     /// [`Ldlt::det`](crate::Ldlt::det) returns `1.0`, and solving a length-zero
     /// right-hand side returns a length-zero [`Vector`](crate::Vector).
     ///
-    /// This is intended for symmetric positive definite (SPD) and positive semi-definite (PSD)
-    /// matrices such as Gram matrices.
+    /// This is intended for exactly symmetric positive-definite matrices such
+    /// as nonsingular Gram matrices. Computed zero and tolerance-small positive
+    /// pivots are diagnosed as singular rather than returned in a usable
+    /// factorization. Because pivots are computed in binary64, success is not
+    /// an exact proof that the stored matrix is positive definite.
+    /// See `REFERENCES.md` \[4-6, 11-12\] for Cholesky/LDLT background and the
+    /// pivoted symmetric-indefinite alternative.
     ///
     /// # Symmetry validation
     /// The input matrix `self` must be exactly symmetric: every mirrored pair
@@ -1143,8 +1164,8 @@ impl<const D: usize> Matrix<D> {
     /// closed-form bound is available.
     ///
     /// This is the preferred API when both values are needed: it evaluates the
-    /// determinant arithmetic tree once, so the approximation and bound cannot
-    /// accidentally come from separate traversals.
+    /// determinant arithmetic tree once, then computes the matching bound for
+    /// the same matrix within that call.
     ///
     /// # Examples
     /// ```

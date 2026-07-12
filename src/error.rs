@@ -172,7 +172,11 @@ pub enum NonFiniteOrigin {
     },
 }
 
-/// Reason a symmetric matrix is outside the positive-semidefinite LDLT domain.
+/// Computed LDLT condition that violates the no-pivot positive-semidefinite
+/// factorization requirements.
+///
+/// These values are computed in binary64. They explain why LDLT rejected the
+/// matrix, but do not prove that the stored matrix is exactly indefinite.
 ///
 /// # Examples
 /// ```
@@ -359,7 +363,11 @@ pub enum LaError {
         /// Maximum absolute difference allowed by the symmetry check.
         allowed_abs_diff: f64,
     },
-    /// A symmetric matrix is outside the positive-semidefinite LDLT domain.
+    /// A computed LDLT pivot violates the no-pivot positive-semidefinite
+    /// factorization requirements.
+    ///
+    /// This diagnoses a binary64 factorization rejection; it is not an exact
+    /// certificate that the stored matrix is indefinite.
     #[non_exhaustive]
     NotPositiveSemidefinite {
         /// LDLT pivot column or step where the violation was detected.
@@ -570,8 +578,8 @@ impl LaError {
         }
     }
 
-    /// Construct a [`LaError::NotPositiveSemidefinite`] error for a negative
-    /// LDLT diagonal pivot.
+    /// Construct a [`LaError::NotPositiveSemidefinite`] error for a computed
+    /// negative LDLT diagonal pivot.
     #[inline]
     #[must_use]
     pub const fn not_positive_semidefinite_negative(pivot_col: usize, value: f64) -> Self {
@@ -581,9 +589,9 @@ impl LaError {
         }
     }
 
-    /// Construct a [`LaError::NotPositiveSemidefinite`] error for a zero LDLT
-    /// diagonal with a non-zero coupling at `row`, distinguishing the observed
-    /// positive-semidefinite violation from an uncoupled singular pivot.
+    /// Construct a [`LaError::NotPositiveSemidefinite`] error for a computed
+    /// zero LDLT diagonal with a non-zero coupling at `row`, distinguishing the
+    /// observed factorization violation from an uncoupled singular pivot.
     #[inline]
     #[must_use]
     pub const fn not_positive_semidefinite_zero_coupling(
@@ -718,14 +726,14 @@ impl fmt::Display for LaError {
                 violation: PositiveSemidefiniteViolation::NegativePivot { value },
             } => write!(
                 f,
-                "matrix is not positive semidefinite at LDLT pivot column {pivot_col}: diagonal value {value} < 0"
+                "LDLT rejected the matrix at pivot column {pivot_col}: computed diagonal value {value} < 0"
             ),
             Self::NotPositiveSemidefinite {
                 pivot_col,
                 violation: PositiveSemidefiniteViolation::ZeroPivotCoupling { row, value },
             } => write!(
                 f,
-                "matrix is not positive semidefinite at LDLT pivot column {pivot_col}: zero diagonal has non-zero coupling at row {row} with value {value}"
+                "LDLT rejected the matrix at pivot column {pivot_col}: computed zero diagonal has non-zero coupling at row {row} with value {value}"
             ),
         }
     }
@@ -925,11 +933,11 @@ mod tests {
     fn positive_semidefinite_errors_preserve_distinct_violations() {
         assert_eq!(
             LaError::not_positive_semidefinite_negative(1, -3.0).to_string(),
-            "matrix is not positive semidefinite at LDLT pivot column 1: diagonal value -3 < 0"
+            "LDLT rejected the matrix at pivot column 1: computed diagonal value -3 < 0"
         );
         assert_eq!(
             LaError::not_positive_semidefinite_zero_coupling(0, 1, 2.0).to_string(),
-            "matrix is not positive semidefinite at LDLT pivot column 0: zero diagonal has non-zero coupling at row 1 with value 2"
+            "LDLT rejected the matrix at pivot column 0: computed zero diagonal has non-zero coupling at row 1 with value 2"
         );
     }
 

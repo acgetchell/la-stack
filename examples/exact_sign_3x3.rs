@@ -3,8 +3,8 @@
 //! Exact determinant sign for a near-singular 3×3 matrix.
 //!
 //! This example demonstrates `det_sign_exact()`, which uses adaptive-precision
-//! arithmetic to return the provably correct sign of the determinant — even when
-//! the matrix is so close to singular that f64 rounding could give the wrong answer.
+//! arithmetic to return the determinant sign exact for the stored binary64
+//! entries, even when f64 evaluation could give the wrong answer.
 //!
 //! Run with: `cargo run --features exact --example exact_sign_3x3`
 

@@ -2,11 +2,11 @@
 
 //! Exact linear system solve for a near-singular 3×3 system.
 //!
-//! This example demonstrates `solve_exact()` and [`ExactF64Conversion`]. The exact
-//! solve uses arbitrary-precision rational arithmetic to compute a provably
-//! correct solution — even when the matrix is so close to singular that the f64
-//! LU solve produces a wildly inaccurate result. `try_to_f64()` only succeeds
-//! when every exact component is exactly representable as `f64`, while
+//! This example demonstrates `solve_exact()` and [`ExactF64Conversion`]. The
+//! solve uses arbitrary-precision rational arithmetic to compute a solution
+//! exact for the stored binary64 inputs, even when the f64 LU solve is wildly
+//! inaccurate. `try_to_f64()` only succeeds when every exact component is
+//! exactly representable as `f64`, while
 //! `to_rounded_f64()` explicitly opts into nearest-even rounding.
 //!
 //! Run with: `cargo run --features exact --example exact_solve_3x3`

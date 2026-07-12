@@ -1,9 +1,9 @@
 # la-stack
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18158926.svg)](https://doi.org/10.5281/zenodo.18158926)
-[![Crates.io](https://img.shields.io/crates/v/la-stack.svg)](https://crates.io/crates/la-stack)
-[![Downloads](https://img.shields.io/crates/d/la-stack.svg)](https://crates.io/crates/la-stack)
-[![License](https://img.shields.io/crates/l/la-stack.svg)](https://github.com/acgetchell/la-stack/blob/v0.4.3/LICENSE)
+[![Crates.io](https://badgen.net/crates/v/la-stack)](https://crates.io/crates/la-stack)
+[![Downloads](https://badgen.net/crates/d/la-stack)](https://crates.io/crates/la-stack)
+[![License](https://badgen.net/github/license/acgetchell/la-stack)](https://github.com/acgetchell/la-stack/blob/v0.4.3/LICENSE)
 [![Docs.rs](https://docs.rs/la-stack/badge.svg)](https://docs.rs/la-stack)
 [![CI](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml)
 [![rust-clippy analyze][clippy-badge]][clippy-workflow]
@@ -24,18 +24,40 @@ while keeping the API intentionally small and explicit.
 - `Vector<const D: usize>` for fixed-length `f64` vectors backed by `[f64; D]`
 - `Matrix<const D: usize>` for fixed-size square `f64` matrices backed by `[[f64; D]; D]`
 - `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
-- `Ldlt<const D: usize>` for LDLT factorization without pivoting (solve + det; symmetric SPD/PSD)
+- `Ldlt<const D: usize>` for no-pivot factorization intended for exactly
+  symmetric positive-definite matrices (solve + det; typed pivot diagnostics)
+
+## 🧮 Mathematical basis
+
+`la-stack` operates on finite IEEE 754 binary64 values in small, fixed
+dimensions. Its floating-point paths use LU with partial pivoting, LDLT without
+pivoting for exactly symmetric positive-definite matrices, and closed-form
+determinants through D=4. These results remain subject to conditioning and
+binary64 rounding;
+factorization tolerances are rejection thresholds, not accuracy guarantees. For
+D≤4, direct determinants can be paired with a conservative absolute roundoff
+bound when its range preconditions hold.
+
+With `features = ["exact"]`, stored binary64 inputs are lifted losslessly to
+rationals for exact determinant signs, determinant values, and solves. Exactness
+starts at the stored values and cannot recover information rounded away before
+construction. See the
+[mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md)
+for the algorithms, validity boundaries, and supporting references.
 
 ## ✨ Design goals
 
 - ✅ `Copy` types where possible
-- ✅ Const-generic dimensions (no dynamic sizes)
+- ✅ Const-generic storage (no dynamically sized matrix or vector representation)
 - ✅ `const fn` where possible (compile-time evaluation of determinants, dot products, etc.)
 - ✅ Explicit algorithms (LU, solve, determinant)
-- ✅ Robust geometric predicates via optional exact arithmetic (`det_sign_exact`, `det_errbound`)
-- ✅ Exact linear system solve via optional arbitrary-precision arithmetic (`solve_exact`, strict/rounded f64 conversions)
+- ✅ Error-bounded f64 determinant filtering plus optional exact signs
+  (`det_errbound`, `det_sign_exact`)
+- ✅ Exact determinant values and linear solves via optional arbitrary-precision
+  arithmetic (`det_exact`, `solve_exact`, strict/rounded f64 conversions)
 - ✅ No runtime dependencies by default (optional features may add deps)
-- ✅ Stack storage only (no heap allocation in core types)
+- ✅ Inline, stack-backed storage for core types; optional arbitrary-precision
+  exact values allocate as required
 - ✅ `unsafe` forbidden
 
 See [CHANGELOG.md](https://github.com/acgetchell/la-stack/blob/v0.4.3/CHANGELOG.md)
@@ -47,8 +69,8 @@ for current release planning.
 
 - Bare-metal performance: see [`blas-src`](https://crates.io/crates/blas-src),
   [`lapack-src`](https://crates.io/crates/lapack-src), or [`openblas-src`](https://crates.io/crates/openblas-src)
-- Comprehensive: use [`nalgebra`](https://crates.io/crates/nalgebra) if you need a full-featured library
-- Large matrices/dimensions with parallelism: use [`faer`](https://crates.io/crates/faer) if you need this
+- Broad general-purpose linear algebra: use [`nalgebra`](https://crates.io/crates/nalgebra)
+- Large matrices/dimensions with parallelism: use [`faer`](https://crates.io/crates/faer)
 - Alternate floating-point scalar families: `la-stack` supports `f64` and optional exact arithmetic, not `f32` / `f16` APIs
 
 ## ✅ Use this crate when
@@ -87,8 +109,10 @@ la-stack = "0.4.3"
 
 - `default`: no runtime dependencies
 - `exact`: `BigRational` exact determinant and solve APIs
-- `bench`: cfg-only gate for benchmark fixtures and benchmark-input tests;
-  benchmark libraries remain development dependencies
+- `bench`: repository-development gate used only by benchmark targets and
+  benchmark-input tests; application crates should not enable it
+
+### LU solve
 
 Solve a 5×5 system via LU:
 
@@ -121,10 +145,14 @@ fn main() -> Result<(), LaError> {
 }
 ```
 
-Compute a determinant for a symmetric SPD matrix via LDLT (no pivoting).
+### LDLT determinant
 
-For symmetric positive-definite matrices, `LDL^T` is essentially a square-root-free form of the Cholesky decomposition
-(you can recover a Cholesky factor by absorbing `sqrt(D)` into `L`):
+Compute a determinant for a symmetric positive-definite matrix via LDLT (no
+pivoting).
+
+For these matrices, `LDLᵀ` is a square-root-free Cholesky form. Multiplying each
+column of `L` by the square root of the corresponding diagonal entry yields a
+Cholesky factor:
 
 ```rust
 use la_stack::prelude::*;
@@ -172,20 +200,24 @@ fn main() -> Result<(), LaError> {
 > required allowed difference of zero. The tolerance-based
 > [`Matrix::first_asymmetry`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.first_asymmetry)
 > and `Matrix::is_symmetric` methods remain useful diagnostics, but do not prove
-> the exact precondition required by LDLT. Fall back to `lu()` if your matrices
-> may not be symmetric at all. A negative LDLT diagonal or a zero diagonal with nonzero
-> remaining coupling returns `LaError::NotPositiveSemidefinite` with a typed
-> `PositiveSemidefiniteViolation`. An uncoupled zero or other non-negative pivot
+> the exact precondition required by LDLT. Use `lu()` when exact symmetry or
+> positive definiteness is not guaranteed. A negative LDLT diagonal or a zero
+> diagonal with nonzero remaining coupling returns
+> `LaError::NotPositiveSemidefinite` with a typed
+> `PositiveSemidefiniteViolation`. An uncoupled zero or positive pivot
 > at or below the caller's tolerance returns `LaError::Singular` with a
-> numerical `SingularityReason`.
+> numerical `SingularityReason`. Because these pivots are computed in binary64,
+> success is not an exact positive-definiteness certificate for the stored
+> matrix.
 
 ## ⚡ Compile-time determinants (D ≤ 4)
 
 `det_direct()` is a `const fn` providing closed-form determinants for D=0–4,
-using fused multiply-add where applicable. `Matrix::<0>::zero().det_direct()`
-returns `Ok(Some(1.0))` (the empty-product convention). For D=1–4, cofactor
-expansion bypasses LU factorization entirely. This enables compile-time
-evaluation when inputs are known:
+using fused multiply-add where applicable. It returns `Ok(Some(det))` for those
+dimensions and `Ok(None)` for D ≥ 5. `Matrix::<0>::zero().det_direct()` returns
+`Ok(Some(1.0))` (the empty-product convention). For D=1–4, direct formulas
+bypass LU factorization entirely. This enables compile-time evaluation when
+inputs are known:
 
 ```rust
 use la_stack::prelude::*;
@@ -227,6 +259,12 @@ rationals (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
 la-stack = { version = "0.4.3", features = ["exact"] }
 ```
 
+These routines are exact with respect to the finite binary64 values stored in
+`Matrix` and `Vector`. They treat each stored value as the exact rational number
+represented by its bits, so the exact determinant or solve stage introduces no
+further roundoff. They cannot recover information already lost when source
+values were rounded to `f64` before construction.
+
 **Determinants:**
 
 - **`det_exact()`** — returns the exact determinant as a `BigRational`
@@ -247,6 +285,12 @@ la-stack = { version = "0.4.3", features = ["exact"] }
   ties-to-even
 - **`ExactF64Conversion`** — converts an existing exact determinant or solution
   under the strict or rounded contract without repeating exact elimination
+
+For exact-to-f64 output, strict conversions use
+`UnrepresentableReason::RequiresRounding` when explicit rounding can produce a
+finite value and `UnrepresentableReason::NotFinite` otherwise. Rounded
+conversions opt into nearest-even rounding but still report `NotFinite` when no
+finite `f64` exists.
 
 ```rust,ignore
 use la_stack::prelude::*;
@@ -328,12 +372,13 @@ filter and uses fraction-free Bareiss elimination in `BigInt`.
 Because `Matrix` stores only finite entries, arithmetic range failures in the
 filter are inconclusive rather than errors and the exact fallback is total.
 
-### Adaptive precision with `det_direct_with_errbound()`
+## 🛡️ Adaptive determinant filtering (D ≤ 4)
 
 `det_direct_with_errbound()` returns a closed-form determinant together with
 the conservative absolute error bound used by the fast filter, computed from
-one shared traversal. It returns `None` when a D ≤ 4 computation may be
-affected by gradual underflow, as well as for unsupported D ≥ 5 dimensions.
+one call that evaluates the determinant once and computes its matching bound.
+It returns `None` when a D ≤ 4 computation may be affected by gradual
+underflow, as well as for unsupported D ≥ 5 dimensions.
 This method does NOT require the `exact` feature — it uses pure f64 arithmetic
 and is available by default. Use `det_errbound()` when only the bound is needed.
 The paired API enables custom adaptive-precision logic for geometric predicates:
@@ -390,28 +435,11 @@ fn main() -> Result<(), LaError> {
 }
 ```
 
-The error coefficients (`ERR_COEFF_2`, `ERR_COEFF_3`, `ERR_COEFF_4`) are the
-dimension-specific constants behind that bound. In plain terms, they answer:
-"how many machine-epsilon-sized rounding mistakes can this closed-form
-determinant formula accumulate?" To get an absolute error bound, `det_errbound()`
-multiplies the coefficient by a size measure of the matrix entries, the
-**absolute Leibniz sum**, equivalently the permanent of `|A|`:
-
-```text
-p(|A|) = sum over determinant terms of product of absolute values
-```
-
-For a 2×2 matrix `[[a, b], [c, d]]`, that scale is `|a*d| + |b*c|`, so:
-
-```text
-|det_direct(A) - det_exact(A)| <= ERR_COEFF_2 * (|a*d| + |b*c|)
-```
-
-The coefficients are not tolerances and are not meant to be tuned by callers;
-they are conservative constants derived from the fixed D ≤ 4 formulas and their
-floating-point rounding chains when gradual underflow is absent. They are
-explicit crate-root exports for
-advanced users who want to compose the same bound themselves:
+The error coefficients (`ERR_COEFF_2`, `ERR_COEFF_3`, `ERR_COEFF_4`) are
+conservative, dimension-specific constants, not caller-tunable tolerances. The
+[mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#determinants-and-certified-sign-filtering)
+documents the bound and states its range preconditions. The constants are explicit
+crate-root exports for advanced users who want to compose the same bound:
 `use la_stack::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};`. They intentionally stay
 out of the common prelude.
 
@@ -421,14 +449,19 @@ out of the common prelude.
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Finite fixed-length vector for input and computation | `try_new`, `as_array`, `into_array`, `dot`, `norm2_sq` |
 | `Matrix<D>` | `[[f64; D]; D]` | Finite square matrix for input and computation | See below |
-| `DeterminantWithErrorBound` | two private `f64` fields | Paired direct determinant and certified absolute bound | `determinant`, `absolute_error_bound` |
-| `Lu<D>` | `Matrix<D>` + pivot array | Factorization for solves/det | `solve`, `det` |
-| `Ldlt<D>` | `Matrix<D>` | Factorization for symmetric SPD/PSD solves/det | `solve`, `det` |
+| `DeterminantWithErrorBound` | Opaque validated pair | Paired direct determinant and certified absolute bound | `determinant`, `absolute_error_bound` |
+| `Lu<D>` | Inline factors + permutation | Factorization for solves/det | `solve`, `det` |
+| `Ldlt<D>` | Inline factors | No-pivot SPD factorization for solves/det | `solve`, `det` |
 | `Tolerance` | finite non-negative `f64` | Validated numerical threshold | `try_new`, `get` |
-| `LaError` | typed variants and reasons | Structured, actionable failure reporting | See error enums below |
+| `LaError` | typed variants and reasons | Structured, actionable failure reporting | See error semantics below |
 | `DeterminantSign`¹ | enum | Exact determinant sign | `as_i8` |
 
 Storage shown above reflects the intentional `f64` scalar model.
+
+For a runtime dimension from 0 through `MAX_STACK_MATRIX_DISPATCH_DIM` (7),
+`try_with_stack_matrix!` dispatches to a concrete `Matrix<N>` while preserving
+inline stack storage. Larger dimensions return `LaError::UnsupportedDimension`;
+the macro does not introduce a dynamically sized matrix representation.
 
 `Matrix<D>` key methods: `as_rows`, `into_rows`, `lu`, `ldlt`, `det`,
 `det_direct`, `det_direct_with_errbound`, `det_errbound`,
@@ -444,12 +477,13 @@ observable results.
 `Matrix::into_rows` and `Vector::into_array` consume the value and return the
 owned fixed-size arrays.
 
-`Matrix::get` returns `Option` for bounds-only access; `Matrix::try_get`
-preserves invalid coordinates in `LaError`. The single fallible `Matrix::set`
-validates both bounds and finiteness before mutating the matrix.
+`Matrix::get(row, col)` returns `None` for out-of-bounds coordinates;
+`Matrix::try_get` instead returns a structured `LaError` preserving those
+coordinates. The single fallible `Matrix::set` validates both coordinates and
+finiteness before mutating the matrix.
 
 `LaError` and its reason/location enums are non-exhaustive. Numerical
-singularity records the [`FactorizationKind`](https://docs.rs/la-stack/latest/la_stack/enum.FactorizationKind.html),
+singularity records the `FactorizationKind`,
 observed pivot magnitude, and tolerance, while exact-arithmetic singularity is
 identified separately. `LaError::NonFinite` retains the crate-wide non-finite
 contract but uses `NonFiniteOrigin`, `NonFiniteLocation`, and
@@ -572,7 +606,8 @@ For the full contributor workflow, see
 If you use this library in academic work, please cite it using
 [CITATION.cff](https://github.com/acgetchell/la-stack/blob/v0.4.3/CITATION.cff)
 (or GitHub's "Cite this repository" feature). Tagged releases are archived on
-Zenodo.
+Zenodo under the
+[all-versions concept DOI](https://doi.org/10.5281/zenodo.18158926).
 
 ## 📚 References
 
@@ -593,7 +628,7 @@ BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/
 
 [audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml
-[benchmark-provenance]: https://github.com/acgetchell/la-stack/blob/v0.4.3/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json
+[benchmark-provenance]: https://github.com/acgetchell/la-stack/blob/668daed6/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json
 [clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg
 [clippy-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml
 [lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/v0.4.3/docs/assets/bench/vs_linalg_lu_solve_median.svg

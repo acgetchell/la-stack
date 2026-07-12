@@ -3,6 +3,9 @@
 //! Exact arithmetic operations via arbitrary-precision rational numbers.
 //!
 //! This module is only compiled when the `"exact"` Cargo feature is enabled.
+//! Exactness begins with the finite binary64 values already stored in
+//! [`Matrix`] and [`Vector`]: each value is lifted losslessly to a rational.
+//! These APIs cannot recover information rounded away before construction.
 //!
 //! # Architecture
 //!
@@ -14,7 +17,7 @@
 //! `decompose_proven_finite_f64` into `mantissa × 2^exponent`, then all entries
 //! are scaled to a common `BigInt`
 //! matrix (shifting by `e - e_min`). D≤4 uses direct integer expansions; larger
-//! matrices use fraction-free Bareiss elimination entirely in `BigInt`
+//! matrices use fraction-free Bareiss elimination \[7\] entirely in `BigInt`
 //! arithmetic — no `BigRational`, no GCD, no denominator tracking. The result
 //! is `(det_int, total_exp)` where `det = det_int × 2^(D × e_min)`. `det_exact`
 //! wraps this with `big_int_exp_to_big_rational` to reconstruct a reduced
@@ -24,7 +27,7 @@
 //! directly from `det_int` (the scale factor is always positive).
 //!
 //! `det_sign_exact` adds a two-stage adaptive-precision optimisation inspired
-//! by Shewchuk's robust geometric predicates:
+//! by Shewchuk's robust geometric predicates \[8\]:
 //!
 //! 1. **Fast filter (D ≤ 4)**: compute `det_direct()` and a conservative error
 //!    bound. If `|det| > bound`, the f64 sign is provably correct — return
@@ -45,14 +48,14 @@
 //! the exact power-of-two ratio between those scales. This avoids inflating one
 //! side's integers merely because the other side has much smaller entries.
 //! Forward elimination runs entirely in `BigInt` with
-//! fraction-free Bareiss updates — no `BigRational`, no GCD
+//! fraction-free Bareiss updates \[7\] — no `BigRational`, no GCD
 //! normalisation in the `O(D³)` phase.  Once the system is upper
 //! triangular, back-substitution is performed in `BigRational`, where
 //! fractions are inherent; this phase is only `O(D²)` so the rational
 //! overhead is modest.  First-non-zero pivoting is used throughout;
 //! since all arithmetic is exact, any non-zero pivot gives the correct
-//! result (no numerical stability concern).  Every finite `f64` is
-//! exactly representable as a rational, so the result is provably correct.
+//! result (no numerical stability concern). Every finite `f64` is exactly
+//! representable as a rational, so the result is exact for the stored inputs.
 //! `solve_exact_f64` returns `Vector<D>` only when every exact component is
 //! exactly representable as finite binary64; `solve_exact_rounded_f64` returns
 //! the exact components rounded to finite binary64.
@@ -68,7 +71,7 @@
 //! path builds a `BigInt` augmented system and lifts the
 //! upper-triangular result into `BigRational` for back-substitution.
 //! See Goldberg \[10\] for background on floating-point representation
-//! and exact rational reconstruction.  Reference numbers refer to
+//! and conversion. Reference numbers refer to
 //! `REFERENCES.md`.
 //!
 //! ## Validation
@@ -1368,13 +1371,15 @@ impl<const D: usize> Matrix<D> {
     ///
     /// Returns the determinant as an exact [`BigRational`] value. Every finite
     /// `f64` is exactly representable as a rational, so the conversion is
-    /// lossless and the result is provably correct.
+    /// lossless and the result is exact for the stored binary64 entries. It
+    /// cannot recover precision lost before matrix construction.
     ///
     /// # When to use
     ///
     /// Use this when you need the exact determinant *value* — for example,
-    /// exact volume computation or distinguishing truly-degenerate simplices
-    /// from near-degenerate ones.  If you only need the *sign*, prefer
+    /// volume computation over stored coordinates or distinguishing simplices
+    /// that are exactly degenerate at those coordinates from near-degenerate
+    /// ones. If you only need the *sign*, prefer
     /// [`det_sign_exact`](Self::det_sign_exact) which has a fast f64 filter.
     ///
     /// # Examples
@@ -1485,15 +1490,17 @@ impl<const D: usize> Matrix<D> {
     /// Requires the `exact` Cargo feature.
     ///
     /// Solves `A x = b` where `A` is `self` and `b` is the given vector.
-    /// Returns the exact solution as `[BigRational; D]`.  Every finite `f64`
-    /// is exactly representable as a rational, so the conversion is lossless
-    /// and the result is provably correct.
+    /// Returns the exact solution as `[BigRational; D]`. Every finite `f64` is
+    /// exactly representable as a rational, so the conversion is lossless and
+    /// the result is exact for the stored binary64 entries. It cannot recover
+    /// precision lost before matrix or vector construction.
     ///
     /// # When to use
     ///
-    /// Use this when you need a provably correct solution — for example,
-    /// exact circumcenter computation for near-degenerate simplices where
-    /// f64 arithmetic may produce wildly wrong results.
+    /// Use this when you need a solution exact for the stored inputs — for
+    /// example, circumcenter computation over stored coordinates for
+    /// near-degenerate simplices where f64 arithmetic may produce wildly wrong
+    /// results.
     ///
     /// # Algorithm
     ///
@@ -1615,7 +1622,9 @@ impl<const D: usize> Matrix<D> {
     /// Requires the `exact` Cargo feature.
     ///
     /// Returns [`DeterminantSign::Positive`], [`DeterminantSign::Negative`], or
-    /// [`DeterminantSign::Zero`] according to the exact determinant.
+    /// [`DeterminantSign::Zero`] according to the determinant that is exact for
+    /// the stored binary64 entries. This cannot recover precision lost before
+    /// matrix construction.
     ///
     /// For D ≤ 4, a fast f64 filter is tried first: `det_direct()` is compared
     /// against a conservative error bound derived from the matrix permanent.
@@ -1626,10 +1635,11 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # When to use
     ///
-    /// Use this when the sign of the determinant must be correct regardless of
-    /// floating-point conditioning (e.g. geometric predicates on near-degenerate
-    /// configurations).  For well-conditioned matrices the fast filter resolves
-    /// the sign without touching `BigRational`, so the overhead is minimal.
+    /// Use this when the sign of the determinant over the stored entries must be
+    /// correct regardless of floating-point conditioning (e.g. geometric
+    /// predicates on near-degenerate stored coordinates). For well-conditioned
+    /// matrices the fast filter resolves the sign without touching
+    /// `BigRational`, so the overhead is minimal.
     ///
     /// # Examples
     /// ```

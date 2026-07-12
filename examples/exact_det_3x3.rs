@@ -3,8 +3,8 @@
 //! Exact determinant value for a near-singular 3×3 matrix.
 //!
 //! This example demonstrates `det_exact()` and [`ExactF64Conversion`], retaining
-//! the provably correct rational determinant before converting that same value
-//! to binary64 without repeating exact evaluation.
+//! the rational determinant exact for the stored binary64 entries before
+//! converting that same value without repeating exact evaluation.
 //!
 //! Run with: `cargo run --features exact --example exact_det_3x3`
 

@@ -371,24 +371,6 @@ pub use matrix::{DeterminantWithErrorBound, Matrix};
 pub use tolerance::{DEFAULT_SINGULAR_TOL, Tolerance};
 pub use vector::Vector;
 
-/// A finite [`Matrix`] proven exactly symmetric for LDLT factorization.
-///
-/// Mirrored entries have equal numeric values; IEEE-754 signed zeros may have
-/// different bit patterns because `+0.0 == -0.0`.
-#[must_use]
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct SymmetricMatrix<const D: usize> {
-    matrix: Matrix<D>,
-}
-
-impl<const D: usize> SymmetricMatrix<D> {
-    /// Consume the wrapper and return the underlying matrix.
-    #[inline]
-    const fn into_matrix(self) -> Matrix<D> {
-        self.matrix
-    }
-}
-
 /// Fallibly dispatch a runtime dimension to a concrete stack-allocated matrix.
 ///
 /// The macro creates a zero matrix with type `Matrix<N>` for the selected

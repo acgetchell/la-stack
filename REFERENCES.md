@@ -15,6 +15,7 @@ Tagged releases are archived on Zenodo under the all-versions concept DOI
 - CodeRabbit AI, Inc. "CodeRabbit." <https://coderabbit.ai/>.
 - KiloCode. "KiloCode AI Engineering Assistant." <https://kilocode.ai/>.
 - OpenAI. "ChatGPT." <https://openai.com/chatgpt>.
+- OpenAI. "Codex." <https://openai.com/codex/>.
 - Warp Dev, Inc. "WARP." <https://www.warp.dev/>.
 
 All AI-generated output was reviewed and/or edited by the maintainer.
@@ -62,50 +63,62 @@ matrix and RHS. After back-substitution, multiplying by the exact power-of-two s
 
 Both the determinant and solve paths convert their finite-by-construction entries via
 `decompose_proven_finite_f64`, which extracts the IEEE 754 binary64 sign, unbiased exponent,
-and significand [9] and strips trailing zeros from the significand so `|x| = m · 2^e` with
-`m` odd. The integer matrix is then assembled by shifting each mantissa left by
+and significand [9]. For nonzero `x`, it strips trailing zeros from the
+significand so `|x| = m · 2^e` with `m` odd; signed zeros use a separate zero
+component. The integer matrix is then assembled by shifting each mantissa left by
 `exp − e_min`, giving a GCD-free exact-integer starting point. Solves and D ≥ 5 determinants
 then apply Bareiss elimination; D ≤ 4 determinants use direct expansions. The test-only
 fallible wrapper `decompose_f64` verifies rejection of non-finite raw scalars, while the
 test-only `f64_to_big_rational` helper packages the same decomposition into a single
-`BigRational`. See Goldberg [10] for background on IEEE 754 representation and exact rational
-reconstruction.
+`BigRational`. See Goldberg [10] for background on floating-point representation and
+conversion.
 
-### LDL^T factorization (symmetric SPD/PSD)
+### LDLᵀ factorization (exactly symmetric positive-definite inputs)
 
-The LDL^T (often abbreviated "LDLT") implementation in `la-stack` is intended for symmetric positive
-definite (SPD) and positive semi-definite (PSD) matrices (e.g. Gram matrices), and does not perform
-pivoting.
+The no-pivot LDLT implementation targets `A = L D Lᵀ` for exactly symmetric
+positive-definite inputs [4-5, 11-12]. Successful construction requires every
+computed diagonal pivot to be positive and greater than the caller's tolerance.
+Computed zero and tolerance-small positive pivots are therefore part of the
+typed diagnostic domain, not returned in a usable factorization. Because the
+pivots are computed in binary64, a successful factorization is not an exact
+certificate that the represented matrix is positive definite.
 
-For background on the SPD/PSD setting, see [4-5]. For pivoted variants used for symmetric *indefinite*
-matrices, see [6].
+For pivoted variants used for symmetric *indefinite* matrices, see [6, 11-12].
 
 ### LU decomposition (Gaussian elimination with partial pivoting)
 
-The LU implementation in `la-stack` follows the standard Gaussian elimination / LU factorization
-approach with partial pivoting for numerical stability.
+The LU implementation targets `P A = L U` and uses partial pivoting: each step
+selects the remaining entry of largest magnitude in the active column. Partial
+pivoting is a practical stability strategy, not an unconditional accuracy
+guarantee; worst-case growth and average-case behavior are distinct concerns.
 
-See references [1-3] below.
+See [1-3, 11-12] for stability analysis, finite-precision behavior, and standard
+algorithmic background.
 
 ## References
 
 1. Trefethen, Lloyd N., and Robert S. Schreiber. "Average-case stability of Gaussian elimination."
    *SIAM Journal on Matrix Analysis and Applications* 11.3 (1990): 335–360.
+   [DOI](https://doi.org/10.1137/0611023) ·
    [PDF](https://people.maths.ox.ac.uk/trefethen/publication/PDF/1990_44.pdf)
 2. Businger, P. A. "Monitoring the Numerical Stability of Gaussian Elimination."
-   *Numerische Mathematik* 16 (1970/71): 360–361.
-   [Full text](https://eudml.org/doc/132040)
+   *Numerische Mathematik* 16.4 (1971): 360–361.
+   [DOI](https://doi.org/10.1007/BF02165006) · [Full text](https://eudml.org/doc/132040)
 3. Huang, Han, and K. Tikhomirov. "Average-case analysis of the Gaussian elimination with partial pivoting."
    *Probability Theory and Related Fields* 189 (2024): 501–567.
-   [Open-access PDF](https://link.springer.com/article/10.1007/s00440-024-01276-2) (also: [arXiv:2206.01726](https://arxiv.org/abs/2206.01726))
-4. Cholesky, Andre-Louis. "On the numerical solution of systems of linear equations"
-   (manuscript dated 2 Dec 1910; published 2005).
-   Scan + English analysis: [BibNum](https://www.bibnum.education.fr/mathematiques/algebre/sur-la-resolution-numerique-des-systemes-d-equations-lineaires)
-5. Brezinski, Claude. "La methode de Cholesky." (2005).
-   [PDF](https://eudml.org/doc/252115)
-6. Bunch, J. R., L. Kaufman, and B. N. Parlett. "Decomposition of a Symmetric Matrix."
-   *Numerische Mathematik* 27 (1976/1977): 95–110.
-   [Full text](https://eudml.org/doc/132435)
+   [DOI](https://doi.org/10.1007/s00440-024-01276-2) ·
+   [Open-access article](https://link.springer.com/article/10.1007/s00440-024-01276-2) ·
+   [arXiv:2206.01726](https://arxiv.org/abs/2206.01726)
+4. Cholesky, André-Louis. "Sur la résolution numérique des systèmes d'équations linéaires."
+   *Bulletin de la Sabix* 39 (2005): 81–95. Manuscript dated 2 December 1910.
+   [DOI](https://doi.org/10.4000/sabix.529)
+5. Brezinski, Claude. "La méthode de Cholesky."
+   *Revue d'histoire des mathématiques* 11.2 (2005): 205–238.
+   [DOI](https://doi.org/10.24033/rhm.30) ·
+   [Full text](https://www.numdam.org/articles/10.24033/rhm.30/)
+6. Bunch, James R., Linda Kaufman, and Beresford N. Parlett. "Decomposition of a Symmetric Matrix."
+   *Numerische Mathematik* 27 (1976): 95–109.
+   [DOI](https://doi.org/10.1007/BF01399088) · [Full text](https://eudml.org/doc/132435)
 7. Bareiss, Erwin H. "Sylvester's Identity and Multistep Integer-Preserving Gaussian
    Elimination." *Mathematics of Computation* 22.103 (1968): 565–578.
    [DOI](https://doi.org/10.1090/S0025-5718-1968-0226829-0) ·
@@ -123,6 +136,15 @@ See references [1-3] below.
 10. Goldberg, David. "What Every Computer Scientist Should Know About Floating-Point
     Arithmetic." *ACM Computing Surveys* 23.1 (1991): 5–48.
     [DOI](https://doi.org/10.1145/103162.103163) ·
-    [PDF](https://www.validlab.com/goldberg/paper.pdf)
-    Comprehensive survey of IEEE 754 representation, rounding, and exact rational
-    reconstruction of floating-point values.
+    [Authorized HTML reprint](https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html)
+    Comprehensive survey of floating-point representation, rounding, and conversion.
+11. Higham, Nicholas J. *Accuracy and Stability of Numerical Algorithms*. 2nd ed.
+    Society for Industrial and Applied Mathematics, 2002.
+    [DOI](https://doi.org/10.1137/1.9780898718027)
+12. Golub, Gene H., and Charles F. Van Loan. *Matrix Computations*. 4th ed.
+    Johns Hopkins University Press, 2013.
+    [DOI](https://doi.org/10.56021/9781421407944) ·
+    [Publisher record](https://www.press.jhu.edu/books/title/10678/matrix-computations)
+13. Kalibera, Tomas, and Richard Jones. "Rigorous Benchmarking in Reasonable Time."
+    *Proceedings of the 2013 International Symposium on Memory Management* (ISMM '13),
+    2013: 63–74. [DOI](https://doi.org/10.1145/2464157.2464160)
