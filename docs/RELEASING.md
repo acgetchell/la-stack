@@ -14,6 +14,10 @@ to crates.io.
 
 ## Conventions and environment
 
+The current MSRV and pinned release-validation toolchain are Rust 1.97.0. Keep
+`Cargo.toml`, `rust-toolchain.toml`, and `clippy.toml` aligned whenever a future
+release deliberately changes that baseline.
+
 Set these variables to avoid repeating the version string:
 
 ```bash

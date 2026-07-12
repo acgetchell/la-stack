@@ -1,6 +1,6 @@
 # Clippy configuration for the la-stack crate.
 
 # Keep lint behavior aligned with Cargo.toml and rust-toolchain.toml.
-msrv = "1.96.0"
+msrv = "1.97.0"
 
 # Lint levels are owned by Cargo.toml.

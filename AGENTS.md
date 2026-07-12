@@ -202,6 +202,9 @@ When user requests commit message generation:
 
 ### Rust
 
+- The current MSRV and pinned contributor/CI toolchain are Rust 1.97.0. Keep
+  `Cargo.toml`, `rust-toolchain.toml`, and `clippy.toml` aligned when that
+  baseline changes deliberately.
 - Prefer borrowed APIs by default:
   take references (`&T`, `&mut T`, `&[T]`) as arguments and return borrowed views (`&T`, `&[T]`) when possible.
   Only take ownership or return `Vec`/allocated data when required.

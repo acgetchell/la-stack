@@ -2089,6 +2089,20 @@ mod tests {
     }
 
     #[test]
+    fn decompose_f64_normalizes_mixed_subnormal_mantissa() {
+        let value = f64::from_bits(0x000C_0000_0000_0000);
+        assert!(value.is_subnormal());
+        assert_eq!(
+            decompose_f64(value),
+            Ok(Component::NonZero {
+                mantissa: NonZeroU64::new(3).unwrap(),
+                exponent: -1024,
+                is_negative: false,
+            })
+        );
+    }
+
+    #[test]
     fn decompose_f64_power_of_two() {
         assert_eq!(
             decompose_f64(1024.0),
@@ -2110,6 +2124,10 @@ mod tests {
         fn finite_f64_round_trips_through_exact_decomposition(bits in any::<u64>()) {
             let value = f64::from_bits(bits);
             prop_assume!(value.is_finite());
+
+            if let Ok(Component::NonZero { mantissa, .. }) = decompose_f64(value) {
+                prop_assert_eq!(mantissa.get() & 1, 1);
+            }
 
             let exact = f64_to_big_rational(value);
             let reconstructed = exact_rational_to_finite_f64(&exact, None);
@@ -3553,8 +3571,9 @@ mod tests {
         for &v in &values {
             let r = f64_to_big_rational(v);
             let back = r.to_f64().expect("round-trip to_f64 failed");
-            assert!(
-                v.to_bits() == back.to_bits(),
+            assert_eq!(
+                v.to_bits(),
+                back.to_bits(),
                 "round-trip failed for {v}: got {back}"
             );
         }
