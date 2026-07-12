@@ -31,10 +31,12 @@ use crate::{ArithmeticOperation, FactorizationKind, LaError, Tolerance};
 ///
 /// This factorization is **not** a general-purpose symmetric-indefinite LDLT (no pivoting).
 /// It assumes the input matrix is exactly symmetric and numerically positive
-/// definite under the caller's absolute pivot tolerance. Computed zero and
-/// tolerance-small positive pivots return [`LaError::Singular`]. Because pivots
-/// are computed in binary64, success is not an exact proof that the stored
-/// matrix is positive definite.
+/// definite under the caller's absolute pivot tolerance. An uncoupled computed
+/// zero or a tolerance-small positive pivot returns [`LaError::Singular`]; a
+/// computed zero with non-zero remaining coupling returns
+/// [`LaError::NotPositiveSemidefinite`]. Because pivots are computed in
+/// binary64, success is not an exact proof that the stored matrix is positive
+/// definite.
 ///
 /// # Preconditions
 /// The source matrix passed to [`Matrix::ldlt`](crate::Matrix::ldlt) must be

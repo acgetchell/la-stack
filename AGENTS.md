@@ -430,7 +430,8 @@ When creating or updating issues:
   - `src/vector.rs`: `Vector<const D: usize>` (`[f64; D]`)
   - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `try_get`, `set`, `inf_norm`, `det`, `det_direct`)
   - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve`, `det`)
-  - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for symmetric SPD/PSD matrices (`solve`, `det`)
+  - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for exactly
+    symmetric positive-definite matrices (`solve`, `det`)
   - `src/exact.rs`: exact arithmetic behind `features = ["exact"]`:
     - Determinants: `det_exact()`, strict `det_exact_f64()`, rounded
       `det_exact_rounded_f64()`, and `det_sign_exact()` via a scaled `BigInt`

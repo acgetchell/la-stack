@@ -198,7 +198,7 @@ required by `Matrix::ldlt`.
 | General floating solve | `lu(tol)` then `solve` | Approximate; absolute pivot policy |
 | Positive-definite floating solve | `ldlt(tol)` then `solve` | Exact symmetry; computed pivots must exceed tolerance; success is not a certificate |
 | Floating determinant, any `D` | `det` | No certified bound; zero is not exact singularity |
-| `D ≤ 4` error-bounded determinant/sign test | `det_direct_with_errbound` | Sign is certified only when `|estimate| > bound`; otherwise inconclusive |
+| `D ≤ 4` error-bounded determinant/sign test | `det_direct_with_errbound` | Sign is certified when estimate magnitude exceeds bound; otherwise inconclusive |
 | Exact determinant sign | `det_sign_exact` | Exact for stored binary64 entries |
 | Exact determinant value or solve | `det_exact`, `solve_exact` | Exact for represented inputs |
 | Binary64 output from an exact result | Strict or rounded conversions | Strict conversion forbids rounding |

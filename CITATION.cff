@@ -23,6 +23,7 @@ keywords:
   - "robust-predicates"
 abstract: >-
   la-stack is a Rust library providing fast, stack-allocated linear algebra primitives
-  and factorization routines (LU with partial pivoting and LDLT for symmetric SPD/PSD matrices)
+  and factorization routines (LU with partial pivoting and no-pivot LDLT for exactly
+  symmetric positive-definite matrices)
   for fixed small dimensions using const generics.
 license: BSD-3-Clause

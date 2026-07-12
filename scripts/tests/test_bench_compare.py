@@ -456,13 +456,23 @@ def test_collect_comparisons_records_each_missing_side_in_registry_order(tmp_pat
     assert (first_three[2].missing_current, first_three[2].missing_baseline) == (True, True)
 
 
-def test_v043_adapter_requires_bound_only_baselines_but_allows_missing_paired_rows(tmp_path: Path) -> None:
+def _write_v043_exact_comparison_samples(
+    criterion_dir: Path,
+    *,
+    missing_current: frozenset[tuple[str, str]] = frozenset(),
+) -> None:
     unavailable = bench_compare._V0_4_3_UNAVAILABLE_BASELINE_ROWS
     for group, benches in bench_compare.EXACT_GROUPS.items():
         for bench in benches:
-            _write_estimates(tmp_path / group / bench / "new" / "estimates.json", "median", 10.0)
-            if (group, bench) not in unavailable:
-                _write_estimates(tmp_path / group / bench / "v0.4.3" / "estimates.json", "median", 20.0)
+            row = (group, bench)
+            if row not in missing_current:
+                _write_estimates(criterion_dir / group / bench / "new" / "estimates.json", "median", 10.0)
+            if row not in unavailable:
+                _write_estimates(criterion_dir / group / bench / "v0.4.3" / "estimates.json", "median", 20.0)
+
+
+def test_v043_adapter_requires_bound_only_baselines_but_allows_missing_paired_rows(tmp_path: Path) -> None:
+    _write_v043_exact_comparison_samples(tmp_path)
 
     collection = bench_compare._collect_comparisons(
         tmp_path,
@@ -476,6 +486,27 @@ def test_v043_adapter_requires_bound_only_baselines_but_allows_missing_paired_ro
     comparison_rows = {(comparison.group, comparison.bench) for comparison in collection.comparisons}
     assert all((f"exact_d{dimension}", "det_errbound") in comparison_rows for dimension in (2, 3, 4))
     assert all((f"exact_d{dimension}", "det_direct_with_errbound") not in comparison_rows for dimension in (2, 3, 4))
+
+
+def test_v043_adapter_reports_missing_current_for_unavailable_paired_row(tmp_path: Path) -> None:
+    target = ("exact_d2", "det_direct_with_errbound")
+    _write_v043_exact_comparison_samples(tmp_path, missing_current=frozenset({target}))
+
+    collection = bench_compare._collect_comparisons(
+        tmp_path,
+        "v0.4.3",
+        "median",
+        suite="exact",
+        policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
+    )
+
+    assert len(collection.gaps) == 1
+    gap = collection.gaps[0]
+    assert gap.suite == "exact"
+    assert gap.group == target[0]
+    assert gap.bench == target[1]
+    assert gap.missing_current
+    assert not gap.missing_baseline
 
 
 def test_collect_comparisons_reports_wholly_absent_selected_suite(tmp_path: Path) -> None:
