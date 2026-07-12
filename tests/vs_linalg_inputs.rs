@@ -10,6 +10,8 @@ use faer::perm::PermRef;
 use faer::{Mat, Side};
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 
+#[cfg(feature = "exact")]
+use la_stack::ExactF64Conversion;
 use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
 
 #[path = "../benches/common/vs_linalg.rs"]
@@ -283,11 +285,24 @@ fn stress_inputs_exercise_pivoting_conditioning_and_scaled_products() {
 
     let pivoting_rows = make_pivoting_matrix_rows::<8>();
     assert!(pivoting_rows[1][0].abs() > pivoting_rows[0][0].abs());
-    let pivoting_lu = Matrix::<8>::try_from_rows(pivoting_rows)
-        .unwrap()
-        .lu(zero_tolerance)
-        .unwrap();
-    assert!(pivoting_lu.det().unwrap().is_finite());
+    let pivoting = Matrix::<8>::try_from_rows(pivoting_rows).unwrap();
+    let pivoting_lu = pivoting.lu(zero_tolerance).unwrap();
+    let pivoting_det = pivoting_lu.det().unwrap();
+    assert!(pivoting_det.is_finite());
+
+    #[cfg(feature = "exact")]
+    {
+        // The fixture is the shared baseline matrix with one row swap, so its
+        // exact determinant is the negation of the baseline determinant. This
+        // Bareiss-backed oracle is independent of the timed floating LU path.
+        let baseline = Matrix::<8>::try_from_rows(make_matrix_rows::<8>()).unwrap();
+        let expected = -baseline.det_exact().unwrap();
+        assert_close(
+            "pivoting LU determinant against exact row-swap oracle",
+            pivoting_det,
+            expected.to_rounded_f64().unwrap(),
+        );
+    }
 
     let ill_conditioned = Matrix::<8>::try_from_rows(make_ill_conditioned_matrix_rows()).unwrap();
     let expected_ill_conditioned_det = f64::from_bits((1023_u64 - 448) << 52);

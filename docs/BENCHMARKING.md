@@ -56,8 +56,9 @@ factorization in the dependency version used here.
 **`exact`** (`benches/exact.rs`) measures exact-arithmetic methods
 (`det_exact`, `solve_exact`, `det_sign_exact`, strict `*_result` conversions,
 and lossy `*_rounded_f64` conversions) alongside the f64 `det` baseline across
-D=2-5 and `det_direct` across its supported D=2-4 range. Use this suite to
-understand exact-arithmetic cost and track optimization progress.
+D=2-5. Its supported D=2-4 range also includes `det_direct`, the paired
+`det_direct_with_errbound`, and the bound-only `det_errbound`. Use this suite
+to understand exact-arithmetic cost and track optimization progress.
 
 ## Common Workflows
 
@@ -90,6 +91,11 @@ not patch either library implementation. Comparison builds cap lint diagnostics
 at warning for both revisions because the current manifest's lint policy may
 reject historical source that predates a lint, even though that source remains
 valid benchmark input.
+
+The paired `det_direct_with_errbound` API postdates v0.4.3, so its D=2-4
+baseline rows remain explicitly unavailable in that comparison. The older
+bound-only `det_errbound` API is source-compatible and remains a required
+shared-harness baseline.
 
 The v0.4.3 LU/LDLT balanced-range determinant paths return an incorrect zero,
 so their two D=8 stress rows are deliberately not timed as baselines. Reports
@@ -179,7 +185,7 @@ coverage or provenance aborts publication. Use `--allow-partial` only for
 exploratory CSV/SVG output; it cannot update README and its sidecar explicitly
 marks measurement provenance unavailable.
 
-See `scripts/criterion_dim_plot.py --help` for plotting options.
+See `uv run --locked criterion-dim-plot --help` for plotting options.
 
 ### Create The Release Performance Report
 
@@ -247,6 +253,9 @@ The README table uses `median.point_estimate` in nanoseconds. Lower is better,
 but point-estimate ratios alone are descriptive and do not establish a
 statistically supported performance difference. Preserve Criterion confidence
 intervals or repeat controlled runs when making a stronger claim.
+For experimental-design background on controlled repetitions and uncertainty,
+see [REFERENCES.md](../REFERENCES.md) \[13\]; these workflows do not claim to
+implement every recommendation in that study.
 
 All three crates receive equivalent deterministic inputs for a given dimension:
 
@@ -341,7 +350,8 @@ Before timing begins, every fixed, adversarial, and corpus input is consumed int
 a private-field `ValidatedExactInput` after checks by an independent exact
 oracle. Timed and registration helpers accept only that proof-bearing wrapper. A
 factorial-time Leibniz determinant over exact rational reconstructions verifies
-determinant values and signs; exact residuals verify `A x = b`; and
+determinant values and signs, including each direct determinant's certified
+absolute bound; exact residuals verify `A x = b`; and
 strict/rounded binary64 results are checked for their exact bits, typed reason,
 and first failing component. These checks run outside timed Criterion closures.
 Any disagreement or unexpected error fails setup instead of becoming an

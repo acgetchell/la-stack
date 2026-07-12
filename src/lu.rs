@@ -1,6 +1,11 @@
 #![forbid(unsafe_code)]
 
 //! LU decomposition and solves.
+//!
+//! The implementation computes `P A = L U` with partial pivoting. Partial
+//! pivoting is a practical finite-precision strategy rather than an
+//! unconditional accuracy guarantee; see `REFERENCES.md` \[1-3, 11-12\] for
+//! stability analysis and standard algorithmic background.
 
 use core::hint::cold_path;
 
@@ -13,6 +18,8 @@ use crate::{ArithmeticOperation, FactorizationKind, LaError, Tolerance};
 ///
 /// `Lu<0>` represents the empty factorization. Its determinant is the empty
 /// product `1.0`, and solving against [`Vector<0>`] returns [`Vector<0>`].
+/// Numerical solves and determinants remain subject to binary64 rounding and
+/// matrix conditioning; this type does not provide a certified error bound.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Lu<const D: usize> {

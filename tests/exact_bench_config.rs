@@ -40,10 +40,20 @@ fn validate_baseline_and_random_corpus<const D: usize>() {
 /// Report whether `det_sign_exact` can certify this fixture through its direct filter.
 ///
 /// Both a missing bound and a direct-path error select the exact fallback.
+#[cfg(not(la_stack_v0_4_3_api))]
 fn fast_filter_is_conclusive<const D: usize>(input: ExactInput<D>) -> bool {
     match input.matrix.det_direct_with_errbound() {
         Ok(Some(estimate)) => estimate.determinant().abs() > estimate.absolute_error_bound(),
         Ok(None) | Err(_) => false,
+    }
+}
+
+/// Use the separate v0.4.3 determinant and bound APIs for the same filter test.
+#[cfg(la_stack_v0_4_3_api)]
+fn fast_filter_is_conclusive<const D: usize>(input: ExactInput<D>) -> bool {
+    match (input.matrix.det_direct(), input.matrix.det_errbound()) {
+        (Ok(Some(determinant)), Ok(Some(bound))) => determinant.abs() > bound,
+        (Ok(None) | Err(_), _) | (_, Ok(None) | Err(_)) => false,
     }
 }
 

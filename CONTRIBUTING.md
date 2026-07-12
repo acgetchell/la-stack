@@ -69,6 +69,7 @@ Use the existing canonical documents instead of duplicating their guidance:
 |-------|---------------------|
 | Agent rules and repository invariants | [`AGENTS.md`](AGENTS.md) |
 | User-facing API, examples, and project scope | [`README.md`](README.md) |
+| Mathematical basis and numerical validity | [`docs/mathematical_basis.md`](docs/mathematical_basis.md) |
 | Package metadata, features, and dependencies | [`Cargo.toml`](Cargo.toml) |
 | Commands and validation workflow | [`justfile`](justfile), `just --list` |
 | Python support tooling | [`scripts/README.md`](scripts/README.md) |

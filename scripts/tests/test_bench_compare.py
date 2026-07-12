@@ -236,10 +236,13 @@ class TestGroupHeading:
         assert bench_compare._group_heading("something_else") == "something_else"
 
 
-def test_exact_registry_only_tracks_supported_direct_determinants() -> None:
+def test_exact_registry_only_tracks_supported_direct_determinant_filters() -> None:
+    filter_benches = ["det_direct", "det_direct_with_errbound", "det_errbound"]
     for dimension in (2, 3, 4):
-        assert "det_direct" in bench_compare.EXACT_GROUPS[f"exact_d{dimension}"]
-    assert "det_direct" not in bench_compare.EXACT_GROUPS["exact_d5"]
+        benches = bench_compare.EXACT_GROUPS[f"exact_d{dimension}"]
+        start = benches.index("det_direct")
+        assert benches[start : start + len(filter_benches)] == filter_benches
+    assert not set(filter_benches) & set(bench_compare.EXACT_GROUPS["exact_d5"])
 
 
 # ---------------------------------------------------------------------------
@@ -447,10 +450,63 @@ def test_collect_comparisons_records_each_missing_side_in_registry_order(tmp_pat
 
     collection = bench_compare._collect_comparisons(tmp_path, "last", "median", suite="exact")
     first_three = collection.gaps[:3]
-    assert [gap.bench for gap in first_three] == ["det", "det_direct", "det_exact"]
+    assert [gap.bench for gap in first_three] == ["det", "det_direct", "det_direct_with_errbound"]
     assert (first_three[0].missing_current, first_three[0].missing_baseline) == (False, True)
     assert (first_three[1].missing_current, first_three[1].missing_baseline) == (True, False)
     assert (first_three[2].missing_current, first_three[2].missing_baseline) == (True, True)
+
+
+def _write_v043_exact_comparison_samples(
+    criterion_dir: Path,
+    *,
+    missing_current: frozenset[tuple[str, str]] = frozenset(),
+) -> None:
+    unavailable = bench_compare._V0_4_3_UNAVAILABLE_BASELINE_ROWS
+    for group, benches in bench_compare.EXACT_GROUPS.items():
+        for bench in benches:
+            row = (group, bench)
+            if row not in missing_current:
+                _write_estimates(criterion_dir / group / bench / "new" / "estimates.json", "median", 10.0)
+            if row not in unavailable:
+                _write_estimates(criterion_dir / group / bench / "v0.4.3" / "estimates.json", "median", 20.0)
+
+
+def test_v043_adapter_requires_bound_only_baselines_but_allows_missing_paired_rows(tmp_path: Path) -> None:
+    _write_v043_exact_comparison_samples(tmp_path)
+
+    collection = bench_compare._collect_comparisons(
+        tmp_path,
+        "v0.4.3",
+        "median",
+        suite="exact",
+        policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
+    )
+
+    assert collection.gaps == []
+    comparison_rows = {(comparison.group, comparison.bench) for comparison in collection.comparisons}
+    assert all((f"exact_d{dimension}", "det_errbound") in comparison_rows for dimension in (2, 3, 4))
+    assert all((f"exact_d{dimension}", "det_direct_with_errbound") not in comparison_rows for dimension in (2, 3, 4))
+
+
+def test_v043_adapter_reports_missing_current_for_unavailable_paired_row(tmp_path: Path) -> None:
+    target = ("exact_d2", "det_direct_with_errbound")
+    _write_v043_exact_comparison_samples(tmp_path, missing_current=frozenset({target}))
+
+    collection = bench_compare._collect_comparisons(
+        tmp_path,
+        "v0.4.3",
+        "median",
+        suite="exact",
+        policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
+    )
+
+    assert len(collection.gaps) == 1
+    gap = collection.gaps[0]
+    assert gap.suite == "exact"
+    assert gap.group == target[0]
+    assert gap.bench == target[1]
+    assert gap.missing_current
+    assert not gap.missing_baseline
 
 
 def test_collect_comparisons_reports_wholly_absent_selected_suite(tmp_path: Path) -> None:
@@ -762,6 +818,10 @@ def test_read_schema2_provenance_records_versions_dirty_source_and_both_gates(tm
     assert "d8/la_stack_det_from_lu_balanced_range" in rendered
     assert "d8/la_stack_det_from_ldlt_balanced_range" in rendered
     assert "exact determinant is one" in rendered
+    assert "exact_d2/det_direct_with_errbound" in rendered
+    assert "exact_d3/det_direct_with_errbound" in rendered
+    assert "exact_d4/det_direct_with_errbound" in rendered
+    assert "the comparable `det_errbound` baselines remain required" in rendered
     assert bench_compare._comparison_policy("release-signal", provenance) == bench_compare.ComparisonPolicy(
         scope="release-signal",
         baseline_api_compatibility="la_stack_v0_4_3_api",

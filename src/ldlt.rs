@@ -2,9 +2,12 @@
 
 //! LDLT factorization and solves.
 //!
-//! This module provides a stack-allocated LDLT factorization (`A = L D Lᵀ`) intended for
-//! symmetric positive definite (SPD) and positive semi-definite (PSD) matrices (e.g. Gram
-//! matrices) without pivoting.
+//! This module provides a stack-allocated LDLT factorization (`A = L D Lᵀ`)
+//! without pivoting. Successful factors require an exactly symmetric input and
+//! every computed diagonal pivot to be positive and above the caller's
+//! tolerance. Computed zero and tolerance-small positive pivots are diagnosed
+//! rather than returned in a usable factor. See `REFERENCES.md` \[4-6, 11-12\] for
+//! Cholesky/LDLT background and pivoted symmetric-indefinite alternatives.
 //!
 //! # Preconditions
 //! The input matrix must be **symmetric**.  This is a correctness contract, not a hint:
@@ -16,17 +19,24 @@
 
 use core::hint::cold_path;
 
+use crate::matrix::SymmetricMatrix;
 use crate::scaled_product::{RangeCheckedProduct, ScaledProduct, range_checked_product};
 use crate::vector::Vector;
-use crate::{ArithmeticOperation, FactorizationKind, LaError, SymmetricMatrix, Tolerance};
+use crate::{ArithmeticOperation, FactorizationKind, LaError, Tolerance};
 
-/// LDLT factorization (`A = L D Lᵀ`) for symmetric positive (semi)definite matrices.
+/// LDLT factorization (`A = L D Lᵀ`) for exactly symmetric positive-definite matrices.
 ///
 /// `Ldlt<0>` represents the empty factorization. Its determinant is the empty
 /// product `1.0`, and solving against [`Vector<0>`] returns [`Vector<0>`].
 ///
 /// This factorization is **not** a general-purpose symmetric-indefinite LDLT (no pivoting).
-/// It assumes the input matrix is symmetric and (numerically) SPD/PSD.
+/// It assumes the input matrix is exactly symmetric and numerically positive
+/// definite under the caller's absolute pivot tolerance. An uncoupled computed
+/// zero or a tolerance-small positive pivot returns [`LaError::Singular`]; a
+/// computed zero with non-zero remaining coupling returns
+/// [`LaError::NotPositiveSemidefinite`]. Because pivots are computed in
+/// binary64, success is not an exact proof that the stored matrix is positive
+/// definite.
 ///
 /// # Preconditions
 /// The source matrix passed to [`Matrix::ldlt`](crate::Matrix::ldlt) must be
@@ -235,7 +245,8 @@ impl<const D: usize> Ldlt<D> {
 
     /// Determinant of the original matrix.
     ///
-    /// For SPD/PSD matrices, this is the product of the diagonal terms of `D`.
+    /// For a successfully constructed factorization, this is the product of
+    /// the diagonal terms of `D`.
     ///
     /// # Examples
     /// ```

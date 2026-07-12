@@ -493,9 +493,9 @@ fn assert_approximate_determinant(actual: f64, exact: &BigRational, operation: &
 /// Validate the floating-point determinant operations used by Criterion.
 ///
 /// This runs during setup, outside timed closures. The deterministic `det` and
-/// `det_direct` results are compared with the independent Leibniz oracle; on
-/// current revisions the combined direct result is additionally checked
-/// against its certified absolute bound.
+/// `det_direct` results are compared with the independent Leibniz oracle, and
+/// `det_errbound` must certify the observed direct error. On current revisions,
+/// the paired result must also match the separate determinant and bound calls.
 ///
 /// # Panics
 ///
@@ -513,11 +513,24 @@ pub fn validate_f64_determinant_benchmarks<const D: usize>(input: &ValidatedExac
         .matrix()
         .det_direct()
         .or_abort("direct f64 determinant oracle check");
+    let standalone_bound = input
+        .matrix()
+        .det_errbound()
+        .or_abort("standalone determinant error-bound oracle check");
     if D <= 4 {
         let Some(direct) = direct else {
             panic!("det_direct must support benchmark dimension {D}");
         };
+        let Some(standalone_bound) = standalone_bound else {
+            panic!("det_errbound must support benchmark dimension {D}");
+        };
         assert_approximate_determinant(direct, &exact, "direct f64 determinant");
+        let observed_error = (rational_from_f64(direct) - &exact).abs();
+        let certified_bound = rational_from_f64(standalone_bound);
+        assert!(
+            observed_error <= certified_bound,
+            "direct determinant error {observed_error} exceeds standalone certified bound {certified_bound}",
+        );
 
         #[cfg(not(la_stack_v0_4_3_api))]
         {
@@ -529,19 +542,21 @@ pub fn validate_f64_determinant_benchmarks<const D: usize>(input: &ValidatedExac
                 panic!("the baseline fixture must have a certified D={D} determinant bound");
             };
             assert_eq!(estimate.determinant().to_bits(), direct.to_bits());
+            assert_eq!(
+                estimate.absolute_error_bound().to_bits(),
+                standalone_bound.to_bits(),
+            );
             assert!(
                 estimate.determinant().abs() > estimate.absolute_error_bound(),
                 "the headline D={D} det_sign_exact benchmark must exercise the fast filter",
             );
-            let observed_error = (rational_from_f64(direct) - &exact).abs();
-            let certified_bound = rational_from_f64(estimate.absolute_error_bound());
-            assert!(
-                observed_error <= certified_bound,
-                "direct determinant error {observed_error} exceeds certified bound {certified_bound}",
-            );
         }
     } else {
         assert!(direct.is_none(), "det_direct unexpectedly supports D={D}");
+        assert!(
+            standalone_bound.is_none(),
+            "det_errbound unexpectedly supports D={D}",
+        );
 
         #[cfg(not(la_stack_v0_4_3_api))]
         assert!(
