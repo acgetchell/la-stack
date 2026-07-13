@@ -20,6 +20,7 @@ from postprocess_changelog import (
     _process_code_fence,
     _reflow_line,
     _squash_heading_parts,
+    _strip_dependabot_metadata,
     normalize_entry_headings_text,
     postprocess,
     postprocess_text,
@@ -84,6 +85,45 @@ class TestStripTrailingBlanks:
         postprocess(f)
 
         assert f.read_text(encoding="utf-8") == "\n"
+
+
+class TestDependabotMetadata:
+    def test_strips_yaml_footer_from_commit_body(self) -> None:
+        content = (
+            "- Update setuptools [`abcdef0`](https://example.com/commit/abcdef0)\n\n"
+            "  Updates setuptools to 83.0.0\n\n"
+            "---\n\n"
+            "  updated-dependencies:\n\n"
+            "- dependency-name: setuptools\n"
+            "  dependency-version: 83.0.0\n"
+            "  dependency-type: direct:development\n"
+            "  ...\n"
+            "- Next entry\n"
+        )
+
+        assert _strip_dependabot_metadata(content) == (
+            "- Update setuptools [`abcdef0`](https://example.com/commit/abcdef0)\n\n  Updates setuptools to 83.0.0\n\n- Next entry\n"
+        )
+
+    def test_preserves_unrelated_thematic_break(self) -> None:
+        content = "- Entry\n\n---\n\nAdditional context\n"
+
+        assert _strip_dependabot_metadata(content) == content
+
+    def test_postprocess_text_strips_dependabot_footer(self) -> None:
+        content = "- Update setuptools\n\n---\n\nupdated-dependencies:\n- dependency-name: setuptools\n  dependency-version: 83.0.0\n...\n\n- Next entry\n"
+
+        result = postprocess_text(content)
+
+        assert "updated-dependencies:" not in result
+        assert result == "- Update setuptools\n- Next entry\n"
+
+    def test_postprocess_text_preserves_dependabot_markers_inside_yaml_fence(self) -> None:
+        fenced_example = "```yaml\n---\nupdated-dependencies:\n- dependency-name: setuptools\n...\n```"
+
+        result = postprocess_text(f"Example metadata:\n\n{fenced_example}\n")
+
+        assert fenced_example in result
 
 
 class TestListContinuationIndent:

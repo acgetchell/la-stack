@@ -1,13 +1,18 @@
 {
   "artifact": "README vs_linalg dimension plot",
-  "artifact_files": {
-    "csv_sha256": "9422bc1f7000b8c7d4c009306c7d5f1e7ac73011189e5611ca7446054ad948b9",
-    "svg_sha256": "00a08cf79a7193d88563c6f07f6d5c351d3426020b26a358355393f2b9f47894"
-  },
   "criterion": {
-    "benchmark_command": "unavailable",
-    "confidence_interval_configuration": "unavailable; bounds are preserved in the CSV",
-    "criterion_dependency": "unavailable",
+    "benchmark_command": [
+      "cargo",
+      "bench",
+      "--locked",
+      "--features",
+      "bench",
+      "--bench",
+      "vs_linalg",
+      "--",
+      "(la_stack_lu_solve|nalgebra_lu_solve|faer_lu_solve)$"
+    ],
+    "criterion_dependency": "0.8.2",
     "dimensions": [
       2,
       3,
@@ -24,13 +29,32 @@
     "statistic": "median"
   },
   "measurement": {
-    "reason": "the v0.4.3 assets predate deterministic measurement-provenance capture",
-    "status": "unavailable"
+    "cargo_lock_sha256": "0c275998d6fe18f8b4def36611598860e96c250303ba459da280ed64e2afd3cd",
+    "commit": "e736c5fda155ef23c8712f89ae15bf5369ff3787",
+    "cpu": "arm",
+    "git_clean": false,
+    "git_status_sha256": "a367ed1608bcdea33eb781794fde643f01a6a280f154ffacbd02e25506cf9f8b",
+    "harness_sha256": "7915a36e12d9895170323aee46910b688492dc6aca704ac7f1daaefae644a9ea",
+    "missing_harness_files": [],
+    "os": "Darwin 25.5.0 arm64",
+    "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+    "source_missing": false,
+    "source_state_sha256": "fb4e2675e4c50d859a2fe358f9dfd8fd7a4e3a31fcb9f6094bf1c43492138be2",
+    "status": "recorded"
   },
   "publication": {
-    "artifact_commit": "925cbb72be101aa10e612f80b07c1cad8e298434",
-    "release": "v0.4.3",
-    "status": "historical"
+    "cargo_lock_sha256": "0c275998d6fe18f8b4def36611598860e96c250303ba459da280ed64e2afd3cd",
+    "commit": "e736c5fda155ef23c8712f89ae15bf5369ff3787",
+    "correctness_gate": "passed",
+    "cpu": "arm",
+    "git_clean": false,
+    "git_status_sha256": "a367ed1608bcdea33eb781794fde643f01a6a280f154ffacbd02e25506cf9f8b",
+    "harness_sha256": "7915a36e12d9895170323aee46910b688492dc6aca704ac7f1daaefae644a9ea",
+    "missing_harness_files": [],
+    "os": "Darwin 25.5.0 arm64",
+    "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+    "source_missing": false,
+    "source_state_sha256": "fb4e2675e4c50d859a2fe358f9dfd8fd7a4e3a31fcb9f6094bf1c43492138be2"
   },
   "schema": 1
 }

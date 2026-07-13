@@ -124,6 +124,11 @@ invariant over the convenient edit.
   from the same representative benchmark command, inputs, features, and
   environment. Use `bench-vs-linalg` (vs nalgebra / faer) or `bench-exact`
   (exact arithmetic), as appropriate.
+- For nanosecond-scale fixed-size kernels, prefer Criterion `bencher.iter` so
+  the complete public operation is measured symmetrically across implementations.
+  Use `iter_batched` only when setup is explicitly outside the estimand, the
+  exclusion is applied comparably to every implementation, and a same-binary
+  comparison shows that batching does not materially distort the result.
 - Preserve benchmark provenance and distinguish descriptive point-estimate
   ratios from statistically supported performance claims. Marginal Criterion
   interval separation is not a paired confidence interval for the change.

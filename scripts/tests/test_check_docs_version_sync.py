@@ -109,15 +109,61 @@ def test_find_version_mismatches_reports_readme_tag_links(tmp_path: Path) -> Non
         readme=(
             "[doc](https://github.com/acgetchell/la-stack/blob/v1.2.2/README.md)\n"
             "[raw](https://raw.githubusercontent.com/acgetchell/la-stack/v1.2.1/README.md)\n"
+            "[stale-commit](https://github.com/acgetchell/la-stack/blob/abc1234/README.md)\n"
             "[moving](https://github.com/acgetchell/la-stack/blob/main/README.md)\n"
         ),
     )
 
     mismatches = check_docs_version_sync.find_version_mismatches(tmp_path)
 
-    assert [mismatch.reference.kind for mismatch in mismatches] == [check_docs_version_sync.ReferenceKind.README_TAG_LINK] * 2
-    assert [mismatch.reference.line for mismatch in mismatches] == [1, 2]
-    assert [mismatch.reference.version for mismatch in mismatches] == ["1.2.2", "1.2.1"]
+    assert [mismatch.reference.kind for mismatch in mismatches] == [check_docs_version_sync.ReferenceKind.README_TAG_LINK] * 3
+    assert [mismatch.reference.line for mismatch in mismatches] == [1, 2, 3]
+    assert [mismatch.reference.version for mismatch in mismatches] == ["1.2.2", "1.2.1", "abc1234"]
+
+
+@pytest.mark.parametrize("tag", ["v1.2.3.4", "v1.2.3.extra", "v1.2.3_suffix"])
+def test_readme_tag_references_reject_longer_non_semver_tags(tmp_path: Path, tag: str) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        f"[invalid](https://github.com/acgetchell/la-stack/blob/{tag}/README.md)\n",
+        encoding="utf-8",
+    )
+
+    assert check_docs_version_sync._readme_tag_references(readme) == []
+
+
+@pytest.mark.parametrize("recipe", ["performance-github-assets", "performance-local-vs-linalg", "performance-release"])
+def test_find_version_mismatches_reports_stale_benchmark_current_tags(tmp_path: Path, recipe: str) -> None:
+    _write_project(tmp_path)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    workflows = docs / "workflows.md"
+    workflows.write_text(
+        f"| Release workflow | `just {recipe} v1.2.2 v1.2.1` |\n"
+        "```bash\njust performance-local-vs-linalg v1.2.3 v1.2.2\n```\n"
+        "Historical v1.2.1 behavior remains documented.\n",
+        encoding="utf-8",
+    )
+
+    mismatches = check_docs_version_sync.find_version_mismatches(tmp_path)
+
+    assert len(mismatches) == 1
+    assert mismatches[0].reference.kind is check_docs_version_sync.ReferenceKind.BENCHMARK_CURRENT_TAG
+    assert mismatches[0].reference.path == workflows
+    assert mismatches[0].reference.line == 1
+    assert mismatches[0].reference.version == "1.2.2"
+
+
+def test_benchmark_current_tag_references_ignore_baselines_and_historical_prose(tmp_path: Path) -> None:
+    benchmarking = tmp_path / "BENCHMARKING.md"
+    benchmarking.write_text(
+        "just performance-release v1.2.3 v1.2.2\nThe v1.2.2 harness compares against v1.2.1.\n",
+        encoding="utf-8",
+    )
+
+    references = check_docs_version_sync._benchmark_current_tag_references(benchmarking)
+
+    assert [(reference.line, reference.version) for reference in references] == [(1, "1.2.3")]
 
 
 @pytest.mark.parametrize(
@@ -142,7 +188,7 @@ def test_find_version_mismatches_ignores_historical_docs_and_test_fixtures(tmp_p
     archive.mkdir(parents=True)
     fixtures = tmp_path / "tests" / "fixtures"
     fixtures.mkdir(parents=True)
-    stale_snippet = 'other-crate = "0.1.0"\n'
+    stale_snippet = 'other-crate = "0.1.0"\njust performance-release v0.1.0 v0.0.9\n'
     (tmp_path / "CHANGELOG.md").write_text(stale_snippet, encoding="utf-8")
     (archive / "old.md").write_text(stale_snippet, encoding="utf-8")
     (fixtures / "example.md").write_text(stale_snippet, encoding="utf-8")

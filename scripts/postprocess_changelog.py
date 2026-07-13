@@ -764,8 +764,64 @@ def _normalize_body_line(line: str, lines: list[str], idx: int, result: list[str
     return _reflow_line(line) if len(line) > MAX_LINE_WIDTH else line
 
 
+def _dependabot_metadata_end(lines: list[str], separator_index: int) -> int | None:
+    """Return the closing marker index for an unfenced Dependabot footer."""
+    metadata_start = separator_index + 1
+    while metadata_start < len(lines) and not lines[metadata_start].strip():
+        metadata_start += 1
+    if metadata_start >= len(lines) or lines[metadata_start].strip() != "updated-dependencies:":
+        return None
+
+    metadata_end = metadata_start + 1
+    while metadata_end < len(lines) and lines[metadata_end].strip() != "..." and _opening_code_fence(lines[metadata_end]) is None:
+        metadata_end += 1
+    if metadata_end >= len(lines) or lines[metadata_end].strip() != "...":
+        return None
+    return metadata_end
+
+
+def _strip_dependabot_metadata(text: str) -> str:
+    """Remove Dependabot's YAML metadata footer from rendered commit bodies."""
+    lines = text.split("\n")
+    result: list[str] = []
+    active_fence: _CodeFence | None = None
+    idx = 0
+
+    while idx < len(lines):
+        if active_fence is not None:
+            result.append(lines[idx])
+            if _closes_code_fence(lines[idx], active_fence):
+                active_fence = None
+            idx += 1
+            continue
+
+        active_fence = _opening_code_fence(lines[idx])
+        if active_fence is not None:
+            result.append(lines[idx])
+            idx += 1
+            continue
+
+        metadata_end = _dependabot_metadata_end(lines, idx) if lines[idx].strip() == "---" else None
+        if metadata_end is None:
+            result.append(lines[idx])
+            idx += 1
+            continue
+
+        while result and not result[-1].strip():
+            result.pop()
+        idx = metadata_end + 1
+        while idx < len(lines) and not lines[idx].strip():
+            idx += 1
+        if result and idx < len(lines):
+            result.append("")
+
+    return "\n".join(result)
+
+
 def postprocess_text(text: str) -> str:
     """Apply changelog markdown hygiene transforms to *text*."""
+    text = _strip_dependabot_metadata(text)
+
     # Inject PR / breaking-change summary sections before reflow.
     text = _inject_summary_sections(text)
 

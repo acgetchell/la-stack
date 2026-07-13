@@ -101,12 +101,29 @@ def test_markdown_table_formats_values_and_pct() -> None:
     table = criterion_dim_plot._markdown_table(rows, stat="median")
 
     assert (
-        "| D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | "
-        "la-stack point-estimate reduction vs nalgebra | la-stack point-estimate reduction vs faer |" in table
+        "| D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | reduction vs nalgebra (point est.) | reduction vs faer (point est.) |" in table
     )
     assert "| 2 | 50.000 | 100.000 | 200.000 | +50.0% | +75.0% |" in table
     # thousand separator and sign
     assert "| 64 | 1,000.000 | 900.000 | 800.000 | -11.1% | -25.0% |" in table
+
+
+@pytest.mark.parametrize(
+    ("metric_name", "expected_filter"),
+    [
+        ("lu_solve", "(la_stack_lu_solve|nalgebra_lu_solve|faer_lu_solve)$"),
+        ("dot", "(la_stack_dot|nalgebra_dot|faer_dot)$"),
+        ("inf_norm", "(la_stack_inf_norm|nalgebra_inf_norm|faer_inf_norm)$"),
+    ],
+)
+def test_publication_benchmark_command_selects_only_requested_metric(
+    metric_name: str,
+    expected_filter: str,
+) -> None:
+    command = criterion_dim_plot._publication_benchmark_command(metric_name)
+
+    assert command[:-2] == criterion_dim_plot._PUBLICATION_BENCHMARK_BASE
+    assert command[-2:] == ("--", expected_filter)
 
 
 def test_row_rejects_zero_peer_time_before_markdown_rendering() -> None:
@@ -396,7 +413,19 @@ def test_main_update_readme_happy_path(  # noqa: PLR0915
     assert out_svg.read_text(encoding="utf-8") == "<svg/>\n"
     assert calls[:2] == [
         ("just", ("test-bench-inputs",)),
-        ("cargo", ("bench", "--locked", "--features", "bench", "--bench", "vs_linalg")),
+        (
+            "cargo",
+            (
+                "bench",
+                "--locked",
+                "--features",
+                "bench",
+                "--bench",
+                "vs_linalg",
+                "--",
+                "(la_stack_lu_solve|nalgebra_lu_solve|faer_lu_solve)$",
+            ),
+        ),
     ]
 
     # CSV written
@@ -973,7 +1002,7 @@ def test_main_publication_fails_closed_when_provenance_tool_is_unavailable(
     row = criterion_dim_plot.Row(2, 1.0, 0.9, 1.1, 2.0, 1.9, 2.1, 3.0, 2.9, 3.1)
 
     monkeypatch.setattr(criterion_dim_plot, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(criterion_dim_plot, "_run_publication_benchmarks", lambda _root: None)
+    monkeypatch.setattr(criterion_dim_plot, "_run_publication_benchmarks", lambda _root, _metric: None)
     monkeypatch.setattr(criterion_dim_plot, "_detect_versions", lambda _root: {})
     monkeypatch.setattr(criterion_dim_plot, "_discover_dims", lambda _criterion_dir: [2])
     monkeypatch.setattr(criterion_dim_plot, "_collect_rows", lambda *_args: ([row], []))
@@ -1024,7 +1053,7 @@ def test_publication_gate_failure_stops_before_timing(monkeypatch: pytest.Monkey
     monkeypatch.setattr(criterion_dim_plot, "run_safe_command", fail_gate)
 
     with pytest.raises(RuntimeError, match="just test-bench-inputs"):
-        criterion_dim_plot._run_publication_benchmarks(tmp_path)
+        criterion_dim_plot._run_publication_benchmarks(tmp_path, "lu_solve")
 
     assert calls == [("just", ("test-bench-inputs",))]
 
@@ -1067,7 +1096,7 @@ def test_failed_timing_restores_staged_new_samples(
     monkeypatch.setattr(criterion_dim_plot, "run_safe_command", fail_timing)
 
     with pytest.raises(RuntimeError, match="cargo bench") as exc_info:
-        criterion_dim_plot._run_publication_benchmarks(tmp_path)
+        criterion_dim_plot._run_publication_benchmarks(tmp_path, "lu_solve")
 
     assert old_estimate.read_text(encoding="utf-8") == "old\n"
     assert all(detail in str(exc_info.value) for detail in expected_details)
@@ -1105,7 +1134,7 @@ def test_partial_staging_failure_restores_every_moved_sample(
     monkeypatch.setattr(criterion_dim_plot, "run_safe_command", lambda *_args, **_kwargs: SimpleNamespace(stdout=""))
 
     with pytest.raises(RuntimeError, match="could not stage existing Criterion samples"):
-        criterion_dim_plot._run_publication_benchmarks(tmp_path)
+        criterion_dim_plot._run_publication_benchmarks(tmp_path, "lu_solve")
 
     assert first.read_text(encoding="utf-8") == "first\n"
     assert second.read_text(encoding="utf-8") == "second\n"
@@ -1142,7 +1171,7 @@ def test_failed_timing_preserves_backup_when_rollback_fails(
     monkeypatch.setattr(criterion_dim_plot, "run_safe_command", fail_timing)
 
     with pytest.raises(RuntimeError, match="backups preserved") as exc_info:
-        criterion_dim_plot._run_publication_benchmarks(tmp_path)
+        criterion_dim_plot._run_publication_benchmarks(tmp_path, "lu_solve")
 
     assert str(backup_root) in str(exc_info.value)
     preserved = backup_root / "d2" / "la_stack_lu" / "new" / "estimates.json"
