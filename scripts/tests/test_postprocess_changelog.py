@@ -20,6 +20,7 @@ from postprocess_changelog import (
     _process_code_fence,
     _reflow_line,
     _squash_heading_parts,
+    _strip_dependabot_metadata,
     normalize_entry_headings_text,
     postprocess,
     postprocess_text,
@@ -84,6 +85,30 @@ class TestStripTrailingBlanks:
         postprocess(f)
 
         assert f.read_text(encoding="utf-8") == "\n"
+
+
+class TestDependabotMetadata:
+    def test_strips_yaml_footer_from_commit_body(self) -> None:
+        content = (
+            "- Update setuptools [`abcdef0`](https://example.com/commit/abcdef0)\n\n"
+            "  Updates setuptools to 83.0.0\n\n"
+            "---\n\n"
+            "  updated-dependencies:\n\n"
+            "- dependency-name: setuptools\n"
+            "  dependency-version: 83.0.0\n"
+            "  dependency-type: direct:development\n"
+            "  ...\n"
+            "- Next entry\n"
+        )
+
+        assert _strip_dependabot_metadata(content) == (
+            "- Update setuptools [`abcdef0`](https://example.com/commit/abcdef0)\n\n  Updates setuptools to 83.0.0\n\n- Next entry\n"
+        )
+
+    def test_preserves_unrelated_thematic_break(self) -> None:
+        content = "- Entry\n\n---\n\nAdditional context\n"
+
+        assert _strip_dependabot_metadata(content) == content
 
 
 class TestListContinuationIndent:

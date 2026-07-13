@@ -5,6 +5,108 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-07-12
+
+### ⚠️ Breaking Changes
+
+- Make numerical invariants and errors explicit
+- Require Rust 1.97.0
+
+### Added
+
+- [**breaking**] Make numerical invariants and errors explicit
+  [`668daed`](https://github.com/acgetchell/la-stack/commit/668daed6f5d83a03fc95a7872a0a302d097e3fc4)
+
+  - add structured error reasons, locations, origins, and factorization context
+  - make determinant, exact-conversion, LU, and LDLT paths range-safe and mathematically explicit
+  - validate benchmark inputs independently and require reproducible, provenance-backed performance evidence
+  - centralize tool versions, adopt nextest profiles, and replace Codacy with repository-owned checks and SARIF reporting
+
+### Changed
+
+- Consolidate setup abort handling [`b9e453e`](https://github.com/acgetchell/la-stack/commit/b9e453e540da3c63b0a14ca94b4bcfbc9c8ff6bd)
+
+  - Share `OrAbort` across exact and comparison benchmarks while preserving contextual panic behavior.
+  - Centralize Clippy policy in Cargo.toml for consistent local and CI checks.
+  - Keep `unreachable_pub` enforced while allowing intentional crate-visible helpers.
+  - Enable CodeRabbit's request-changes review workflow.
+
+### Dependencies
+
+- Bump python-multipart in the uv group across 1 directory [`6bb4fb7`](https://github.com/acgetchell/la-stack/commit/6bb4fb7ce48e49d4d2a5bfe4ff5d55b09e6300e2)
+- Bump zizmorcore/zizmor-action from 0.5.6 to 0.5.7 [`4a999a6`](https://github.com/acgetchell/la-stack/commit/4a999a664211126e581da47713f6d2426d6db698)
+- Bump github/codeql-action/upload-sarif [`85c0a7b`](https://github.com/acgetchell/la-stack/commit/85c0a7bd6a1b3d3e0e00f4e82c6d544c2ca0f22b)
+- Bump actions/checkout from 6.0.2 to 7.0.0 [`0f0f956`](https://github.com/acgetchell/la-stack/commit/0f0f956c64ddbc5700f3c2f96b90242703e0a410)
+- Bump astral-sh/setup-uv from 8.1.0 to 8.2.0 [`259acaa`](https://github.com/acgetchell/la-stack/commit/259acaa06cc2d6b50f5c024c60cbdf9fe3172f7f)
+- Bump codecov/codecov-action from 6.0.1 to 7.0.0 [`035807c`](https://github.com/acgetchell/la-stack/commit/035807c9312ce1ff818dcab9dd986980dfcb37d8)
+- Bump vulnerable Python tooling dependencies [`4990260`](https://github.com/acgetchell/la-stack/commit/49902604db70de7c6831f559aee967bf3c376bc1)
+
+### Documentation
+
+- Add mathematical basis and clarify numerical guarantees [`31b7b1e`](https://github.com/acgetchell/la-stack/commit/31b7b1e7c547fc69edbb601e68b2f29e83d5cd24)
+
+  - define the binary64, factorization, determinant-filter, exact-arithmetic, tolerance, and error contracts
+  - align README, API documentation, examples, and LDLT diagnostics with guarantees over stored values
+  - audit academic references and extend Criterion coverage for determinant error-bound paths
+- Clarify determinant and LDLT failure contracts [`e257343`](https://github.com/acgetchell/la-stack/commit/e2573434c541a8115750b3a965882f7b484b6be0)
+  - State the determinant sign condition without ambiguous Markdown delimiters.
+  - Distinguish singular zero pivots from coupled zero-pivot LDLT rejections.
+  - Align citation and contributor guidance with the positive-definite domain.
+
+### Fixed
+
+- Make v0.4.3 comparisons correctness-aware [`4ac5af9`](https://github.com/acgetchell/la-stack/commit/4ac5af9ce104c5126bfd6217414977cca269b62e)
+
+  - Adapt the shared benchmark harness across v0.4.3 API differences without changing measured operations
+  - Exclude invalid balanced-range baselines while requiring current samples and reporting unavailable comparisons
+  - Preserve benchmark provenance, suite-specific fallback commands, and publication rollback guarantees
+  - Harden Windows Git input, changelog links, and version-reference parsing across platforms
+- Harden exact arithmetic and benchmark publication [`db2fad5`](https://github.com/acgetchell/la-stack/commit/db2fad50087c773f7ae37f181f720da2a9ff4a23)
+  - add `DeterminantWithErrorBound` for paired determinant estimates and certified bounds
+  - scale exact systems independently and round exact values directly to IEEE-754
+  - fail benchmark publication closed on invalid samples or mismatched provenance
+  - make release and changelog tooling transactional, path-safe, and Windows-portable
+  - align benchmark CI with pinned local tools and least-privilege publishing
+
+### Maintenance
+
+- Update setuptools requirement in the dependencies group [`6a6c339`](https://github.com/acgetchell/la-stack/commit/6a6c339e7fbec1c9ca4226005794e8ab87f0c2d6)
+
+  Updates the requirements on [setuptools](https://github.com/pypa/setuptools) to permit the latest version.
+
+  Updates `setuptools` to 83.0.0
+
+  - [Release notes](https://github.com/pypa/setuptools/releases)
+  - [Changelog](https://github.com/pypa/setuptools/blob/main/NEWS.rst)
+  - [Commits](https://github.com/pypa/setuptools/compare/v65.0.0...v83.0.0)
+- Avoid duplicate review checks [`5e15d92`](https://github.com/acgetchell/la-stack/commit/5e15d9250455fd1467e47a735412f65449f30b56)
+  - Use the legacy required status while preserving automatic approvals.
+  - Add explicit dense D3 determinant coverage and document the D4 error bound.
+- [**breaking**] Require Rust 1.97.0 [`4033f1f`](https://github.com/acgetchell/la-stack/commit/4033f1f39e411ed066fec808805371979995964b)
+  - Align Cargo, the pinned toolchain, Clippy, dependency-audit triggers, and maintainer guidance with the new baseline.
+  - Audit Rust 1.97 integer bit helpers against exact-arithmetic hot paths and retain existing operations where alternatives do not preserve performance.
+  - Correct v0.4.3 citation metadata and document exact decomposition and solve scaling accurately.
+
+### Performance
+
+- Restore det_direct throughput for D=2..4 [`f6d6885`](https://github.com/acgetchell/la-stack/commit/f6d68855a314fc4802c559080d9faca85db81bb9)
+
+  - Reintroduce branch-free dense expansions for D=2 and D=3.
+  - Share D=4 minors while retaining guarded sparse evaluation.
+  - Preserve non-finite handling for mathematically inactive terms.
+- Restore small-matrix det_sign_exact throughput [`b8bfa9f`](https://github.com/acgetchell/la-stack/commit/b8bfa9fa0c908ea034d294ceb123c8191eff3395)
+  - Reuse proof-bearing shared minors for D4 determinant and permanent evaluation.
+  - Restore the dense D3 filter while preserving sparse, overflow, and underflow fallbacks.
+  - Require headline benchmarks to exercise the intended filter and document historical harness overhead.
+- Improve inf_norm throughput [`dc28f98`](https://github.com/acgetchell/la-stack/commit/dc28f9828a1e90b5604e4a55284175e50f84d7e2)
+  - Check row-sum finiteness once per completed row on the success path.
+  - Replay only overflowing rows to preserve the first failing matrix coordinate.
+  - Preserve left-to-right accumulation and const evaluation across dimensions.
+- Improve dot and norm2_sq throughput [`ece54d7`](https://github.com/acgetchell/la-stack/commit/ece54d7b2a73111c2bc378a417189e2951a39cbc)
+  - Check accumulator finiteness once after the success-path reduction.
+  - Replay only non-finite reductions to preserve the first failing step.
+  - Preserve left-to-right fused accumulation and const evaluation.
+
 ## [0.4.3] - 2026-06-09
 
 ### ⚠️ Breaking Changes
@@ -93,6 +195,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Align the Python utility package metadata and lockfile with the crate release.
   - Add citation metadata validation to the release checklist and config lint flow.
   - Include CITATION.cff in YAML/CFF formatting checks.
+- Make release documentation links portable [`dd4ad19`](https://github.com/acgetchell/la-stack/commit/dd4ad192a42e28d9cc72b336b40802fe65cea4f0)
 
 ### Fixed
 
@@ -672,6 +775,7 @@ Older releases are archived by minor series:
 - [0.2.x](docs/archive/changelog/0.2.md)
 - [0.1.x](docs/archive/changelog/0.1.md)
 
+[0.4.4]: https://github.com/acgetchell/la-stack/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/acgetchell/la-stack/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/acgetchell/la-stack/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/acgetchell/la-stack/compare/v0.4.0...v0.4.1

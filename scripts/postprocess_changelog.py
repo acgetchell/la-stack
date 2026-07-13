@@ -764,8 +764,49 @@ def _normalize_body_line(line: str, lines: list[str], idx: int, result: list[str
     return _reflow_line(line) if len(line) > MAX_LINE_WIDTH else line
 
 
+def _strip_dependabot_metadata(text: str) -> str:
+    """Remove Dependabot's YAML metadata footer from rendered commit bodies."""
+    lines = text.split("\n")
+    result: list[str] = []
+    idx = 0
+
+    while idx < len(lines):
+        if lines[idx].strip() != "---":
+            result.append(lines[idx])
+            idx += 1
+            continue
+
+        metadata_start = idx + 1
+        while metadata_start < len(lines) and not lines[metadata_start].strip():
+            metadata_start += 1
+        if metadata_start >= len(lines) or lines[metadata_start].strip() != "updated-dependencies:":
+            result.append(lines[idx])
+            idx += 1
+            continue
+
+        metadata_end = metadata_start + 1
+        while metadata_end < len(lines) and lines[metadata_end].strip() != "...":
+            metadata_end += 1
+        if metadata_end >= len(lines):
+            result.append(lines[idx])
+            idx += 1
+            continue
+
+        while result and not result[-1].strip():
+            result.pop()
+        idx = metadata_end + 1
+        while idx < len(lines) and not lines[idx].strip():
+            idx += 1
+        if result and idx < len(lines):
+            result.append("")
+
+    return "\n".join(result)
+
+
 def postprocess_text(text: str) -> str:
     """Apply changelog markdown hygiene transforms to *text*."""
+    text = _strip_dependabot_metadata(text)
+
     # Inject PR / breaking-change summary sections before reflow.
     text = _inject_summary_sections(text)
 

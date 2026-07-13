@@ -110,36 +110,9 @@ impl<const D: usize> Ldlt<D> {
             // LDLT via symmetric rank-1 updates, using only the lower triangle.
             for j in 0..D {
                 let d = rows[j][j];
-                if !d.is_finite() {
+                if !(d.is_finite() && d > tolerance) {
                     cold_path();
-                    return Err(LaError::non_finite_computation_matrix(
-                        ArithmeticOperation::LdltFactorization,
-                        j,
-                        j,
-                    ));
-                }
-                if d < 0.0 {
-                    cold_path();
-                    if let Some(error) = Self::non_finite_factor_error(rows) {
-                        return Err(error);
-                    }
-                    return Err(LaError::not_positive_semidefinite_negative(j, d));
-                }
-                if d == 0.0 {
-                    cold_path();
-                    return Err(Self::zero_pivot_failure(rows, j, tolerance));
-                }
-                if d <= tolerance {
-                    cold_path();
-                    if let Some(error) = Self::non_finite_factor_error(rows) {
-                        return Err(error);
-                    }
-                    return Err(LaError::singular_numerical(
-                        j,
-                        FactorizationKind::Ldlt,
-                        d,
-                        tolerance,
-                    ));
+                    return Err(Self::pivot_failure(rows, j, d, tolerance));
                 }
                 if D <= 5 {
                     // Tiny matrices benchmark better when column normalization stays
@@ -227,6 +200,32 @@ impl<const D: usize> Ldlt<D> {
             }
         }
         None
+    }
+
+    /// Classify a failed diagonal check outside the successful factorization path.
+    fn pivot_failure(
+        rows: &[[f64; D]; D],
+        pivot_col: usize,
+        pivot: f64,
+        tolerance: f64,
+    ) -> LaError {
+        if !pivot.is_finite() {
+            return LaError::non_finite_computation_matrix(
+                ArithmeticOperation::LdltFactorization,
+                pivot_col,
+                pivot_col,
+            );
+        }
+        if pivot < 0.0 {
+            return Self::non_finite_factor_error(rows)
+                .unwrap_or_else(|| LaError::not_positive_semidefinite_negative(pivot_col, pivot));
+        }
+        if pivot == 0.0 {
+            return Self::zero_pivot_failure(rows, pivot_col, tolerance);
+        }
+        Self::non_finite_factor_error(rows).unwrap_or_else(|| {
+            LaError::singular_numerical(pivot_col, FactorizationKind::Ldlt, pivot, tolerance)
+        })
     }
 
     /// Classify a zero pivot after checking factor storage and every coupling.

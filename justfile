@@ -393,6 +393,9 @@ doc-check:
     RUSTDOCFLAGS='-D warnings' cargo doc --no-deps
     RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --features exact
 
+docs-version-check: _ensure-uv
+    uv run --locked check-docs-version-sync
+
 # Examples
 examples:
     #!/usr/bin/env bash
@@ -522,6 +525,9 @@ markdown-check: _ensure-rumdl
             line_number=0
             while IFS= read -r line || [[ -n "$line" ]]; do
                 line_number=$((line_number + 1))
+                case "$line" in
+                    '|'*) continue ;;
+                esac
                 if [ "${#line}" -gt 160 ]; then
                     printf '%s:%d: line length %d exceeds 160\n' "$file" "$line_number" "${#line}" >&2
                     violations=$((violations + 1))
@@ -626,7 +632,7 @@ plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_
     fi
     uv run --locked criterion-dim-plot "${args[@]}"
 
-# Validate fixtures, rerun the full comparison, and atomically publish the canonical README assets/table.
+# Validate fixtures, rerun the selected metric across all peers and dimensions, and atomically publish the canonical README assets/table.
 plot-vs-linalg-readme metric="lu_solve" stat="median" sample="new" log_y="true": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
@@ -654,9 +660,8 @@ python-typecheck: python-sync
     uv run --locked ty check scripts/ --error all
 
 # Repository-owned Semgrep rules for project-specific diagnostics.
-semgrep: _ensure-uv
+semgrep: docs-version-check
     uv run --locked semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .
-    uv run --locked check-docs-version-sync
 
 # Fixture tests for repository-owned Semgrep rules.
 semgrep-test: _ensure-uv

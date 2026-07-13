@@ -10,17 +10,19 @@ use faer::perm::PermRef;
 use faer::{Mat, Side};
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 
-#[cfg(feature = "exact")]
+#[cfg(all(feature = "exact", not(la_stack_v0_4_3_api)))]
 use la_stack::ExactF64Conversion;
 use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
 
 #[path = "../benches/common/vs_linalg.rs"]
 pub mod vs_linalg_common;
 
+#[cfg(not(la_stack_v0_4_3_api))]
+use vs_linalg_common::make_balanced_dynamic_range_rows;
 use vs_linalg_common::{
     PreparedFaerLuDet, faer_det_from_ldlt, faer_perm_sign, la_stack_dot, la_stack_tolerance,
-    make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows, make_matrix_rows,
-    make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
+    make_ill_conditioned_matrix_rows, make_matrix_rows, make_pivoting_matrix_rows,
+    make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
 };
 
 /// Assert scalar agreement with a tolerance that scales for larger magnitudes.
@@ -297,10 +299,14 @@ fn stress_inputs_exercise_pivoting_conditioning_and_scaled_products() {
         // Bareiss-backed oracle is independent of the timed floating LU path.
         let baseline = Matrix::<8>::try_from_rows(make_matrix_rows::<8>()).unwrap();
         let expected = -baseline.det_exact().unwrap();
+        #[cfg(la_stack_v0_4_3_api)]
+        let expected_f64 = num_traits::ToPrimitive::to_f64(&expected).unwrap();
+        #[cfg(not(la_stack_v0_4_3_api))]
+        let expected_f64 = expected.to_rounded_f64().unwrap();
         assert_close(
             "pivoting LU determinant against exact row-swap oracle",
             pivoting_det,
-            expected.to_rounded_f64().unwrap(),
+            expected_f64,
         );
     }
 

@@ -1381,10 +1381,11 @@ def _generate_markdown(
             "Negative point-estimate change means the current point estimate is smaller; "
             "a baseline/current point-estimate ratio above 1.00 has the same meaning."
         )
-        lines.append(
-            "The CI-relation column reports only whether the two marginal Criterion intervals overlap. "
-            "These are not paired confidence intervals for the change, so the report makes no "
-            "statistical-significance or performance-improvement claim from interval separation."
+        lines.extend(
+            [
+                "The CI-relation column reports only whether the two marginal Criterion intervals overlap. These are not paired confidence intervals",
+                "for the change, so the report makes no statistical-significance or performance-improvement claim from interval separation.",
+            ]
         )
         lines.append("")
         if settings.harness_provenance is None:
@@ -1489,6 +1490,8 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
     lines.extend(
         [
             "",
+            "**Publication and validation environment**:",
+            "",
             f"- Publication CPU: `{publication['cpu']}`",
             f"- Publication OS: `{publication['os']}`",
             f"- Publication rustc: `{publication['rustc']}`",
@@ -1503,35 +1506,35 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
             f"- Baseline command: `{' '.join(criterion.baseline_command)}`",
             f"- Current command: `{' '.join(criterion.current_command)}`",
             correctness_gate,
-            (
-                f"- Validated current revision: `{validation['current_commit']}` "
-                f"(Git clean: `{str(validation['current_git_clean']).lower()}`, "
-                f"source-state SHA-256: `{validation['current_source_state_sha256']}`)"
-            ),
-            (
-                f"- Validated baseline revision: `{validation['baseline_commit']}` "
-                f"(Git clean: `{str(validation['baseline_git_clean']).lower()}`, "
-                f"source-state SHA-256: `{validation['baseline_source_state_sha256']}`)"
-            ),
+            f"- Validated current revision: `{validation['current_commit']}` (Git clean: `{str(validation['current_git_clean']).lower()}`;",
+            f"  source-state SHA-256: `{validation['current_source_state_sha256']}`)",
+            f"- Validated baseline revision: `{validation['baseline_commit']}` (Git clean: `{str(validation['baseline_git_clean']).lower()}`;",
+            f"  source-state SHA-256: `{validation['baseline_source_state_sha256']}`)",
         ]
     )
     compatibility = validation.get("baseline_api_compatibility")
     if isinstance(compatibility, str) and compatibility != "none":
-        lines.append(
-            f"- Baseline API compatibility: `{compatibility}` selects only source-compatible benchmark calls; "
-            "rows outside the baseline's correctness domain remain explicitly unavailable."
+        lines.extend(
+            [
+                f"- Baseline API compatibility: `{compatibility}` selects only source-compatible benchmark calls;",
+                "  rows outside the baseline's correctness domain remain explicitly unavailable.",
+            ]
         )
         if compatibility == _V0_4_3_API_COMPATIBILITY and criterion.suite in {"all", "vs_linalg"}:
-            lines.append(
-                "- Baseline-unavailable rows: `d8/la_stack_det_from_lu_balanced_range` and "
-                "`d8/la_stack_det_from_ldlt_balanced_range` were not timed because v0.4.3 returns zero for a fixture "
-                "whose exact determinant is one; current samples remain required, but no speedup is claimed."
+            lines.extend(
+                [
+                    "- Baseline-unavailable rows: `d8/la_stack_det_from_lu_balanced_range` and",
+                    "  `d8/la_stack_det_from_ldlt_balanced_range` were not timed because v0.4.3 returns zero for a",
+                    "  fixture whose exact determinant is one; current samples remain required, but no speedup is claimed.",
+                ]
             )
         if compatibility == _V0_4_3_API_COMPATIBILITY and criterion.suite in {"all", "exact"}:
-            lines.append(
-                "- Baseline-unavailable rows: `exact_d2/det_direct_with_errbound`, "
-                "`exact_d3/det_direct_with_errbound`, and `exact_d4/det_direct_with_errbound` were not timed because "
-                "v0.4.3 predates the paired API; the comparable `det_errbound` baselines remain required."
+            lines.extend(
+                [
+                    "- Baseline-unavailable rows: `exact_d2/det_direct_with_errbound`,",
+                    "  `exact_d3/det_direct_with_errbound`, and `exact_d4/det_direct_with_errbound` were not timed",
+                    "  because v0.4.3 predates the paired API; the comparable `det_errbound` baselines remain required.",
+                ]
             )
     return lines
 

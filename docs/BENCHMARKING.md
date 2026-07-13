@@ -25,12 +25,12 @@ the commands measure and where their outputs go.
 | Goal | Recipe |
 |------|--------|
 | Latest-release local audit | `just performance-local` |
-| Release-signal check against tags | `just performance-local-vs-linalg v0.4.3 v0.4.2` |
+| Release-signal check against tags | `just performance-local-vs-linalg v0.4.4 v0.4.3` |
 | Fast saved-baseline loop | `just bench-save-baseline <name> <suite>` then `just bench-compare <name> <suite> all-benches` |
 | Full crate comparison | `just bench-vs-linalg` |
 | README table and plot | `just plot-vs-linalg-readme` |
-| Release report | `just performance-release v0.4.3 v0.4.2` |
-| Published-asset comparison | `just performance-github-assets v0.4.3 v0.4.2` |
+| Release report | `just performance-release v0.4.4 v0.4.3` |
+| Published-asset comparison | `just performance-github-assets v0.4.4 v0.4.3` |
 
 Rule of thumb:
 
@@ -112,10 +112,10 @@ benchmark state.
 For a narrower non-exact check against a known release pair, run:
 
 ```bash
-just performance-local-vs-linalg v0.4.3 v0.4.2
+just performance-local-vs-linalg v0.4.4 v0.4.3
 ```
 
-This generates a local `v0.4.2` `vs_linalg` baseline, measures the current
+This generates a local `v0.4.3` `vs_linalg` baseline, measures the current
 la-stack `vs_linalg` rows, and renders a `vs_linalg` report. The report includes
 saved baseline nalgebra/faer timings as context where matching peer rows exist,
 without rerunning current peer crates.
@@ -169,9 +169,9 @@ current checkout:
 just plot-vs-linalg-readme
 ```
 
-This publication recipe validates the benchmark fixtures, runs a fresh complete
-`vs_linalg` benchmark, and requires la-stack, nalgebra, and faer results for every
-canonical dimension (D=2, 3, 4, 5, 8, 16, 32, and 64) before updating:
+This publication recipe validates the benchmark fixtures, runs a fresh benchmark
+for the selected metric only, and requires la-stack, nalgebra, and faer results
+for every canonical dimension (D=2, 3, 4, 5, 8, 16, 32, and 64) before updating:
 
 - `README.md`
 - `docs/assets/bench/vs_linalg_lu_solve_median.csv`
@@ -193,7 +193,7 @@ Release PRs promote one curated release-to-release comparison into committed
 docs:
 
 ```bash
-just performance-release v0.4.3 v0.4.2
+just performance-release v0.4.4 v0.4.3
 ```
 
 With no arguments, `just performance-release` infers the current release tag
@@ -216,7 +216,7 @@ requirement applies even when both release tags are supplied explicitly because
 the recipe still downloads their GitHub Release assets:
 
 ```bash
-just performance-github-assets v0.4.3 v0.4.2
+just performance-github-assets v0.4.4 v0.4.3
 ```
 
 With no arguments, the recipe discovers the latest and previous stable
@@ -265,14 +265,23 @@ All three crates receive equivalent deterministic inputs for a given dimension:
   generator
 - each benchmark uses `black_box` around inputs and outputs to keep the
   measured operation visible to the optimizer
+- the `lu_solve` factor-plus-solve comparison uses direct Criterion
+  `bencher.iter` measurement; batching overhead is large enough at D=2 to
+  distort both the absolute timing and cross-crate ratio
 - precomputed-factor benchmarks pass the factor itself through `black_box`
   before each solve or determinant query, preventing invariant captured factors
   from being hoisted out of the measured closure
-- consuming stack-matrix inputs are copied in Criterion batch setup, outside
-  the measured closure, so factorization rows measure kernels rather than the
-  harness's need to reuse one input
+- `lu_solve` receives owned fixed-size `black_box` inputs inside the measured
+  closure, applying the same complete-operation protocol to la-stack and
+  nalgebra
 - borrowed operations receive references through `black_box`; in particular,
   `inf_norm` does not copy the matrix inside the measured closure
+
+Use `iter_batched` only when fixture construction is explicitly outside the
+scientific quantity being measured. The exclusion must be symmetric across the
+compared implementations, documented beside the benchmark, and checked against
+direct `iter` in the same binary to show that batching does not materially alter
+the reported kernel time or cross-crate ratio.
 
 The integration smoke test `tests/vs_linalg_inputs.rs` reuses the benchmark
 input helpers and verifies that la-stack, nalgebra, and faer agree on the

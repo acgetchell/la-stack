@@ -92,16 +92,14 @@ uv lock
 Review version references in documentation:
 
 ```bash
-uv run --locked check-docs-version-sync
+just docs-version-check
 ```
 
 The automated check covers package metadata, lockfiles, README dependency
-snippets, and release-pinned README links. Then review historical references
-that intentionally remain on older versions:
-
-```bash
-rg -n "\bv?[0-9]+\.[0-9]+\.[0-9]+\b" README.md docs/ CITATION.cff pyproject.toml || true
-```
+snippets, release-pinned README links, and current-tag arguments in the active
+benchmark workflow examples. Historical prose, compatibility notes, archived
+reports, baseline arguments, and tool versions intentionally remain independent
+of the current package version.
 
 3. Generate the release changelog
 

@@ -219,41 +219,29 @@ where
     let frhs = faer_vector::<D>(0.0);
 
     group.bench_function("la_stack_lu_solve", |bencher| {
-        bencher.iter_batched(
-            || (a, rhs),
-            |(a, rhs)| {
-                let lu = black_box(a)
-                    .lu(DEFAULT_SINGULAR_TOL)
-                    .or_abort("la_stack LU factorization");
-                let x = lu.solve(black_box(rhs)).or_abort("la_stack LU solve");
-                let _ = black_box(x);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(a)
+                .lu(DEFAULT_SINGULAR_TOL)
+                .or_abort("la_stack LU factorization");
+            let x = lu.solve(black_box(rhs)).or_abort("la_stack LU solve");
+            let _ = black_box(x);
+        });
     });
 
     group.bench_function("nalgebra_lu_solve", |bencher| {
-        bencher.iter_batched(
-            || (na, nrhs),
-            |(na, nrhs)| {
-                let lu = black_box(na).lu();
-                let x = lu.solve(black_box(&nrhs)).or_abort("nalgebra LU solve");
-                black_box(x);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(na).lu();
+            let x = lu.solve(black_box(&nrhs)).or_abort("nalgebra LU solve");
+            black_box(x);
+        });
     });
 
     group.bench_function("faer_lu_solve", |bencher| {
-        bencher.iter_batched(
-            || (&fa, &frhs),
-            |(fa, rhs)| {
-                let lu = black_box(fa).partial_piv_lu();
-                let x = lu.solve(black_box(rhs));
-                black_box(x);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(&fa).partial_piv_lu();
+            let x = lu.solve(black_box(&frhs));
+            black_box(x);
+        });
     });
 }
 

@@ -251,7 +251,7 @@ METRICS: Final[dict[str, Metric]] = {
 
 CANONICAL_DIMS: Final[tuple[int, ...]] = (2, 3, 4, 5, 8, 16, 32, 64)
 _PUBLICATION_GATE: Final[tuple[str, ...]] = ("just", "test-bench-inputs")
-_PUBLICATION_BENCHMARK: Final[tuple[str, ...]] = (
+_PUBLICATION_BENCHMARK_BASE: Final[tuple[str, ...]] = (
     "cargo",
     "bench",
     "--locked",
@@ -455,8 +455,7 @@ def _pct_reduction(baseline: float, value: float) -> str:
 
 def _markdown_table(rows: list[Row], stat: str) -> str:
     lines = [
-        f"| D | la-stack {stat} (ns) | nalgebra {stat} (ns) | faer {stat} (ns) | "
-        "la-stack point-estimate reduction vs nalgebra | la-stack point-estimate reduction vs faer |",
+        f"| D | la-stack {stat} (ns) | nalgebra {stat} (ns) | faer {stat} (ns) | reduction vs nalgebra (point est.) | reduction vs faer (point est.) |",
         "|---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|",
     ]
 
@@ -713,8 +712,15 @@ def _collect_rows(criterion_dir: Path, dims: list[int], metric: Metric, stat: st
     return (rows, skipped)
 
 
-def _run_publication_benchmarks(root: Path) -> None:
-    """Validate fixtures, then produce fresh README publication measurements."""
+def _publication_benchmark_command(metric_name: str) -> tuple[str, ...]:
+    """Return the focused Criterion command for one published metric."""
+    metric = METRICS[metric_name]
+    benchmark_filter = "(" + "|".join(re.escape(name) for name in (metric.la_bench, metric.na_bench, metric.fa_bench)) + ")$"
+    return (*_PUBLICATION_BENCHMARK_BASE, "--", benchmark_filter)
+
+
+def _run_publication_benchmarks(root: Path, metric_name: str) -> None:
+    """Validate fixtures, then measure one complete README metric."""
     _run_publication_command(root, _PUBLICATION_GATE)
     criterion_dir = root / "target" / "criterion"
     criterion_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -735,7 +741,7 @@ def _run_publication_benchmarks(root: Path) -> None:
             raise RuntimeError(msg) from primary
 
         try:
-            _run_publication_command(root, _PUBLICATION_BENCHMARK)
+            _run_publication_command(root, _publication_benchmark_command(metric_name))
         except RuntimeError as primary:
             try:
                 transaction.rollback(remove_fresh=True)
@@ -946,7 +952,7 @@ def _capture_provenance(
     return {
         "artifact": "README vs_linalg dimension plot" if args.update_readme else "exploratory vs_linalg dimension plot",
         "criterion": {
-            "benchmark_command": list(_PUBLICATION_BENCHMARK) if measurement_recorded else "unavailable",
+            "benchmark_command": list(_publication_benchmark_command(args.metric)) if measurement_recorded else "unavailable",
             "criterion_dependency": criterion_version,
             "dimensions": dims,
             "log_y": args.log_y,
@@ -1205,7 +1211,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
         return rc
     if args.update_readme:
         try:
-            _run_publication_benchmarks(root)
+            _run_publication_benchmarks(root, args.metric)
         except (FileNotFoundError, RuntimeError) as exc:
             print(str(exc), file=sys.stderr)
             return 2

@@ -821,6 +821,8 @@ def test_read_schema2_provenance_records_versions_dirty_source_and_both_gates(tm
     assert "exact_d2/det_direct_with_errbound" in rendered
     assert "exact_d3/det_direct_with_errbound" in rendered
     assert "exact_d4/det_direct_with_errbound" in rendered
+    assert "**Publication and validation environment**:" in rendered
+    assert all(len(line) <= 160 for line in markdown)
     assert "the comparable `det_errbound` baselines remain required" in rendered
     assert bench_compare._comparison_policy("release-signal", provenance) == bench_compare.ComparisonPolicy(
         scope="release-signal",
