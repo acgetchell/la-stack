@@ -110,6 +110,21 @@ class TestDependabotMetadata:
 
         assert _strip_dependabot_metadata(content) == content
 
+    def test_postprocess_text_strips_dependabot_footer(self) -> None:
+        content = "- Update setuptools\n\n---\n\nupdated-dependencies:\n- dependency-name: setuptools\n  dependency-version: 83.0.0\n...\n\n- Next entry\n"
+
+        result = postprocess_text(content)
+
+        assert "updated-dependencies:" not in result
+        assert result == "- Update setuptools\n- Next entry\n"
+
+    def test_postprocess_text_preserves_dependabot_markers_inside_yaml_fence(self) -> None:
+        fenced_example = "```yaml\n---\nupdated-dependencies:\n- dependency-name: setuptools\n...\n```"
+
+        result = postprocess_text(f"Example metadata:\n\n{fenced_example}\n")
+
+        assert fenced_example in result
+
 
 class TestListContinuationIndent:
     def test_normalizes_over_indented_top_level_continuation(self) -> None:

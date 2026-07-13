@@ -42,11 +42,13 @@
 //! `A x = b` with a hybrid algorithm that shares the determinant path's exact
 //! integer scaling and then applies Bareiss elimination to the augmented
 //! system. Matrix and RHS entries are decomposed via
-//! `decompose_proven_finite_f64` into `mantissa × 2^exponent`. Each side is
-//! independently scaled to its own minimum exponent before assembly into a
-//! `BigInt` augmented system `(A | b)`; the resulting solution is adjusted by
-//! the exact power-of-two ratio between those scales. This avoids inflating one
-//! side's integers merely because the other side has much smaller entries.
+//! `decompose_proven_finite_f64` into `mantissa × 2^exponent`. Each side first
+//! derives an independent scale from its minimum exponent. When those scales
+//! differ by at most `MAX_SHARED_SCALE_GAP_BITS` (64), both sides use the lower
+//! scale; larger gaps retain the independent scales. The resulting solution is
+//! adjusted by the exact power-of-two ratio between the selected scales. This
+//! shares common factors when inexpensive without inflating one side's integers
+//! across a large exponent gap.
 //! Forward elimination runs entirely in `BigInt` with
 //! fraction-free Bareiss updates \[7\] — no `BigRational`, no GCD
 //! normalisation in the `O(D³)` phase.  Once the system is upper
@@ -816,9 +818,10 @@ fn big_int_exp_to_rounded_f64(value: &BigInt, exp: i32) -> Result<f64, LaError> 
 // systems) parse every f64 entry into a proof-bearing component, track the
 // minimum exponent across non-zero entries, and scale each entry by
 // `2^(exp − e_min)`. Determinants then use direct expansions for D≤4 and
-// fraction-free Bareiss elimination for D≥5; solves scale the matrix and RHS
-// independently, use Bareiss elimination on the augmented system, and restore
-// their exact power-of-two scale ratio after rational back-substitution.
+// fraction-free Bareiss elimination for D≥5. Solves derive matrix and RHS scales
+// independently, share the lower scale when their gap is at most 64 bits, use
+// Bareiss elimination on the augmented system, and restore the selected scales'
+// exact power-of-two ratio after rational back-substitution.
 
 /// Decomposed finite f64 in the form `(-1)^is_negative · mantissa · 2^exponent`.
 ///

@@ -121,6 +121,17 @@ def test_find_version_mismatches_reports_readme_tag_links(tmp_path: Path) -> Non
     assert [mismatch.reference.version for mismatch in mismatches] == ["1.2.2", "1.2.1", "abc1234"]
 
 
+@pytest.mark.parametrize("tag", ["v1.2.3.4", "v1.2.3.extra", "v1.2.3_suffix"])
+def test_readme_tag_references_reject_longer_non_semver_tags(tmp_path: Path, tag: str) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        f"[invalid](https://github.com/acgetchell/la-stack/blob/{tag}/README.md)\n",
+        encoding="utf-8",
+    )
+
+    assert check_docs_version_sync._readme_tag_references(readme) == []
+
+
 @pytest.mark.parametrize("recipe", ["performance-github-assets", "performance-local-vs-linalg", "performance-release"])
 def test_find_version_mismatches_reports_stale_benchmark_current_tags(tmp_path: Path, recipe: str) -> None:
     _write_project(tmp_path)
