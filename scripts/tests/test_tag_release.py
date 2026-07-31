@@ -227,6 +227,25 @@ class TestTagSizeLimit:
 
 
 class TestCreateTag:
+    def test_next_step_sets_release_title(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        changelog = tmp_path / "CHANGELOG.md"
+        with (
+            patch("tag_release._tag_exists", return_value=False),
+            patch("tag_release.find_changelog", return_value=changelog),
+            patch(
+                "tag_release.extract_changelog_section",
+                return_value=("### Added\n\n- Something new", changelog),
+            ),
+            patch("tag_release.run_git_command_with_input"),
+        ):
+            tag_release.create_tag("v1.0.0")
+
+        assert "gh release create v1.0.0 --title v1.0.0 --notes-from-tag" in capsys.readouterr().out
+
     @patch("tag_release.run_git_command_with_input")
     @patch("tag_release._tag_exists", return_value=False)
     @patch("tag_release.find_changelog")

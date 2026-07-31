@@ -14,14 +14,14 @@ export PATH := cargo_home + "/bin" + path_separator + env_var("PATH")
 cargo_machete_version := "0.9.2"
 cargo_nextest_version := "0.9.140"
 cargo_llvm_cov_version := "0.8.7"
-dprint_version := "0.55.1"
+dprint_version := "0.55.2"
 git_cliff_version := "2.13.1"
 just_version := "1.56.0"
-rumdl_version := "0.2.31"
+rumdl_version := "0.2.47"
 taplo_version := "0.10.0"
 typos_version := "1.48.0"
-uv_version := "0.11.28"
-zizmor_version := "1.26.1"
+uv_version := "0.12.0"
+zizmor_version := "1.28.0"
 
 # Internal helpers: ensure external tooling is installed
 _ensure-actionlint:

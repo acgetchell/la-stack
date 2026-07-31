@@ -11,6 +11,10 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 
   # Enable version updates for Rust dependencies
   - package-ecosystem: "cargo"
