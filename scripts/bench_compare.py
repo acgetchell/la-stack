@@ -627,7 +627,7 @@ def _parse_criterion_metadata(
     return CriterionProvenance(
         suite=cast("BenchmarkSuite", suite),
         scope=cast("ComparisonScope", scope),
-        statistic=cast("Statistic", statistic),
+        statistic=statistic,
         sample=sample,
         criterion_version=criterion_version,
         baseline_command=commands["baseline_command"],
@@ -1437,9 +1437,11 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
     """Render validated provenance without implying facts absent from metadata."""
     if provenance.schema == 1:
         return [
-            "**Harness provenance**: legacy shared current harness metadata from "
-            f"`.la-stack-benchmark-harness.json` (baseline source `{provenance.baseline}`, SHA-256 `{provenance.sha256}`). "
-            "CPU, OS, rustc, commits, Criterion configuration, and fixture-gate results were not recorded."
+            (
+                "**Harness provenance**: legacy shared current harness metadata from "
+                f"`.la-stack-benchmark-harness.json` (baseline source `{provenance.baseline}`, SHA-256 `{provenance.sha256}`). "
+                "CPU, OS, rustc, commits, Criterion configuration, and fixture-gate results were not recorded."
+            )
         ]
 
     if provenance.measurement is None or provenance.publication is None or provenance.criterion is None or provenance.validation is None:

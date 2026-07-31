@@ -7,7 +7,7 @@ clarity, and the fixed-dimension stack-allocation model.
 ## Getting Started
 
 Install Rust 1.97.0 through [rustup](https://rustup.rs/), Git, Python 3.14,
-[`uv` 0.11.28](https://docs.astral.sh/uv/), and `jq`. Install the repository's
+[`uv` 0.12.0](https://docs.astral.sh/uv/), and `jq`. Install the repository's
 pinned `just` version from its locked dependency graph:
 
 ```bash

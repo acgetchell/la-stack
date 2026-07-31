@@ -9,7 +9,7 @@ reviews:
   # The review-progress path creates a second GitHub check run for the same review.
   review_progress: false
   commit_status: true
-  fail_commit_status: false
+  fail_commit_status: true
   tools:
     github-checks:
       enabled: true
