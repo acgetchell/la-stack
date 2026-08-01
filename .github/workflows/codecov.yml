@@ -31,23 +31,37 @@ jobs:
           cache: true # toolchain/components are specified in rust-toolchain.toml
           cache-bin: false
 
-      - name: Read just version
-        id: just_version
-        run: |
-          version="$(grep '^just_version :=' justfile | cut -d '"' -f 2)"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Install just
-        uses: taiki-e/cache-cargo-install-action@417450f3c33ee20393705369577571770643d4c7 # v3.0.7
-        with:
-          tool: just@${{ steps.just_version.outputs.version }}
+      - name: Set up just
+        uses: ./.github/actions/setup-just
 
       - name: Export coverage tool versions
         id: tool_versions
+        shell: bash
         run: |
+          set -euo pipefail
+
+          resolve_version() {
+            local name="$1"
+            local value
+
+            if ! value="$(just --evaluate "$name")"; then
+              echo "::error::Failed to resolve $name from justfile" >&2
+              return 1
+            fi
+            if [[ -z "$value" ]]; then
+              echo "::error::Resolved empty $name from justfile" >&2
+              return 1
+            fi
+
+            printf '%s\n' "$value"
+          }
+
+          cargo_llvm_cov_version="$(resolve_version cargo_llvm_cov_version)"
+          cargo_nextest_version="$(resolve_version cargo_nextest_version)"
+
           {
-            echo "CARGO_LLVM_COV_VERSION=$(just --evaluate cargo_llvm_cov_version)"
-            echo "CARGO_NEXTEST_VERSION=$(just --evaluate cargo_nextest_version)"
+            echo "CARGO_LLVM_COV_VERSION=$cargo_llvm_cov_version"
+            echo "CARGO_NEXTEST_VERSION=$cargo_nextest_version"
           } >> "$GITHUB_OUTPUT"
 
       - name: Install LLVM coverage tools

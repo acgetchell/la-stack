@@ -11,17 +11,25 @@ cargo_home := env_var_or_default("CARGO_HOME", home_dir + "/.cargo")
 path_separator := if os_family() == "windows" { ";" } else { ":" }
 export PATH := cargo_home + "/bin" + path_separator + env_var("PATH")
 
+# Coverage (cargo-llvm-cov)
+#
+# Common cargo-llvm-cov arguments for all coverage runs.
+_coverage_base_args := '''--features exact \
+  --workspace --lib --tests \
+  --verbose'''
+cargo_llvm_cov_version := "0.8.7"
 cargo_machete_version := "0.9.2"
 cargo_nextest_version := "0.9.140"
-cargo_llvm_cov_version := "0.8.7"
+clippy_sarif_version := "0.8.0"
 dprint_version := "0.55.2"
 git_cliff_version := "2.13.1"
-just_version := "1.56.0"
-rumdl_version := "0.2.47"
+just_version := "1.57.0"
+rumdl_version := "0.2.48"
+sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
 typos_version := "1.48.0"
-uv_version := "0.12.0"
-zizmor_version := "1.28.0"
+uv_version := "0.12.1"
+zizmor_version := "1.29.0"
 
 # Internal helpers: ensure external tooling is installed
 _ensure-actionlint:
@@ -222,10 +230,6 @@ bench-latest: bench-vs-linalg-la-stack bench-exact
 bench-latest-vs-last baseline="last": bench-latest python-sync
     uv run --locked bench-compare {{ quote(baseline) }}
 
-# Run only la-stack vs_linalg measurements and render a non-exact performance report.
-bench-vs-linalg-latest-vs baseline="last": bench-vs-linalg-la-stack python-sync
-    uv run --locked bench-compare {{ quote(baseline) }} --suite vs_linalg --scope release-signal
-
 # Save a Criterion baseline. Defaults to all release-signal benchmark suites.
 bench-save-baseline tag suite="all":
     #!/usr/bin/env bash
@@ -267,6 +271,10 @@ bench-vs-linalg filter="":
 bench-vs-linalg-la-stack:
     cargo bench --locked --features bench --bench vs_linalg -- la_stack
 
+# Run only la-stack vs_linalg measurements and render a non-exact performance report.
+bench-vs-linalg-latest-vs baseline="last": bench-vs-linalg-la-stack python-sync
+    uv run --locked bench-compare {{ quote(baseline) }} --suite vs_linalg --scope release-signal
+
 # Quick iteration (reduced runtime, no Criterion HTML).
 bench-vs-linalg-quick filter="":
     #!/usr/bin/env bash
@@ -284,6 +292,10 @@ build:
 
 build-release:
     cargo build --release
+
+# Verify Cargo.toml and the committed Cargo.lock are synchronized.
+cargo-lock-check:
+    cargo metadata --locked --format-version 1 --no-deps > /dev/null
 
 # Changelog generation (git-cliff + post-processing + archiving)
 changelog: _ensure-git-cliff _ensure-rumdl python-sync
@@ -331,13 +343,10 @@ check: lint
 check-fast:
     cargo check
 
-# Verify Cargo.toml and the committed Cargo.lock are synchronized.
-cargo-lock-check:
-    cargo metadata --locked --format-version 1 --no-deps > /dev/null
-
-# CI simulation: comprehensive validation (matches CI expectations)
-# Runs: checks + all tests (Rust + Python) + examples + bench compile
-ci: check bench-compile test-all examples
+# CI simulation: flat GitHub-equivalent union of leaf validators.
+# Keep this dependency list explicit so each target class and validation surface
+# is composed once without re-entering broad check/test bundles.
+ci: action-lint zizmor markdown-check spell-check docs-version-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-typecheck test-python cargo-lock-check fmt-check clippy-core doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
     @echo "🎯 CI checks complete!"
 
 # Validate CITATION.cff against the Citation File Format schema.
@@ -350,23 +359,21 @@ clean:
     rm -rf target/llvm-cov
     rm -rf coverage
 
-# Code quality and formatting (lint levels are configured in Cargo.toml).
+# Optional broad Clippy sweep across tests, examples, and benches.
 clippy: clippy-all-targets
 
 clippy-all-targets:
     cargo clippy --workspace --all-targets
     cargo clippy --workspace --all-targets --all-features
 
+# Core library Clippy checks used by the orthogonal CI graph.
+clippy-core:
+    cargo clippy --workspace --lib
+    cargo clippy --workspace --lib --all-features
+
 # Clippy for the "exact" feature (catches feature-gated lint issues)
 clippy-exact:
     cargo clippy --features exact --all-targets
-
-# Coverage (cargo-llvm-cov)
-#
-# Common cargo-llvm-cov arguments for all coverage runs.
-_coverage_base_args := '''--features exact \
-  --workspace --lib --tests \
-  --verbose'''
 
 # Coverage analysis for local development (HTML output)
 coverage: _ensure-cargo-llvm-cov _ensure-cargo-nextest
@@ -429,6 +436,9 @@ fmt:
 fmt-check:
     cargo fmt --all -- --check
 
+github-actions-check: action-lint zizmor
+    @echo "✅ GitHub Actions checks complete!"
+
 help-workflows:
     @echo "Common Just workflows:"
     @echo "  just check             # Run lint/validators (non-mutating)"
@@ -473,11 +483,21 @@ help-workflows:
     @echo "  just test              # Lib + doc tests (fast)"
     @echo "  just test-all          # All tests (Rust + Python)"
     @echo "  just test-bench-inputs # Benchmark input smoke tests"
+    @echo "  just test-doc          # Default-feature doctests"
     @echo "  just test-exact        # Exact-feature tests and doctests"
     @echo "  just test-integration  # Integration tests"
     @echo "  just test-python       # Python tests only (pytest)"
+    @echo "  just test-rust-ci      # Release-profile unit + integration CI bucket"
+    @echo "  just test-unit         # Library unit tests"
     @echo ""
     @echo "Note: Some recipes require external tools. Run 'just setup-tools' (tooling) or 'just setup' (full env) first."
+
+# File validation
+json-check: validate-json
+
+# Keep the command-memory layer itself canonically formatted.
+justfile-fmt-check:
+    just --fmt --check
 
 # Lint groups (delaunay-style)
 lint: lint-code lint-docs lint-config
@@ -486,25 +506,7 @@ lint-code: rust-core-check python-check shell-check
 
 lint-config: json-check toml-ci yaml-ci github-actions-check justfile-fmt-check
 
-lint-docs: markdown-ci
-
-github-actions-check: action-lint zizmor
-    @echo "✅ GitHub Actions checks complete!"
-
-markdown-ci: markdown-check spell-check
-    @echo "✅ Markdown checks complete!"
-
-python-ci: python-check test-python
-    @echo "✅ Python checks complete!"
-
-rust-core-check: cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps
-    @echo "✅ Rust core checks complete!"
-
-toml-ci: toml-check
-    @echo "✅ TOML checks complete!"
-
-yaml-ci: yaml-check citation-check
-    @echo "✅ YAML/CFF checks complete!"
+lint-docs: markdown-ci docs-version-check
 
 # Markdown
 markdown-check: _ensure-rumdl
@@ -542,6 +544,9 @@ markdown-check: _ensure-rumdl
     else
         echo "No markdown files found to check."
     fi
+
+markdown-ci: markdown-check spell-check
+    @echo "✅ Markdown checks complete!"
 
 markdown-fix: _ensure-rumdl
     #!/usr/bin/env bash
@@ -644,15 +649,20 @@ plot-vs-linalg-readme metric="lu_solve" stat="median" sample="new" log_y="true":
     uv run --locked criterion-dim-plot "${args[@]}"
 
 # Python tooling (uv)
-python-check: python-typecheck
-    uv run --locked ruff format --check scripts/
-    uv run --locked ruff check scripts/
+python-check: python-format-check python-lint python-typecheck
+
+python-ci: python-format-check python-lint python-typecheck test-python
+    @echo "✅ Python checks complete!"
 
 python-fix: python-sync
     uv run --locked ruff check scripts/ --fix
     uv run --locked ruff format scripts/
 
-python-lint: python-check
+python-format-check: python-sync
+    uv run --locked ruff format --check scripts/
+
+python-lint: python-sync
+    uv run --locked ruff check scripts/
 
 python-sync: _ensure-uv
     uv sync --locked --group dev
@@ -660,8 +670,11 @@ python-sync: _ensure-uv
 python-typecheck: python-sync
     uv run --locked ty check scripts/ --error all
 
+rust-core-check: cargo-lock-check fmt-check clippy-core doc-check semgrep semgrep-test unused-deps
+    @echo "✅ Rust core checks complete!"
+
 # Repository-owned Semgrep rules for project-specific diagnostics.
-semgrep: docs-version-check
+semgrep: _ensure-uv
     uv run --locked semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .
 
 # Fixture tests for repository-owned Semgrep rules.
@@ -895,6 +908,10 @@ test: test-lib test-doc
 test-all: test-rust test-python
     @echo "✅ All tests passed"
 
+# Smoke-test deterministic inputs and configuration shared with benchmark suites.
+test-bench-inputs: _ensure-cargo-nextest
+    cargo nextest run --profile ci --features bench,exact --test vs_linalg_inputs --test exact_bench_config --verbose
+
 test-doc:
     cargo test --doc --verbose
 
@@ -905,34 +922,33 @@ test-doc-exact:
 test-exact: _ensure-cargo-nextest test-doc-exact
     cargo nextest run --profile ci --features exact --verbose
 
-# Smoke-test deterministic inputs and configuration shared with benchmark suites.
-test-bench-inputs: _ensure-cargo-nextest
-    cargo nextest run --profile ci --features bench,exact --test vs_linalg_inputs --test exact_bench_config --verbose
+test-integration: _ensure-cargo-nextest
+    cargo nextest run --profile ci --tests --verbose
 
 # Compile all integration-test targets without running them.
 test-integration-compile: _ensure-cargo-nextest
     cargo nextest run --all-features --tests --no-run
 
-test-integration: _ensure-cargo-nextest
-    cargo nextest run --profile ci --tests --verbose
-
 test-lib: _ensure-cargo-nextest
     cargo nextest run --profile ci --lib --verbose
-
-# CI Rust bucket: all runnable unit/integration targets in one nextest pass.
-test-rust-ci: _ensure-cargo-nextest
-    cargo nextest run --profile ci --all-features --lib --tests --verbose
-
-test-rust: test-rust-ci test-doc test-doc-exact
-    @echo "✅ Rust tests passed"
-
-test-unit: test-lib
 
 test-python: python-sync
     uv run --locked pytest -q
 
+test-rust: test-rust-ci test-doc test-doc-exact
+    @echo "✅ Rust tests passed"
+
+# CI Rust bucket: all runnable unit/integration targets in one nextest pass.
+test-rust-ci: _ensure-cargo-nextest
+    cargo nextest run --release --profile ci --all-features --lib --tests --verbose
+
+test-unit: test-lib
+
 # TOML
-toml-check: toml-fmt-check toml-lint
+toml-check: toml-parse-check toml-fmt-check toml-lint
+
+toml-ci: toml-check
+    @echo "✅ TOML checks complete!"
 
 toml-fix: toml-fmt
 
@@ -981,12 +997,25 @@ toml-lint: _ensure-taplo
         echo "No TOML files found to lint."
     fi
 
+# Validate TOML syntax independently with Python's standard-library parser.
+toml-parse-check: python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files=()
+    while IFS= read -r -d '' file; do
+        if [ -f "$file" ]; then
+            files+=("$file")
+        fi
+    done < <(git ls-files -co --exclude-standard -z -- '*.toml')
+    if [ "${#files[@]}" -gt 0 ]; then
+        uv run --locked python -c 'import pathlib, sys, tomllib; [tomllib.loads(pathlib.Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:]]' "${files[@]}"
+    else
+        echo "No TOML files found to parse."
+    fi
+
 # Check for unused direct Cargo dependencies.
 unused-deps: _ensure-cargo-machete
     cargo machete
-
-# File validation
-json-check: validate-json
 
 validate-json: _ensure-jq
     #!/usr/bin/env bash
@@ -1006,20 +1035,8 @@ validate-json: _ensure-jq
 # YAML
 yaml-check: yaml-fmt-check yaml-lint
 
-yaml-fmt-check: _ensure-dprint
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.yml' '*.yaml' 'CITATION.cff')
-    if [ "${#files[@]}" -gt 0 ]; then
-        printf '%s\0' "${files[@]}" | xargs -0 dprint check --incremental=false
-    else
-        echo "No YAML files found to check."
-    fi
+yaml-ci: yaml-check citation-check
+    @echo "✅ YAML/CFF checks complete!"
 
 yaml-fix: _ensure-dprint
     #!/usr/bin/env bash
@@ -1034,6 +1051,21 @@ yaml-fix: _ensure-dprint
         printf '%s\0' "${files[@]}" | xargs -0 dprint fmt --incremental=false
     else
         echo "No YAML files found to format."
+    fi
+
+yaml-fmt-check: _ensure-dprint
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files=()
+    while IFS= read -r -d '' file; do
+        if [ -f "$file" ]; then
+            files+=("$file")
+        fi
+    done < <(git ls-files -co --exclude-standard -z -- '*.yml' '*.yaml' 'CITATION.cff')
+    if [ "${#files[@]}" -gt 0 ]; then
+        printf '%s\0' "${files[@]}" | xargs -0 dprint check --incremental=false
+    else
+        echo "No YAML files found to check."
     fi
 
 yaml-lint: _ensure-yamllint
@@ -1051,10 +1083,6 @@ yaml-lint: _ensure-yamllint
     else
         echo "No YAML files found to lint."
     fi
-
-# Keep the command-memory layer itself canonically formatted.
-justfile-fmt-check:
-    just --fmt --check
 
 # GitHub Actions security analysis
 zizmor: _ensure-zizmor

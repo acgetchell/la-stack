@@ -571,11 +571,11 @@ cargo run --features exact --example exact_solve_3x3
 A short contributor workflow:
 
 Install Rust 1.97.1 through [rustup](https://rustup.rs/), Git, Python 3.14,
-[`uv` 0.12.0](https://docs.astral.sh/uv/), and `jq`. Then install the pinned
+[`uv` 0.12.1](https://docs.astral.sh/uv/), and `jq`. Then install the pinned
 `just` release from its locked dependency graph:
 
 ```bash
-cargo install --locked just --version 1.56.0
+cargo install --locked just --version 1.57.0
 just setup        # install/verify dev tools + sync Python deps
 just check        # lint/validate (non-mutating)
 just fix          # apply auto-fixes (mutating)
