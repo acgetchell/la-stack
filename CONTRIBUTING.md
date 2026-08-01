@@ -7,11 +7,11 @@ clarity, and the fixed-dimension stack-allocation model.
 ## Getting Started
 
 Install Rust 1.97.1 through [rustup](https://rustup.rs/), Git, Python 3.14,
-[`uv` 0.12.0](https://docs.astral.sh/uv/), and `jq`. Install the repository's
+[`uv` 0.12.1](https://docs.astral.sh/uv/), and `jq`. Install the repository's
 pinned `just` version from its locked dependency graph:
 
 ```bash
-cargo install --locked just --version 1.56.0
+cargo install --locked just --version 1.57.0
 ```
 
 Set up the remaining development tools and validate the checkout:
@@ -35,6 +35,34 @@ an explicit allowlist, and kept with readable version comments for review.
 
 CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
 aligned with the local comprehensive validation path.
+
+### Rust Toolchain Policy
+
+The `bench-compile` recipe uses Cargo's `CARGO_BUILD_WARNINGS=deny` policy for
+both the normal benchmark feature and the `exact` benchmark target. Unlike a
+global `RUSTFLAGS='-D warnings'`, this denies lint warnings only for local
+packages without changing rustc arguments and creating separate cache
+artifacts. Rustdoc has a separate warning contract, so `doc-check` continues to
+set `RUSTDOCFLAGS='-D warnings'` for the default and `exact` documentation
+surfaces. See the [Rust 1.97 release notes](https://doc.rust-lang.org/stable/releases.html#version-1970-2026-07-09)
+and [Cargo configuration reference](https://doc.rust-lang.org/cargo/reference/config.html#buildwarnings).
+
+The remaining Rust 1.97 tooling changes require no repository configuration:
+
+- Rust's default v0 symbol mangling is accepted. Repository code, benchmark
+  reporting, and support scripts do not parse raw Rust symbols or require the
+  legacy format. Any future symbol-processing tool must support v0 rather than
+  forcing the nightly-only legacy override.
+- The warn-by-default `linker_messages` lint is covered by the manifest's
+  warnings-deny policy. The Rust 1.97.1 upgrade completed `just ci` on Linux,
+  macOS, and Windows without linker diagnostics, so no platform suppression is
+  justified.
+- `resolver.lockfile-path` is not configured. Local, CI, release-benchmark, and
+  historical-comparison worktrees are writable and use the committed root
+  `Cargo.lock`; an alternate path would split the lockfile and provenance source
+  without helping a read-only-source workflow.
+- The updated must-use behavior for `Result<_, Infallible>` and
+  `RepeatN::default` do not intersect production code in this repository.
 
 ## Contributor Workflow
 
@@ -60,6 +88,35 @@ with the behavior they support, avoid unrelated formatting churn, and cite
 relevant literature for numerical or algorithmic work. Automation and AI
 assistants must stop before version-control mutations and release operations; a
 human contributor performs and reviews commits, pushes, tags, and releases.
+
+### Validation Workflow
+
+Start with the smallest test selection that exercises the changed behavior. Use
+`cargo nextest run <test-name>` for a focused runnable test, `cargo test --doc
+<filter>` for a focused doctest, or `cargo nextest run --test <crate>` for one
+integration-test crate.
+
+For final validation of a non-core change, compose each affected surface once:
+
+- Documentation: `just markdown-ci`
+- Configuration and workflows: `just lint-config`
+- Python support tooling: `just python-ci`
+- Core Rust checks: `just rust-core-check`
+- Rust unit tests: `just test-unit`
+- Doctests: `just test-doc` and, when relevant, `just test-doc-exact`
+- Integration tests: `just test-integration`
+- Benchmark inputs or harnesses: `just test-bench-inputs` or `just bench-compile`
+- Examples: `just examples`
+
+Run `just ci` for core Rust, public behavior, or GitHub-equivalent validation.
+It composes leaf validators directly, runs unit and integration tests together
+once through the release-profile `test-rust-ci` bucket, and keeps doctests
+separate because nextest does not execute them. `just clippy` remains an
+optional all-target sweep outside this CI path.
+
+`la-stack` intentionally has no notebook validation bucket: the repository has
+no notebooks or supported Python binding surface. Add notebook tooling only
+alongside an actual maintained notebook interface rather than speculatively.
 
 ## Project References
 

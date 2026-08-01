@@ -38,14 +38,27 @@ jobs:
         with:
           cache: false
 
-      - name: Install benchmark validation tools
+      - name: Set up just
+        uses: ./.github/actions/setup-just
+
+      - name: Resolve cargo-nextest version
+        id: cargo_nextest_version
+        shell: bash
         run: |
           set -euo pipefail
 
-          just_version="$(grep '^just_version :=' justfile | cut -d '"' -f 2)"
-          cargo install --locked just --version "$just_version"
-          nextest_version="$(just --evaluate cargo_nextest_version)"
-          cargo install --locked cargo-nextest --version "$nextest_version"
+          version="$(just --evaluate cargo_nextest_version)"
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not resolve cargo_nextest_version from justfile"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install cargo-nextest
+        uses: taiki-e/cache-cargo-install-action@417450f3c33ee20393705369577571770643d4c7 # v3.0.7
+        with:
+          tool: cargo-nextest@${{ steps.cargo_nextest_version.outputs.version }}
 
       - name: Validate benchmark inputs
         run: just test-bench-inputs
