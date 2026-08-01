@@ -204,11 +204,12 @@ bench-compare baseline="last" suite="all" scope="release-signal": python-sync
     baseline={{ quote(baseline) }}
     uv run --locked bench-compare "$baseline" --suite {{ quote(suite) }} --scope {{ quote(scope) }}
 
-# Compile benchmarks without running them, treating warnings as errors.
+# Compile benchmarks without running them, treating warnings as errors through
+# Cargo so warning policy does not create separate rustc cache artifacts.
 # This catches bench/release-profile-only warnings that won't show up in normal debug-profile runs.
 bench-compile:
-    RUSTFLAGS='-D warnings' cargo bench --locked --no-run --features bench
-    RUSTFLAGS='-D warnings' cargo bench --locked --no-run --features bench,exact --bench exact
+    CARGO_BUILD_WARNINGS=deny cargo bench --locked --no-run --features bench
+    CARGO_BUILD_WARNINGS=deny cargo bench --locked --no-run --features bench,exact --bench exact
 
 # Run the exact-arithmetic benchmark suite.
 bench-exact:
