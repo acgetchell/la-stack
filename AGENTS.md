@@ -207,7 +207,7 @@ When user requests commit message generation:
 
 ### Rust
 
-- The current MSRV and pinned contributor/CI toolchain are Rust 1.97.0. Keep
+- The current MSRV and pinned contributor/CI toolchain are Rust 1.97.1. Keep
   `Cargo.toml`, `rust-toolchain.toml`, and `clippy.toml` aligned when that
   baseline changes deliberately.
 - Prefer borrowed APIs by default:

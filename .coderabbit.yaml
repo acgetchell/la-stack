@@ -5,8 +5,8 @@ early_access: false
 reviews:
   profile: chill
   request_changes_workflow: true
-  # Publish only the legacy commit status consumed by the main-branch ruleset.
-  # The review-progress path creates a second GitHub check run for the same review.
+  # Publish the legacy commit status consumed by the main-branch ruleset.
+  # Keep review_progress off until CodeRabbit can publish the required check run.
   review_progress: false
   commit_status: true
   fail_commit_status: true
