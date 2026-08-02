@@ -32,10 +32,9 @@ uv_version := "0.12.1"
 zizmor_version := "1.29.0"
 
 # Internal helpers: ensure external tooling is installed
-_ensure-actionlint:
+_ensure-actionlint: _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
-    command -v uv >/dev/null || { echo "❌ 'uv' not found. Install with the official installer: https://docs.astral.sh/uv/getting-started/installation/"; exit 1; }
     uv run --locked actionlint -version >/dev/null
 
 _ensure-cargo-llvm-cov:
@@ -121,16 +120,14 @@ _ensure-rumdl:
         exit 1
     fi
 
-_ensure-shellcheck:
+_ensure-shellcheck: _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
-    command -v uv >/dev/null || { echo "❌ 'uv' not found. See 'just setup' or https://docs.astral.sh/uv/"; exit 1; }
     uv run --locked shellcheck --version >/dev/null
 
-_ensure-shfmt:
+_ensure-shfmt: _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
-    command -v uv >/dev/null || { echo "❌ 'uv' not found. See 'just setup' or https://docs.astral.sh/uv/"; exit 1; }
     uv run --locked shfmt --version >/dev/null
 
 _ensure-taplo:
@@ -163,12 +160,17 @@ _ensure-typos:
 _ensure-uv:
     #!/usr/bin/env bash
     set -euo pipefail
-    command -v uv >/dev/null || { echo "❌ 'uv' not found. See 'just setup' or https://github.com/astral-sh/uv"; exit 1; }
+    resolved="$(command -v uv 2>/dev/null || true)"
+    actual="$(uv --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+    if [[ "$actual" != "{{ uv_version }}" ]]; then
+        echo "❌ 'uv' resolves to '${resolved:-missing}' at version '${actual:-missing}', expected '{{ uv_version }}'." >&2
+        echo "   Install uv {{ uv_version }} and re-run: just setup-tools" >&2
+        exit 1
+    fi
 
-_ensure-yamllint:
+_ensure-yamllint: _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
-    command -v uv >/dev/null || { echo "❌ 'uv' not found. See 'just setup' or https://docs.astral.sh/uv/"; exit 1; }
     uv run --locked yamllint --version >/dev/null
 
 _ensure-zizmor:
