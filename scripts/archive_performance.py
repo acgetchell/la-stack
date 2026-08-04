@@ -5,15 +5,15 @@ Release performance docs have two different lifetimes:
 
   - ``target/bench-reports/performance.md`` is local scratch output for the
     current machine and branch.
+  - ``target/bench-reports/performance.csv`` and the adjacent provenance JSON
+    are validated, rerenderable release-report inputs.
   - ``docs/PERFORMANCE.md`` is the latest curated release-to-release comparison.
   - ``docs/archive/performance/*.md`` stores older curated comparisons.
 
-This script copies a freshly generated local report into ``docs/PERFORMANCE.md``
-and archives the previous committed report under a filename derived from the
-report metadata, such as ``v0.4.2-vs-v0.4.1.md``.
+This script renders from a validated artifact reload, copies the result into
+``docs/PERFORMANCE.md``, and archives the previous committed report under a
+filename derived from the report metadata, such as ``v0.4.2-vs-v0.4.1.md``.
 """
-
-from __future__ import annotations
 
 import argparse
 import hashlib
@@ -34,6 +34,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from bench_compare import render_release_artifacts
+from performance_artifacts import ArtifactPaths, PerformanceBundle, ensure_distinct_paths, load_bundle, publish_bundle
 from subprocess_utils import ExecutableNotFoundError, run_git_command, run_git_command_with_input, run_safe_command
 
 _VERSION_RE = re.compile(r"^\*\*la-stack\*\* v(?P<version>[^\s`]+)", re.MULTILINE)
@@ -47,6 +49,8 @@ _TAG_RE = re.compile(
 _SEMVER_PARTS_RE = re.compile(r"^v?(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)$")
 
 _DEFAULT_SOURCE = "target/bench-reports/performance.md"
+_DEFAULT_ARTIFACT_CSV = "target/bench-reports/performance.csv"
+_DEFAULT_ARTIFACT_PROVENANCE = "target/bench-reports/performance.provenance.json"
 _DEFAULT_CURRENT = "docs/PERFORMANCE.md"
 _DEFAULT_ARCHIVE_DIR = "docs/archive/performance"
 _DEFAULT_SUITE = "all"
@@ -87,6 +91,18 @@ class ReportId:
     def archive_name(self) -> str:
         """Return the canonical archive filename for this report."""
         return f"{self.current_tag}-vs-{self.baseline_tag}.md"
+
+
+@dataclass(frozen=True)
+class PromotionRequest:
+    """Destinations and expected identity for one report promotion."""
+
+    current: Path
+    archive_dir: Path
+    expected: ReportId
+    source_path: Path | None = None
+    output: Path | None = None
+    reserved_paths: Mapping[str, Path] | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +159,15 @@ class ArchivePaths:
     current: Path
     output: Path
     archive_dir: Path
+    artifacts: ArtifactPaths
+
+
+@dataclass(frozen=True)
+class GeneratedReport:
+    """A report rendered from a validated, durable artifact bundle."""
+
+    text: str
+    bundle: PerformanceBundle
 
 
 @dataclass(frozen=True)
@@ -150,7 +175,7 @@ class ArchiveResult:
     """Result and destination metadata for a completed archive operation."""
 
     report_id: ReportId
-    action: Literal["output", "promote-generated", "promote-source"]
+    action: Literal["output", "promote-generated", "promote-source", "rerender"]
 
 
 @dataclass(frozen=True)
@@ -362,6 +387,9 @@ def _how_to_update_section() -> str:
         "# Release PR: update docs/PERFORMANCE.md and archive the previous report",
         "just performance-release",
         "",
+        "# Re-render and promote from retained CSV/JSON inputs (no benchmarks)",
+        "just performance-rerender",
+        "",
         "# GitHub Actions release assets",
         "just performance-github-assets",
         "",
@@ -371,6 +399,7 @@ def _how_to_update_section() -> str:
         "",
         "`just performance-local` writes `target/bench-reports/performance.md`.",
         "`just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.",
+        "`just performance-release` also retains `performance.csv` and `performance.provenance.json` beside the local report.",
         "",
         "Older curated release-to-release reports are archived in `docs/archive/performance/`.",
         "",
@@ -411,6 +440,53 @@ def _write_text(path: Path, text: str) -> None:
     finally:
         if tmp_path is not None and tmp_path.exists():
             tmp_path.unlink()
+
+
+def _restore_file(path: Path, payload: bytes | None) -> None:
+    """Restore one file snapshot without relying on the publication writer."""
+    if payload is None:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "wb",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".restore",
+        delete=False,
+    ) as tmp:
+        restore_path = Path(tmp.name)
+        tmp.write(payload)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+    try:
+        restore_path.replace(path)
+    finally:
+        restore_path.unlink(missing_ok=True)
+
+
+def _snapshot_regular_file(path: Path, *, label: str) -> bytes | None:
+    """Snapshot a mutation target while rejecting symlinks and non-files."""
+    if path.is_symlink():
+        msg = f"{label} must not be a symlink: {path}"
+        raise ValueError(msg)
+    if not path.exists():
+        return None
+    if not path.is_file():
+        msg = f"{label} must be a regular file: {path}"
+        raise ValueError(msg)
+    return path.read_bytes()
+
+
+def _restore_snapshots(snapshots: tuple[tuple[Path, bytes | None], ...]) -> tuple[BaseException, ...]:
+    """Attempt every file restoration and return all rollback failures."""
+    errors: list[BaseException] = []
+    for path, payload in reversed(snapshots):
+        try:
+            _restore_file(path, payload)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+    return tuple(errors)
 
 
 def _archive_readme(archive_dir: Path) -> str:
@@ -1152,45 +1228,48 @@ def _has_current_release_signal_tooling(worktree: Path) -> bool:
     return re.search(r"(?m)^bench-latest(?:[ :]|$)", justfile_text) is not None and '"--suite"' in bench_compare_text and '"--scope"' in bench_compare_text
 
 
-def _render_report(*, worktree: Path, report: Path, config: GenerationConfig) -> None:
-    if _has_current_release_signal_tooling(worktree):
-        _run_tool(
-            "uv",
-            [
-                "run",
-                "--locked",
-                "bench-compare",
-                config.baseline_tag,
-                "--suite",
-                config.suite,
-                "--scope",
-                config.scope,
-                "--output",
-                str(report),
-            ],
-            cwd=worktree,
-            timeout=_COMMAND_TIMEOUT_SECONDS,
-        )
-    else:
-        _run_tool(
-            "uv",
-            [
-                "run",
-                "--locked",
-                "bench-compare",
-                config.baseline_tag,
-                "--output",
-                str(report),
-            ],
-            cwd=worktree,
-            timeout=_COMMAND_TIMEOUT_SECONDS,
-        )
+def _render_report(
+    *,
+    worktree: Path,
+    report: Path,
+    artifacts: ArtifactPaths,
+    config: GenerationConfig,
+) -> None:
+    """Export report inputs and render Markdown from their validated reload."""
+    _run_tool(
+        "uv",
+        [
+            "run",
+            "--locked",
+            "--project",
+            str(config.repo_root),
+            "bench-compare",
+            config.baseline_tag,
+            "--repo-root",
+            str(worktree),
+            "--criterion-dir",
+            str(worktree / "target" / "criterion"),
+            "--suite",
+            config.suite,
+            "--scope",
+            config.scope,
+            "--csv-output",
+            str(artifacts.csv),
+            "--provenance-output",
+            str(artifacts.provenance),
+            "--output",
+            str(report),
+        ],
+        cwd=config.repo_root,
+        timeout=_COMMAND_TIMEOUT_SECONDS,
+    )
 
 
 def _run_benchmarks_and_render_report(
     *,
     worktree: Path,
     report: Path,
+    artifacts: ArtifactPaths,
     config: GenerationConfig,
     baseline_run: BaselineRun,
 ) -> None:
@@ -1217,17 +1296,32 @@ def _run_benchmarks_and_render_report(
         baseline_run=baseline_run,
         current_command=current_command,
     )
-    _render_report(worktree=worktree, report=report, config=config)
+    _render_report(worktree=worktree, report=report, artifacts=artifacts, config=config)
 
 
-def _generate_report_in_temp_worktree(
+def _default_artifact_paths(repo_root: Path) -> ArtifactPaths:
+    """Return the canonical retained release-report artifact pair."""
+    return ArtifactPaths(
+        csv=repo_root / _DEFAULT_ARTIFACT_CSV,
+        provenance=repo_root / _DEFAULT_ARTIFACT_PROVENANCE,
+    )
+
+
+@contextmanager
+def _generated_report_in_temp_worktree(
     *,
     config: GenerationConfig,
-) -> str:
+    published_artifacts: ArtifactPaths,
+) -> Iterator[GeneratedReport]:
+    """Generate, publish, and expose a report before its worktree is removed."""
     with tempfile.TemporaryDirectory(prefix="la-stack-performance-") as tmp:
         tmp_dir = Path(tmp)
         worktree = tmp_dir / "worktree"
         report = tmp_dir / f"{config.current_tag}-vs-{config.baseline_tag}.md"
+        temporary_artifacts = ArtifactPaths(
+            csv=tmp_dir / "performance.csv",
+            provenance=tmp_dir / "performance.provenance.json",
+        )
 
         with _temporary_detached_worktree(
             repo_root=config.repo_root,
@@ -1260,7 +1354,12 @@ def _generate_report_in_temp_worktree(
                     config=config,
                     baseline_run=baseline_run,
                 )
-                _render_report(worktree=worktree, report=report, config=config)
+                _render_report(
+                    worktree=worktree,
+                    report=report,
+                    artifacts=temporary_artifacts,
+                    config=config,
+                )
             else:
                 baseline_run = _prepare_local_release_baseline(
                     baseline_tag=config.baseline_tag,
@@ -1272,10 +1371,147 @@ def _generate_report_in_temp_worktree(
                 _run_benchmarks_and_render_report(
                     worktree=worktree,
                     report=report,
+                    artifacts=temporary_artifacts,
                     config=config,
                     baseline_run=baseline_run,
                 )
-            return _read_text(report)
+            bundle = load_bundle(temporary_artifacts)
+            report_text = _read_text(report)
+            with publish_bundle(published_artifacts, bundle):
+                durable_text = render_release_artifacts(published_artifacts)
+                if durable_text != report_text:
+                    msg = "durable release-performance artifacts did not reproduce the generated Markdown"
+                    raise ValueError(msg)
+                yield GeneratedReport(text=durable_text, bundle=bundle)
+
+
+def _current_archive_state(
+    *,
+    current: Path,
+    source_id: ReportId,
+    archive_dir: Path,
+) -> tuple[str | None, ReportId | None, Path | None]:
+    """Return normalized current-report state and its prospective archive path."""
+    if not current.exists():
+        return None, None, None
+    current_text = _normalize_how_to_update(_read_text(current))
+    current_id = parse_report_id(current_text)
+    archive_path = archive_dir / current_id.archive_name if current_id != source_id else None
+    return current_text, current_id, archive_path
+
+
+def _validate_promotion_paths(request: PromotionRequest, *, index_path: Path, archive_path: Path | None) -> None:
+    """Reject aliases and archive-contained scratch output before mutation."""
+    named_paths: dict[str, Path] = {
+        "current report": request.current,
+        "archive index": index_path,
+    }
+    if request.source_path is not None:
+        named_paths["source report"] = request.source_path
+    if request.output is not None:
+        named_paths["rendered output"] = request.output
+        if request.output.resolve(strict=False).is_relative_to(request.archive_dir.resolve(strict=False)):
+            msg = f"rendered output must not be written inside the archive directory: {request.output}"
+            raise ValueError(msg)
+    if archive_path is not None:
+        named_paths["archived report"] = archive_path
+    if request.reserved_paths is not None:
+        named_paths.update(request.reserved_paths)
+    ensure_distinct_paths(named_paths)
+
+
+def _existing_archive_matches(*, archive_path: Path | None, current_id: ReportId | None, current_text: str | None) -> bool:
+    """Validate a pre-existing canonical archive before trusting it."""
+    if archive_path is None or (not archive_path.exists() and not archive_path.is_symlink()):
+        return False
+    if current_id is None or current_text is None:
+        msg = "existing archive validation invariant violated"
+        raise AssertionError(msg)
+    archived_payload = _snapshot_regular_file(archive_path, label="existing archived report")
+    if archived_payload is None:
+        msg = "existing archive snapshot invariant violated"
+        raise AssertionError(msg)
+    archived_text = _normalize_how_to_update(archived_payload.decode("utf-8"))
+    try:
+        archived_id = parse_report_id(archived_text)
+    except (TypeError, ValueError) as exc:
+        msg = f"existing archived report does not match the current report being replaced: {archive_path}"
+        raise ValueError(msg) from exc
+    if archived_id != current_id or archived_text != current_text:
+        msg = f"existing archived report does not match the current report being replaced: {archive_path}"
+        raise ValueError(msg)
+    return True
+
+
+def _promotion_snapshots(
+    request: PromotionRequest,
+    *,
+    index_path: Path,
+    archive_path: Path | None,
+    archive_exists: bool,
+) -> tuple[tuple[Path, bytes | None], ...]:
+    """Snapshot every path mutated by a report promotion."""
+    snapshots: list[tuple[Path, bytes | None]] = []
+    if archive_path is not None and not archive_exists:
+        snapshots.append((archive_path, None))
+    snapshots.extend(
+        (
+            (request.current, _snapshot_regular_file(request.current, label="current report")),
+            (index_path, _snapshot_regular_file(index_path, label="archive index")),
+        )
+    )
+    if request.output is not None:
+        snapshots.append((request.output, _snapshot_regular_file(request.output, label="rendered output")))
+    return tuple(snapshots)
+
+
+def _promote_report_text(*, source_text: str, request: PromotionRequest) -> ReportId:
+    """Archive the old report and atomically promote validated Markdown text."""
+    source_text = _normalize_how_to_update(source_text)
+    source_id = parse_report_id(source_text)
+    if source_id != request.expected:
+        msg = (
+            "benchmark report does not match requested release pair: "
+            f"found {source_id.current_tag} vs {source_id.baseline_tag}, "
+            f"expected {request.expected.current_tag} vs {request.expected.baseline_tag}"
+        )
+        raise ValueError(msg)
+
+    current_text, current_id, archive_path = _current_archive_state(
+        current=request.current,
+        source_id=source_id,
+        archive_dir=request.archive_dir,
+    )
+    index_path = request.archive_dir / "README.md"
+    _validate_promotion_paths(request, index_path=index_path, archive_path=archive_path)
+    archive_exists = _existing_archive_matches(
+        archive_path=archive_path,
+        current_id=current_id,
+        current_text=current_text,
+    )
+    snapshots = _promotion_snapshots(
+        request,
+        index_path=index_path,
+        archive_path=archive_path,
+        archive_exists=archive_exists,
+    )
+    try:
+        if archive_path is not None and not archive_exists:
+            if current_text is None:
+                msg = "archive promotion invariant violated"
+                raise AssertionError(msg)
+            _write_text(archive_path, current_text)
+        _write_text(request.current, source_text)
+        update_archive_index(request.archive_dir)
+        if request.output is not None:
+            _write_text(request.output, source_text)
+    except BaseException as promotion_error:
+        rollback_errors = _restore_snapshots(snapshots)
+        if rollback_errors:
+            group_message = "performance report promotion and rollback failed"
+            raise BaseExceptionGroup(group_message, [promotion_error, *rollback_errors]) from None
+        raise
+    return source_id
 
 
 def promote_report(
@@ -1287,31 +1523,18 @@ def promote_report(
     expected_baseline_tag: str,
 ) -> ReportId:
     """Archive the old committed report and promote *source* as the current one."""
-    source_text = _normalize_how_to_update(_read_text(source))
-    source_id = parse_report_id(source_text)
-    expected_source_id = ReportId(
-        current_tag=normalize_tag(expected_current_tag),
-        baseline_tag=normalize_tag(expected_baseline_tag),
+    return _promote_report_text(
+        source_text=_read_text(source),
+        request=PromotionRequest(
+            current=current,
+            archive_dir=archive_dir,
+            expected=ReportId(
+                current_tag=normalize_tag(expected_current_tag),
+                baseline_tag=normalize_tag(expected_baseline_tag),
+            ),
+            source_path=source,
+        ),
     )
-    if source_id != expected_source_id:
-        msg = (
-            "benchmark report does not match requested release pair: "
-            f"found {source_id.current_tag} vs {source_id.baseline_tag}, "
-            f"expected {expected_source_id.current_tag} vs {expected_source_id.baseline_tag}"
-        )
-        raise ValueError(msg)
-
-    if current.exists():
-        current_text = _normalize_how_to_update(_read_text(current))
-        current_id = parse_report_id(current_text)
-        if current_id != source_id:
-            archive_path = archive_dir / current_id.archive_name
-            if not archive_path.exists():
-                _write_text(archive_path, current_text)
-
-    _write_text(current, source_text)
-    update_archive_index(archive_dir)
-    return source_id
 
 
 def generate_and_promote_worktree_report(
@@ -1319,6 +1542,7 @@ def generate_and_promote_worktree_report(
     current: Path,
     archive_dir: Path,
     config: GenerationConfig,
+    artifacts: ArtifactPaths | None = None,
 ) -> ReportId:
     """Generate a comparison in a temp worktree, then promote it."""
     current_tag = normalize_tag(config.current_tag)
@@ -1333,29 +1557,43 @@ def generate_and_promote_worktree_report(
         apply_current_diff=config.apply_current_diff,
         baseline_source=config.baseline_source,
     )
-    report_text = _generate_report_in_temp_worktree(
-        config=config,
+    published_artifacts = artifacts or _default_artifact_paths(config.repo_root)
+    expected = ReportId(current_tag=current_tag, baseline_tag=baseline_tag)
+    reserved_paths = {
+        "artifact CSV": published_artifacts.csv,
+        "artifact provenance": published_artifacts.provenance,
+    }
+    request = PromotionRequest(
+        current=current,
+        archive_dir=archive_dir,
+        expected=expected,
+        reserved_paths=reserved_paths,
     )
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as tmp:
-        source = Path(tmp.name)
-        tmp.write(report_text)
-    try:
-        return promote_report(
-            source=source,
-            current=current,
-            archive_dir=archive_dir,
-            expected_current_tag=current_tag,
-            expected_baseline_tag=baseline_tag,
+    _current_text, _current_id, archive_path = _current_archive_state(
+        current=current,
+        source_id=expected,
+        archive_dir=archive_dir,
+    )
+    _validate_promotion_paths(
+        request,
+        index_path=archive_dir / "README.md",
+        archive_path=archive_path,
+    )
+    with _generated_report_in_temp_worktree(
+        config=config,
+        published_artifacts=published_artifacts,
+    ) as generated:
+        return _promote_report_text(
+            source_text=generated.text,
+            request=request,
         )
-    finally:
-        if source.exists():
-            source.unlink()
 
 
 def generate_worktree_report(
     *,
     output: Path,
     config: GenerationConfig,
+    artifacts: ArtifactPaths | None = None,
 ) -> ReportId:
     """Generate a comparison in a temp worktree and write it to *output*."""
     current_tag = normalize_tag(config.current_tag)
@@ -1370,18 +1608,70 @@ def generate_worktree_report(
         apply_current_diff=config.apply_current_diff,
         baseline_source=config.baseline_source,
     )
-    report_text = _normalize_how_to_update(_generate_report_in_temp_worktree(config=config))
-    report_id = parse_report_id(report_text)
-    expected = ReportId(current_tag=current_tag, baseline_tag=baseline_tag)
-    if report_id != expected:
+    published_artifacts = artifacts or ArtifactPaths(
+        csv=output.with_suffix(".csv"),
+        provenance=output.with_suffix(".provenance.json"),
+    )
+    ensure_distinct_paths(
+        {
+            "rendered output": output,
+            "artifact CSV": published_artifacts.csv,
+            "artifact provenance": published_artifacts.provenance,
+        }
+    )
+    with _generated_report_in_temp_worktree(
+        config=config,
+        published_artifacts=published_artifacts,
+    ) as generated:
+        report_text = _normalize_how_to_update(generated.text)
+        report_id = parse_report_id(report_text)
+        expected = ReportId(current_tag=current_tag, baseline_tag=baseline_tag)
+        if report_id != expected:
+            msg = (
+                "benchmark report does not match requested release pair: "
+                f"found {report_id.current_tag} vs {report_id.baseline_tag}, "
+                f"expected {expected.current_tag} vs {expected.baseline_tag}"
+            )
+            raise ValueError(msg)
+        _write_text(output, report_text)
+        return report_id
+
+
+def rerender_and_promote_artifacts(
+    *,
+    artifacts: ArtifactPaths,
+    output: Path,
+    current: Path,
+    archive_dir: Path,
+) -> ReportId:
+    """Reproduce and promote Markdown using only retained CSV/JSON inputs."""
+    bundle = load_bundle(artifacts)
+    report_text = _normalize_how_to_update(render_release_artifacts(artifacts))
+    expected = ReportId(
+        current_tag=normalize_tag(bundle.context.release.current),
+        baseline_tag=normalize_tag(bundle.context.release.baseline),
+    )
+    observed = parse_report_id(report_text)
+    if observed != expected:
         msg = (
-            "benchmark report does not match requested release pair: "
-            f"found {report_id.current_tag} vs {report_id.baseline_tag}, "
+            "rerendered benchmark report does not match retained release pair: "
+            f"found {observed.current_tag} vs {observed.baseline_tag}, "
             f"expected {expected.current_tag} vs {expected.baseline_tag}"
         )
         raise ValueError(msg)
-    _write_text(output, report_text)
-    return report_id
+    return _promote_report_text(
+        source_text=report_text,
+        request=PromotionRequest(
+            current=current,
+            archive_dir=archive_dir,
+            expected=expected,
+            output=output,
+            reserved_paths={
+                "artifact CSV": artifacts.csv,
+                "artifact provenance": artifacts.provenance,
+            },
+        ),
+    )
 
 
 def resolve_archive_request(options: ArchiveRequestOptions) -> ResolvedArchiveRequest:
@@ -1473,6 +1763,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Generated report path for --output-only (default: {_DEFAULT_SOURCE})",
     )
     parser.add_argument(
+        "--artifact-csv",
+        default=_DEFAULT_ARTIFACT_CSV,
+        help=f"Retained release-report CSV path (default: {_DEFAULT_ARTIFACT_CSV})",
+    )
+    parser.add_argument(
+        "--artifact-provenance",
+        default=_DEFAULT_ARTIFACT_PROVENANCE,
+        help=f"Retained release-report JSON provenance path (default: {_DEFAULT_ARTIFACT_PROVENANCE})",
+    )
+    parser.add_argument(
         "--archive-dir",
         default=_DEFAULT_ARCHIVE_DIR,
         help=f"Archive directory for older reports (default: {_DEFAULT_ARCHIVE_DIR})",
@@ -1508,6 +1808,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write the generated report to --output without promoting docs/PERFORMANCE.md.",
     )
     parser.add_argument(
+        "--rerender",
+        action="store_true",
+        help="Render and promote from retained CSV/JSON artifacts without benchmarks or worktrees.",
+    )
+    parser.add_argument(
         "--worktree-ref",
         default="HEAD",
         help="Git ref to check out in the temporary worktree (default: HEAD).",
@@ -1537,6 +1842,8 @@ def _resolve_cli_paths(root: Path, args: argparse.Namespace) -> ArchivePaths:
     current = Path(args.current)
     output = Path(args.output)
     archive_dir = Path(args.archive_dir)
+    artifact_csv = Path(args.artifact_csv)
+    artifact_provenance = Path(args.artifact_provenance)
     if not source.is_absolute():
         source = root / source
     if not current.is_absolute():
@@ -1545,7 +1852,17 @@ def _resolve_cli_paths(root: Path, args: argparse.Namespace) -> ArchivePaths:
         output = root / output
     if not archive_dir.is_absolute():
         archive_dir = root / archive_dir
-    return ArchivePaths(source=source, current=current, output=output, archive_dir=archive_dir)
+    if not artifact_csv.is_absolute():
+        artifact_csv = root / artifact_csv
+    if not artifact_provenance.is_absolute():
+        artifact_provenance = root / artifact_provenance
+    return ArchivePaths(
+        source=source,
+        current=current,
+        output=output,
+        archive_dir=archive_dir,
+        artifacts=ArtifactPaths(csv=artifact_csv, provenance=artifact_provenance),
+    )
 
 
 def _fetch_required_tags(*, request: ResolvedArchiveRequest, repo_root: Path, include_current: bool) -> None:
@@ -1578,6 +1895,7 @@ def _run_archive_request(*, args: argparse.Namespace, paths: ArchivePaths, reque
                 report_id=generate_worktree_report(
                     output=paths.output,
                     config=config,
+                    artifacts=paths.artifacts,
                 ),
                 action="output",
             )
@@ -1586,6 +1904,7 @@ def _run_archive_request(*, args: argparse.Namespace, paths: ArchivePaths, reque
                 current=paths.current,
                 archive_dir=paths.archive_dir,
                 config=config,
+                artifacts=paths.artifacts,
             ),
             action="promote-generated",
         )
@@ -1616,19 +1935,45 @@ def main(argv: list[str] | None = None) -> int:
     paths = _resolve_cli_paths(root, args)
 
     try:
-        request = resolve_archive_request(
-            ArchiveRequestOptions(
-                current_tag=args.current_tag,
-                baseline_tag=args.baseline_tag,
-                published_latest=args.published_latest,
-                infer_release=args.infer_release,
-                current_vs_latest=args.current_vs_latest,
-                worktree_ref=args.worktree_ref,
-                repo_root=root,
+        if args.rerender:
+            if any(
+                (
+                    args.current_tag,
+                    args.baseline_tag,
+                    args.published_latest,
+                    args.infer_release,
+                    args.current_vs_latest,
+                    args.github_assets,
+                    args.generate_in_temp_worktree,
+                    args.output_only,
+                )
+            ):
+                msg = "--rerender cannot be combined with release selection, generation, GitHub-asset, or output-only options"
+                raise ValueError(msg)
+            result = ArchiveResult(
+                report_id=rerender_and_promote_artifacts(
+                    artifacts=paths.artifacts,
+                    output=paths.output,
+                    current=paths.current,
+                    archive_dir=paths.archive_dir,
+                ),
+                action="rerender",
             )
-        )
-        result = _run_archive_request(args=args, paths=paths, request=request, repo_root=root)
+        else:
+            request = resolve_archive_request(
+                ArchiveRequestOptions(
+                    current_tag=args.current_tag,
+                    baseline_tag=args.baseline_tag,
+                    published_latest=args.published_latest,
+                    infer_release=args.infer_release,
+                    current_vs_latest=args.current_vs_latest,
+                    worktree_ref=args.worktree_ref,
+                    repo_root=root,
+                )
+            )
+            result = _run_archive_request(args=args, paths=paths, request=request, repo_root=root)
     except (
+        ExceptionGroup,
         ExecutableNotFoundError,
         OSError,
         TypeError,
@@ -1644,6 +1989,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Generated benchmark report in a temporary worktree and wrote it to {paths.output}")
     elif result.action == "promote-generated":
         print(f"Generated benchmark report in a temporary worktree and promoted it to {paths.current}")
+    elif result.action == "rerender":
+        print(f"Re-rendered {paths.output} from {paths.artifacts.csv} and promoted it to {paths.current}")
     else:
         print(f"Promoted {paths.source} to {paths.current}")
     print(f"Current performance report: {result.report_id.current_tag} vs {result.report_id.baseline_tag}")

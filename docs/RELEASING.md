@@ -140,9 +140,21 @@ just performance-release
 Review `docs/PERFORMANCE.md` for the latest release-to-release comparison. Older
 committed comparisons are archived under `docs/archive/performance/` with
 lexicographically sorted filenames such as `v0.4.2-vs-v0.4.1.md`. Iterative
-local reports still live under `target/bench-reports/`. For an explicit release
-repair, run `just performance-release <current-tag> <previous-tag>`. To compare
-the stored GitHub Actions release assets instead of running cargo locally, use
+local reports still live under `target/bench-reports/`.
+
+The release command retains `target/bench-reports/performance.csv` and
+`performance.provenance.json` before its temporary worktrees are removed, then
+renders and promotes Markdown from a validated reload of that pair. Review the
+CSV coverage/timing rows and JSON release, revision, command, toolchain, host,
+harness, and digest metadata alongside the Markdown. For a presentation-only
+correction, run `just performance-rerender`; it reproduces and promotes the
+report from those files without invoking Cargo or creating worktrees. The pair
+is local scratch and may be removed by `just clean` or `cargo clean`, so do not
+clean `target/` until the release report review is complete.
+
+For an explicit measurement repair, run
+`just performance-release <current-tag> <previous-tag>`. To compare the stored
+GitHub Actions release assets instead of running Cargo locally, use
 `just performance-github-assets`. The local release workflow validates and then
 compiles both library revisions with the current checkout's hashed benchmark
 harness, recording source-state, environment, toolchain, dependency, Criterion,
@@ -154,8 +166,10 @@ After the GitHub Release is published, the `Release Benchmarks` workflow checks
 out the release tag, runs the independent benchmark-input tests, saves a full
 Criterion baseline, and attaches
 `la-stack-$TAG-criterion-baseline.tar.gz` to the release. That release asset is
-the durable archive for historical baseline comparisons; the workflow also
-uploads a short-lived Actions artifact for debugging the run.
+the durable native Criterion archive for historical baseline comparisons. The
+compact release-report CSV is an analysis and report-reproduction layer, not a
+replacement for that raw archive. The workflow also uploads a short-lived
+Actions artifact for debugging the run.
 
 See `docs/BENCHMARKING.md` for local saved-baseline workflows and the full
 comparison command reference.

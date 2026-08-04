@@ -4,7 +4,8 @@
 Reads Criterion output under:
   target/criterion/{group}/{bench}/{sample}/estimates.json
 
-And writes a local markdown performance report.
+Writes a local Markdown performance report and, for release workflows, a
+schema-versioned CSV plus JSON provenance pair that can reproduce it.
 
 Typical workflow (see docs/RELEASING.md):
 
@@ -20,8 +21,6 @@ Typical workflow (see docs/RELEASING.md):
   just bench-compare
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import math
@@ -35,6 +34,18 @@ from pathlib import Path
 from typing import Literal, Protocol, cast
 
 from criterion_dim_plot import METRICS
+from performance_artifacts import (
+    ArtifactContext,
+    ArtifactPaths,
+    PerformanceBundle,
+    PerformanceRow,
+    ReleasePair,
+    ReportSource,
+    TimingEstimate,
+    ensure_distinct_paths,
+    load_bundle,
+    write_bundle,
+)
 from subprocess_utils import ExecutableNotFoundError, run_git_command
 
 # ---------------------------------------------------------------------------
@@ -457,44 +468,65 @@ def _read_harness_provenance(
         msg = f"expected JSON object in {provenance_path}"
         raise TypeError(msg)
 
+    return _parse_harness_provenance(
+        data,
+        path=provenance_path,
+        expected_baseline=expected_baseline,
+        expected=expected,
+    )
+
+
+def _parse_harness_provenance(
+    data: dict[str, object],
+    *,
+    path: Path,
+    expected_baseline: str,
+    expected: CriterionSelection,
+) -> HarnessProvenance:
+    """Parse already-decoded harness provenance at a trusted report boundary."""
+
     schema = data.get("schema")
-    mode = data.get("mode")
-    baseline = _required_metadata_string(data, "baseline", provenance_path)
+    mode_value = data.get("mode")
+    if not isinstance(mode_value, str):
+        msg = f"unsupported or missing mode in {path}: {mode_value!r}"
+        raise TypeError(msg)
+    mode = mode_value
+    baseline = _required_metadata_string(data, "baseline", path)
     if baseline != expected_baseline:
-        msg = f"benchmark harness provenance baseline {baseline!r} does not match requested Criterion baseline {expected_baseline!r} in {provenance_path}"
+        msg = f"benchmark harness provenance baseline {baseline!r} does not match requested Criterion baseline {expected_baseline!r} in {path}"
         raise ValueError(msg)
 
     if not isinstance(schema, bool) and schema == 1:
         if mode != "shared-current-harness":
-            msg = f"unsupported or missing mode in {provenance_path}: {mode!r}"
+            msg = f"unsupported or missing mode in {path}: {mode!r}"
             raise ValueError(msg)
-        sha256 = _required_sha256(data, "sha256", provenance_path)
+        sha256 = _required_sha256(data, "sha256", path)
         return HarnessProvenance(schema=1, mode=mode, sha256=sha256, baseline=baseline)
 
     if isinstance(schema, bool) or schema != 2:
-        msg = f"unsupported or missing schema in {provenance_path}: expected 1 or 2, got {schema!r}"
+        msg = f"unsupported or missing schema in {path}: expected 1 or 2, got {schema!r}"
         raise ValueError(msg)
     if mode not in {"shared-current-harness", "historical-assets"}:
-        msg = f"unsupported or missing mode in {provenance_path}: {mode!r}"
+        msg = f"unsupported or missing mode in {path}: {mode!r}"
         raise ValueError(msg)
 
-    measurement = _required_metadata_object(data, "measurement", provenance_path)
-    publication = _required_metadata_object(data, "publication", provenance_path)
-    criterion_data = _required_metadata_object(data, "criterion", provenance_path)
-    validation = _required_metadata_object(data, "validation", provenance_path)
-    _validate_measurement_metadata(measurement, mode=mode, path=provenance_path)
-    _validate_environment_metadata(publication, path=provenance_path, context="publication")
+    measurement = _required_metadata_object(data, "measurement", path)
+    publication = _required_metadata_object(data, "publication", path)
+    criterion_data = _required_metadata_object(data, "criterion", path)
+    validation = _required_metadata_object(data, "validation", path)
+    _validate_measurement_metadata(measurement, mode=mode, path=path)
+    _validate_environment_metadata(publication, path=path, context="publication")
     criterion = _parse_criterion_metadata(
         criterion_data,
-        path=provenance_path,
+        path=path,
         expected=expected,
     )
-    _validate_validation_metadata(validation, path=provenance_path)
-    _validate_baseline_api_compatibility(validation, baseline=baseline, path=provenance_path)
+    _validate_validation_metadata(validation, path=path)
+    _validate_baseline_api_compatibility(validation, baseline=baseline, path=path)
 
     sha256: str | None = None
     if measurement.get("status") == "recorded":
-        sha256 = _required_sha256(measurement, "harness_sha256", provenance_path)
+        sha256 = _required_sha256(measurement, "harness_sha256", path)
     return HarnessProvenance(
         schema=2,
         mode=mode,
@@ -1287,6 +1319,160 @@ def _coverage_table(gaps: list[CoverageGap], baseline_name: str) -> str:
     return "\n".join(lines)
 
 
+def _artifact_timing(estimate: CriterionEstimate) -> TimingEstimate:
+    """Convert a Criterion estimate into the stricter persisted timing model."""
+    if estimate.ci_lo_ns is None or estimate.ci_hi_ns is None:
+        msg = "release-performance artifacts require complete Criterion confidence intervals"
+        raise ValueError(msg)
+    return TimingEstimate(
+        median_ns=estimate.point_ns,
+        ci_lower_ns=estimate.ci_lo_ns,
+        ci_upper_ns=estimate.ci_hi_ns,
+    )
+
+
+def _criterion_timing(estimate: TimingEstimate) -> CriterionEstimate:
+    """Convert a validated persisted timing back into the report model."""
+    return CriterionEstimate(
+        point_ns=estimate.median_ns,
+        ci_lo_ns=estimate.ci_lower_ns,
+        ci_hi_ns=estimate.ci_upper_ns,
+    )
+
+
+def _comparison_artifact_rows(
+    comparisons: list[Comparison],
+    *,
+    scope: str,
+) -> list[PerformanceRow]:
+    """Convert complete comparisons into deterministic schema rows."""
+    return [
+        PerformanceRow(
+            suite=comparison.suite,
+            scope=scope,
+            benchmark_id=f"{comparison.group}/{comparison.bench}",
+            group=comparison.group,
+            benchmark=comparison.bench,
+            baseline_benchmark=comparison.baseline_bench or comparison.bench,
+            coverage_status="comparable",
+            coverage_note="",
+            baseline=_artifact_timing(comparison.baseline),
+            current=_artifact_timing(comparison.current),
+            baseline_nalgebra=(None if comparison.baseline_nalgebra is None else _artifact_timing(comparison.baseline_nalgebra)),
+            baseline_faer=None if comparison.baseline_faer is None else _artifact_timing(comparison.baseline_faer),
+        )
+        for comparison in comparisons
+    ]
+
+
+def _unavailable_artifact_rows(  # noqa: PLR0913
+    criterion_dir: Path,
+    *,
+    baseline_name: str,
+    stat: str,
+    suite: str,
+    scope: str,
+    policy: ComparisonPolicy,
+) -> list[PerformanceRow]:
+    """Retain correctness-excluded baseline rows as explicit current-only data."""
+    compatibility = policy.baseline_api_compatibility
+    unavailable = _UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY.get(compatibility or "", frozenset())
+    rows: list[PerformanceRow] = []
+    for group, bench in sorted(unavailable):
+        row_suite = "exact" if group.startswith("exact_") else "vs_linalg"
+        if suite not in ("all", row_suite):
+            continue
+        if scope == "release-signal" and row_suite == "exact" and group not in EXACT_RELEASE_SIGNAL_GROUPS:
+            continue
+        if scope == "release-signal" and row_suite == "vs_linalg":
+            dim = _dim_from_vs_linalg_group(group)
+            if dim is None or bench not in VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM.get(dim, []):
+                continue
+        current_path = criterion_dir / group / bench / "new" / "estimates.json"
+        if not current_path.is_file():
+            continue
+        current = _read_estimate(current_path, stat)
+        rows.append(
+            PerformanceRow(
+                suite=row_suite,
+                scope=scope,
+                benchmark_id=f"{group}/{bench}",
+                group=group,
+                benchmark=bench,
+                baseline_benchmark=bench,
+                coverage_status="current-only",
+                coverage_note=(
+                    f"Baseline {baseline_name} has no correctness-compatible benchmark row under {compatibility or 'the selected compatibility policy'}."
+                ),
+                baseline=None,
+                current=_artifact_timing(current),
+            )
+        )
+    return rows
+
+
+def _artifact_comparisons(rows: tuple[PerformanceRow, ...]) -> list[Comparison]:
+    """Reconstruct comparison rows solely from the retained CSV model."""
+    comparisons: list[Comparison] = []
+    for row in rows:
+        if row.coverage_status != "comparable":
+            continue
+        if row.baseline is None or row.current is None:
+            msg = "comparable artifact row lost a required timing"
+            raise AssertionError(msg)
+        baseline = _criterion_timing(row.baseline)
+        current = _criterion_timing(row.current)
+        comparisons.append(
+            Comparison(
+                suite=row.suite,
+                group=row.group,
+                bench=row.benchmark,
+                baseline=baseline,
+                current=current,
+                assessment=_assess_change(baseline, current),
+                baseline_bench=(row.baseline_benchmark if row.baseline_benchmark != row.benchmark else None),
+                baseline_nalgebra=(None if row.baseline_nalgebra is None else _criterion_timing(row.baseline_nalgebra)),
+                baseline_faer=None if row.baseline_faer is None else _criterion_timing(row.baseline_faer),
+            )
+        )
+    return comparisons
+
+
+def _artifact_coverage_table(rows: tuple[PerformanceRow, ...], baseline_name: str) -> str:
+    """Render every one-sided measurement and note from retained CSV fields."""
+    one_sided = [row for row in rows if row.coverage_status != "comparable"]
+    if not one_sided:
+        return ""
+    lines = [
+        "## Coverage Notes",
+        "",
+        "One-sided rows retain the available measurement but are excluded from point-estimate change and ratio calculations.",
+        "",
+        f"| Benchmark | Coverage | {baseline_name} (point + CI) | Latest (point + CI) | Note |",
+        "|:----------|:---------|-----------------------------:|--------------------:|:-----|",
+    ]
+    for row in one_sided:
+        baseline = "—" if row.baseline is None else _format_estimate(_criterion_timing(row.baseline))
+        current = "—" if row.current is None else _format_estimate(_criterion_timing(row.current))
+        lines.append(f"| {row.benchmark_id} | {row.coverage_status} | {baseline} | {current} | {row.coverage_note} |")
+    return "\n".join(lines)
+
+
+def _artifact_tables(bundle: PerformanceBundle) -> str:
+    """Render comparison and coverage tables from one validated artifact bundle."""
+    comparisons = _artifact_comparisons(bundle.sorted_rows)
+    sections: list[str] = []
+    if comparisons:
+        sections.append(_comparison_tables(comparisons, bundle.context.release.baseline))
+    coverage = _artifact_coverage_table(bundle.sorted_rows, bundle.context.release.baseline)
+    if coverage:
+        sections.append(coverage)
+    if not sections:
+        msg = "release-performance artifact contains no renderable rows"
+        raise ValueError(msg)
+    return "\n\n".join(sections)
+
+
 def _read_cargo_version(root: Path) -> str:
     cargo_toml = root / "Cargo.toml"
     if not cargo_toml.exists():
@@ -1350,20 +1536,40 @@ def _get_git_source_date(root: Path) -> str:
     return parsed.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
+def _report_source(root: Path) -> ReportSource:
+    """Capture stable source metadata before report artifacts leave a worktree."""
+    short_hash, branch = _get_git_info(root)
+    return ReportSource(
+        version=_read_cargo_version(root),
+        commit=short_hash,
+        ref=branch,
+        revision_timestamp=_get_git_source_date(root),
+    )
+
+
 def _generate_markdown(
     root: Path,
     table: str,
     settings: ReportSettings,
+    *,
+    source: ReportSource | None = None,
+    coverage_from_artifacts: bool = False,
 ) -> str:
     """Generate the complete benchmark report content."""
-    version = _read_cargo_version(root)
-    short_hash, branch = _get_git_info(root)
-    source_date = _get_git_source_date(root)
+    if source is None:
+        version = _read_cargo_version(root)
+        short_hash, branch = _get_git_info(root)
+        source_date = _get_git_source_date(root)
+    else:
+        version = source.version
+        short_hash = source.commit
+        branch = source.ref
+        source_date = source.revision_timestamp
 
     lines = [
         "# Benchmark Performance",
         "",
-        f"**la-stack** v{version} · `{short_hash}` ({branch})",
+        f"**la-stack** v{version.removeprefix('v')} · `{short_hash}` ({branch})",
         f"**Source revision timestamp**: {source_date} (deterministic report metadata; not the benchmark measurement time)",
         "**Benchmark measurement timestamp**: not recorded by Criterion; use the provenance below to identify the measured revisions and environment.",
         f"**Statistic**: {settings.stat}",
@@ -1395,7 +1601,12 @@ def _generate_markdown(
                 "fixture validation are unknown."
             )
         else:
-            lines.extend(_provenance_markdown(settings.harness_provenance))
+            lines.extend(
+                _provenance_markdown(
+                    settings.harness_provenance,
+                    include_compatibility_rows=not coverage_from_artifacts,
+                )
+            )
     else:
         lines.append("Current performance snapshot (no baseline comparison).")
 
@@ -1414,6 +1625,9 @@ def _generate_markdown(
             "# Release PR: update docs/PERFORMANCE.md and archive the previous report",
             "just performance-release",
             "",
+            "# Re-render and promote from retained CSV/JSON inputs (no benchmarks)",
+            "just performance-rerender",
+            "",
             "# GitHub Actions release assets",
             "just performance-github-assets",
             "",
@@ -1423,6 +1637,7 @@ def _generate_markdown(
             "",
             "`just performance-local` writes `target/bench-reports/performance.md`.",
             "`just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.",
+            "`just performance-release` also retains `performance.csv` and `performance.provenance.json` beside the local report.",
             "",
             "Older curated release-to-release reports are archived in `docs/archive/performance/`.",
             "",
@@ -1433,7 +1648,11 @@ def _generate_markdown(
     return "\n".join(lines) + "\n"
 
 
-def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
+def _provenance_markdown(
+    provenance: HarnessProvenance,
+    *,
+    include_compatibility_rows: bool = True,
+) -> list[str]:
     """Render validated provenance without implying facts absent from metadata."""
     if provenance.schema == 1:
         return [
@@ -1519,10 +1738,10 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
         lines.extend(
             [
                 f"- Baseline API compatibility: `{compatibility}` selects only source-compatible benchmark calls;",
-                "  rows outside the baseline's correctness domain remain explicitly unavailable.",
+                "  one-sided rows outside the baseline's correctness domain are identified by the retained CSV coverage status and note.",
             ]
         )
-        if compatibility == _V0_4_3_API_COMPATIBILITY and criterion.suite in {"all", "vs_linalg"}:
+        if include_compatibility_rows and compatibility == _V0_4_3_API_COMPATIBILITY and criterion.suite in {"all", "vs_linalg"}:
             lines.extend(
                 [
                     "- Baseline-unavailable rows: `d8/la_stack_det_from_lu_balanced_range` and",
@@ -1530,7 +1749,7 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
                     "  fixture whose exact determinant is one; current samples remain required, but no speedup is claimed.",
                 ]
             )
-        if compatibility == _V0_4_3_API_COMPATIBILITY and criterion.suite in {"all", "exact"}:
+        if include_compatibility_rows and compatibility == _V0_4_3_API_COMPATIBILITY and criterion.suite in {"all", "exact"}:
             lines.extend(
                 [
                     "- Baseline-unavailable rows: `exact_d2/det_direct_with_errbound`,",
@@ -1539,6 +1758,94 @@ def _provenance_markdown(provenance: HarnessProvenance) -> list[str]:
                 ]
             )
     return lines
+
+
+def _read_raw_harness_provenance(criterion_dir: Path) -> dict[str, object]:
+    """Read the already-validated harness provenance for durable embedding."""
+    path = criterion_dir / ".la-stack-benchmark-harness.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        msg = f"malformed benchmark harness provenance JSON in {path}: {exc}"
+        raise ValueError(msg) from exc
+    if not isinstance(raw, dict) or not all(isinstance(key, str) for key in raw):
+        msg = f"expected JSON object in {path}"
+        raise TypeError(msg)
+    return cast("dict[str, object]", raw)
+
+
+def _release_artifact_bundle(
+    *,
+    root: Path,
+    criterion_dir: Path,
+    baseline_name: str,
+    settings: ReportSettings,
+    collection: ComparisonCollection,
+) -> PerformanceBundle:
+    """Build the trusted report dataset after Criterion and coverage validation."""
+    provenance = settings.harness_provenance
+    if provenance is None or provenance.schema != 2:
+        msg = "release-performance artifacts require complete schema-2 benchmark provenance"
+        raise ValueError(msg)
+    policy = _comparison_policy(settings.scope, provenance)
+    rows = _comparison_artifact_rows(collection.comparisons, scope=settings.scope)
+    rows.extend(
+        _unavailable_artifact_rows(
+            criterion_dir,
+            baseline_name=baseline_name,
+            stat=settings.stat,
+            suite=settings.suite,
+            scope=settings.scope,
+            policy=policy,
+        )
+    )
+    source = _report_source(root)
+    return PerformanceBundle(
+        context=ArtifactContext(
+            release=ReleasePair(
+                current=f"v{source.version.removeprefix('v')}",
+                baseline=baseline_name,
+            ),
+            statistic="median",
+            suite=settings.suite,
+            scope=settings.scope,
+            source=source,
+            benchmark_provenance=_read_raw_harness_provenance(criterion_dir),
+        ),
+        rows=tuple(rows),
+    )
+
+
+def render_release_artifacts(paths: ArtifactPaths) -> str:
+    """Reload, validate, and render a report without Criterion, Cargo, or Git."""
+    bundle = load_bundle(paths)
+    context = bundle.context
+    selection = CriterionSelection(
+        suite=cast("BenchmarkSuite", context.suite),
+        scope=cast("ComparisonScope", context.scope),
+        statistic="median",
+        sample="new",
+    )
+    harness_provenance = _parse_harness_provenance(
+        context.benchmark_provenance,
+        path=paths.provenance,
+        expected_baseline=context.release.baseline,
+        expected=selection,
+    )
+    settings = ReportSettings(
+        baseline_name=context.release.baseline,
+        stat="median",
+        suite=cast("BenchmarkSuite", context.suite),
+        scope=cast("ComparisonScope", context.scope),
+        harness_provenance=harness_provenance,
+    )
+    return _generate_markdown(
+        paths.csv.parent,
+        _artifact_tables(bundle),
+        settings,
+        source=context.source,
+        coverage_from_artifacts=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1585,9 +1892,21 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Criterion output directory (default: target/criterion).",
     )
     parser.add_argument(
+        "--repo-root",
+        help="Source checkout used for report metadata (default: the checkout containing this script).",
+    )
+    parser.add_argument(
         "--output",
         default="target/bench-reports/performance.md",
         help="Output markdown file (default: target/bench-reports/performance.md).",
+    )
+    parser.add_argument(
+        "--csv-output",
+        help="Write schema-versioned release-report CSV input; requires an adjacent, distinct --provenance-output.",
+    )
+    parser.add_argument(
+        "--provenance-output",
+        help="Write an adjacent release-report JSON provenance sidecar; requires a distinct --csv-output.",
     )
     return parser.parse_args(argv)
 
@@ -1619,7 +1938,7 @@ def _save_baseline_hint(suite: str, baseline: str) -> str:
     return f"just bench-save-baseline {baseline}"
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912, PLR0915
     """Generate a benchmark snapshot or comparison report from CLI arguments."""
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     stat = cast("Statistic", args.stat)
@@ -1627,9 +1946,34 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911
     scope = cast("ComparisonScope", args.scope)
     selection = CriterionSelection(suite=suite, scope=scope, statistic=stat, sample="new")
 
-    root = _repo_root()
+    root = Path(args.repo_root).resolve() if args.repo_root is not None else _repo_root()
     criterion_dir = root / args.criterion_dir
     output_path = Path(args.output) if Path(args.output).is_absolute() else root / args.output
+
+    if (args.csv_output is None) != (args.provenance_output is None):
+        print("--csv-output and --provenance-output must be provided together", file=sys.stderr)
+        return 2
+    if args.csv_output is not None and (args.snapshot or stat != "median"):
+        print("release-performance artifacts require a median baseline comparison", file=sys.stderr)
+        return 2
+
+    artifact_paths: ArtifactPaths | None = None
+    if args.csv_output is not None and args.provenance_output is not None:
+        try:
+            artifact_paths = ArtifactPaths(
+                csv=Path(args.csv_output) if Path(args.csv_output).is_absolute() else root / args.csv_output,
+                provenance=(Path(args.provenance_output) if Path(args.provenance_output).is_absolute() else root / args.provenance_output),
+            )
+            ensure_distinct_paths(
+                {
+                    "Markdown output": output_path,
+                    "artifact CSV": artifact_paths.csv,
+                    "artifact provenance": artifact_paths.provenance,
+                }
+            )
+        except (OSError, ValueError) as err:
+            print(f"Invalid release-performance artifact paths: {err}", file=sys.stderr)
+            return 2
 
     if not criterion_dir.is_dir():
         print(
@@ -1640,6 +1984,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911
 
     baseline_name = None if args.snapshot else args.baseline
     harness_provenance: HarnessProvenance | None = None
+    collection: ComparisonCollection | None = None
 
     if baseline_name:
         try:
@@ -1718,7 +2063,26 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911
         scope=scope,
         harness_provenance=harness_provenance,
     )
-    md = _generate_markdown(root, table, settings)
+    if args.csv_output is not None and args.provenance_output is not None:
+        if baseline_name is None or collection is None or artifact_paths is None:
+            msg = "release-performance artifact invariant violated"
+            raise AssertionError(msg)
+        try:
+            bundle = _release_artifact_bundle(
+                root=root,
+                criterion_dir=criterion_dir,
+                baseline_name=baseline_name,
+                settings=settings,
+                collection=collection,
+            )
+            write_bundle(artifact_paths, bundle)
+            md = render_release_artifacts(artifact_paths)
+        except (ExceptionGroup, OSError, KeyError, TypeError, ValueError) as err:
+            print(f"Invalid release-performance artifact data: {err}", file=sys.stderr)
+            return 2
+        print(f"📊 Wrote {artifact_paths.csv} and {artifact_paths.provenance}")
+    else:
+        md = _generate_markdown(root, table, settings)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(md, encoding="utf-8")

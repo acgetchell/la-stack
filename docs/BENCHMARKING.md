@@ -30,6 +30,7 @@ the commands measure and where their outputs go.
 | Full crate comparison | `just bench-vs-linalg` |
 | README table and plot | `just plot-vs-linalg-readme` |
 | Release report | `just performance-release v0.4.4 v0.4.3` |
+| Re-render retained release inputs | `just performance-rerender` |
 | Published-asset comparison | `just performance-github-assets v0.4.4 v0.4.3` |
 
 Rule of thumb:
@@ -39,6 +40,8 @@ Rule of thumb:
 - Use `bench-vs-linalg` plus plotting when updating README crate-to-crate
   comparisons.
 - Use `performance-release` only when preparing committed release artifacts.
+- Use `performance-rerender` for report-format changes after a valid release
+  dataset has already been retained.
 
 ## Benchmark Suites
 
@@ -200,11 +203,33 @@ With no arguments, `just performance-release` infers the current release tag
 from `Cargo.toml` and discovers the previous stable published release. During
 release preparation, passing both tags explicitly removes ambiguity.
 
-This command creates temporary worktrees, generates the comparison, writes
-`docs/PERFORMANCE.md`, and archives the previous committed report under
+This command creates temporary worktrees, validates the complete comparison,
+and writes the exact report inputs to
+`target/bench-reports/performance.csv` with adjacent
+`performance.provenance.json`. The CSV records deterministic benchmark keys,
+coverage status and notes, and baseline/current median estimates with complete
+confidence intervals in nanoseconds. The JSON sidecar binds the CSV digest and
+row count to the release pair, source states, commands, toolchain, Criterion
+version, harness/configuration digests, host, and schema version.
+
+The pair is validated and published before the temporary worktree is removed.
+`docs/PERFORMANCE.md` is then rendered from a validated reload of that retained
+pair, and the previous committed report is archived under
 `docs/archive/performance/`. Archive filenames are release-pair names such as
-`v0.4.2-vs-v0.4.1.md`. Publication fails rather than emitting a partial report
-when a selected suite or required dimension is absent.
+`v0.4.2-vs-v0.4.1.md`. Serialization, validation, rendering, coverage, or
+promotion failures preserve the previous valid report and artifact pair.
+
+To reproduce and promote the report without running Cargo or creating Git
+worktrees, use:
+
+```bash
+just performance-rerender
+```
+
+This command fails closed on a missing, partial, malformed, mismatched, or
+unsupported artifact pair. Use it for presentation-only report corrections;
+changes to benchmark inputs, code, toolchains, or measurement configuration
+require a fresh `performance-release` run.
 
 ### Compare Published Release Artifacts
 
@@ -235,7 +260,11 @@ shared-harness workflow before attributing a difference solely to library code.
 |------|------------|----------|---------|
 | `target/criterion/` | No | `cargo bench`, `bench-save-*` | Local Criterion measurements and named baselines. |
 | `target/bench-reports/performance.md` | No | `bench-compare`, `performance-local*` | Local comparison report. |
+| `target/bench-reports/performance.csv` | No | `performance-local*`, `performance-release` | Validated tabular inputs for the release comparison. |
+| `target/bench-reports/performance.provenance.json` | No | `performance-local*`, `performance-release` | Schema, release, source, command, toolchain, host, digest, and harness provenance. |
 | `target/bench-reports/github-assets-performance.md` | No | `performance-github-assets` | Local report from published release artifacts. |
+| `target/bench-reports/github-assets-performance.csv` | No | `performance-github-assets` | Tabular inputs derived from published native archives. |
+| `target/bench-reports/github-assets-performance.provenance.json` | No | `performance-github-assets` | Provenance for the published-asset report inputs. |
 | `docs/PERFORMANCE.md` | Yes | `performance-release` | Latest curated release-to-release comparison. |
 | `docs/archive/performance/` | Yes | `performance-release` | Older curated release-to-release comparisons. |
 | `docs/assets/bench/` | Yes | `plot-vs-linalg-readme` | README benchmark CSV/SVG assets and JSON provenance. |
@@ -243,6 +272,14 @@ shared-harness workflow before attributing a difference solely to library code.
 
 Published baseline assets use the filename
 `la-stack-$TAG-criterion-baseline.tar.gz`.
+
+Everything under `target/bench-reports/` is reproducible local scratch owned by
+the performance-report workflows. It survives temporary-worktree cleanup but
+may be removed by `just clean` or `cargo clean`; retain or copy the CSV/JSON pair
+while reviewing or rerendering a release PR. The compact CSV is the analysis
+and Markdown-reproduction layer. It does not replace the full native Criterion
+`.tar.gz` archive attached to each GitHub Release, which remains the durable raw
+baseline for post-release comparisons.
 
 ## `vs_linalg` Methodology
 

@@ -1035,7 +1035,51 @@ def test_main_rejects_overflowing_timing_without_writing_or_traceback(
     assert not output.exists()
 
 
-def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(tmp_path: Path) -> None:
+@pytest.mark.parametrize("invalid_paths", ["same-pair", "non-adjacent", "markdown-alias"])
+def test_main_rejects_invalid_artifact_paths_without_writing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    invalid_paths: str,
+) -> None:
+    output = tmp_path / "report.md"
+    csv_output = tmp_path / "artifacts" / "performance.csv"
+    provenance_output = tmp_path / "artifacts" / "performance.provenance.json"
+    if invalid_paths == "same-pair":
+        provenance_output = csv_output
+    elif invalid_paths == "non-adjacent":
+        provenance_output = tmp_path / "other" / "performance.provenance.json"
+    else:
+        output = csv_output
+
+    paths = {output, csv_output, provenance_output}
+    for path in paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(f"original {path.name}\n".encode())
+    before = {path: path.read_bytes() for path in paths}
+
+    rc = bench_compare.main(
+        [
+            "v0.4.3",
+            "--repo-root",
+            str(tmp_path),
+            "--output",
+            str(output),
+            "--csv-output",
+            str(csv_output),
+            "--provenance-output",
+            str(provenance_output),
+        ]
+    )
+
+    assert rc == 2
+    assert "Invalid release-performance artifact paths" in capsys.readouterr().err
+    assert {path: path.read_bytes() for path in paths} == before
+
+
+def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     criterion_dir = tmp_path / "criterion"
     unavailable = bench_compare._V0_4_3_UNAVAILABLE_BASELINE_ROWS
     for dimension in bench_compare.VS_LINALG_CANONICAL_DIMS:
@@ -1055,14 +1099,44 @@ def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(tmp_pat
     cast("dict[str, object]", criterion)["suite"] = "vs_linalg"
     (criterion_dir / ".la-stack-benchmark-harness.json").write_text(json.dumps(provenance), encoding="utf-8")
     output = tmp_path / "report.md"
+    artifact_paths = bench_compare.ArtifactPaths(
+        csv=tmp_path / "performance.csv",
+        provenance=tmp_path / "performance.provenance.json",
+    )
+    monkeypatch.setattr(
+        bench_compare,
+        "_report_source",
+        lambda _root: bench_compare.ReportSource(
+            version="0.4.4",
+            commit="current-commit",
+            ref="test",
+            revision_timestamp="2026-08-04 12:00:00 UTC",
+        ),
+    )
 
-    rc = bench_compare.main(["v0.4.3", "--suite", "vs_linalg", "--criterion-dir", str(criterion_dir), "--output", str(output)])
+    rc = bench_compare.main(
+        [
+            "v0.4.3",
+            "--suite",
+            "vs_linalg",
+            "--criterion-dir",
+            str(criterion_dir),
+            "--csv-output",
+            str(artifact_paths.csv),
+            "--provenance-output",
+            str(artifact_paths.provenance),
+            "--output",
+            str(output),
+        ]
+    )
 
     assert rc == 0
     rendered = output.read_text(encoding="utf-8")
+    assert rendered == bench_compare.render_release_artifacts(artifact_paths)
     assert "d8/la_stack_det_from_lu_balanced_range" in rendered
     assert "d8/la_stack_det_from_ldlt_balanced_range" in rendered
-    assert "no speedup is claimed" in rendered
+    assert "current-only" in rendered
+    assert "no correctness-compatible benchmark row" in rendered
 
 
 def test_generate_markdown_labels_absent_provenance_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
