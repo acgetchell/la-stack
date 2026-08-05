@@ -53,6 +53,9 @@ just performance-local
 # Release PR: update docs/PERFORMANCE.md and archive the previous report
 just performance-release
 
+# Re-render the release report from retained CSV/JSON inputs
+just performance-rerender
+
 # GitHub Actions release assets, without local cargo benchmark runs
 just performance-github-assets
 ```
@@ -61,9 +64,14 @@ The local release workflows run the independent benchmark-input correctness gate
 and then measure both library revisions with one hashed current benchmark
 harness. Reports record source-state, environment, toolchain, dependency,
 Criterion, harness, and validation provenance and fail on incomplete selected
-coverage. Direct comparisons of separately published artifacts retain their
-original per-release harnesses and label unavailable historical measurement
-metadata explicitly.
+coverage. `performance-release` retains schema-versioned `performance.csv` and
+`performance.provenance.json` inputs under `target/bench-reports/`, then renders
+the promoted Markdown from their validated reload. `performance-rerender` uses
+that pair without Cargo or temporary worktrees. These files are reproducible
+scratch and may be removed with `target/`; native Criterion release archives
+remain the durable raw baselines. Direct comparisons of separately published
+artifacts retain their original per-release harnesses and label unavailable
+historical measurement metadata explicitly.
 
 See `docs/BENCHMARKING.md` for the current command matrix, local saved-baseline
 workflow, explicit tag arguments, output locations, and release-artifact
@@ -219,6 +227,7 @@ tag-annotation size limit.
 |---|---|
 | `archive_changelog.py` | Split completed changelog minor series into archives |
 | `archive_performance.py` | Promote release performance docs and archive older comparisons |
+| `performance_artifacts.py` | Validate and publish schema-versioned release-report CSV/JSON inputs |
 | `bench_compare.py` | Compare Criterion benchmark baselines and render Markdown reports |
 | `check_docs_version_sync.py` | Verify versioned documentation links and snippets stay synchronized |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |

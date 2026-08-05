@@ -11,7 +11,7 @@ Install Rust 1.97.1 through [rustup](https://rustup.rs/), Git, Python 3.14,
 pinned `just` version from its locked dependency graph:
 
 ```bash
-cargo install --locked just --version 1.57.0
+cargo install --locked just --version 1.58.0
 ```
 
 Set up the remaining development tools and validate the checkout:

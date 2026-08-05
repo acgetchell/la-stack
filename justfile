@@ -23,11 +23,11 @@ cargo_nextest_version := "0.9.140"
 clippy_sarif_version := "0.8.0"
 dprint_version := "0.55.2"
 git_cliff_version := "2.13.1"
-just_version := "1.57.0"
-rumdl_version := "0.2.48"
+just_version := "1.58.0"
+rumdl_version := "0.2.50"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
-typos_version := "1.48.0"
+typos_version := "1.49.0"
 uv_version := "0.12.1"
 zizmor_version := "1.29.0"
 
@@ -459,6 +459,7 @@ help-workflows:
     @echo "  just performance-local      # Compare current tree against latest release locally"
     @echo "  just performance-local-vs-linalg # Compare current non-exact kernels locally"
     @echo "  just performance-release    # Promote local release performance docs"
+    @echo "  just performance-rerender   # Re-render release docs from retained CSV/JSON"
     @echo "  just bench-save-last        # Save full baseline as 'last'"
     @echo "  just bench-vs-linalg        # Run vs_linalg bench (optional filter)"
     @echo "  just bench-vs-linalg-la-stack # Run la-stack rows from vs_linalg"
@@ -586,9 +587,9 @@ performance-github-assets current_tag="" baseline_tag="": python-sync
             echo "current_tag and baseline_tag must be provided together" >&2
             exit 2
         fi
-        uv run --locked archive-performance "$current_tag" "$baseline_tag" --github-assets --generate-in-temp-worktree --worktree-ref "$current_tag" --output-only --output target/bench-reports/github-assets-performance.md
+        uv run --locked archive-performance "$current_tag" "$baseline_tag" --github-assets --generate-in-temp-worktree --worktree-ref "$current_tag" --output-only --output target/bench-reports/github-assets-performance.md --artifact-csv target/bench-reports/github-assets-performance.csv --artifact-provenance target/bench-reports/github-assets-performance.provenance.json
     else
-        uv run --locked archive-performance --published-latest --github-assets --generate-in-temp-worktree --output-only --output target/bench-reports/github-assets-performance.md
+        uv run --locked archive-performance --published-latest --github-assets --generate-in-temp-worktree --output-only --output target/bench-reports/github-assets-performance.md --artifact-csv target/bench-reports/github-assets-performance.csv --artifact-provenance target/bench-reports/github-assets-performance.provenance.json
     fi
 
 # Compare the current tree against the latest published release locally.
@@ -626,6 +627,10 @@ performance-release current_tag="" baseline_tag="": python-sync
     else
         uv run --locked archive-performance --infer-release --generate-in-temp-worktree --worktree-ref HEAD
     fi
+
+# Re-render and promote release performance docs from retained report inputs.
+performance-rerender: python-sync
+    uv run --locked archive-performance --rerender
 
 # Plot: generate a single time-vs-dimension SVG from Criterion results.
 plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_partial="false": python-sync
