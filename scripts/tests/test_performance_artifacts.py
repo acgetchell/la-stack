@@ -174,6 +174,24 @@ def test_artifact_serialization_is_independent_of_input_row_order() -> None:
     assert serialize_bundle(reordered) == serialize_bundle(bundle)
 
 
+def test_artifact_loader_rejects_csv_digest_mismatch() -> None:
+    csv_payload, provenance_payload = serialize_bundle(_bundle())
+    malformed = csv_payload.replace(b"exact_d2/det_exact", b"exact_d2/det_changed", 1)
+
+    with pytest.raises(ValueError, match="CSV digest mismatch"):
+        load_bundle_bytes(malformed, provenance_payload, source="digest mismatch fixture")
+
+
+def test_artifact_loader_rejects_csv_row_count_mismatch() -> None:
+    csv_payload, provenance_payload = serialize_bundle(_bundle())
+    provenance = json.loads(provenance_payload)
+    provenance["csv"]["row_count"] += 1
+    malformed = (json.dumps(provenance, indent=2, sort_keys=True) + "\n").encode()
+
+    with pytest.raises(ValueError, match="CSV row count mismatch"):
+        load_bundle_bytes(csv_payload, malformed, source="row count mismatch fixture")
+
+
 def test_artifact_loader_rejects_incomplete_confidence_interval() -> None:
     csv_payload, provenance_payload = serialize_bundle(_bundle())
     reader = csv.DictReader(io.StringIO(csv_payload.decode(), newline=""))

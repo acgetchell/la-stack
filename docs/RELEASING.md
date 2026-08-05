@@ -154,7 +154,7 @@ clean `target/` until the release report review is complete.
 
 For an explicit measurement repair, run
 `just performance-release <current-tag> <previous-tag>`. To compare the stored
-GitHub Actions release assets instead of running Cargo locally, use
+GitHub Release assets instead of running Cargo locally, use
 `just performance-github-assets`. The local release workflow validates and then
 compiles both library revisions with the current checkout's hashed benchmark
 harness, recording source-state, environment, toolchain, dependency, Criterion,

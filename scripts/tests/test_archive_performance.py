@@ -122,9 +122,10 @@ def _retained_report(root: Path, *, stem: str = "performance") -> str:
     return archive_performance._normalize_how_to_update(archive_performance.render_release_artifacts(paths))
 
 
-def test_normalized_report_links_archived_performance_reports() -> None:
+def test_normalized_report_uses_shared_how_to_update_section() -> None:
     text = _normalized_report("0.4.3", "v0.4.2")
-    assert "Older curated release-to-release reports are archived in `docs/archive/performance/`." in text
+
+    assert text.endswith(archive_performance.HOW_TO_UPDATE_SECTION)
 
 
 def _legacy_report(version: str, baseline: str) -> str:
@@ -835,7 +836,8 @@ def test_promote_report_does_not_overwrite_existing_archive(tmp_path: Path) -> N
     current.parent.mkdir(parents=True)
     current.write_text(_report("0.4.1", "v0.4.0"), encoding="utf-8")
     archive_dir.mkdir(parents=True)
-    archived.write_text(_normalized_report("0.4.1", "v0.4.0"), encoding="utf-8")
+    archived_payload = _normalized_report("0.4.1", "v0.4.0").replace("\n", "\r\n").encode()
+    archived.write_bytes(archived_payload)
 
     promote_report(
         source=source,
@@ -845,7 +847,7 @@ def test_promote_report_does_not_overwrite_existing_archive(tmp_path: Path) -> N
         expected_baseline_tag="v0.4.1",
     )
 
-    assert archived.read_text(encoding="utf-8") == _normalized_report("0.4.1", "v0.4.0")
+    assert archived.read_bytes() == archived_payload
 
 
 def test_promote_report_rejects_mismatched_existing_archive_without_mutation(tmp_path: Path) -> None:

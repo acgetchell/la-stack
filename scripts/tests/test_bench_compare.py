@@ -966,6 +966,7 @@ def test_main_snapshot_writes_output(tmp_path: Path) -> None:
     assert "just performance-release <current-tag> <previous-tag>" in text
     assert "Older curated release-to-release reports are archived in `docs/archive/performance/`." in text
     assert "git checkout" not in text
+    assert text.endswith(bench_compare.HOW_TO_UPDATE_SECTION)
 
 
 def test_main_no_criterion_dir(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1074,6 +1075,41 @@ def test_main_rejects_invalid_artifact_paths_without_writing(
     assert rc == 2
     assert "Invalid release-performance artifact paths" in capsys.readouterr().err
     assert {path: path.read_bytes() for path in paths} == before
+
+
+@pytest.mark.parametrize(
+    ("invalid_options", "expected_error"),
+    [
+        ("csv-only", "--csv-output and --provenance-output must be provided together"),
+        ("provenance-only", "--csv-output and --provenance-output must be provided together"),
+        ("snapshot", "release-performance artifacts require a median baseline comparison"),
+        ("mean", "release-performance artifacts require a median baseline comparison"),
+    ],
+)
+def test_main_rejects_invalid_artifact_option_combinations(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    invalid_options: str,
+    expected_error: str,
+) -> None:
+    csv_output = tmp_path / "performance.csv"
+    provenance_output = tmp_path / "performance.provenance.json"
+    artifact_args = ["--csv-output", str(csv_output), "--provenance-output", str(provenance_output)]
+    if invalid_options == "csv-only":
+        artifact_args = artifact_args[:2]
+    elif invalid_options == "provenance-only":
+        artifact_args = artifact_args[2:]
+    elif invalid_options == "snapshot":
+        artifact_args.append("--snapshot")
+    else:
+        artifact_args.extend(["--stat", "mean"])
+
+    rc = bench_compare.main(["--repo-root", str(tmp_path), *artifact_args])
+
+    assert rc == 2
+    assert expected_error in capsys.readouterr().err
+    assert not csv_output.exists()
+    assert not provenance_output.exists()
 
 
 def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(

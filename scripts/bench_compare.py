@@ -185,6 +185,36 @@ VS_LINALG_BASELINE_PEERS.update(
 SUITE_CHOICES: tuple[str, ...] = ("all", "exact", "vs_linalg")
 SCOPE_CHOICES: tuple[str, ...] = ("release-signal", "all-benches")
 
+HOW_TO_UPDATE_SECTION = """## How to Update
+
+Local performance reports are generated in isolated temporary worktrees:
+
+```bash
+# Local development: compare the current tree with the latest release
+just performance-local
+
+# Release PR: update docs/PERFORMANCE.md and archive the previous report
+just performance-release
+
+# Re-render and promote from retained CSV/JSON inputs (no benchmarks)
+just performance-rerender
+
+# GitHub Actions release assets
+just performance-github-assets
+
+# Explicit repair
+just performance-release <current-tag> <previous-tag>
+```
+
+`just performance-local` writes `target/bench-reports/performance.md`.
+`just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.
+`just performance-release` also retains `performance.csv` and `performance.provenance.json` beside the local report.
+
+Older curated release-to-release reports are archived in `docs/archive/performance/`.
+
+See `docs/BENCHMARKING.md` for the full comparison workflow.
+"""
+
 type ChangeAssessment = Literal["improvement", "regression", "inconclusive", "unknown"]
 type BenchmarkSuite = Literal["all", "exact", "vs_linalg"]
 type ComparisonScope = Literal["release-signal", "all-benches"]
@@ -388,6 +418,36 @@ def _dim_from_vs_linalg_group(name: str) -> int | None:
     if not suffix.isdecimal():
         return None
     return int(suffix)
+
+
+def _comparison_row_suite(group: str) -> Literal["exact", "vs_linalg"]:
+    """Return the benchmark suite that owns one comparison row."""
+    if group in EXACT_GROUPS:
+        return "exact"
+    if _dim_from_vs_linalg_group(group) is not None:
+        return "vs_linalg"
+    msg = f"unsupported comparison group: {group!r}"
+    raise ValueError(msg)
+
+
+def _is_selected_comparison_row(
+    group: str,
+    bench: str,
+    *,
+    suite: str,
+    scope: str,
+) -> bool:
+    """Return whether a comparison row belongs to the requested suite and scope."""
+    row_suite = _comparison_row_suite(group)
+    if suite not in ("all", row_suite):
+        return False
+    if scope != "release-signal":
+        return True
+    if row_suite == "exact":
+        return group in EXACT_RELEASE_SIGNAL_GROUPS
+
+    dim = _dim_from_vs_linalg_group(group)
+    return dim is not None and (bench in VS_LINALG_LA_STACK_BENCHES or bench in VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM.get(dim, []))
 
 
 def _read_estimate(estimates_json: Path, stat: str = "median") -> CriterionEstimate:
@@ -809,6 +869,7 @@ def _collect_exact_comparisons(
     criterion_dir: Path,
     baseline_name: str,
     stat: str,
+    suite: str,
     policy: ComparisonPolicy,
 ) -> ComparisonCollection:
     """Compare exact results while retaining every missing expected row."""
@@ -819,12 +880,15 @@ def _collect_exact_comparisons(
         frozenset(),
     )
 
+    selected_groups: list[str] = []
     for group, benches in EXACT_GROUPS.items():
-        if policy.scope == "release-signal" and group not in EXACT_RELEASE_SIGNAL_GROUPS:
+        selected_benches = [bench for bench in benches if _is_selected_comparison_row(group, bench, suite=suite, scope=policy.scope)]
+        if not selected_benches:
             continue
+        selected_groups.append(group)
 
         group_dir = criterion_dir / group
-        for bench in benches:
+        for bench in selected_benches:
             new_path = group_dir / bench / "new" / "estimates.json"
             baseline_bench, base_path = _exact_baseline_path(group_dir, bench, baseline_name)
             missing_current = not new_path.exists()
@@ -875,14 +939,19 @@ def _collect_exact_comparisons(
                 )
             )
 
-    expected_groups = [group for group in EXACT_GROUPS if policy.scope != "release-signal" or group in EXACT_RELEASE_SIGNAL_GROUPS]
-    if not any((criterion_dir / group).is_dir() for group in expected_groups):
+    if selected_groups and not any((criterion_dir / group).is_dir() for group in selected_groups):
         gaps.append(_entire_suite_gap("exact"))
 
     return ComparisonCollection(comparisons=comparisons, gaps=gaps)
 
 
-def _ordered_vs_linalg_comparison_benches(group_dir: Path, baseline_name: str, scope: str) -> list[str]:
+def _ordered_vs_linalg_comparison_benches(
+    group_dir: Path,
+    baseline_name: str,
+    *,
+    suite: str,
+    scope: str,
+) -> list[str]:
     """Return expected or discovered comparison rows in stable order."""
     dim = _dim_from_vs_linalg_group(group_dir.name)
     if scope == "release-signal":
@@ -896,8 +965,9 @@ def _ordered_vs_linalg_comparison_benches(group_dir: Path, baseline_name: str, s
             if child.is_dir() and ((child / "new" / "estimates.json").exists() or (child / baseline_name / "estimates.json").exists())
         }
 
-    ordered = [bench for bench in VS_LINALG_BENCH_ORDER if bench in present]
-    extras = sorted(present.difference(VS_LINALG_BENCH_ORDER))
+    selected = {bench for bench in present if _is_selected_comparison_row(group_dir.name, bench, suite=suite, scope=scope)}
+    ordered = [bench for bench in VS_LINALG_BENCH_ORDER if bench in selected]
+    extras = sorted(selected.difference(VS_LINALG_BENCH_ORDER))
     return [*ordered, *extras]
 
 
@@ -951,6 +1021,7 @@ def _collect_vs_linalg_comparisons(
     criterion_dir: Path,
     baseline_name: str,
     stat: str,
+    suite: str,
     policy: ComparisonPolicy,
 ) -> ComparisonCollection:
     """Compare vs_linalg results while retaining one-sided rows."""
@@ -963,7 +1034,12 @@ def _collect_vs_linalg_comparisons(
     dim_groups = _vs_linalg_dimension_groups(criterion_dir, policy.scope)
 
     for _dim, group_dir in sorted(dim_groups, key=lambda item: item[0]):
-        expected_benches = _ordered_vs_linalg_comparison_benches(group_dir, baseline_name, policy.scope)
+        expected_benches = _ordered_vs_linalg_comparison_benches(
+            group_dir,
+            baseline_name,
+            suite=suite,
+            scope=policy.scope,
+        )
         for bench in expected_benches:
             new_path = group_dir / bench / "new" / "estimates.json"
             base_path = group_dir / bench / baseline_name / "estimates.json"
@@ -1105,11 +1181,11 @@ def _collect_comparisons(
     comparisons: list[Comparison] = []
     gaps: list[CoverageGap] = []
     if suite in ("all", "exact"):
-        exact = _collect_exact_comparisons(criterion_dir, baseline_name, stat, policy)
+        exact = _collect_exact_comparisons(criterion_dir, baseline_name, stat, suite, policy)
         comparisons.extend(exact.comparisons)
         gaps.extend(exact.gaps)
     if suite in ("all", "vs_linalg"):
-        vs_linalg = _collect_vs_linalg_comparisons(criterion_dir, baseline_name, stat, policy)
+        vs_linalg = _collect_vs_linalg_comparisons(criterion_dir, baseline_name, stat, suite, policy)
         comparisons.extend(vs_linalg.comparisons)
         gaps.extend(vs_linalg.gaps)
     return ComparisonCollection(comparisons=comparisons, gaps=gaps)
@@ -1379,15 +1455,9 @@ def _unavailable_artifact_rows(  # noqa: PLR0913
     unavailable = _UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY.get(compatibility or "", frozenset())
     rows: list[PerformanceRow] = []
     for group, bench in sorted(unavailable):
-        row_suite = "exact" if group.startswith("exact_") else "vs_linalg"
-        if suite not in ("all", row_suite):
+        if not _is_selected_comparison_row(group, bench, suite=suite, scope=scope):
             continue
-        if scope == "release-signal" and row_suite == "exact" and group not in EXACT_RELEASE_SIGNAL_GROUPS:
-            continue
-        if scope == "release-signal" and row_suite == "vs_linalg":
-            dim = _dim_from_vs_linalg_group(group)
-            if dim is None or bench not in VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM.get(dim, []):
-                continue
+        row_suite = _comparison_row_suite(group)
         current_path = criterion_dir / group / bench / "new" / "estimates.json"
         if not current_path.is_file():
             continue
@@ -1612,38 +1682,7 @@ def _generate_markdown(
 
     lines.extend(["", table, ""])
 
-    lines.extend(
-        [
-            "## How to Update",
-            "",
-            "Local performance reports are generated in isolated temporary worktrees:",
-            "",
-            "```bash",
-            "# Local development: compare the current tree with the latest release",
-            "just performance-local",
-            "",
-            "# Release PR: update docs/PERFORMANCE.md and archive the previous report",
-            "just performance-release",
-            "",
-            "# Re-render and promote from retained CSV/JSON inputs (no benchmarks)",
-            "just performance-rerender",
-            "",
-            "# GitHub Actions release assets",
-            "just performance-github-assets",
-            "",
-            "# Explicit repair",
-            "just performance-release <current-tag> <previous-tag>",
-            "```",
-            "",
-            "`just performance-local` writes `target/bench-reports/performance.md`.",
-            "`just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.",
-            "`just performance-release` also retains `performance.csv` and `performance.provenance.json` beside the local report.",
-            "",
-            "Older curated release-to-release reports are archived in `docs/archive/performance/`.",
-            "",
-            "See `docs/BENCHMARKING.md` for the full comparison workflow.",
-        ]
-    )
+    lines.append(HOW_TO_UPDATE_SECTION.rstrip("\n"))
 
     return "\n".join(lines) + "\n"
 
@@ -1938,6 +1977,65 @@ def _save_baseline_hint(suite: str, baseline: str) -> str:
     return f"just bench-save-baseline {baseline}"
 
 
+def _resolve_artifact_paths(
+    args: argparse.Namespace,
+    *,
+    root: Path,
+    output_path: Path,
+    stat: Statistic,
+) -> ArtifactPaths | None:
+    """Resolve and validate the optional release-performance artifact pair."""
+    if (args.csv_output is None) != (args.provenance_output is None):
+        msg = "--csv-output and --provenance-output must be provided together"
+        raise ValueError(msg)
+    if args.csv_output is None:
+        return None
+    if args.snapshot or stat != "median":
+        msg = "release-performance artifacts require a median baseline comparison"
+        raise ValueError(msg)
+
+    try:
+        paths = ArtifactPaths(
+            csv=Path(args.csv_output) if Path(args.csv_output).is_absolute() else root / args.csv_output,
+            provenance=(Path(args.provenance_output) if Path(args.provenance_output).is_absolute() else root / args.provenance_output),
+        )
+        ensure_distinct_paths(
+            {
+                "Markdown output": output_path,
+                "artifact CSV": paths.csv,
+                "artifact provenance": paths.provenance,
+            }
+        )
+    except (OSError, ValueError) as err:
+        msg = f"Invalid release-performance artifact paths: {err}"
+        raise ValueError(msg) from err
+    return paths
+
+
+def _write_and_render_artifacts(
+    paths: ArtifactPaths,
+    *,
+    root: Path,
+    criterion_dir: Path,
+    settings: ReportSettings,
+    collection: ComparisonCollection | None,
+) -> str:
+    """Write a validated artifact pair and render its reloaded report."""
+    baseline_name = settings.baseline_name
+    if baseline_name is None or collection is None:
+        msg = "release-performance artifacts require a completed baseline comparison"
+        raise ValueError(msg)
+    bundle = _release_artifact_bundle(
+        root=root,
+        criterion_dir=criterion_dir,
+        baseline_name=baseline_name,
+        settings=settings,
+        collection=collection,
+    )
+    write_bundle(paths, bundle)
+    return render_release_artifacts(paths)
+
+
 def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912, PLR0915
     """Generate a benchmark snapshot or comparison report from CLI arguments."""
     args = _parse_args(sys.argv[1:] if argv is None else argv)
@@ -1950,30 +2048,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
     criterion_dir = root / args.criterion_dir
     output_path = Path(args.output) if Path(args.output).is_absolute() else root / args.output
 
-    if (args.csv_output is None) != (args.provenance_output is None):
-        print("--csv-output and --provenance-output must be provided together", file=sys.stderr)
+    try:
+        artifact_paths = _resolve_artifact_paths(args, root=root, output_path=output_path, stat=stat)
+    except ValueError as err:
+        print(err, file=sys.stderr)
         return 2
-    if args.csv_output is not None and (args.snapshot or stat != "median"):
-        print("release-performance artifacts require a median baseline comparison", file=sys.stderr)
-        return 2
-
-    artifact_paths: ArtifactPaths | None = None
-    if args.csv_output is not None and args.provenance_output is not None:
-        try:
-            artifact_paths = ArtifactPaths(
-                csv=Path(args.csv_output) if Path(args.csv_output).is_absolute() else root / args.csv_output,
-                provenance=(Path(args.provenance_output) if Path(args.provenance_output).is_absolute() else root / args.provenance_output),
-            )
-            ensure_distinct_paths(
-                {
-                    "Markdown output": output_path,
-                    "artifact CSV": artifact_paths.csv,
-                    "artifact provenance": artifact_paths.provenance,
-                }
-            )
-        except (OSError, ValueError) as err:
-            print(f"Invalid release-performance artifact paths: {err}", file=sys.stderr)
-            return 2
 
     if not criterion_dir.is_dir():
         print(
@@ -2063,20 +2142,15 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
         scope=scope,
         harness_provenance=harness_provenance,
     )
-    if args.csv_output is not None and args.provenance_output is not None:
-        if baseline_name is None or collection is None or artifact_paths is None:
-            msg = "release-performance artifact invariant violated"
-            raise AssertionError(msg)
+    if artifact_paths is not None:
         try:
-            bundle = _release_artifact_bundle(
+            md = _write_and_render_artifacts(
+                artifact_paths,
                 root=root,
                 criterion_dir=criterion_dir,
-                baseline_name=baseline_name,
                 settings=settings,
                 collection=collection,
             )
-            write_bundle(artifact_paths, bundle)
-            md = render_release_artifacts(artifact_paths)
         except (ExceptionGroup, OSError, KeyError, TypeError, ValueError) as err:
             print(f"Invalid release-performance artifact data: {err}", file=sys.stderr)
             return 2

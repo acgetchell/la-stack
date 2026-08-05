@@ -34,7 +34,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from bench_compare import render_release_artifacts
+from bench_compare import HOW_TO_UPDATE_SECTION, render_release_artifacts
 from performance_artifacts import ArtifactPaths, PerformanceBundle, ensure_distinct_paths, load_bundle, publish_bundle
 from subprocess_utils import ExecutableNotFoundError, run_git_command, run_git_command_with_input, run_safe_command
 
@@ -374,46 +374,10 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _how_to_update_section() -> str:
-    lines = [
-        "## How to Update",
-        "",
-        "Local performance reports are generated in isolated temporary worktrees:",
-        "",
-        "```bash",
-        "# Local development: compare the current tree with the latest release",
-        "just performance-local",
-        "",
-        "# Release PR: update docs/PERFORMANCE.md and archive the previous report",
-        "just performance-release",
-        "",
-        "# Re-render and promote from retained CSV/JSON inputs (no benchmarks)",
-        "just performance-rerender",
-        "",
-        "# GitHub Actions release assets",
-        "just performance-github-assets",
-        "",
-        "# Explicit repair",
-        "just performance-release <current-tag> <previous-tag>",
-        "```",
-        "",
-        "`just performance-local` writes `target/bench-reports/performance.md`.",
-        "`just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.",
-        "`just performance-release` also retains `performance.csv` and `performance.provenance.json` beside the local report.",
-        "",
-        "Older curated release-to-release reports are archived in `docs/archive/performance/`.",
-        "",
-        "See `docs/BENCHMARKING.md` for the full comparison workflow.",
-        "",
-    ]
-    return "\n".join(lines)
-
-
 def _normalize_how_to_update(text: str) -> str:
-    section = _how_to_update_section()
     if _HOW_TO_UPDATE_RE.search(text):
-        return _HOW_TO_UPDATE_RE.sub(section, text)
-    return f"{text.rstrip()}\n\n{section}"
+        return _HOW_TO_UPDATE_RE.sub(HOW_TO_UPDATE_SECTION, text)
+    return f"{text.rstrip()}\n\n{HOW_TO_UPDATE_SECTION}"
 
 
 def _replace_file(src: Path, dst: Path) -> None:
@@ -476,6 +440,11 @@ def _snapshot_regular_file(path: Path, *, label: str) -> bytes | None:
         msg = f"{label} must be a regular file: {path}"
         raise ValueError(msg)
     return path.read_bytes()
+
+
+def _decode_text_snapshot(payload: bytes) -> str:
+    """Decode UTF-8 bytes with the universal-newline behavior of ``Path.read_text``."""
+    return payload.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _restore_snapshots(snapshots: tuple[tuple[Path, bytes | None], ...]) -> tuple[BaseException, ...]:
@@ -1431,7 +1400,7 @@ def _existing_archive_matches(*, archive_path: Path | None, current_id: ReportId
     if archived_payload is None:
         msg = "existing archive snapshot invariant violated"
         raise AssertionError(msg)
-    archived_text = _normalize_how_to_update(archived_payload.decode("utf-8"))
+    archived_text = _normalize_how_to_update(_decode_text_snapshot(archived_payload))
     try:
         archived_id = parse_report_id(archived_text)
     except (TypeError, ValueError) as exc:
