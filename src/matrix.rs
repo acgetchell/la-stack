@@ -1335,7 +1335,15 @@ impl<const D: usize> Matrix<D> {
     ) -> Result<Option<DeterminantWithErrorBound>, LaError> {
         let bound = match self.det_errbound_from_arithmetic(det) {
             Ok(Some(bound)) => bound,
-            Ok(None) => return Ok(None),
+            Ok(None) => {
+                if !det.value.is_finite() {
+                    cold_path();
+                    return Err(LaError::non_finite_computation_scalar(
+                        ArithmeticOperation::Determinant,
+                    ));
+                }
+                return Ok(None);
+            }
             Err(error) => return Err(error),
         };
         if !det.value.is_finite() {

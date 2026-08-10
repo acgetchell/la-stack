@@ -23,6 +23,10 @@ use proptest::{array, prelude::*};
 
 use la_stack::prelude::*;
 
+#[path = "common/proptest_config.rs"]
+mod proptest_config;
+use proptest_config::with_default_cases;
+
 fn small_nonzero_f64() -> impl Strategy<Value = f64> {
     prop_oneof![(-1000i16..=-1i16), (1i16..=1000i16)].prop_map(|x| f64::from(x) / 10.0)
 }
@@ -319,7 +323,7 @@ macro_rules! gen_det_sign_exact_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(64))]
+                #![proptest_config(with_default_cases(64))]
 
                 #[test]
                 fn [<det_sign_exact_agrees_with_diagonal_product_and_det_ $d d>](
@@ -375,7 +379,7 @@ macro_rules! gen_solve_exact_roundtrip_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(64))]
+                #![proptest_config(with_default_cases(64))]
 
                 #[test]
                 fn [<solve_exact_integer_roundtrip_ $d d>](
@@ -428,7 +432,7 @@ macro_rules! gen_solve_exact_residual_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(32))]
+                #![proptest_config(with_default_cases(32))]
 
                 #[test]
                 fn [<solve_exact_residual_ $d d>](
@@ -471,7 +475,7 @@ macro_rules! gen_solve_exact_mixed_exponent_residual_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(24))]
+                #![proptest_config(with_default_cases(24))]
 
                 #[test]
                 fn [<solve_exact_mixed_exponent_residual_ $d d>](
@@ -511,7 +515,7 @@ macro_rules! gen_det_exact_and_sign_leibniz_oracle_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(64))]
+                #![proptest_config(with_default_cases(64))]
 
                 #[test]
                 fn [<det_exact_and_sign_agree_with_leibniz_oracle_ $d d>](
@@ -545,7 +549,7 @@ macro_rules! gen_det_sign_fast_filter_boundary_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(64))]
+                #![proptest_config(with_default_cases(64))]
 
                 #[test]
                 fn [<det_direct_sign_agrees_with_leibniz_when_filter_conclusive_ $d d>](
@@ -597,7 +601,7 @@ macro_rules! gen_det_errbound_leibniz_oracle_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(64))]
+                #![proptest_config(with_default_cases(64))]
 
                 #[test]
                 fn [<det_errbound_bounds_det_direct_error_ $d d>](
@@ -613,19 +617,24 @@ macro_rules! gen_det_errbound_leibniz_oracle_proptests {
                         .unwrap()
                         .expect("D<=4 has closed-form det_direct");
                     let exact = big_rational_det_leibniz::<$d>(&entries);
-                    if let Some(bound) = m.det_errbound().unwrap() {
-                        let direct_exact = BigRational::from_f64(det_direct)
-                            .expect("det_direct returned finite f64");
-                        let bound_exact = BigRational::from_f64(bound)
-                            .expect("det_errbound returned finite f64");
-                        let error = (direct_exact - exact).abs();
+                    let bound = m.det_errbound().unwrap();
+                    prop_assert!(
+                        bound.is_some(),
+                        "bounded dense corpus unexpectedly produced no determinant bound for D={}",
+                        $d,
+                    );
+                    let bound = bound.expect("the preceding property assertion rejects None");
+                    let direct_exact = BigRational::from_f64(det_direct)
+                        .expect("det_direct returned finite f64");
+                    let bound_exact = BigRational::from_f64(bound)
+                        .expect("det_errbound returned finite f64");
+                    let error = (direct_exact - exact).abs();
 
-                        prop_assert!(
-                            error <= bound_exact,
-                            "det_direct error exceeded det_errbound for D={}: error={error}, bound={bound_exact}",
-                            $d
-                        );
-                    }
+                    prop_assert!(
+                        error <= bound_exact,
+                        "det_direct error exceeded det_errbound for D={}: error={error}, bound={bound_exact}",
+                        $d
+                    );
                 }
             }
         }
@@ -646,7 +655,7 @@ macro_rules! gen_extreme_exponent_det_filter_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(32))]
+                #![proptest_config(with_default_cases(32))]
 
                 #[test]
                 fn [<det_filter_is_conservative_across_mixed_exponents_ $d d>](
@@ -695,7 +704,7 @@ macro_rules! gen_mixed_scale_diagonal_exact_det_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(32))]
+                #![proptest_config(with_default_cases(32))]
 
                 #[test]
                 fn [<det_exact_handles_mixed_scale_diagonal_ $d d>](

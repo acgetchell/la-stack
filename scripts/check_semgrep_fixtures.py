@@ -1,7 +1,5 @@
 """Validate repository-owned Semgrep fixture annotations."""
 
-from __future__ import annotations
-
 import collections
 import json
 import os
@@ -82,31 +80,87 @@ def _semgrep_results() -> SemgrepResults | None:
     return SemgrepResults(results=tuple(parsed_results))
 
 
-def _expected_rule_counts(path: Path) -> collections.Counter[str]:
-    expected: collections.Counter[str] = collections.Counter()
-    for line in path.read_text(encoding="utf-8").splitlines():
+type ExpectedFinding = tuple[str, int]
+type ActualFinding = tuple[str, int, int]
+
+
+def _expected_findings(path: Path) -> collections.Counter[ExpectedFinding]:
+    expected: collections.Counter[ExpectedFinding] = collections.Counter()
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for line_number, line in enumerate(lines, start=1):
         for match in RULE_ANNOTATION.finditer(line):
-            expected.update(rule_id.strip() for rule_id in match.group(1).split(",") if rule_id.strip())
+            finding_line = line_number + 1
+            while finding_line <= len(lines):
+                candidate = lines[finding_line - 1].strip()
+                if candidate and not candidate.startswith("```"):
+                    break
+                finding_line += 1
+            expected.update((rule_id.strip(), finding_line) for rule_id in match.group(1).split(",") if rule_id.strip())
     return expected
 
 
-def _actual_rule_counts(semgrep: SemgrepResults) -> collections.Counter[str] | None:
-    actual: collections.Counter[str] = collections.Counter()
+def _actual_findings(semgrep: SemgrepResults) -> tuple[ActualFinding, ...] | None:
+    actual: list[ActualFinding] = []
     malformed_results: list[str] = []
     for index, result in enumerate(semgrep.results):
         check_id = result.get("check_id")
-        if isinstance(check_id, str):
-            actual.update([check_id])
-        else:
+        start = result.get("start")
+        end = result.get("end")
+        start_line = start.get("line") if _is_parsed_object(start) else None
+        end_line = end.get("line") if _is_parsed_object(end) else None
+        if not isinstance(check_id, str):
             malformed_results.append(f"result {index} is missing string field 'check_id'")
+        if not isinstance(start_line, int) or isinstance(start_line, bool) or start_line < 1:
+            malformed_results.append(f"result {index} is missing positive integer field 'start.line'")
+        if not isinstance(end_line, int) or isinstance(end_line, bool) or end_line < 1:
+            malformed_results.append(f"result {index} is missing positive integer field 'end.line'")
+        if (
+            isinstance(check_id, str)
+            and isinstance(start_line, int)
+            and not isinstance(start_line, bool)
+            and start_line >= 1
+            and isinstance(end_line, int)
+            and not isinstance(end_line, bool)
+            and end_line >= start_line
+        ):
+            actual.append((check_id, start_line, end_line))
 
     if not malformed_results:
-        return actual
+        return tuple(actual)
 
     print("Invalid SEMGREP_JSON shape:", file=sys.stderr)
     for malformed in malformed_results:
         print(f"  {malformed}", file=sys.stderr)
     return None
+
+
+def _finding_mismatches(
+    expected: collections.Counter[ExpectedFinding],
+    actual: tuple[ActualFinding, ...],
+) -> tuple[str, ...]:
+    unmatched_actual = list(actual)
+    mismatches: list[str] = []
+
+    for (rule_id, line), expected_count in sorted(expected.items()):
+        for _ in range(expected_count):
+            match_index = next(
+                (
+                    index
+                    for index, (actual_rule_id, start_line, end_line) in enumerate(unmatched_actual)
+                    if actual_rule_id == rule_id and start_line <= line <= end_line
+                ),
+                None,
+            )
+            if match_index is None:
+                mismatches.append(f"{rule_id} at line {line}: expected finding not reported")
+            else:
+                unmatched_actual.pop(match_index)
+
+    for rule_id, start_line, end_line in sorted(unmatched_actual):
+        span = str(start_line) if start_line == end_line else f"{start_line}-{end_line}"
+        mismatches.append(f"{rule_id} at lines {span}: unexpected finding")
+
+    return tuple(mismatches)
 
 
 def main() -> int:
@@ -115,23 +169,23 @@ def main() -> int:
     if path is None:
         return 1
 
-    expected = _expected_rule_counts(path)
+    expected = _expected_findings(path)
 
     semgrep = _semgrep_results()
     if semgrep is None:
         return 1
 
-    actual = _actual_rule_counts(semgrep)
+    actual = _actual_findings(semgrep)
     if actual is None:
         return 1
 
-    if actual == expected:
+    mismatches = _finding_mismatches(expected, actual)
+    if not mismatches:
         return 0
 
-    print(f"Semgrep fixture mismatch in {path}")
-    for rule in sorted(expected.keys() | actual.keys()):
-        if expected[rule] != actual[rule]:
-            print(f"  {rule}: expected {expected[rule]}, got {actual[rule]}")
+    print(f"Semgrep fixture mismatch in {path}", file=sys.stderr)
+    for mismatch in mismatches:
+        print(f"  {mismatch}", file=sys.stderr)
     return 1
 
 

@@ -31,6 +31,7 @@ include = [
     "/src/**/*.rs",
     "/tests/*.proptest-regressions",
     "/tests/*.rs",
+    "/tests/common/**/*.rs",
 ]
 
 [dependencies]
@@ -82,6 +83,7 @@ codegen-units = 1
 
 [package.metadata.docs.rs]
 features = [ "exact" ]
+rustdoc-args = [ "--cfg", "docsrs" ]
 
 [lints.rust]
 warnings = { level = "deny", priority = -1 }
@@ -89,7 +91,7 @@ unsafe_code = "forbid"
 missing_docs = { level = "deny", priority = 0 }
 dead_code = { level = "deny", priority = 0 }
 unreachable_pub = { level = "deny", priority = 0 }
-unexpected_cfgs = { level = "deny", priority = 0, check-cfg = [ 'cfg(la_stack_v0_4_3_api)' ] }
+unexpected_cfgs = { level = "deny", priority = 0, check-cfg = [ 'cfg(docsrs)', 'cfg(la_stack_v0_4_3_api)' ] }
 
 [lints.rustdoc]
 bare_urls = "deny"

@@ -8,6 +8,10 @@ use proptest::{array, prelude::*};
 
 use la_stack::prelude::*;
 
+#[path = "common/proptest_config.rs"]
+mod proptest_config;
+use proptest_config::with_default_cases;
+
 fn small_f64() -> impl Strategy<Value = f64> {
     (-1000i16..=1000i16).prop_map(|x| f64::from(x) / 10.0)
 }
@@ -16,7 +20,7 @@ macro_rules! gen_vector_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(64))]
+                #![proptest_config(with_default_cases(64))]
 
                 #[test]
                 fn [<vector_try_new_as_array_into_array_roundtrip_ $d d>](

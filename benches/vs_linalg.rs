@@ -13,7 +13,7 @@
 use std::hint::black_box;
 
 use criterion::measurement::WallTime;
-use criterion::{BatchSize, BenchmarkGroup, Criterion};
+use criterion::{BenchmarkGroup, Criterion};
 use faer::linalg::solvers::Solve;
 use faer::mat::AsMatRef;
 use faer::{Mat, Side};
@@ -73,52 +73,36 @@ where
     let fa = faer_matrix::<D>();
 
     group.bench_function("la_stack_det_via_lu", |bencher| {
-        bencher.iter_batched(
-            || a,
-            |a| {
-                let lu = black_box(a)
-                    .lu(DEFAULT_SINGULAR_TOL)
-                    .or_abort("la_stack LU factorization");
-                let det = lu.det().or_abort("la_stack LU determinant");
-                black_box(det);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(a)
+                .lu(DEFAULT_SINGULAR_TOL)
+                .or_abort("la_stack LU factorization");
+            let det = lu.det().or_abort("la_stack LU determinant");
+            black_box(det);
+        });
     });
 
     group.bench_function("nalgebra_det_via_lu", |bencher| {
-        bencher.iter_batched(
-            || na,
-            |na| {
-                let lu = black_box(na).lu();
-                let det = lu.determinant();
-                black_box(det);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(na).lu();
+            let det = lu.determinant();
+            black_box(det);
+        });
     });
 
     group.bench_function("faer_det_via_lu", |bencher| {
-        bencher.iter_batched(
-            || &fa,
-            |fa| {
-                let lu = black_box(fa).partial_piv_lu();
-                let det = PreparedFaerLuDet::new(&lu).det();
-                black_box(det);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(&fa).partial_piv_lu();
+            let det = PreparedFaerLuDet::new(&lu).det();
+            black_box(det);
+        });
     });
 
     group.bench_function("la_stack_det", |bencher| {
-        bencher.iter_batched(
-            || a,
-            |a| {
-                let det = black_box(a).det().or_abort("la_stack determinant");
-                black_box(det);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let det = black_box(a).det().or_abort("la_stack determinant");
+            black_box(det);
+        });
     });
 }
 
@@ -132,77 +116,53 @@ where
     let fa = faer_matrix::<D>();
 
     group.bench_function("la_stack_lu", |bencher| {
-        bencher.iter_batched(
-            || a,
-            |a| {
-                let lu = black_box(a)
-                    .lu(DEFAULT_SINGULAR_TOL)
-                    .or_abort("la_stack LU factorization");
-                let _ = black_box(lu);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(a)
+                .lu(DEFAULT_SINGULAR_TOL)
+                .or_abort("la_stack LU factorization");
+            let _ = black_box(lu);
+        });
     });
 
     group.bench_function("nalgebra_lu", |bencher| {
-        bencher.iter_batched(
-            || na,
-            |na| {
-                let lu = black_box(na).lu();
-                let _ = black_box(lu);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(na).lu();
+            let _ = black_box(lu);
+        });
     });
 
     group.bench_function("faer_lu", |bencher| {
-        bencher.iter_batched(
-            || &fa,
-            |fa| {
-                let lu = black_box(fa).partial_piv_lu();
-                let _ = black_box(lu);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(&fa).partial_piv_lu();
+            let _ = black_box(lu);
+        });
     });
 
     group.bench_function("la_stack_ldlt", |bencher| {
-        bencher.iter_batched(
-            || a,
-            |a| {
-                let ldlt = black_box(a)
-                    .ldlt(DEFAULT_SINGULAR_TOL)
-                    .or_abort("la_stack LDLT factorization");
-                let _ = black_box(ldlt);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let ldlt = black_box(a)
+                .ldlt(DEFAULT_SINGULAR_TOL)
+                .or_abort("la_stack LDLT factorization");
+            let _ = black_box(ldlt);
+        });
     });
 
     group.bench_function("nalgebra_cholesky", |bencher| {
-        bencher.iter_batched(
-            || na,
-            |na| {
-                let chol = black_box(na)
-                    .cholesky()
-                    .or_abort("nalgebra Cholesky factorization");
-                black_box(chol);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let chol = black_box(na)
+                .cholesky()
+                .or_abort("nalgebra Cholesky factorization");
+            black_box(chol);
+        });
     });
 
     group.bench_function("faer_ldlt", |bencher| {
-        bencher.iter_batched(
-            || &fa,
-            |fa| {
-                let ldlt = black_box(fa)
-                    .ldlt(Side::Lower)
-                    .or_abort("faer LDLT factorization");
-                let _ = black_box(ldlt);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let ldlt = black_box(&fa)
+                .ldlt(Side::Lower)
+                .or_abort("faer LDLT factorization");
+            let _ = black_box(ldlt);
+        });
     });
 }
 
@@ -255,45 +215,33 @@ fn register_ldlt_solve_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_,
     let frhs = faer_vector::<D>(0.0);
 
     group.bench_function("la_stack_ldlt_solve", |bencher| {
-        bencher.iter_batched(
-            || (a, rhs),
-            |(a, rhs)| {
-                let ldlt = black_box(a)
-                    .ldlt(DEFAULT_SINGULAR_TOL)
-                    .or_abort("la_stack LDLT factorization");
-                let x = ldlt.solve(black_box(rhs)).or_abort("la_stack LDLT solve");
-                let _ = black_box(x);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let ldlt = black_box(a)
+                .ldlt(DEFAULT_SINGULAR_TOL)
+                .or_abort("la_stack LDLT factorization");
+            let x = ldlt.solve(black_box(rhs)).or_abort("la_stack LDLT solve");
+            let _ = black_box(x);
+        });
     });
 
     group.bench_function("nalgebra_cholesky_solve", |bencher| {
-        bencher.iter_batched(
-            || (na, nrhs),
-            |(na, nrhs)| {
-                let chol = black_box(na)
-                    .cholesky()
-                    .or_abort("nalgebra Cholesky factorization");
-                let x = chol.solve(black_box(&nrhs));
-                black_box(x);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let chol = black_box(na)
+                .cholesky()
+                .or_abort("nalgebra Cholesky factorization");
+            let x = chol.solve(black_box(&nrhs));
+            black_box(x);
+        });
     });
 
     group.bench_function("faer_ldlt_solve", |bencher| {
-        bencher.iter_batched(
-            || (&fa, &frhs),
-            |(fa, rhs)| {
-                let ldlt = black_box(fa)
-                    .ldlt(Side::Lower)
-                    .or_abort("faer LDLT factorization");
-                let x = ldlt.solve(black_box(rhs));
-                black_box(x);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let ldlt = black_box(&fa)
+                .ldlt(Side::Lower)
+                .or_abort("faer LDLT factorization");
+            let x = ldlt.solve(black_box(&frhs));
+            black_box(x);
+        });
     });
 }
 
@@ -568,42 +516,30 @@ fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
         .or_abort("balanced-range benchmark matrix construction");
 
     group.bench_function("la_stack_lu_pivoting", |bencher| {
-        bencher.iter_batched(
-            || pivoting,
-            |matrix| {
-                let lu = black_box(matrix)
-                    .lu(zero_tolerance)
-                    .or_abort("pivoting LU factorization");
-                let _ = black_box(lu);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(pivoting)
+                .lu(zero_tolerance)
+                .or_abort("pivoting LU factorization");
+            let _ = black_box(lu);
+        });
     });
 
     group.bench_function("la_stack_lu_ill_conditioned", |bencher| {
-        bencher.iter_batched(
-            || ill_conditioned,
-            |matrix| {
-                let lu = black_box(matrix)
-                    .lu(zero_tolerance)
-                    .or_abort("ill-conditioned LU factorization");
-                let _ = black_box(lu);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let lu = black_box(ill_conditioned)
+                .lu(zero_tolerance)
+                .or_abort("ill-conditioned LU factorization");
+            let _ = black_box(lu);
+        });
     });
 
     group.bench_function("la_stack_ldlt_ill_conditioned", |bencher| {
-        bencher.iter_batched(
-            || ill_conditioned,
-            |matrix| {
-                let ldlt = black_box(matrix)
-                    .ldlt(zero_tolerance)
-                    .or_abort("ill-conditioned LDLT factorization");
-                let _ = black_box(ldlt);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let ldlt = black_box(ill_conditioned)
+                .ldlt(zero_tolerance)
+                .or_abort("ill-conditioned LDLT factorization");
+            let _ = black_box(ldlt);
+        });
     });
 
     #[cfg(not(la_stack_v0_4_3_api))]

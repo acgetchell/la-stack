@@ -19,16 +19,16 @@ _coverage_base_args := '''--features exact \
   --verbose'''
 cargo_llvm_cov_version := "0.8.7"
 cargo_machete_version := "0.9.2"
-cargo_nextest_version := "0.9.140"
+cargo_nextest_version := "0.9.143"
 clippy_sarif_version := "0.8.0"
 dprint_version := "0.55.2"
 git_cliff_version := "2.13.1"
 just_version := "1.58.0"
-rumdl_version := "0.2.50"
+rumdl_version := "0.2.52"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
 typos_version := "1.49.0"
-uv_version := "0.12.1"
+uv_version := "0.12.3"
 zizmor_version := "1.29.0"
 
 # Internal helpers: ensure external tooling is installed
@@ -346,9 +346,9 @@ check-fast:
     cargo check
 
 # CI simulation: flat GitHub-equivalent union of leaf validators.
-# Keep this dependency list explicit so each target class and validation surface
-# is composed once without re-entering broad check/test bundles.
-ci: action-lint zizmor markdown-check spell-check docs-version-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-typecheck test-python cargo-lock-check fmt-check clippy-core doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
+# Keep this dependency list explicit so each validation surface runs once without
+# re-entering broad check/test bundles. All Cargo targets match the SARIF lint scope.
+ci: action-lint zizmor markdown-check spell-check docs-version-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-typecheck test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
     @echo "🎯 CI checks complete!"
 
 # Validate CITATION.cff against the Citation File Format schema.
@@ -361,7 +361,7 @@ clean:
     rm -rf target/llvm-cov
     rm -rf coverage
 
-# Optional broad Clippy sweep across tests, examples, and benches.
+# Full Cargo-target Clippy sweep used by `just ci` and the GitHub SARIF workflow.
 clippy: clippy-all-targets
 
 clippy-all-targets:

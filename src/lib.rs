@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![doc = include_str!("../README.md")]
 
 #[cfg(doc)]
@@ -205,12 +206,16 @@ mod tolerance;
 mod vector;
 
 #[cfg(feature = "exact")]
+#[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
 pub use exact::{DeterminantSign, ExactF64Conversion};
 #[cfg(feature = "exact")]
+#[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
 pub use num_bigint::BigInt;
 #[cfg(feature = "exact")]
+#[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
 pub use num_rational::BigRational;
 #[cfg(feature = "exact")]
+#[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
 pub use num_traits::{FromPrimitive, Signed, ToPrimitive};
 
 // ---------------------------------------------------------------------------
@@ -485,6 +490,7 @@ pub mod prelude {
     };
 
     #[cfg(feature = "exact")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
     pub use crate::{
         BigInt, BigRational, DeterminantSign, ExactF64Conversion, FromPrimitive, Signed,
         ToPrimitive,

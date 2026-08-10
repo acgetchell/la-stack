@@ -12,8 +12,6 @@ This is intended to create a single, README-friendly plot comparing la-stack to 
 Rust linear algebra crates across dimensions.
 """
 
-from __future__ import annotations
-
 import argparse
 import hashlib
 import json
@@ -29,7 +27,8 @@ from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
 from typing import Final, Protocol, TypeGuard, cast
 
-from subprocess_utils import ExecutableNotFoundError, run_git_command, run_safe_command
+from performance_artifacts import ensure_distinct_paths
+from subprocess_utils import ExecutableNotFoundError, cpu_description, find_project_root, run_git_command, run_safe_command
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,7 +271,8 @@ _PROVENANCE_HARNESS_FILES: Final[tuple[str, ...]] = (
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    """Resolve the checkout from the caller's working tree, including wheel installs."""
+    return find_project_root()
 
 
 def _dim_from_group_dir(name: str) -> int | None:
@@ -923,7 +923,7 @@ def _capture_provenance(
     harness_sha256, missing_harness_files = _provenance_harness_digest(root)
     cargo_lock = root / "Cargo.lock"
     cargo_lock_sha256 = hashlib.sha256(cargo_lock.read_bytes()).hexdigest() if cargo_lock.is_file() else "unavailable"
-    cpu = platform.processor().strip() or platform.machine().strip() or "unavailable"
+    cpu = cpu_description()
     os_description = " ".join(part for part in (platform.system(), platform.release(), platform.machine()) if part).strip() or "unavailable"
     git_clean, git_status_sha256 = _git_status_metadata(root)
     source_state_sha256, source_missing = _source_state_digest(root)
@@ -1022,6 +1022,24 @@ def _validate_readme_target(root: Path, args: PlotCliArgs) -> int:  # noqa: C901
     end_idx = next(index for index, line in enumerate(lines) if line.strip() == marker_end)
     if begin_idx >= end_idx:
         print("README markers are out of order.", file=sys.stderr)
+        return 2
+    return 0
+
+
+def _validate_publication_paths(root: Path, args: PlotCliArgs, *, out_svg: Path, out_csv: Path) -> int:
+    """Reject output aliases before benchmarks or publication can begin."""
+    paths = {
+        "CSV output": out_csv,
+        "provenance output": out_csv.with_suffix(".provenance.json"),
+    }
+    if not args.no_plot:
+        paths["SVG output"] = out_svg
+    if args.update_readme:
+        paths["README output"] = _resolve_under_root(root, args.readme)
+    try:
+        ensure_distinct_paths(paths)
+    except (OSError, ValueError) as exc:
+        print(f"Invalid benchmark publication paths: {exc}", file=sys.stderr)
         return 2
     return 0
 
@@ -1209,6 +1227,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
     rc = _validate_readme_target(root, args)
     if rc != 0:
         return rc
+    out_svg, out_csv = _resolve_output_paths(root, args.metric, args.stat, args.out, args.csv)
+    rc = _validate_publication_paths(root, args, out_svg=out_svg, out_csv=out_csv)
+    if rc != 0:
+        return rc
     if args.update_readme:
         try:
             _run_publication_benchmarks(root, args.metric)
@@ -1237,8 +1259,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
         return 2
 
     metric = METRICS[args.metric]
-
-    out_svg, out_csv = _resolve_output_paths(root, args.metric, args.stat, args.out, args.csv)
 
     try:
         rows, skipped = _collect_rows(criterion_dir, dims, metric, args.stat, args.sample)

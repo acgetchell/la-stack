@@ -1,7 +1,5 @@
 """Tests for exact-arithmetic benchmark comparison reports."""
 
-from __future__ import annotations
-
 import json
 import re
 import subprocess
@@ -87,6 +85,7 @@ def _schema2_provenance_data() -> dict[str, object]:
             "suite": "all",
         },
         "measurement": {
+            "baseline_api_compatibility": "la_stack_v0_4_3_api",
             "baseline_commit": "baseline-commit",
             "baseline_git_clean": False,
             "baseline_source_state_sha256": "d" * 64,
@@ -828,6 +827,9 @@ def test_read_schema2_provenance_records_versions_dirty_source_and_both_gates(tm
         scope="release-signal",
         baseline_api_compatibility="la_stack_v0_4_3_api",
     )
+    assert provenance.measurement is not None
+    with pytest.raises(TypeError):
+        cast("dict[str, object]", provenance.measurement)["status"] = "unavailable"
 
 
 def test_historical_asset_provenance_uses_mode_appropriate_gate_wording(tmp_path: Path) -> None:
@@ -861,6 +863,20 @@ def test_read_schema2_provenance_requires_criterion_version(tmp_path: Path) -> N
         _read_harness_provenance(tmp_path)
 
 
+def test_read_schema2_provenance_rejects_recorded_measurement_without_cpu_model(tmp_path: Path) -> None:
+    data = _schema2_provenance_data()
+    measurement = data["measurement"]
+    publication = data["publication"]
+    assert isinstance(measurement, dict)
+    assert isinstance(publication, dict)
+    cast("dict[str, object]", measurement)["cpu"] = "unavailable"
+    cast("dict[str, object]", publication)["cpu"] = "unavailable"
+    (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="requires an identified CPU model"):
+        _read_harness_provenance(tmp_path)
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -890,8 +906,28 @@ def test_read_schema2_provenance_rejects_v043_adapter_for_other_baseline(tmp_pat
     data["baseline"] = "v0.4.4"
     (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=r"valid only for baseline 'v0\.4\.3'"):
+    with pytest.raises(ValueError, match=r"must be 'none' for baseline 'v0\.4\.4'"):
         _read_harness_provenance(tmp_path, baseline="v0.4.4")
+
+
+def test_read_schema2_provenance_rejects_mode_status_contradiction(tmp_path: Path) -> None:
+    data = _schema2_provenance_data()
+    data["mode"] = "historical-assets"
+    (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="requires shared-current-harness mode"):
+        _read_harness_provenance(tmp_path)
+
+
+def test_read_schema2_provenance_rejects_revision_contradiction(tmp_path: Path) -> None:
+    data = _schema2_provenance_data()
+    publication = data["publication"]
+    assert isinstance(publication, dict)
+    cast("dict[str, object]", publication)["commit"] = "different-commit"
+    (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"publication\.commit.*validation\.current_commit"):
+        _read_harness_provenance(tmp_path)
 
 
 def test_read_harness_provenance_rejects_different_requested_baseline(tmp_path: Path) -> None:
@@ -973,6 +1009,15 @@ def test_main_no_criterion_dir(tmp_path: Path, capsys: pytest.CaptureFixture[str
     rc = bench_compare.main(["--criterion-dir", str(tmp_path / "nonexistent"), "--output", str(tmp_path / "out.md")])
     assert rc == 2
     assert "No Criterion results" in capsys.readouterr().err
+
+
+def test_repo_root_resolution_uses_working_checkout_for_installed_entrypoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (tmp_path / "Cargo.toml").write_text("[package]\n", encoding="utf-8")
+    monkeypatch.chdir(nested)
+
+    assert bench_compare._repo_root() == tmp_path
 
 
 def test_main_comparison_no_baseline(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1110,6 +1155,73 @@ def test_main_rejects_invalid_artifact_option_combinations(
     assert expected_error in capsys.readouterr().err
     assert not csv_output.exists()
     assert not provenance_output.exists()
+
+
+def test_markdown_failure_rolls_back_release_artifact_pair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    paths = bench_compare.ArtifactPaths(
+        csv=tmp_path / "performance.csv",
+        provenance=tmp_path / "performance.provenance.json",
+    )
+    output = tmp_path / "performance.md"
+    paths.csv.write_bytes(b"old csv\n")
+    paths.provenance.write_bytes(b"old provenance\n")
+    output.write_text("old markdown\n", encoding="utf-8")
+    timing = bench_compare.TimingEstimate(median_ns=10.0, ci_lower_ns=9.0, ci_upper_ns=11.0)
+    bundle = bench_compare.PerformanceBundle(
+        context=bench_compare.ArtifactContext(
+            release=bench_compare.ReleasePair(current="v0.4.4", baseline="v0.4.3"),
+            statistic="median",
+            suite="all",
+            scope="release-signal",
+            source=bench_compare.ReportSource(
+                version="0.4.4",
+                commit="current-commit",
+                ref="HEAD",
+                revision_timestamp="2026-08-04 12:00:00 UTC",
+            ),
+            benchmark_provenance=_schema2_provenance_data(),
+        ),
+        rows=(
+            bench_compare.PerformanceRow(
+                suite="exact",
+                scope="release-signal",
+                benchmark_id="exact_d2/det_exact",
+                group="exact_d2",
+                benchmark="det_exact",
+                baseline_benchmark="det_exact",
+                coverage_status="comparable",
+                coverage_note="",
+                baseline=timing,
+                current=timing,
+            ),
+        ),
+    )
+    monkeypatch.setattr(bench_compare, "_release_artifact_bundle", lambda **_kwargs: bundle)
+
+    def fail_markdown(_path: Path, _text: str) -> None:
+        msg = "simulated Markdown publication failure"
+        raise OSError(msg)
+
+    monkeypatch.setattr(bench_compare, "_write_text_atomic", fail_markdown)
+
+    with pytest.raises(OSError, match="simulated Markdown publication failure"):
+        bench_compare._write_and_render_artifacts(
+            paths,
+            output_path=output,
+            root=tmp_path,
+            criterion_dir=tmp_path,
+            settings=bench_compare.ReportSettings(
+                baseline_name="v0.4.3",
+                stat="median",
+                suite="all",
+                scope="release-signal",
+            ),
+            collection=bench_compare.ComparisonCollection(comparisons=[], gaps=[]),
+        )
+
+    assert paths.csv.read_bytes() == b"old csv\n"
+    assert paths.provenance.read_bytes() == b"old provenance\n"
+    assert output.read_text(encoding="utf-8") == "old markdown\n"
 
 
 def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(

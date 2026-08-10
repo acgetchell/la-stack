@@ -1,7 +1,5 @@
 """Tests for archive_changelog.py — parsing, grouping, split/archive, and idempotency."""
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 
@@ -165,6 +163,21 @@ class TestParseChangelog:
 
         with pytest.raises(ValueError, match="Unrecognized changelog version heading"):
             parse_changelog(text)
+
+    @pytest.mark.parametrize("version", ["01.2.3", "1.02.3", "1.2.03", "1.2.3garbage", "1.2.3-01"])
+    def test_rejects_malformed_semver_headings(self, version: str) -> None:
+        text = _PREAMBLE + f"## [{version}] - 2026-01-01\n"
+
+        with pytest.raises(ValueError, match="semantic version"):
+            parse_changelog(text)
+
+    def test_rejects_duplicate_unreleased_headings(self) -> None:
+        with pytest.raises(ValueError, match="Duplicate Unreleased"):
+            parse_changelog(_PREAMBLE + _UNRELEASED + _UNRELEASED + _V072)
+
+    def test_rejects_duplicate_release_headings(self) -> None:
+        with pytest.raises(ValueError, match="Duplicate changelog version"):
+            parse_changelog(_PREAMBLE + _V072 + _V072)
 
 
 class TestGroupByMinor:
@@ -334,6 +347,31 @@ class TestArchiveChangelog:
         a06 = (archive_dir / "0.6.md").read_text(encoding="utf-8")
         assert "## [0.6.2]" in a06
         assert "## [0.6.1]" in a06
+
+    def test_multi_file_publication_rolls_back_on_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        changelog = tmp_path / "CHANGELOG.md"
+        original_root = _full_changelog()
+        changelog.write_text(original_root, encoding="utf-8")
+        archive_dir = tmp_path / "docs" / "archive" / "changelog"
+        archive_dir.mkdir(parents=True)
+        existing_archive = archive_dir / "0.6.md"
+        original_archive = "# Existing 0.6 archive\n"
+        existing_archive.write_text(original_archive, encoding="utf-8")
+
+        def fail_root_publication(source: Path, destination: Path) -> None:
+            if destination == changelog:
+                msg = "simulated root publication failure"
+                raise OSError(msg)
+            source.replace(destination)
+
+        monkeypatch.setattr("archive_changelog._replace_path", fail_root_publication)
+
+        with pytest.raises(OSError, match="simulated root publication failure"):
+            archive_changelog(changelog, archive_dir)
+
+        assert changelog.read_text(encoding="utf-8") == original_root
+        assert existing_archive.read_text(encoding="utf-8") == original_archive
+        assert not (archive_dir / "0.2.md").exists()
 
     def test_idempotent(self, tmp_path: Path) -> None:
         """Running archive twice produces the same output."""

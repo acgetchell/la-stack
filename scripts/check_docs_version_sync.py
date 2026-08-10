@@ -1,12 +1,12 @@
 """Check release-version references against the Cargo package version."""
 
-from __future__ import annotations
-
+import argparse
 import os
 import re
 import sys
 import tomllib
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
 from pathlib import Path
 from typing import TypeGuard
@@ -209,6 +209,7 @@ def _uv_lock_reference(path: Path, project: PythonProjectInfo) -> VersionReferen
 
 
 _CITATION_VERSION_RE = re.compile(r"^version:\s*(?P<quote>['\"]?)(?P<version>[0-9A-Za-z][0-9A-Za-z.+-]*)(?P=quote)\s*(?:#.*)?$")
+_CITATION_DATE_RE = re.compile(r"^date-released:\s*(?P<quote>['\"]?)(?P<date>\d{4}-\d{2}-\d{2})(?P=quote)\s*(?:#.*)?$")
 
 
 def _citation_reference(path: Path) -> VersionReference:
@@ -225,6 +226,55 @@ def _citation_reference(path: Path) -> VersionReference:
         msg = f"{path} must contain exactly one top-level version; found {len(references)}"
         raise TypeError(msg)
     return references[0]
+
+
+def _release_date(path: Path) -> tuple[int, str]:
+    matches: list[tuple[int, str]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.startswith("date-released:"):
+            continue
+        match = _CITATION_DATE_RE.fullmatch(line)
+        if match is None:
+            msg = f"{path}:{line_number}: top-level date-released must use YYYY-MM-DD"
+            raise TypeError(msg)
+        value = match.group("date")
+        try:
+            date.fromisoformat(value)
+        except ValueError as exc:
+            msg = f"{path}:{line_number}: invalid date-released {value!r}"
+            raise TypeError(msg) from exc
+        matches.append((line_number, value))
+    if len(matches) != 1:
+        msg = f"{path} must contain exactly one top-level date-released; found {len(matches)}"
+        raise TypeError(msg)
+    return matches[0]
+
+
+def _validate_release_date_sync(root: Path, package: PackageInfo) -> None:
+    """Require CFF and generated changelog to use the same UTC release date."""
+    changelog = root / "CHANGELOG.md"
+    if not changelog.is_file():
+        return
+    heading_re = re.compile(rf"^## \[v?{re.escape(package.version)}\] - (?P<date>\d{{4}}-\d{{2}}-\d{{2}})$")
+    changelog_matches: list[tuple[int, str]] = []
+    for line_number, line in enumerate(changelog.read_text(encoding="utf-8").splitlines(), start=1):
+        match = heading_re.fullmatch(line)
+        if match is not None:
+            changelog_matches.append((line_number, match.group("date")))
+    if not changelog_matches:
+        return
+    if len(changelog_matches) != 1:
+        msg = f"{changelog} must contain exactly one release heading for {package.version}; found {len(changelog_matches)}"
+        raise TypeError(msg)
+    citation = root / "CITATION.cff"
+    citation_line, citation_date = _release_date(citation)
+    changelog_line, changelog_date = changelog_matches[0]
+    if citation_date != changelog_date:
+        msg = (
+            f"release date mismatch: {citation}:{citation_line} has {citation_date}, "
+            f"but {changelog}:{changelog_line} has {changelog_date}; both must use the generated UTC release date"
+        )
+        raise TypeError(msg)
 
 
 def _iter_markdown_files(root: Path) -> list[Path]:
@@ -317,12 +367,24 @@ def find_version_mismatches(root: Path) -> list[VersionMismatch]:
     """Return release-version references that differ from Cargo.toml."""
 
     package = _read_cargo_package_info(root / "Cargo.toml")
+    _validate_release_date_sync(root, package)
     return [VersionMismatch(reference=reference, package=package) for reference in _version_references(root, package) if reference.version != package.version]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """Check release-version references against the Cargo package version."""
-    root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd()
+    parser = argparse.ArgumentParser(
+        prog="check-docs-version-sync",
+        description="Check release-version references against Cargo.toml.",
+    )
+    parser.add_argument(
+        "root",
+        nargs="?",
+        default=Path.cwd(),
+        type=Path,
+        help="Repository root to check (default: current directory).",
+    )
+    root = parser.parse_args(argv).root.resolve()
     try:
         mismatches = find_version_mismatches(root)
     except (OSError, TypeError, tomllib.TOMLDecodeError) as error:

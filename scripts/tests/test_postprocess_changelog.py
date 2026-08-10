@@ -1,7 +1,5 @@
 """Tests for postprocess_changelog.py — trailing blanks, reflow, code blocks, summaries."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from postprocess_changelog import (
@@ -918,6 +916,14 @@ class TestCodeBlockLanguage:
 
 
 class TestIntegration:
+    def test_full_pipeline_is_idempotent(self) -> None:
+        content = "# Changelog\n\n## [1.0.0] - 2026-01-01\n\n### Fixed\n\n- fixed: preserve the generated body\n\n  - Historical detail.\n"
+
+        once = postprocess_text(content)
+
+        assert "\n  - Historical detail.\n" in once
+        assert postprocess_text(once) == once
+
     def test_full_changelog_reflow(self, tmp_path: Path) -> None:
         """Simulate a realistic changelog snippet with long lines."""
         long_entry = (

@@ -74,13 +74,15 @@ Alternative: edit `Cargo.toml` manually and update `version = "..."` under
 
 Update release metadata to match the crate version:
 
-- `CITATION.cff`: update `version` and `date-released`
+- `CITATION.cff`: update `version`, the version-specific DOI identifier, and
+  `date-released`. Use the UTC calendar date written into the generated
+  changelog heading; keep the all-versions concept DOI as the primary `doi`.
 - `pyproject.toml`: update `[project] version` for the Python utility package
 
 Review the citation identity fields at the same time: author name and contact,
 ORCID, repository URL, and license. Preserve la-stack's Zenodo concept DOI
-(`all versions`) unless the archival policy is deliberately changed; do not
-replace it with a release-specific DOI.
+(`all versions`) as the primary `doi` unless the archival policy is deliberately
+changed; retain the release DOI as a version-specific identifier.
 
 Refresh both committed lockfiles after those manual metadata edits:
 
@@ -111,9 +113,10 @@ just changelog-unreleased "$TAG"
 
 `just changelog-unreleased` runs
 `GIT_CLIFF_OFFLINE=true git-cliff --tag "$TAG" -o CHANGELOG.md`, then
-`postprocess-changelog`, then `archive-changelog`. The root changelog keeps
-Unreleased plus the active minor series; older completed minor series live
-under `docs/archive/changelog/`.
+`postprocess-changelog`, then `archive-changelog`. The generated tagged-release
+changelog may begin directly with the active minor series; when git-cliff emits
+an Unreleased block, the archiver preserves it. Older completed minor series
+live under `docs/archive/changelog/`.
 
 4. Run benchmarks and update the README comparison table
 

@@ -110,6 +110,17 @@ This command does not depend on existing local `target/criterion/` baselines.
 It is slower than reusing a saved baseline, but less sensitive to stale local
 benchmark state.
 
+The workflow streams its correctness-gate, Cargo, and Criterion output as each
+phase runs. `[performance]` markers identify baseline validation, baseline
+timing, current validation, and current timing, so a long comparison exposes
+completed samples and its active phase instead of remaining silent until the
+final report is rendered.
+
+If the checkout's package version is identical to the latest published release,
+the command now stops before creating worktrees or running benchmarks because a
+release report requires two distinct identifiers. For repeated optimization
+within one package version, use the named-baseline loop below instead.
+
 ### Compare Current Code With A Specific Release
 
 For a narrower non-exact check against a known release pair, run:
@@ -211,6 +222,12 @@ coverage status and notes, and baseline/current median estimates with complete
 confidence intervals in nanoseconds. The JSON sidecar binds the CSV digest and
 row count to the release pair, source states, commands, toolchain, Criterion
 version, harness/configuration digests, host, and schema version.
+
+Before creating worktrees or running either benchmark revision, structured
+local and release-report workflows require an identifiable CPU model. Raw
+Criterion benchmark recipes may still record measurements when that metadata
+is unavailable, but those measurements cannot be promoted as reproducible
+release evidence.
 
 The pair is validated and published before the temporary worktree is removed.
 `docs/PERFORMANCE.md` is then rendered from a validated reload of that retained

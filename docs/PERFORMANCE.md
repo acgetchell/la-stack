@@ -19,7 +19,7 @@ for the change, so the report makes no statistical-significance or performance-i
 
 **Measurement environment**: recorded for both samples under one shared current harness.
 
-- CPU: `arm`
+- CPU: unavailable (legacy report recorded architecture only: `arm`)
 - OS: `Darwin 25.5.0 arm64`
 - rustc: `rustc 1.97.0 (2d8144b78 2026-07-07)`
 - Current commit: `e736c5fda155ef23c8712f89ae15bf5369ff3787`
@@ -33,7 +33,7 @@ for the change, so the report makes no statistical-significance or performance-i
 
 **Publication and validation environment**:
 
-- Publication CPU: `arm`
+- Publication CPU: unavailable (legacy report recorded architecture only: `arm`)
 - Publication OS: `Darwin 25.5.0 arm64`
 - Publication rustc: `rustc 1.97.0 (2d8144b78 2026-07-07)`
 - Publication commit: `e736c5fda155ef23c8712f89ae15bf5369ff3787`

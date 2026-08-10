@@ -12,6 +12,8 @@ All scripts should use these functions instead of calling subprocess directly.
 Ported from the delaunay project's scripts/subprocess_utils.py (minimal subset).
 """
 
+import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -19,6 +21,9 @@ from pathlib import Path
 from typing import Any
 
 type RunKwargs = dict[str, Any]
+
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 300.0
+_GENERIC_CPU_NAMES = frozenset({"amd64", "arm", "arm64", "aarch64", "i386", "i686", "unknown", "x86_64"})
 
 
 class ExecutableNotFoundError(Exception):
@@ -74,6 +79,7 @@ def _build_run_kwargs(function_name: str, **kwargs: Any) -> RunKwargs:
     }
     # Prefer deterministic UTF-8 unless caller overrides
     run_kwargs.setdefault("encoding", "utf-8")
+    run_kwargs.setdefault("timeout", DEFAULT_COMMAND_TIMEOUT_SECONDS)
     return run_kwargs
 
 
@@ -166,6 +172,45 @@ def run_safe_command(
     )
 
 
+def _darwin_cpu_model() -> str:
+    try:
+        return run_safe_command("sysctl", ["-n", "machdep.cpu.brand_string"]).stdout.strip()
+    except ExecutableNotFoundError, OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired:
+        return ""
+
+
+def _linux_cpu_model() -> str:
+    try:
+        for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
+            field, separator, value = line.partition(":")
+            if separator and field.strip().casefold() in {"model name", "hardware"} and value.strip():
+                return value.strip()
+    except OSError:
+        pass
+    return ""
+
+
+def cpu_description() -> str:
+    """Return a reproducible processor model plus architecture when available."""
+    machine = platform.machine().strip()
+    model_by_system = {
+        "Darwin": _darwin_cpu_model,
+        "Linux": _linux_cpu_model,
+        "Windows": lambda: os.environ.get("PROCESSOR_IDENTIFIER", "").strip(),
+    }
+    model_factory = model_by_system.get(platform.system())
+    model = "" if model_factory is None else model_factory()
+
+    processor = platform.processor().strip()
+    if not model and processor.casefold() not in _GENERIC_CPU_NAMES:
+        model = processor
+    if not model:
+        return "unavailable"
+    if machine and machine.casefold() not in model.casefold():
+        return f"{model} ({machine})"
+    return model
+
+
 def get_git_commit_hash(cwd: Path | None = None) -> str:
     """Get the current git commit hash."""
     result = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
@@ -246,12 +291,13 @@ class ProjectRootNotFoundError(Exception):
     """Raised when project root directory cannot be located."""
 
 
-def find_project_root() -> Path:
-    """Find the nearest project root by walking upward to Cargo.toml."""
-    current_dir = Path.cwd()
-    project_root = current_dir
+def find_project_root(start: Path | None = None) -> Path:
+    """Find the nearest project root by walking upward to ``Cargo.toml``."""
+    project_root = (start or Path.cwd()).resolve()
+    if project_root.is_file():
+        project_root = project_root.parent
     while project_root != project_root.parent:
-        if (project_root / "Cargo.toml").exists():
+        if (project_root / "Cargo.toml").is_file():
             return project_root
         project_root = project_root.parent
     msg = "Could not locate Cargo.toml to determine project root"

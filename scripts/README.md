@@ -60,6 +60,12 @@ just performance-rerender
 just performance-github-assets
 ```
 
+Local benchmark generation streams Cargo and Criterion progress while retaining
+the existing fail-closed report and provenance checks. Lines prefixed with
+`[performance]` identify the active validation or timing phase. A
+current-vs-latest request whose package and release identifiers match is
+rejected before benchmark work starts.
+
 The local release workflows run the independent benchmark-input correctness gate
 and then measure both library revisions with one hashed current benchmark
 harness. Reports record source-state, environment, toolchain, dependency,
@@ -203,7 +209,7 @@ This repo has been tested with `gnuplot 6.0 patchlevel 3` (Homebrew `gnuplot 6.0
 just changelog
 
 # Prepend only unreleased changes for a new version
-just changelog-unreleased v0.3.0
+just changelog-unreleased vX.Y.Z
 ```
 
 `just changelog` runs `git-cliff -o CHANGELOG.md`, strips trailing blank
@@ -213,13 +219,13 @@ Configuration lives in `cliff.toml` at the repo root.
 ### Creating a release tag
 
 ```bash
-just tag v0.3.0          # create annotated tag from CHANGELOG.md section
-just tag-force v0.3.0    # recreate tag if it already exists
+just tag vX.Y.Z          # create an annotated tag matching Cargo.toml
+just tag-force vX.Y.Z    # replace that tag only when explicitly repairing it
 ```
 
 The `tag-release` CLI (in `tag_release.py`) extracts the matching version
-section from `CHANGELOG.md`, validates semver, and handles GitHub's 125KB
-tag-annotation size limit.
+section from `CHANGELOG.md`, requires the tag to match the Cargo package version,
+validates SemVer, and handles GitHub's 125KB tag-annotation size limit.
 
 ### Scripts overview
 
