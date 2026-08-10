@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+from types import MappingProxyType
 from typing import cast
 
 import pytest
@@ -337,7 +338,7 @@ def test_artifact_context_freezes_nested_provenance() -> None:
         cast("dict[str, object]", context.benchmark_provenance)["schema"] = 3
 
     criterion = context.benchmark_provenance["criterion"]
-    assert isinstance(criterion, dict) is False
+    assert isinstance(criterion, MappingProxyType)
 
 
 def test_artifact_loader_rejects_mode_measurement_contradiction() -> None:

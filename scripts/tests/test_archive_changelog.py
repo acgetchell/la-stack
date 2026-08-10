@@ -164,6 +164,12 @@ class TestParseChangelog:
         with pytest.raises(ValueError, match="Unrecognized changelog version heading"):
             parse_changelog(text)
 
+    def test_rejects_unreleased_heading_without_closing_bracket_boundary(self) -> None:
+        text = _PREAMBLE + "## [Unreleased]invalid\n\n- Something\n\n" + _V072
+
+        with pytest.raises(ValueError, match="Unrecognized changelog version heading"):
+            parse_changelog(text)
+
     @pytest.mark.parametrize("version", ["01.2.3", "1.02.3", "1.2.03", "1.2.3garbage", "1.2.3-01"])
     def test_rejects_malformed_semver_headings(self, version: str) -> None:
         text = _PREAMBLE + f"## [{version}] - 2026-01-01\n"
@@ -355,8 +361,8 @@ class TestArchiveChangelog:
         archive_dir = tmp_path / "docs" / "archive" / "changelog"
         archive_dir.mkdir(parents=True)
         existing_archive = archive_dir / "0.6.md"
-        original_archive = "# Existing 0.6 archive\n"
-        existing_archive.write_text(original_archive, encoding="utf-8")
+        original_archive = b"# Existing 0.6 archive\r\n"
+        existing_archive.write_bytes(original_archive)
 
         def fail_root_publication(source: Path, destination: Path) -> None:
             if destination == changelog:
@@ -370,7 +376,7 @@ class TestArchiveChangelog:
             archive_changelog(changelog, archive_dir)
 
         assert changelog.read_text(encoding="utf-8") == original_root
-        assert existing_archive.read_text(encoding="utf-8") == original_archive
+        assert existing_archive.read_bytes() == original_archive
         assert not (archive_dir / "0.2.md").exists()
 
     def test_idempotent(self, tmp_path: Path) -> None:

@@ -51,8 +51,9 @@ See `src/exact.rs` for the full architecture description.
 `solve_exact()`, `solve_exact_f64()`, and `solve_exact_rounded_f64()` share the determinant
 path's exact f64 decomposition and integer scaling. Matrix and RHS entries are decomposed via
 IEEE 754 bit extraction [9]. Matrix and RHS scales start from their respective minimum
-exponents. When the scales differ by at most 64 bits, both sides use the lower scale to share
-common factors; larger gaps retain independent scales so one side is not inflated excessively.
+exponents. When `|e_rhs − e_matrix| ≤ 64`, both sides use `min(e_rhs, e_matrix)` as the shared
+scale; when `|e_rhs − e_matrix| > 64`, they retain independent scales so one side is not
+inflated excessively.
 Forward elimination runs in `BigInt` using Bareiss fraction-free updates
 [7]—no `BigRational` and no GCD normalisation in the `O(D³)` phase. The upper-triangular
 result is then lifted into `BigRational` for back-substitution, where fractions are inherent

@@ -143,13 +143,14 @@ def _finding_mismatches(
 
     for (rule_id, line), expected_count in sorted(expected.items()):
         for _ in range(expected_count):
-            match_index = next(
+            match_index = min(
                 (
                     index
                     for index, (actual_rule_id, start_line, end_line) in enumerate(unmatched_actual)
                     if actual_rule_id == rule_id and start_line <= line <= end_line
                 ),
-                None,
+                key=lambda index: unmatched_actual[index][2],
+                default=None,
             )
             if match_index is None:
                 mismatches.append(f"{rule_id} at line {line}: expected finding not reported")

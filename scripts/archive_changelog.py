@@ -29,6 +29,7 @@ from postprocess_changelog import normalize_entry_headings_text, postprocess_tex
 
 # Matches ``## [X.Y.Z]`` or ``## [Unreleased]``
 _VERSION_HEADING_RE = re.compile(r"^## \[")
+_UNRELEASED_HEADING_RE = re.compile(r"^## \[Unreleased\](?:\s|$)")
 
 # Extracts a strict SemVer 2.0.0 version from a ``## [X.Y.Z]`` heading.
 _SEMVER_ALNUM_ID = r"(?:(?=[0-9A-Za-z-]*[A-Za-z-])[0-9A-Za-z-]+)"
@@ -175,7 +176,7 @@ def parse_changelog(text: str) -> tuple[str, str, list[tuple[str, str]]]:
         block = "\n".join(lines[start:end])
 
         heading_line = lines[start]
-        if heading_line.startswith("## [Unreleased]"):
+        if _UNRELEASED_HEADING_RE.match(heading_line):
             if unreleased_line is not None:
                 msg = f"Duplicate Unreleased changelog heading at lines {unreleased_line} and {start + 1}"
                 raise ValueError(msg)
@@ -300,6 +301,21 @@ def _stage_text(path: Path, text: str) -> Path:
         return Path(handle.name)
 
 
+def _stage_bytes(path: Path, payload: bytes) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "wb",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+        return Path(handle.name)
+
+
 def _replace_path(source: Path, destination: Path) -> None:
     source.replace(destination)
 
@@ -308,7 +324,7 @@ def _restore_text(path: Path, previous: bytes | None) -> None:
     if previous is None:
         path.unlink(missing_ok=True)
         return
-    staged = _stage_text(path, previous.decode("utf-8"))
+    staged = _stage_bytes(path, previous)
     try:
         _replace_path(staged, path)
     finally:

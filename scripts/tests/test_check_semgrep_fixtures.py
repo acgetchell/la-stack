@@ -93,6 +93,21 @@ def test_main_rejects_findings_at_wrong_lines_even_when_rule_counts_match(
     assert "rust.foo at lines 5: unexpected finding" in captured.err
 
 
+def test_main_matches_overlapping_spans_by_earliest_end_line(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fixture = tmp_path / "fixture.rs"
+    fixture.write_text("// ruleid: rust.foo\nbad_one();\n// ruleid: rust.foo\nbad_two();\n", encoding="utf-8")
+    monkeypatch.setenv(
+        "SEMGREP_JSON",
+        json.dumps({"results": [_result("rust.foo", 2, 4), _result("rust.foo", 2)]}),
+    )
+    monkeypatch.setattr(check_semgrep_fixtures.sys, "argv", ["check_semgrep_fixtures.py", str(fixture)])
+
+    assert check_semgrep_fixtures.main() == 0
+
+
 def test_main_matches_markdown_finding_after_blank_line_and_code_fence(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

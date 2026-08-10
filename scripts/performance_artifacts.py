@@ -199,7 +199,7 @@ class ArtifactContext:
             self.benchmark_provenance,
             context=self,
         )
-        object.__setattr__(self, "benchmark_provenance", _freeze_mapping(self.benchmark_provenance))
+        object.__setattr__(self, "benchmark_provenance", freeze_mapping(self.benchmark_provenance))
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,17 +270,18 @@ def ensure_distinct_paths(paths: Mapping[str, Path]) -> None:
                 raise ValueError(msg)
 
 
-def _freeze_json(value: object) -> object:
+def freeze_json(value: object) -> object:
     """Recursively detach and freeze JSON-shaped provenance data."""
     if isinstance(value, Mapping):
-        return MappingProxyType({str(key): _freeze_json(item) for key, item in value.items()})
+        return MappingProxyType({str(key): freeze_json(item) for key, item in value.items()})
     if isinstance(value, (list, tuple)):
-        return tuple(_freeze_json(item) for item in value)
+        return tuple(freeze_json(item) for item in value)
     return value
 
 
-def _freeze_mapping(data: Mapping[str, object]) -> Mapping[str, object]:
-    frozen = _freeze_json(data)
+def freeze_mapping(data: Mapping[str, object]) -> Mapping[str, object]:
+    """Detach and freeze a JSON-shaped mapping while preserving its mapping type contract."""
+    frozen = freeze_json(data)
     if not isinstance(frozen, Mapping):
         msg = "provenance mapping invariant violated"
         raise TypeError(msg)

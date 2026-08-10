@@ -34,7 +34,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from types import MappingProxyType
 from typing import Literal, Protocol, cast
 
 from criterion_dim_plot import METRICS
@@ -47,6 +46,7 @@ from performance_artifacts import (
     ReportSource,
     TimingEstimate,
     ensure_distinct_paths,
+    freeze_mapping,
     load_bundle,
     publish_bundle,
 )
@@ -385,7 +385,7 @@ class HarnessProvenance:
         for field in ("measurement", "publication", "validation"):
             value = getattr(self, field)
             if value is not None:
-                object.__setattr__(self, field, _freeze_mapping(value))
+                object.__setattr__(self, field, freeze_mapping(value))
 
 
 @dataclass(frozen=True, slots=True)
@@ -420,22 +420,6 @@ class ReportSettings:
 def _repo_root() -> Path:
     """Resolve the checkout from the caller's working tree, including wheel installs."""
     return find_project_root()
-
-
-def _freeze_json(value: object) -> object:
-    if isinstance(value, Mapping):
-        return MappingProxyType({str(key): _freeze_json(item) for key, item in value.items()})
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze_json(item) for item in value)
-    return value
-
-
-def _freeze_mapping(data: Mapping[str, object]) -> Mapping[str, object]:
-    frozen = _freeze_json(data)
-    if not isinstance(frozen, Mapping):
-        msg = "provenance mapping invariant violated"
-        raise TypeError(msg)
-    return cast("Mapping[str, object]", frozen)
 
 
 def _dim_from_vs_linalg_group(name: str) -> int | None:
