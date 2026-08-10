@@ -3,13 +3,14 @@ message: "If you use this software, please cite it as below."
 type: software
 title: "la-stack: Fast, stack-allocated linear algebra for fixed dimensions in Rust"
 version: 0.4.4
-date-released: 2026-07-12
+date-released: 2026-07-13
 url: "https://github.com/acgetchell/la-stack"
 repository-code: "https://github.com/acgetchell/la-stack"
+doi: "10.5281/zenodo.18158926"
 identifiers:
-  - description: "Zenodo concept DOI (all versions)"
+  - description: "Zenodo DOI for version 0.4.4"
     type: doi
-    value: "10.5281/zenodo.18158926"
+    value: "10.5281/zenodo.21331524"
 authors:
   - family-names: "Getchell"
     given-names: "Adam"

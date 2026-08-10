@@ -36,7 +36,7 @@ from typing import Any, Literal, cast
 
 from bench_compare import HOW_TO_UPDATE_SECTION, render_release_artifacts
 from performance_artifacts import ArtifactPaths, PerformanceBundle, ensure_distinct_paths, load_bundle, publish_bundle
-from subprocess_utils import ExecutableNotFoundError, run_git_command, run_git_command_with_input, run_safe_command
+from subprocess_utils import ExecutableNotFoundError, cpu_description, run_git_command, run_git_command_with_input, run_safe_command
 
 _VERSION_RE = re.compile(r"^\*\*la-stack\*\* v(?P<version>[^\s`]+)", re.MULTILINE)
 _BASELINE_RE = re.compile(r"^Comparison against baseline \*\*(?P<baseline>[^*]+)\*\*:", re.MULTILINE)
@@ -126,6 +126,15 @@ class GenerationConfig:
         if self.scope not in _SUPPORTED_SCOPES:
             msg = f"unsupported comparison scope: {self.scope}"
             raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolRunOptions:
+    """Execution controls for one repository support command."""
+
+    timeout: int = _COMMAND_TIMEOUT_SECONDS
+    env: dict[str, str] | None = None
+    stream_output: bool = False
 
 
 @dataclass(frozen=True)
@@ -300,7 +309,6 @@ def _github_release_list(repo_root: Path) -> object:
         "gh",
         command,
         cwd=repo_root,
-        timeout=_COMMAND_TIMEOUT_SECONDS,
     )
     try:
         return json.loads(result.stdout)
@@ -559,12 +567,19 @@ def _run_tool_output(
     args: list[str],
     *,
     cwd: Path,
-    timeout: int = _COMMAND_TIMEOUT_SECONDS,
-    env: dict[str, str] | None = None,
+    options: ToolRunOptions | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a support command and normalize all expected launch failures."""
+    resolved_options = options or ToolRunOptions()
     try:
-        return run_safe_command(command, args, cwd=cwd, timeout=timeout, env=env)
+        return run_safe_command(
+            command,
+            args,
+            cwd=cwd,
+            timeout=resolved_options.timeout,
+            env=resolved_options.env,
+            capture_output=not resolved_options.stream_output,
+        )
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(_format_command_failure([command, *args], exc)) from exc
     except subprocess.TimeoutExpired as exc:
@@ -573,18 +588,34 @@ def _run_tool_output(
         raise RuntimeError(_format_command_start_failure([command, *args], exc)) from exc
 
 
-def _run_tool(command: str, args: list[str], *, cwd: Path, timeout: int = _COMMAND_TIMEOUT_SECONDS, env: dict[str, str] | None = None) -> None:
-    _run_tool_output(command, args, cwd=cwd, timeout=timeout, env=env)
+def _run_tool(
+    command: str,
+    args: list[str],
+    *,
+    cwd: Path,
+    options: ToolRunOptions | None = None,
+) -> None:
+    _run_tool_output(
+        command,
+        args,
+        cwd=cwd,
+        options=options,
+    )
+
+
+def _progress(message: str) -> None:
+    """Write one immediately visible workflow progress message."""
+    print(f"[performance] {message}", file=sys.stderr, flush=True)
 
 
 def _run_benchmark_input_gate(checkout: Path, *, env: dict[str, str] | None = None) -> None:
     """Run the shared deterministic benchmark-fixture correctness gate."""
+    _progress(f"validating benchmark inputs in {checkout.name}")
     _run_tool(
         _BENCHMARK_INPUT_GATE[0],
         list(_BENCHMARK_INPUT_GATE[1:]),
         cwd=checkout,
-        timeout=_COMMAND_TIMEOUT_SECONDS,
-        env=env,
+        options=ToolRunOptions(env=env, stream_output=True),
     )
 
 
@@ -641,8 +672,7 @@ def _rustc_version(checkout: Path) -> str:
         "rustc",
         ["--version"],
         cwd=checkout,
-        timeout=_COMMAND_TIMEOUT_SECONDS,
-        env=_benchmark_env(checkout),
+        options=ToolRunOptions(env=_benchmark_env(checkout)),
     )
     version = result.stdout.strip()
     return version or "unavailable"
@@ -650,7 +680,7 @@ def _rustc_version(checkout: Path) -> str:
 
 def _environment_metadata(checkout: Path, *, harness_sha256: str) -> dict[str, object]:
     """Capture deterministic machine, toolchain, revision, and lock provenance."""
-    cpu = platform.processor().strip() or platform.machine().strip() or "unavailable"
+    cpu = cpu_description()
     os_description = " ".join(part for part in (platform.system(), platform.release(), platform.machine()) if part).strip()
     return {
         "cargo_lock_sha256": _sha256_file(checkout / "Cargo.lock"),
@@ -663,6 +693,18 @@ def _environment_metadata(checkout: Path, *, harness_sha256: str) -> dict[str, o
         "rustc": _rustc_version(checkout),
         "source_state_sha256": _source_state_digest(checkout),
     }
+
+
+def _require_recorded_measurement_cpu() -> str:
+    """Return the CPU model required for reproducible release measurements."""
+    cpu = cpu_description()
+    if cpu.casefold() == "unavailable":
+        msg = (
+            "cannot generate release performance measurements because the CPU model is unavailable; "
+            "raw local benchmarks may still be run with the ordinary Criterion recipes"
+        )
+        raise RuntimeError(msg)
+    return cpu
 
 
 def _criterion_dependency_version(checkout: Path) -> str:
@@ -1064,13 +1106,18 @@ def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path
         api_compatibility = _baseline_api_compatibility(baseline_tag)
         benchmark_env = _comparison_benchmark_env(repo_root, baseline_tag=baseline_tag)
         _run_benchmark_input_gate(baseline_worktree, env=benchmark_env)
+        _progress(f"running {suite} baseline benchmarks for {baseline_tag}")
         _run_tool(
             baseline_command,
             baseline_args,
             cwd=baseline_worktree,
-            timeout=_BENCH_TIMEOUT_SECONDS,
-            env=benchmark_env,
+            options=ToolRunOptions(
+                timeout=_BENCH_TIMEOUT_SECONDS,
+                env=benchmark_env,
+                stream_output=True,
+            ),
         )
+        _progress(f"completed {suite} baseline benchmarks for {baseline_tag}")
         baseline_criterion = baseline_worktree / "target" / "criterion"
         if not baseline_criterion.is_dir():
             msg = f"generated baseline Criterion results were not found: {baseline_criterion}"
@@ -1158,21 +1205,14 @@ def _prepare_github_release_assets(*, current_tag: str, baseline_tag: str, repo_
 
 
 def _apply_current_diff_to_worktree(*, repo_root: Path, worktree: Path) -> None:
-    # Build the patch through an isolated index so untracked, non-ignored files
-    # participate without changing the caller's real staging area. Git records
-    # binary blobs and symlink metadata directly and applies its normal safe-path
-    # checks when the patch is replayed in the detached worktree.
+    # Diff HEAD directly so staged and unstaged tracked changes participate,
+    # while unrelated untracked files stay outside the benchmark worktree.
     with tempfile.TemporaryDirectory(prefix="la-stack-current-tree-index-") as tmp:
         temporary_dir = Path(tmp)
-        env = os.environ.copy()
-        env["GIT_INDEX_FILE"] = str(temporary_dir / "index")
-        _run_git_output(["read-tree", "HEAD"], cwd=repo_root, env=env)
-        _run_git_output(["add", "--all", "--", "."], cwd=repo_root, env=env)
         patch_path = temporary_dir / "current-tree.patch"
         _run_git_output(
-            ["diff", "--cached", "--binary", f"--output={patch_path}", "HEAD"],
+            ["diff", "--binary", f"--output={patch_path}", "HEAD", "--", "."],
             cwd=repo_root,
-            env=env,
         )
         diff = patch_path.read_bytes()
     if diff.strip():
@@ -1230,7 +1270,6 @@ def _render_report(
             str(report),
         ],
         cwd=config.repo_root,
-        timeout=_COMMAND_TIMEOUT_SECONDS,
     )
 
 
@@ -1252,13 +1291,18 @@ def _run_benchmarks_and_render_report(
         current_command = ("just", *_latest_recipe_args(suite=config.suite))
     else:
         current_command = _fallback_current_command(suite=config.suite)
+    _progress(f"running current {config.suite} benchmarks")
     _run_tool(
         current_command[0],
         list(current_command[1:]),
         cwd=worktree,
-        timeout=_BENCH_TIMEOUT_SECONDS,
-        env=benchmark_env,
+        options=ToolRunOptions(
+            timeout=_BENCH_TIMEOUT_SECONDS,
+            env=benchmark_env,
+            stream_output=True,
+        ),
     )
+    _progress(f"completed current {config.suite} benchmarks")
     _write_local_run_provenance(
         worktree=worktree,
         config=config,
@@ -1283,6 +1327,8 @@ def _generated_report_in_temp_worktree(
     published_artifacts: ArtifactPaths,
 ) -> Iterator[GeneratedReport]:
     """Generate, publish, and expose a report before its worktree is removed."""
+    if config.baseline_source == "local":
+        _require_recorded_measurement_cpu()
     with tempfile.TemporaryDirectory(prefix="la-stack-performance-") as tmp:
         tmp_dir = Path(tmp)
         worktree = tmp_dir / "worktree"
@@ -1689,6 +1735,14 @@ def resolve_archive_request(options: ArchiveRequestOptions) -> ResolvedArchiveRe
             raise ValueError(msg)
         inferred_current = _current_package_tag(repo_root)
         latest = _latest_published_release(repo_root).tag
+        if inferred_current == latest:
+            msg = (
+                f"current package tag and latest published release are both {latest}; "
+                "a release-performance report requires distinct identifiers. "
+                "Use a named local Criterion baseline for same-version worktree comparisons, "
+                "or rerun after the maintainer updates the package version."
+            )
+            raise ValueError(msg)
         return ResolvedArchiveRequest(
             current_tag=inferred_current,
             baseline_tag=latest,
@@ -1897,28 +1951,39 @@ def _run_archive_request(*, args: argparse.Namespace, paths: ArchivePaths, reque
     )
 
 
+def _validate_cli_preflight(args: argparse.Namespace) -> None:
+    """Reject locally invalid options before release discovery or tag fetching."""
+    if args.rerender and any(
+        (
+            args.current_tag,
+            args.baseline_tag,
+            args.published_latest,
+            args.infer_release,
+            args.current_vs_latest,
+            args.github_assets,
+            args.generate_in_temp_worktree,
+            args.output_only,
+        )
+    ):
+        msg = "--rerender cannot be combined with release selection, generation, GitHub-asset, or output-only options"
+        raise ValueError(msg)
+    if args.output_only and not args.generate_in_temp_worktree:
+        msg = "--output-only requires --generate-in-temp-worktree"
+        raise ValueError(msg)
+    if args.github_assets and not args.generate_in_temp_worktree:
+        msg = "--github-assets requires --generate-in-temp-worktree"
+        raise ValueError(msg)
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     args = build_parser().parse_args(argv)
     root = Path.cwd()
-    paths = _resolve_cli_paths(root, args)
 
     try:
+        _validate_cli_preflight(args)
+        paths = _resolve_cli_paths(root, args)
         if args.rerender:
-            if any(
-                (
-                    args.current_tag,
-                    args.baseline_tag,
-                    args.published_latest,
-                    args.infer_release,
-                    args.current_vs_latest,
-                    args.github_assets,
-                    args.generate_in_temp_worktree,
-                    args.output_only,
-                )
-            ):
-                msg = "--rerender cannot be combined with release selection, generation, GitHub-asset, or output-only options"
-                raise ValueError(msg)
             result = ArchiveResult(
                 report_id=rerender_and_promote_artifacts(
                     artifacts=paths.artifacts,

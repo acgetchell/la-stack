@@ -5,6 +5,8 @@ import hashlib
 import io
 import json
 from pathlib import Path
+from types import MappingProxyType
+from typing import cast
 
 import pytest
 
@@ -34,6 +36,7 @@ def _timing(value: float) -> TimingEstimate:
 
 
 def _context(*, current: str = "v0.4.4", baseline: str = "v0.4.3") -> ArtifactContext:
+    compatibility = "la_stack_v0_4_3_api" if baseline == "v0.4.3" else "none"
     return ArtifactContext(
         release=ReleasePair(current=current, baseline=baseline),
         statistic="median",
@@ -57,7 +60,7 @@ def _context(*, current: str = "v0.4.4", baseline: str = "v0.4.3") -> ArtifactCo
                 "suite": "exact",
             },
             "measurement": {
-                "baseline_api_compatibility": "none",
+                "baseline_api_compatibility": compatibility,
                 "baseline_commit": "def5678",
                 "baseline_git_clean": True,
                 "baseline_source_state_sha256": "d" * 64,
@@ -85,7 +88,7 @@ def _context(*, current: str = "v0.4.4", baseline: str = "v0.4.3") -> ArtifactCo
             },
             "schema": 2,
             "validation": {
-                "baseline_api_compatibility": "none",
+                "baseline_api_compatibility": compatibility,
                 "baseline_commit": "def5678",
                 "baseline_git_clean": True,
                 "baseline_revision": "passed",
@@ -290,6 +293,20 @@ def test_artifact_loader_rejects_contradictory_current_revision() -> None:
         )
 
 
+def test_artifact_loader_rejects_recorded_measurement_without_cpu_model() -> None:
+    csv_payload, provenance_payload = serialize_bundle(_bundle())
+    provenance = json.loads(provenance_payload)
+    provenance["benchmark_provenance"]["measurement"]["cpu"] = "unavailable"
+    provenance["benchmark_provenance"]["publication"]["cpu"] = "unavailable"
+
+    with pytest.raises(ValueError, match="requires an identified CPU model"):
+        load_bundle_bytes(
+            csv_payload,
+            (json.dumps(provenance) + "\n").encode(),
+            source="unidentified CPU fixture",
+        )
+
+
 def test_bundle_rejects_duplicate_benchmark_keys() -> None:
     bundle = _bundle()
 
@@ -301,6 +318,54 @@ def test_bundle_rejects_duplicate_benchmark_keys() -> None:
 def test_timing_rejects_non_positive_or_non_finite_values(value: float) -> None:
     with pytest.raises(ValueError, match="must be finite and positive"):
         TimingEstimate(median_ns=value, ci_lower_ns=1.0, ci_upper_ns=2.0)
+
+
+def test_timing_accepts_ordered_bootstrap_interval_that_excludes_point_estimate() -> None:
+    estimate = TimingEstimate(median_ns=12.0, ci_lower_ns=9.0, ci_upper_ns=11.0)
+
+    assert estimate.median_ns == 12.0
+
+
+def test_timing_rejects_reversed_interval() -> None:
+    with pytest.raises(ValueError, match="confidence interval must be ordered"):
+        TimingEstimate(median_ns=10.0, ci_lower_ns=11.0, ci_upper_ns=9.0)
+
+
+def test_artifact_context_freezes_nested_provenance() -> None:
+    context = _context()
+
+    with pytest.raises(TypeError):
+        cast("dict[str, object]", context.benchmark_provenance)["schema"] = 3
+
+    criterion = context.benchmark_provenance["criterion"]
+    assert isinstance(criterion, MappingProxyType)
+
+
+def test_artifact_loader_rejects_mode_measurement_contradiction() -> None:
+    csv_payload, provenance_payload = serialize_bundle(_bundle())
+    provenance = json.loads(provenance_payload)
+    provenance["benchmark_provenance"]["mode"] = "historical-assets"
+
+    with pytest.raises(ValueError, match="requires shared-current-harness mode"):
+        load_bundle_bytes(csv_payload, (json.dumps(provenance) + "\n").encode(), source="contradictory mode fixture")
+
+
+def test_artifact_loader_rejects_arbitrary_compatibility_adapter() -> None:
+    csv_payload, provenance_payload = serialize_bundle(_bundle())
+    provenance = json.loads(provenance_payload)
+    provenance["benchmark_provenance"]["validation"]["baseline_api_compatibility"] = "custom-adapter"
+
+    with pytest.raises(ValueError, match="baseline_api_compatibility must be"):
+        load_bundle_bytes(csv_payload, (json.dumps(provenance) + "\n").encode(), source="invalid compatibility fixture")
+
+
+def test_artifact_loader_requires_recorded_measurement_compatibility() -> None:
+    csv_payload, provenance_payload = serialize_bundle(_bundle())
+    provenance = json.loads(provenance_payload)
+    del provenance["benchmark_provenance"]["measurement"]["baseline_api_compatibility"]
+
+    with pytest.raises(ValueError, match=r"measurement\.baseline_api_compatibility"):
+        load_bundle_bytes(csv_payload, (json.dumps(provenance) + "\n").encode(), source="missing compatibility fixture")
 
 
 def test_artifact_loader_fails_closed_on_partial_pair(tmp_path: Path) -> None:

@@ -24,10 +24,13 @@ Typical workflow (see docs/RELEASING.md):
 import argparse
 import json
 import math
+import os
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,10 +46,11 @@ from performance_artifacts import (
     ReportSource,
     TimingEstimate,
     ensure_distinct_paths,
+    freeze_mapping,
     load_bundle,
-    write_bundle,
+    publish_bundle,
 )
-from subprocess_utils import ExecutableNotFoundError, run_git_command
+from subprocess_utils import ExecutableNotFoundError, find_project_root, run_git_command
 
 # ---------------------------------------------------------------------------
 # Benchmark group / bench discovery
@@ -371,10 +375,17 @@ class HarnessProvenance:
     mode: str
     sha256: str | None
     baseline: str
-    measurement: dict[str, object] | None = None
-    publication: dict[str, object] | None = None
+    measurement: Mapping[str, object] | None = None
+    publication: Mapping[str, object] | None = None
     criterion: CriterionProvenance | None = None
-    validation: dict[str, object] | None = None
+    validation: Mapping[str, object] | None = None
+
+    def __post_init__(self) -> None:
+        """Detach and freeze nested provenance so the validated model stays valid."""
+        for field in ("measurement", "publication", "validation"):
+            value = getattr(self, field)
+            if value is not None:
+                object.__setattr__(self, field, freeze_mapping(value))
 
 
 @dataclass(frozen=True, slots=True)
@@ -407,7 +418,8 @@ class ReportSettings:
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    """Resolve the checkout from the caller's working tree, including wheel installs."""
+    return find_project_root()
 
 
 def _dim_from_vs_linalg_group(name: str) -> int | None:
@@ -537,7 +549,7 @@ def _read_harness_provenance(
 
 
 def _parse_harness_provenance(
-    data: dict[str, object],
+    data: Mapping[str, object],
     *,
     path: Path,
     expected_baseline: str,
@@ -583,6 +595,13 @@ def _parse_harness_provenance(
     )
     _validate_validation_metadata(validation, path=path)
     _validate_baseline_api_compatibility(validation, baseline=baseline, path=path)
+    _validate_schema2_consistency(
+        mode=mode,
+        measurement=measurement,
+        publication=publication,
+        validation=validation,
+        path=path,
+    )
 
     sha256: str | None = None
     if measurement.get("status") == "recorded":
@@ -599,16 +618,16 @@ def _parse_harness_provenance(
     )
 
 
-def _required_metadata_object(data: dict[str, object], field: str, path: Path) -> dict[str, object]:
+def _required_metadata_object(data: Mapping[str, object], field: str, path: Path) -> Mapping[str, object]:
     """Return a required provenance object with contextual diagnostics."""
     value = data.get(field)
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
         msg = f"invalid or missing {field} object in {path}"
         raise ValueError(msg)
-    return cast("dict[str, object]", value)
+    return cast("Mapping[str, object]", value)
 
 
-def _required_metadata_string(data: dict[str, object], field: str, path: Path) -> str:
+def _required_metadata_string(data: Mapping[str, object], field: str, path: Path) -> str:
     """Return a required non-empty provenance string."""
     value = data.get(field)
     if not isinstance(value, str) or not value.strip():
@@ -617,7 +636,7 @@ def _required_metadata_string(data: dict[str, object], field: str, path: Path) -
     return value
 
 
-def _required_sha256(data: dict[str, object], field: str, path: Path) -> str:
+def _required_sha256(data: Mapping[str, object], field: str, path: Path) -> str:
     """Return a required lowercase SHA-256 digest."""
     value = data.get(field)
     if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
@@ -626,7 +645,7 @@ def _required_sha256(data: dict[str, object], field: str, path: Path) -> str:
     return value
 
 
-def _validate_environment_metadata(data: dict[str, object], *, path: Path, context: str) -> None:
+def _validate_environment_metadata(data: Mapping[str, object], *, path: Path, context: str) -> None:
     """Validate deterministic environment fields used to reproduce a run."""
     for field in ("cpu", "os", "rustc", "commit"):
         _required_metadata_string(data, field, path)
@@ -642,7 +661,7 @@ def _validate_environment_metadata(data: dict[str, object], *, path: Path, conte
         raise ValueError(msg)
 
 
-def _validate_measurement_metadata(data: dict[str, object], *, mode: object, path: Path) -> None:
+def _validate_measurement_metadata(data: Mapping[str, object], *, mode: object, path: Path) -> None:
     """Validate recorded or explicitly unavailable measurement provenance."""
     status = _required_metadata_string(data, "status", path)
     if status == "recorded":
@@ -651,6 +670,9 @@ def _validate_measurement_metadata(data: dict[str, object], *, mode: object, pat
             raise ValueError(msg)
         for field in ("cpu", "os", "rustc", "current_commit", "baseline_commit"):
             _required_metadata_string(data, field, path)
+        if cast("str", data["cpu"]).casefold() == "unavailable":
+            msg = f"recorded measurement provenance in {path} requires an identified CPU model"
+            raise ValueError(msg)
         _required_sha256(data, "cargo_lock_sha256", path)
         _required_sha256(data, "harness_sha256", path)
         _required_sha256(data, "current_source_state_sha256", path)
@@ -668,7 +690,7 @@ def _validate_measurement_metadata(data: dict[str, object], *, mode: object, pat
 
 
 def _parse_criterion_metadata(
-    data: dict[str, object],
+    data: Mapping[str, object],
     *,
     path: Path,
     expected: CriterionSelection,
@@ -711,10 +733,10 @@ def _parse_criterion_metadata(
     commands: dict[str, tuple[str, ...]] = {}
     for field in ("baseline_command", "current_command"):
         value = data.get(field)
-        if not isinstance(value, list) or not value or not all(isinstance(part, str) and part for part in value):
+        if not isinstance(value, (list, tuple)) or not value or not all(isinstance(part, str) and part for part in value):
             msg = f"invalid or missing criterion.{field} in {path}"
             raise ValueError(msg)
-        commands[field] = tuple(cast("list[str]", value))
+        commands[field] = tuple(cast("list[str] | tuple[str, ...]", value))
 
     return CriterionProvenance(
         suite=cast("BenchmarkSuite", suite),
@@ -727,10 +749,10 @@ def _parse_criterion_metadata(
     )
 
 
-def _validate_validation_metadata(data: dict[str, object], *, path: Path) -> None:
+def _validate_validation_metadata(data: Mapping[str, object], *, path: Path) -> None:
     """Require fixture validation for both compared revisions."""
     command = data.get("command")
-    if command != ["just", "test-bench-inputs"]:
+    if command not in (["just", "test-bench-inputs"], ("just", "test-bench-inputs")):
         msg = f"invalid validation.command in {path}: expected ['just', 'test-bench-inputs']"
         raise ValueError(msg)
     for field in ("current_revision", "baseline_revision"):
@@ -746,17 +768,77 @@ def _validate_validation_metadata(data: dict[str, object], *, path: Path) -> Non
         if not isinstance(data.get(field), bool):
             msg = f"invalid or missing validation.{field} in {path}"
             raise TypeError(msg)
-    compatibility = data.get("baseline_api_compatibility")
-    if compatibility is not None and (not isinstance(compatibility, str) or not compatibility):
-        msg = f"invalid validation.baseline_api_compatibility in {path}"
-        raise TypeError(msg)
+    _required_metadata_string(data, "baseline_api_compatibility", path)
 
 
-def _validate_baseline_api_compatibility(data: dict[str, object], *, baseline: str, path: Path) -> None:
-    """Reject compatibility adapters attached to an unrelated baseline."""
+def _validate_baseline_api_compatibility(data: Mapping[str, object], *, baseline: str, path: Path) -> None:
+    """Bind the only supported compatibility adapter to its baseline."""
     compatibility = data.get("baseline_api_compatibility")
-    if compatibility == _V0_4_3_API_COMPATIBILITY and baseline != "v0.4.3":
-        msg = f"validation.baseline_api_compatibility {_V0_4_3_API_COMPATIBILITY!r} in {path} is valid only for baseline 'v0.4.3', got {baseline!r}"
+    expected = _V0_4_3_API_COMPATIBILITY if baseline == "v0.4.3" else "none"
+    if compatibility != expected:
+        msg = f"validation.baseline_api_compatibility in {path} must be {expected!r} for baseline {baseline!r}, got {compatibility!r}"
+        raise ValueError(msg)
+
+
+def _require_matching_fields(
+    first: Mapping[str, object],
+    second: Mapping[str, object],
+    pairs: tuple[tuple[str, str], ...],
+    *,
+    contexts: tuple[str, str],
+    path: Path,
+) -> None:
+    first_context, second_context = contexts
+    for first_field, second_field in pairs:
+        if first.get(first_field) != second.get(second_field):
+            msg = f"{first_context}.{first_field} in {path} does not match {second_context}.{second_field}"
+            raise ValueError(msg)
+
+
+def _validate_schema2_consistency(
+    *,
+    mode: str,
+    measurement: Mapping[str, object],
+    publication: Mapping[str, object],
+    validation: Mapping[str, object],
+    path: Path,
+) -> None:
+    """Reject internally contradictory measurement and validation evidence."""
+    status = measurement.get("status")
+    expected_status = "recorded" if mode == "shared-current-harness" else "unavailable"
+    if status != expected_status:
+        msg = f"mode {mode!r} in {path} requires measurement.status {expected_status!r}, got {status!r}"
+        raise ValueError(msg)
+
+    _require_matching_fields(
+        publication,
+        validation,
+        (("commit", "current_commit"), ("git_clean", "current_git_clean"), ("source_state_sha256", "current_source_state_sha256")),
+        contexts=("publication", "validation"),
+        path=path,
+    )
+
+    if status != "recorded":
+        return
+    identical_fields = tuple((field, field) for field in ("cpu", "os", "rustc", "cargo_lock_sha256", "harness_sha256"))
+    _require_matching_fields(
+        measurement,
+        publication,
+        (*identical_fields, ("current_commit", "commit"), ("current_git_clean", "git_clean"), ("current_source_state_sha256", "source_state_sha256")),
+        contexts=("measurement", "publication"),
+        path=path,
+    )
+    baseline_fields = tuple((field, field) for field in ("baseline_commit", "baseline_git_clean", "baseline_source_state_sha256"))
+    _require_matching_fields(
+        measurement,
+        validation,
+        baseline_fields,
+        contexts=("measurement", "validation"),
+        path=path,
+    )
+    measurement_compatibility = measurement.get("baseline_api_compatibility")
+    if measurement_compatibility != validation.get("baseline_api_compatibility"):
+        msg = f"measurement.baseline_api_compatibility in {path} does not match validation.baseline_api_compatibility"
         raise ValueError(msg)
 
 
@@ -2012,15 +2094,16 @@ def _resolve_artifact_paths(
     return paths
 
 
-def _write_and_render_artifacts(
+def _write_and_render_artifacts(  # noqa: PLR0913
     paths: ArtifactPaths,
     *,
+    output_path: Path,
     root: Path,
     criterion_dir: Path,
     settings: ReportSettings,
     collection: ComparisonCollection | None,
-) -> str:
-    """Write a validated artifact pair and render its reloaded report."""
+) -> None:
+    """Publish artifacts and Markdown as one rollback-capable operation."""
     baseline_name = settings.baseline_name
     if baseline_name is None or collection is None:
         msg = "release-performance artifacts require a completed baseline comparison"
@@ -2032,8 +2115,32 @@ def _write_and_render_artifacts(
         settings=settings,
         collection=collection,
     )
-    write_bundle(paths, bundle)
-    return render_release_artifacts(paths)
+    with publish_bundle(paths, bundle):
+        markdown = render_release_artifacts(paths)
+        _write_text_atomic(output_path, markdown)
+
+
+def _write_text_atomic(path: Path, text: str) -> None:
+    """Replace a UTF-8 text file only after its complete payload is durable."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staged: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+            staged = Path(handle.name)
+        staged.replace(path)
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912, PLR0915
@@ -2144,8 +2251,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
     )
     if artifact_paths is not None:
         try:
-            md = _write_and_render_artifacts(
+            _write_and_render_artifacts(
                 artifact_paths,
+                output_path=output_path,
                 root=root,
                 criterion_dir=criterion_dir,
                 settings=settings,
@@ -2155,12 +2263,15 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
             print(f"Invalid release-performance artifact data: {err}", file=sys.stderr)
             return 2
         print(f"📊 Wrote {artifact_paths.csv} and {artifact_paths.provenance}")
+        print(f"📊 Wrote {output_path}")
     else:
         md = _generate_markdown(root, table, settings)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(md, encoding="utf-8")
-    print(f"📊 Wrote {output_path}")
+        try:
+            _write_text_atomic(output_path, md)
+        except OSError as err:
+            print(f"Could not write benchmark report: {err}", file=sys.stderr)
+            return 2
+        print(f"📊 Wrote {output_path}")
 
     return 0
 

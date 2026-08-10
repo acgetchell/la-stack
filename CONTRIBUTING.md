@@ -7,7 +7,7 @@ clarity, and the fixed-dimension stack-allocation model.
 ## Getting Started
 
 Install Rust 1.97.1 through [rustup](https://rustup.rs/), Git, Python 3.14,
-[`uv` 0.12.1](https://docs.astral.sh/uv/), and `jq`. Install the repository's
+[`uv` 0.12.3](https://docs.astral.sh/uv/), and `jq`. Install the repository's
 pinned `just` version from its locked dependency graph:
 
 ```bash
@@ -109,10 +109,12 @@ For final validation of a non-core change, compose each affected surface once:
 - Examples: `just examples`
 
 Run `just ci` for core Rust, public behavior, or GitHub-equivalent validation.
-It composes leaf validators directly, runs unit and integration tests together
-once through the release-profile `test-rust-ci` bucket, and keeps doctests
-separate because nextest does not execute them. `just clippy` remains an
-optional all-target sweep outside this CI path.
+It composes leaf validators directly and runs `clippy-all-targets` to match the
+GitHub Clippy SARIF workflow. Unit and integration tests still run together once
+through the release-profile `test-rust-ci` bucket, and doctests remain separate
+because nextest does not execute them. The test, example, and benchmark buckets
+retain their execution or compile-contract roles because ordinary compilation
+does not execute Clippy lints.
 
 `la-stack` intentionally has no notebook validation bucket: the repository has
 no notebooks or supported Python binding surface. Add notebook tooling only

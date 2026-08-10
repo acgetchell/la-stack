@@ -1,7 +1,5 @@
 """Tests for Criterion dimension-report generation and README updates."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import re
@@ -1335,3 +1333,34 @@ def test_artifact_rollback_failure_preserves_backups(
     assert (backup_dir / "backup-0").read_text(encoding="utf-8") == "old one\n"
     assert destination_one.read_text(encoding="utf-8") == "new one\n"
     assert destination_two.read_text(encoding="utf-8") == "old two\n"
+
+
+def test_repo_root_resolution_uses_working_checkout_for_installed_entrypoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (tmp_path / "Cargo.toml").write_text("[package]\n", encoding="utf-8")
+    monkeypatch.chdir(nested)
+
+    assert criterion_dim_plot._repo_root() == tmp_path
+
+
+def test_publication_paths_reject_output_aliases(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    output = tmp_path / "benchmark.csv"
+    args = criterion_dim_plot.PlotCliArgs(
+        metric="lu_solve",
+        stat="median",
+        sample="new",
+        criterion_dir="target/criterion",
+        out=str(output),
+        csv=str(output),
+        log_y=False,
+        no_plot=False,
+        update_readme=False,
+        readme="README.md",
+        allow_partial=False,
+    )
+
+    rc = criterion_dim_plot._validate_publication_paths(tmp_path, args, out_svg=output, out_csv=output)
+
+    assert rc == 2
+    assert "must use distinct paths" in capsys.readouterr().err

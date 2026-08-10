@@ -27,9 +27,9 @@ computation, large dynamic matrices, sparse matrices, or broad decomposition
 coverage should use larger linear-algebra ecosystems such as `nalgebra` or
 `faer`.
 
-## Current Release Sequence
+## Release History and Next Sequence
 
-### v0.4.2 Stable Rust Cleanup
+### v0.4.2 Stable Rust Cleanup (released)
 
 The `v0.4.2` milestone collected work that could be done on stable Rust while
 keeping the crate useful to downstream geometry crates:
@@ -90,7 +90,7 @@ API-invariant cleanup:
   `ERR_COEFF_4` are documented as dimension-specific roundoff multipliers over
   the absolute Leibniz sum, not caller-tuned tolerances.
 
-Final release blockers:
+Completed release blockers:
 
 - [#125](https://github.com/acgetchell/la-stack/issues/125) - Add a Semgrep
   guardrail against `unwrap` / `expect` in examples, benches, and doctests.
@@ -102,11 +102,10 @@ ergonomics, clean up small API contracts, tighten validation, encode reusable
 invariants behind the public raw-boundary API, lock examples and benchmarks into
 proper error handling, then finish with broader benchmark work.
 
-### v0.4.3 Benchmark and Tooling Hardening
+### v0.4.3 Benchmark and Tooling Hardening (released)
 
-Before the const-generic API revision, tighten the benchmark and tooling story so
-performance claims are auditable across releases and Python support scripts have
-a modern typed baseline.
+This release tightened the benchmark and tooling story so performance claims are
+auditable across releases and Python support scripts have a modern typed baseline.
 
 - [#137](https://github.com/acgetchell/la-stack/issues/137) - Investigate
   checked vector kernel performance for v0.4.3.
@@ -115,10 +114,9 @@ a modern typed baseline.
 - [#142](https://github.com/acgetchell/la-stack/issues/142) - Update Python
   tooling to 3.13 and parse scripts at boundaries.
 
-Release posture:
+Release outcome:
 
-- Release `v0.4.3` before starting another performance-focused implementation
-  branch. The current release-signal comparison against `v0.4.2` shows broad
+- The release-signal comparison against `v0.4.2` showed broad
   improvement across LU, solve, determinant-via-LU, and vector helper rows.
 - Treat the remaining `D=4` direct determinant regression as a tracked
   performance note rather than a release blocker because the LU-backed
@@ -127,9 +125,9 @@ Release posture:
   Larger-dimension `vs_linalg` measurements suggest it is the most interesting
   leaf-kernel target, but it is not required for the release.
 
-### v0.4.4 Focused Leaf-Kernel Performance
+### v0.4.4 Focused Leaf-Kernel Performance (released)
 
-After `v0.4.3`, use the improved benchmark workflow to investigate narrow
+This release used the improved benchmark workflow to investigate narrow
 leaf-kernel performance gaps without broadening the crate's scope or weakening
 the small fixed-dimension API model.
 

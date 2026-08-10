@@ -37,6 +37,12 @@ if TYPE_CHECKING:
 type RunnerCall = tuple[str, tuple[str, ...], Path | None]
 
 
+@pytest.fixture(autouse=True)
+def _stable_cpu_description(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep release-generation tests independent of the test host."""
+    monkeypatch.setattr(archive_performance, "cpu_description", lambda: "Test CPU (x86_64)")
+
+
 def _result(stdout: str = "") -> SimpleNamespace:
     return SimpleNamespace(stdout=stdout)
 
@@ -278,7 +284,7 @@ def test_purge_selected_new_samples_preserves_named_baselines_and_other_suites(t
     assert linalg_new.is_dir()
 
 
-def test_apply_current_diff_includes_complete_current_tree_without_mutating_index(tmp_path: Path) -> None:
+def test_apply_current_diff_includes_only_tracked_changes_without_mutating_index(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     worktree = tmp_path / "worktree"
     repo_root.mkdir()
@@ -311,10 +317,8 @@ def test_apply_current_diff_includes_complete_current_tree_without_mutating_inde
     archive_performance._apply_current_diff_to_worktree(repo_root=repo_root, worktree=worktree)
 
     assert (worktree / "tracked.txt").read_text(encoding="utf-8") == "working tree\n"
-    assert (worktree / binary.name).read_bytes() == binary_payload
-    applied_link = worktree / link.name
-    assert applied_link.is_symlink()
-    assert applied_link.readlink() == Path(binary.name)
+    assert not (worktree / binary.name).exists()
+    assert not (worktree / link.name).exists()
     assert not (worktree / "ignored.bin").exists()
     assert _git(repo_root, "show", ":tracked.txt") == "staged\n"
     assert _git(repo_root, "status", "--porcelain=v1", "--untracked-files=all") == status_before
@@ -348,7 +352,7 @@ def test_apply_current_diff_preserves_crlf_patch_bytes(tmp_path: Path) -> None:
     assert _git(repo_root, "rev-parse", f":{tracked.name}") == index_before
 
 
-def test_apply_current_diff_fails_loudly_and_cleans_temporary_index(
+def test_apply_current_diff_fails_loudly_and_cleans_temporary_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -356,20 +360,20 @@ def test_apply_current_diff_fails_loudly_and_cleans_temporary_index(
     worktree = tmp_path / "worktree"
     repo_root.mkdir()
     worktree.mkdir()
-    temporary_index: Path | None = None
+    patch_path: Path | None = None
 
     def fake_run_git(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
-        nonlocal temporary_index
+        nonlocal patch_path
         assert cwd == repo_root
-        env = kwargs["env"]
-        temporary_index = Path(env["GIT_INDEX_FILE"])
-        assert temporary_index.parent.is_dir()
-        if args == ["add", "--all", "--", "."]:
+        assert kwargs.get("env") is None
+        if args[:2] == ["diff", "--binary"]:
+            patch_path = Path(next(part.removeprefix("--output=") for part in args if part.startswith("--output=")))
+            assert patch_path.parent.is_dir()
             raise subprocess.CalledProcessError(
                 128,
                 ["git", *args],
                 output="snapshot stdout",
-                stderr="cannot snapshot current tree",
+                stderr="cannot diff current tree",
             )
         return _result()
 
@@ -379,11 +383,11 @@ def test_apply_current_diff_fails_loudly_and_cleans_temporary_index(
         archive_performance._apply_current_diff_to_worktree(repo_root=repo_root, worktree=worktree)
 
     error = str(exc_info.value)
-    assert "command failed (128): git add --all -- ." in error
+    assert "command failed (128): git diff --binary" in error
     assert "snapshot stdout" in error
-    assert "cannot snapshot current tree" in error
-    assert temporary_index is not None
-    assert not temporary_index.parent.exists()
+    assert "cannot diff current tree" in error
+    assert patch_path is not None
+    assert not patch_path.parent.exists()
 
 
 @pytest.mark.parametrize(
@@ -410,6 +414,53 @@ def test_run_tool_normalizes_launch_timeout_and_os_errors(
 
     assert str(exc_info.value).startswith(message)
     assert exc_info.value.__cause__ is failure
+
+
+def test_run_tool_can_stream_long_running_command_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed_kwargs: dict[str, object] = {}
+
+    def fake_run(*_args: object, **kwargs: object) -> SimpleNamespace:
+        observed_kwargs.update(kwargs)
+        return _result()
+
+    monkeypatch.setattr(archive_performance, "run_safe_command", fake_run)
+
+    archive_performance._run_tool(
+        "tool",
+        ["--flag"],
+        cwd=tmp_path,
+        options=archive_performance.ToolRunOptions(stream_output=True),
+    )
+
+    assert observed_kwargs["capture_output"] is False
+
+
+def test_benchmark_input_gate_streams_progress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[tuple[str, tuple[str, ...], bool]] = []
+
+    def fake_run_tool(
+        command: str,
+        args: list[str],
+        *,
+        cwd: Path,
+        options: archive_performance.ToolRunOptions,
+    ) -> None:
+        del cwd
+        calls.append((command, tuple(args), options.stream_output))
+
+    monkeypatch.setattr(archive_performance, "_run_tool", fake_run_tool)
+
+    archive_performance._run_benchmark_input_gate(tmp_path)
+
+    assert calls == [("just", ("test-bench-inputs",), True)]
+    assert "[performance] validating benchmark inputs" in capsys.readouterr().err
 
 
 def test_temporary_worktree_cleanup_failure_fails_successful_operation(
@@ -651,6 +702,34 @@ def test_resolve_archive_request_current_vs_latest_uses_package_version_and_late
     assert request.baseline_tag == "v0.4.2"
     assert request.worktree_ref == "HEAD"
     assert request.tags_to_fetch == ("v0.4.2",)
+
+
+def test_resolve_archive_request_current_vs_latest_rejects_equal_release_tags_before_benchmarking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
+
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+        assert command == "gh"
+        assert args[:2] == ["release", "list"]
+        assert cwd == tmp_path
+        return _result('[{"tagName":"v0.4.3","isDraft":false,"isPrerelease":false,"publishedAt":"2026-03-01T00:00:00Z"}]')
+
+    monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
+
+    with pytest.raises(ValueError, match=r"both v0\.4\.3"):
+        archive_performance.resolve_archive_request(
+            archive_performance.ArchiveRequestOptions(
+                current_tag=None,
+                baseline_tag=None,
+                published_latest=False,
+                infer_release=False,
+                current_vs_latest=True,
+                worktree_ref="HEAD",
+                repo_root=tmp_path,
+            )
+        )
 
 
 def test_benchmark_env_uses_current_repo_toolchain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1028,6 +1107,53 @@ def test_main_reports_release_pair_mismatch_to_stderr(
     assert not current.exists()
 
 
+def test_main_rejects_local_option_conflict_before_release_discovery(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def fail_discovery(_options: object) -> None:
+        msg = "release discovery must not run"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(archive_performance, "resolve_archive_request", fail_discovery)
+
+    rc = main(["--published-latest", "--output-only"])
+
+    assert rc == 1
+    assert "--output-only requires --generate-in-temp-worktree" in capsys.readouterr().err
+
+
+def test_local_release_generation_rejects_unavailable_cpu_before_external_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "performance.md"
+
+    def fail_external_work(*_args: object, **_kwargs: object) -> None:
+        msg = "external work must not start"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(archive_performance, "cpu_description", lambda: "unavailable")
+    monkeypatch.setattr(archive_performance, "run_git_command", fail_external_work)
+    monkeypatch.setattr(archive_performance, "run_safe_command", fail_external_work)
+
+    with pytest.raises(RuntimeError, match="CPU model is unavailable"):
+        generate_worktree_report(
+            output=output,
+            config=GenerationConfig(
+                repo_root=tmp_path,
+                current_tag="v0.4.4",
+                baseline_tag="v0.4.3",
+                worktree_ref="HEAD",
+            ),
+        )
+
+    assert not output.exists()
+
+
 @pytest.mark.parametrize("alias", ["artifact-csv", "current-report"])
 def test_main_rerender_rejects_output_alias_without_mutation(
     tmp_path: Path,
@@ -1376,7 +1502,14 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
 
     captured = capsys.readouterr()
     assert rc == 0
-    assert captured.err == ""
+    assert captured.err.splitlines() == [
+        "[performance] validating benchmark inputs in baseline-worktree",
+        "[performance] running all baseline benchmarks for v0.4.2",
+        "[performance] completed all baseline benchmarks for v0.4.2",
+        "[performance] validating benchmark inputs in worktree",
+        "[performance] running current all benchmarks",
+        "[performance] completed current all benchmarks",
+    ]
     assert current.read_text(encoding="utf-8") == _retained_report(tmp_path)
     assert not any(kind == "gh" for kind, _, _ in calls)
     assert any(kind == "just" and args == ("bench-save-baseline", "v0.4.2") for kind, args, _ in calls)
@@ -1880,7 +2013,7 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path: Path
             worktree = Path(args[3])
             worktree.mkdir(parents=True)
             _write_current_benchmark_tooling(worktree)
-        if args[:3] == ["diff", "--cached", "--binary"]:
+        if args[:2] == ["diff", "--binary"]:
             output_arg = next(arg for arg in args if arg.startswith("--output="))
             Path(output_arg.removeprefix("--output=")).write_bytes(b"diff --git a/README.md b/README.md\n")
         return _result()

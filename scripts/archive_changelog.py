@@ -17,22 +17,28 @@ Usage:
     archive-changelog --archive-dir docs/archive/changelog
 """
 
-from __future__ import annotations
-
 import argparse
 import logging
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 from postprocess_changelog import normalize_entry_headings_text, postprocess_text
 
 # Matches ``## [X.Y.Z]`` or ``## [Unreleased]``
 _VERSION_HEADING_RE = re.compile(r"^## \[")
+_UNRELEASED_HEADING_RE = re.compile(r"^## \[Unreleased\](?:\s|$)")
 
-# Extracts a semver version from a ``## [X.Y.Z]`` heading (linked or plain).
-_VERSION_RE = re.compile(r"^## \[(\d+\.\d+\.\d+[^\]]*)\]")
+# Extracts a strict SemVer 2.0.0 version from a ``## [X.Y.Z]`` heading.
+_SEMVER_ALNUM_ID = r"(?:(?=[0-9A-Za-z-]*[A-Za-z-])[0-9A-Za-z-]+)"
+_SEMVER_PATTERN = (
+    r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
+    rf"(?:-(?:(?:0|[1-9]\d*)|{_SEMVER_ALNUM_ID})(?:\.(?:(?:0|[1-9]\d*)|{_SEMVER_ALNUM_ID}))*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+)
+_VERSION_RE = re.compile(rf"^## \[({_SEMVER_PATTERN})\](?:\s|$)")
 
 # Matches a reference-style link definition: ``[label]: URL``
 _LINK_DEF_RE = re.compile(r"^\[([^\]]+)\]:\s+\S+")
@@ -161,21 +167,32 @@ def parse_changelog(text: str) -> tuple[str, str, list[tuple[str, str]]]:
     preamble = "\n".join(lines[: headings[0]])
 
     unreleased = ""
+    unreleased_line: int | None = None
     version_blocks: list[tuple[str, str]] = []
+    version_lines: dict[str, int] = {}
 
     for idx, start in enumerate(headings):
         end = headings[idx + 1] if idx + 1 < len(headings) else len(lines)
         block = "\n".join(lines[start:end])
 
         heading_line = lines[start]
-        if heading_line.startswith("## [Unreleased]"):
+        if _UNRELEASED_HEADING_RE.match(heading_line):
+            if unreleased_line is not None:
+                msg = f"Duplicate Unreleased changelog heading at lines {unreleased_line} and {start + 1}"
+                raise ValueError(msg)
             unreleased = block
+            unreleased_line = start + 1
         else:
             m = _VERSION_RE.match(heading_line)
             if not m:
                 msg = f"Unrecognized changelog version heading at line {start + 1}: {heading_line!r}; expected '## [Unreleased]' or a semantic version"
                 raise ValueError(msg)
-            version_blocks.append((m.group(1), block))
+            version = m.group(1)
+            if version in version_lines:
+                msg = f"Duplicate changelog version {version!r} at lines {version_lines[version]} and {start + 1}"
+                raise ValueError(msg)
+            version_lines[version] = start + 1
+            version_blocks.append((version, block))
 
     return preamble, unreleased, version_blocks
 
@@ -238,9 +255,18 @@ def write_archive(
     Returns:
         The path of the written archive file.
     """
-    archive_dir.mkdir(parents=True, exist_ok=True)
     path = archive_dir / f"{minor}.md"
+    text = _build_archive_text(minor, blocks, link_defs)
+    _publish_texts({path: text})
+    return path
 
+
+def _build_archive_text(
+    minor: str,
+    blocks: list[tuple[str, str]],
+    link_defs: dict[str, str] | None = None,
+) -> str:
+    """Build one normalized archive payload without changing the filesystem."""
     parts = [f"# Changelog - {minor}.x\n"]
     for _ver, block in blocks:
         parts.append(block)
@@ -256,10 +282,83 @@ def write_archive(
 
     # Normalize archive output too; archived blocks can preserve historical
     # commit-body indentation that no longer appears in the trimmed root file.
-    text = postprocess_text(text)
+    return postprocess_text(text)
 
-    path.write_text(text, encoding="utf-8")
-    return path
+
+def _stage_text(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+        return Path(handle.name)
+
+
+def _stage_bytes(path: Path, payload: bytes) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "wb",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+        return Path(handle.name)
+
+
+def _replace_path(source: Path, destination: Path) -> None:
+    source.replace(destination)
+
+
+def _restore_text(path: Path, previous: bytes | None) -> None:
+    if previous is None:
+        path.unlink(missing_ok=True)
+        return
+    staged = _stage_bytes(path, previous)
+    try:
+        _replace_path(staged, path)
+    finally:
+        staged.unlink(missing_ok=True)
+
+
+def _publish_texts(payloads: dict[Path, str]) -> None:
+    """Publish a set of text files together and roll all of them back on failure."""
+    if not payloads:
+        return
+    previous = {path: path.read_bytes() if path.is_file() else None for path in payloads}
+    staged = {path: _stage_text(path, text) for path, text in payloads.items()}
+    replaced: list[Path] = []
+    try:
+        for path, staged_path in staged.items():
+            _replace_path(staged_path, path)
+            replaced.append(path)
+    except BaseException as publication_error:
+        rollback_errors: list[BaseException] = []
+        for path in reversed(replaced):
+            try:
+                _restore_text(path, previous[path])
+            except BaseException as rollback_error:  # noqa: BLE001
+                rollback_errors.append(rollback_error)
+        if rollback_errors:
+            group_message = "changelog publication and rollback failed"
+            raise BaseExceptionGroup(
+                group_message,
+                [publication_error, *rollback_errors],
+            ) from None
+        raise
+    finally:
+        for staged_path in staged.values():
+            staged_path.unlink(missing_ok=True)
 
 
 def _postprocess_existing_archives(archive_dir: Path) -> None:
@@ -267,11 +366,28 @@ def _postprocess_existing_archives(archive_dir: Path) -> None:
     if not archive_dir.is_dir():
         return
 
+    payloads: dict[Path, str] = {}
     for path in archive_dir.glob("*.md"):
         text = path.read_text(encoding="utf-8")
         normalized = normalize_entry_headings_text(text)
         if normalized != text:
-            path.write_text(normalized, encoding="utf-8")
+            payloads[path] = normalized
+    _publish_texts(payloads)
+
+
+def _normalized_existing_archive_payloads(archive_dir: Path, *, excluded: set[Path]) -> dict[Path, str]:
+    """Return changed historical archive payloads not regenerated this run."""
+    if not archive_dir.is_dir():
+        return {}
+    payloads: dict[Path, str] = {}
+    for path in archive_dir.glob("*.md"):
+        if path in excluded:
+            continue
+        text = path.read_text(encoding="utf-8")
+        normalized = normalize_entry_headings_text(text)
+        if normalized != text:
+            payloads[path] = normalized
+    return payloads
 
 
 def build_root(
@@ -380,8 +496,7 @@ def archive_changelog(
     # In particular, os.path.relpath() cannot cross Windows volumes.
     archive_dir_rel = _archive_dir_link_prefix(archive_dir, changelog_path.parent)
 
-    for minor in archived_minors:
-        write_archive(archive_dir, minor, groups[minor], link_defs)
+    payloads = {archive_dir / f"{minor}.md": _build_archive_text(minor, groups[minor], link_defs) for minor in archived_minors}
 
     root_text = build_root(
         preamble,
@@ -400,8 +515,9 @@ def archive_changelog(
         if defs_text:
             root_text = root_text.rstrip("\n") + "\n\n" + defs_text + "\n"
 
-    changelog_path.write_text(root_text, encoding="utf-8")
-    _postprocess_existing_archives(archive_dir)
+    payloads[changelog_path] = root_text
+    payloads.update(_normalized_existing_archive_payloads(archive_dir, excluded=set(payloads)))
+    _publish_texts(payloads)
 
 
 # ---------------------------------------------------------------------------

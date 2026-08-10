@@ -515,7 +515,7 @@ across operations.
 Timings count only when the implementation preserves the documented
 correctness guarantees and invariants. Performance claims require comparable
 before-and-after evidence using the same inputs, configuration, and environment.
-This snapshot records the measured source state, CPU, operating system, Rust
+This snapshot records the measured source state, available CPU model, operating system, Rust
 toolchain, dependency lock and harness digests, Criterion command, and
 correctness-gate result in the adjacent JSON sidecar. The publication workflow
 requires complete canonical-dimension coverage and regenerates the CSV, SVG,
@@ -571,7 +571,7 @@ cargo run --features exact --example exact_solve_3x3
 A short contributor workflow:
 
 Install Rust 1.97.1 through [rustup](https://rustup.rs/), Git, Python 3.14,
-[`uv` 0.12.1](https://docs.astral.sh/uv/), and `jq`. Then install the pinned
+[`uv` 0.12.3](https://docs.astral.sh/uv/), and `jq`. Then install the pinned
 `just` release from its locked dependency graph:
 
 ```bash

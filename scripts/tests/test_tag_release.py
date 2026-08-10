@@ -1,7 +1,5 @@
 """Tests for tag_release.py — annotated tag creation with size-limit handling."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -227,6 +225,10 @@ class TestTagSizeLimit:
 
 
 class TestCreateTag:
+    @pytest.fixture(autouse=True)
+    def _matching_package_version(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tag_release, "_package_version", lambda _changelog: "1.0.0")
+
     def test_next_step_sets_release_title(
         self,
         tmp_path: Path,
@@ -384,6 +386,19 @@ class TestCreateTag:
         assert marker not in str(exc_info.value)
         assert marker not in output.out
         assert marker not in output.err
+
+    def test_rejects_tag_that_differs_from_cargo_before_git(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        changelog = tmp_path / "CHANGELOG.md"
+        changelog.write_text(_SAMPLE_CHANGELOG, encoding="utf-8")
+        mock_exists = MagicMock()
+        monkeypatch.setattr(tag_release, "find_changelog", lambda: changelog)
+        monkeypatch.setattr(tag_release, "_package_version", lambda _changelog: "1.0.1")
+        monkeypatch.setattr(tag_release, "_tag_exists", mock_exists)
+
+        with pytest.raises(ValueError, match="does not match Cargo package version"):
+            tag_release.create_tag("v1.0.0")
+
+        mock_exists.assert_not_called()
 
 
 class TestRepoUrl:

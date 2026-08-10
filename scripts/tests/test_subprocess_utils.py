@@ -1,18 +1,18 @@
 """Tests for subprocess_utils.py — secure subprocess wrappers."""
 
-from __future__ import annotations
-
-from typing import BinaryIO, cast
+from typing import TYPE_CHECKING, BinaryIO, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 import subprocess_utils
 from subprocess_utils import (
+    DEFAULT_COMMAND_TIMEOUT_SECONDS,
     ExecutableNotFoundError,
     _build_run_kwargs,
     check_git_history,
     check_git_repo,
+    cpu_description,
     find_project_root,
     get_git_commit_hash,
     get_git_remote_url,
@@ -22,6 +22,9 @@ from subprocess_utils import (
     run_git_command_with_input,
     run_safe_command,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # get_safe_executable
@@ -50,6 +53,7 @@ class TestBuildRunKwargs:
         assert kwargs["text"] is True
         assert kwargs["check"] is True
         assert kwargs["encoding"] == "utf-8"
+        assert kwargs["timeout"] == DEFAULT_COMMAND_TIMEOUT_SECONDS
 
     def test_rejects_shell_true(self) -> None:
         with pytest.raises(ValueError, match="shell=True is not allowed"):
@@ -71,6 +75,10 @@ class TestBuildRunKwargs:
     def test_respects_custom_encoding(self) -> None:
         kwargs = _build_run_kwargs("test_func", encoding="latin-1")
         assert kwargs["encoding"] == "latin-1"
+
+    def test_respects_custom_timeout(self) -> None:
+        kwargs = _build_run_kwargs("test_func", timeout=12.5)
+        assert kwargs["timeout"] == 12.5
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +155,21 @@ class TestRunGitCommandWithInput:
 
 
 class TestAdditionalHelpers:
+    def test_cpu_description_uses_macos_brand_and_architecture(self) -> None:
+        result = subprocess_utils.subprocess.CompletedProcess(
+            args=["sysctl"],
+            returncode=0,
+            stdout="Apple M4 Pro\n",
+            stderr="",
+        )
+        with (
+            patch("subprocess_utils.platform.system", return_value="Darwin"),
+            patch("subprocess_utils.platform.machine", return_value="arm64"),
+            patch("subprocess_utils.platform.processor", return_value="arm"),
+            patch("subprocess_utils.run_safe_command", return_value=result),
+        ):
+            assert cpu_description() == "Apple M4 Pro (arm64)"
+
     def test_run_cargo_command_uses_safe_executable(self) -> None:
         with (
             patch("subprocess_utils.get_safe_executable", return_value="/usr/bin/cargo") as mock_executable,
@@ -195,3 +218,11 @@ class TestAdditionalHelpers:
 
     def test_find_project_root(self) -> None:
         assert (find_project_root() / "Cargo.toml").is_file()
+
+    def test_find_project_root_accepts_a_nested_start(self, tmp_path: Path) -> None:
+        root = tmp_path / "checkout"
+        nested = root / "target" / "wheel"
+        nested.mkdir(parents=True)
+        (root / "Cargo.toml").write_text("[package]\n", encoding="utf-8")
+
+        assert find_project_root(nested) == root

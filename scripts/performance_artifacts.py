@@ -7,13 +7,15 @@ import json
 import math
 import os
 import tempfile
+from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator
 
 SCHEMA_VERSION = 1
 SUITES = ("all", "exact", "vs_linalg")
@@ -56,7 +58,7 @@ class TimingEstimate:
     ci_upper_ns: float
 
     def __post_init__(self) -> None:
-        """Reject non-finite, non-positive, or inconsistent timing intervals."""
+        """Reject non-finite, non-positive, or reversed timing intervals."""
         for field, value in (
             ("median_ns", self.median_ns),
             ("ci_lower_ns", self.ci_lower_ns),
@@ -65,8 +67,8 @@ class TimingEstimate:
             if not math.isfinite(value) or value <= 0:
                 msg = f"{field} must be finite and positive: {value!r}"
                 raise ValueError(msg)
-        if not self.ci_lower_ns <= self.median_ns <= self.ci_upper_ns:
-            msg = f"confidence interval must contain the median: {self.ci_lower_ns} <= {self.median_ns} <= {self.ci_upper_ns}"
+        if self.ci_lower_ns > self.ci_upper_ns:
+            msg = f"confidence interval must be ordered: {self.ci_lower_ns} <= {self.ci_upper_ns}"
             raise ValueError(msg)
 
 
@@ -180,7 +182,7 @@ class ArtifactContext:
     suite: str
     scope: str
     source: ReportSource
-    benchmark_provenance: dict[str, object]
+    benchmark_provenance: Mapping[str, object]
 
     def __post_init__(self) -> None:
         """Bind report settings and benchmark provenance to the release pair."""
@@ -197,6 +199,7 @@ class ArtifactContext:
             self.benchmark_provenance,
             context=self,
         )
+        object.__setattr__(self, "benchmark_provenance", freeze_mapping(self.benchmark_provenance))
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +268,33 @@ def ensure_distinct_paths(paths: Mapping[str, Path]) -> None:
             if _paths_alias(first_path, second_path):
                 msg = f"{first_name} and {second_name} must use distinct paths: {first_path}"
                 raise ValueError(msg)
+
+
+def freeze_json(value: object) -> object:
+    """Recursively detach and freeze JSON-shaped provenance data."""
+    if isinstance(value, Mapping):
+        return MappingProxyType({str(key): freeze_json(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(freeze_json(item) for item in value)
+    return value
+
+
+def freeze_mapping(data: Mapping[str, object]) -> Mapping[str, object]:
+    """Detach and freeze a JSON-shaped mapping while preserving its mapping type contract."""
+    frozen = freeze_json(data)
+    if not isinstance(frozen, Mapping):
+        msg = "provenance mapping invariant violated"
+        raise TypeError(msg)
+    return cast("Mapping[str, object]", frozen)
+
+
+def _thaw_json(value: object) -> object:
+    """Convert frozen JSON-shaped data back to serializer-native containers."""
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_json(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(item) for item in value]
+    return value
 
 
 def _required_provenance_object(data: Mapping[str, object], field: str, *, context: str) -> dict[str, object]:
@@ -356,8 +386,11 @@ def _validate_measurement_provenance(measurement: Mapping[str, object], *, mode:
         if mode != "shared-current-harness":
             msg = "recorded benchmark measurement provenance requires shared-current-harness mode"
             raise ValueError(msg)
-        for field in ("cpu", "os", "rustc", "current_commit", "baseline_commit"):
+        for field in ("cpu", "os", "rustc", "current_commit", "baseline_commit", "baseline_api_compatibility"):
             _required_provenance_string(measurement, field, context="measurement")
+        if cast("str", measurement["cpu"]).casefold() == "unavailable":
+            msg = "recorded benchmark measurement provenance requires an identified CPU model"
+            raise ValueError(msg)
         for field in (
             "cargo_lock_sha256",
             "harness_sha256",
@@ -375,7 +408,7 @@ def _validate_measurement_provenance(measurement: Mapping[str, object], *, mode:
     return measurement_status
 
 
-def _validate_validation_provenance(validation: Mapping[str, object]) -> str:
+def _validate_validation_provenance(validation: Mapping[str, object], *, baseline: str) -> str:
     """Validate fixture-gate evidence for both compared revisions."""
     if validation.get("command") != ["just", "test-bench-inputs"]:
         msg = "benchmark provenance validation.command must be ['just', 'test-bench-inputs']"
@@ -392,6 +425,10 @@ def _validate_validation_provenance(validation: Mapping[str, object]) -> str:
     for field in ("current_git_clean", "baseline_git_clean"):
         _required_provenance_bool(validation, field, context="validation")
     compatibility = _required_provenance_string(validation, "baseline_api_compatibility", context="validation")
+    expected_compatibility = "la_stack_v0_4_3_api" if baseline == "v0.4.3" else "none"
+    if compatibility != expected_compatibility:
+        msg = f"benchmark provenance validation.baseline_api_compatibility must be {expected_compatibility!r} for baseline {baseline!r}, got {compatibility!r}"
+        raise ValueError(msg)
     harness = _required_provenance_string(validation, "harness", context="validation")
     if harness != "shared-current":
         msg = f"benchmark provenance validation.harness must be 'shared-current', got {harness!r}"
@@ -450,8 +487,7 @@ def _validate_recorded_measurement_consistency(
             first_context="measurement",
             second_context="validation",
         )
-    measurement_compatibility = measurement.get("baseline_api_compatibility")
-    if measurement_compatibility is not None and measurement_compatibility != compatibility:
+    if measurement.get("baseline_api_compatibility") != compatibility:
         msg = "benchmark provenance measurement.baseline_api_compatibility does not match validation.baseline_api_compatibility"
         raise ValueError(msg)
 
@@ -481,7 +517,11 @@ def _validate_benchmark_provenance(data: Mapping[str, object], *, context: Artif
         msg = f"benchmark provenance publication.commit {source_commit!r} does not match report source commit {context.source.commit!r}"
         raise ValueError(msg)
     measurement_status = _validate_measurement_provenance(measurement, mode=mode)
-    compatibility = _validate_validation_provenance(validation)
+    expected_status = "recorded" if mode == "shared-current-harness" else "unavailable"
+    if measurement_status != expected_status:
+        msg = f"benchmark provenance mode {mode!r} requires measurement.status {expected_status!r}, got {measurement_status!r}"
+        raise ValueError(msg)
+    compatibility = _validate_validation_provenance(validation, baseline=context.release.baseline)
     _validate_current_revision_consistency(publication, validation)
     if measurement_status == "recorded":
         _validate_recorded_measurement_consistency(
@@ -537,7 +577,7 @@ def _serialize_csv(bundle: PerformanceBundle) -> bytes:
 def _serialize_provenance(bundle: PerformanceBundle, csv_payload: bytes) -> bytes:
     context = bundle.context
     payload = {
-        "benchmark_provenance": context.benchmark_provenance,
+        "benchmark_provenance": _thaw_json(context.benchmark_provenance),
         "csv": {
             "columns": list(CSV_COLUMNS),
             "row_count": len(bundle.rows),

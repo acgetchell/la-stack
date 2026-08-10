@@ -138,3 +138,15 @@ fn det_errbound_skips_zero_coefficient_terms_that_would_overflow() -> Result<(),
 
     Ok(())
 }
+
+#[test]
+fn det_errbound_reports_overflow_even_when_another_term_underflows() -> Result<(), LaError> {
+    let matrix = Matrix::<2>::try_from_rows([[1.0e308, 1.0e-308], [1.0e-308, 2.0]])?;
+    let expected = LaError::non_finite_computation_scalar(ArithmeticOperation::Determinant);
+
+    assert_eq!(matrix.det_direct(), Err(expected));
+    assert_eq!(matrix.det_direct_with_errbound(), Err(expected));
+    assert_eq!(matrix.det_errbound(), Err(expected));
+
+    Ok(())
+}

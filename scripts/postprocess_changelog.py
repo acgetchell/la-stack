@@ -18,8 +18,6 @@ Usage:
     postprocess-changelog path/to/CHANGELOG.md
 """
 
-from __future__ import annotations
-
 import argparse
 import re
 import sys
@@ -191,6 +189,12 @@ _SQUASH_HEADING_LABELS: dict[str, str] = {
     "deprecated": "Deprecated",
     "removed": "Removed",
 }
+
+
+def _is_normalized_squash_heading(line: str) -> bool:
+    """Return whether *line* is a bold heading emitted for a squash body."""
+    stripped = line.strip()
+    return stripped.endswith("**") and any(stripped.startswith(f"**{label}: ") for label in _SQUASH_HEADING_LABELS.values())
 
 
 def _plain_summary(text: str) -> str:
@@ -483,6 +487,10 @@ def _deindent_orphan(line: str, lines: list[str], idx: int) -> str:
                 if our_indent > parent_indent and nearest_parent_indent is None:
                     nearest_parent_indent = parent_indent
             continue  # skip cliff-indented content
+        # A normalized squash heading is a prose parent for its body bullets.
+        # Preserve that relationship on subsequent post-processing runs.
+        if _is_normalized_squash_heading(prev):
+            return "  " + stripped
         # Column-0 non-blank line — determines final result.
         is_list_parent = prev.startswith(("- ", "* "))
         if is_list_parent:

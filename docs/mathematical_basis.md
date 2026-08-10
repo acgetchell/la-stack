@@ -150,9 +150,13 @@ represented rational values \[9-10\].
 Exact determinants use direct `BigInt` expansions for `D ≤ 4` and fraction-free
 Bareiss elimination for `D ≥ 5` \[7\]. Exact solves apply Bareiss updates to an
 integer augmented system, then use `BigRational` for back-substitution. Matrix
-and right-hand-side scaling are tracked separately and reconciled with an exact
-power-of-two factor. First-nonzero pivoting is sufficient for correctness in
-exact arithmetic, although pivot choice can still affect computational cost.
+and right-hand-side scales start independently. Writing the selected exponents
+as `s_A` and `s_b`, the integer forms satisfy `A = 2ˢᴬ · A_int` and
+`b = 2ˢᵇ · b_int` \[9\]. Gaps of at most 64 bits use the lower shared scale,
+while larger gaps remain separate; multiplying the integer system's solution by
+the exact factor `2^(s_b − s_A)` preserves `A x = b`. First-nonzero pivoting is
+sufficient for correctness in exact arithmetic, although pivot choice can still
+affect computational cost.
 
 `det_sign_exact()` first attempts the certified binary64 filter for `D ≤ 4` and
 falls back to exact integer arithmetic when the filter is inconclusive. It

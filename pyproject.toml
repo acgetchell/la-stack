@@ -6,9 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "la-stack-scripts"
 version = "0.4.4"
 description = "Python utility scripts for the la-stack Rust library"
-readme = "README.md"
+readme = "scripts/README.md"
 requires-python = ">=3.14"
-license = { text = "BSD-3-Clause" }
+license = "BSD-3-Clause"
 authors = [
     { name = "Adam Getchell", email = "adam@adamgetchell.org" },
 ]
@@ -17,7 +17,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.14",

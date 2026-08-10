@@ -1,7 +1,5 @@
 """Tests for documentation and package-version synchronization checks."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import pytest
@@ -212,4 +210,26 @@ def test_find_version_mismatches_rejects_malformed_citation_version(tmp_path: Pa
     (tmp_path / "CITATION.cff").write_text('cff-version: 1.2.0\nversion: "\n', encoding="utf-8")
 
     with pytest.raises(TypeError, match=r"CITATION\.cff:2: top-level version"):
+        check_docs_version_sync.find_version_mismatches(tmp_path)
+
+
+def test_main_supports_help(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        check_docs_version_sync.main(["--help"])
+
+    assert "Repository root to check" in capsys.readouterr().out
+
+
+def test_main_rejects_extra_positional_arguments() -> None:
+    with pytest.raises(SystemExit, match="2"):
+        check_docs_version_sync.main(["one", "two"])
+
+
+def test_release_date_must_match_generated_changelog(tmp_path: Path) -> None:
+    _write_project(tmp_path)
+    citation = tmp_path / "CITATION.cff"
+    citation.write_text(citation.read_text(encoding="utf-8") + "date-released: 2026-07-12\n", encoding="utf-8")
+    (tmp_path / "CHANGELOG.md").write_text("# Changelog\n\n## [1.2.3] - 2026-07-13\n", encoding="utf-8")
+
+    with pytest.raises(TypeError, match="release date mismatch"):
         check_docs_version_sync.find_version_mismatches(tmp_path)
