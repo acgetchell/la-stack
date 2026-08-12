@@ -10,24 +10,35 @@ const EXPONENT_BIAS: i128 = 1023;
 const MIN_NORMAL_EXPONENT: i128 = -1022;
 const MIN_SUBNORMAL_EXPONENT: i128 = -1074;
 
-/// Result of multiplying one direct product step with its range proof attached.
+/// One direct product step with its range proof attached.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum RangeCheckedProduct {
-    /// The value is finite and normal, or is an exact zero caused by a zero
-    /// operand, so direct accumulation may continue.
-    Safe(f64),
-    /// Direct multiplication overflowed or lost range through gradual
-    /// underflow, so all factors must be recomputed with scaling.
-    NeedsScaling,
+pub(crate) struct RangeCheckedProduct {
+    product: f64,
+    range_preserved: bool,
 }
 
-/// Multiply one direct product step and retain only values proven safe for
-/// sequential accumulation.
+impl RangeCheckedProduct {
+    /// Return the directly accumulated product.
+    #[inline]
+    pub(crate) const fn product(self) -> f64 {
+        self.product
+    }
+
+    /// Return whether direct accumulation preserved the non-zero product's range.
+    #[inline]
+    pub(crate) const fn range_preserved(self) -> bool {
+        self.range_preserved
+    }
+}
+
+/// Multiply one non-zero direct product step and attach its range proof.
 ///
-/// The common normal case needs only the result's binary exponent field. Zero
-/// operands are checked only when that field is zero, preserving signed-zero
-/// multiplication without treating underflow from two non-zero operands as an
-/// exact zero.
+/// Successful LU and LDLT construction proves every diagonal factor is finite
+/// and non-zero. Starting from `±1.0`, a normal result therefore proves that
+/// direct accumulation has not overflowed or lost range through gradual
+/// underflow. Callers combine every step's proof and replay the complete product
+/// with scaling if any step fails, keeping the success path branch-free between
+/// factors.
 #[inline]
 pub(crate) const fn range_checked_product(accumulator: f64, factor: f64) -> RangeCheckedProduct {
     let product = accumulator * factor;
@@ -35,14 +46,9 @@ pub(crate) const fn range_checked_product(accumulator: f64, factor: f64) -> Rang
     // Subtracting one maps the valid normal fields 1..=0x7fe to
     // 0..=0x7fd. Zero wraps high and 0x7ff maps to the exclusive upper
     // bound, so the common normal path needs one unsigned comparison.
-    if product_exponent.wrapping_sub(1) < EXPONENT_MASK - 1 {
-        return RangeCheckedProduct::Safe(product);
-    }
-
-    if product_exponent == 0 && (accumulator == 0.0 || factor == 0.0) {
-        RangeCheckedProduct::Safe(product)
-    } else {
-        RangeCheckedProduct::NeedsScaling
+    RangeCheckedProduct {
+        product,
+        range_preserved: product_exponent.wrapping_sub(1) < EXPONENT_MASK - 1,
     }
 }
 
@@ -216,7 +222,7 @@ impl ScaledProduct {
 
 #[cfg(test)]
 mod tests {
-    use super::{RangeCheckedProduct, SIGN_MASK, ScaledProduct, range_checked_product};
+    use super::{SIGN_MASK, ScaledProduct, range_checked_product};
 
     const TWO_NEG_800: f64 = f64::from_bits(223_u64 << 52);
     const TWO_POS_800: f64 = f64::from_bits(1823_u64 << 52);
@@ -334,10 +340,7 @@ mod tests {
             product.multiply(factor);
         }
 
-        assert_eq!(
-            range_checked_product(TWO_NEG_800, TWO_NEG_800),
-            RangeCheckedProduct::NeedsScaling
-        );
+        assert!(!range_checked_product(TWO_NEG_800, TWO_NEG_800).range_preserved());
         assert_eq!(product.finish().map(f64::to_bits), Some(1));
     }
 
@@ -356,26 +359,17 @@ mod tests {
     }
 
     #[test]
-    fn direct_product_range_check_distinguishes_exact_zero_from_range_loss() {
-        assert_eq!(
-            range_checked_product(1.5, 2.0),
-            RangeCheckedProduct::Safe(3.0)
-        );
-        assert_eq!(
-            range_checked_product(-0.0, -2.0),
-            RangeCheckedProduct::Safe(0.0)
-        );
-        assert_eq!(
+    fn direct_product_range_proof_distinguishes_ordinary_values_from_range_loss() {
+        let ordinary = range_checked_product(1.5, 2.0);
+        assert_eq!(ordinary.product().to_bits(), 3.0_f64.to_bits());
+        assert!(ordinary.range_preserved());
+
+        for step in [
             range_checked_product(TWO_NEG_800, TWO_NEG_800),
-            RangeCheckedProduct::NeedsScaling
-        );
-        assert_eq!(
             range_checked_product(f64::MIN_POSITIVE, 0.5),
-            RangeCheckedProduct::NeedsScaling
-        );
-        assert_eq!(
             range_checked_product(TWO_POS_800, TWO_POS_800),
-            RangeCheckedProduct::NeedsScaling
-        );
+        ] {
+            assert!(!step.range_preserved());
+        }
     }
 }
