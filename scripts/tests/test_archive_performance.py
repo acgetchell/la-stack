@@ -73,6 +73,11 @@ def _normalized_report(version: str, baseline: str) -> str:
 
 
 def _write_fake_rendered_artifacts(args: Sequence[str], *, version: str, baseline: str) -> None:
+    output = Path(args[args.index("--output") + 1])
+    if "--csv-output" not in args:
+        output.write_text(_report(version, baseline), encoding="utf-8")
+        return
+
     criterion_dir = Path(args[args.index("--criterion-dir") + 1])
     suite = args[args.index("--suite") + 1]
     scope = args[args.index("--scope") + 1]
@@ -116,7 +121,6 @@ def _write_fake_rendered_artifacts(args: Sequence[str], *, version: str, baselin
         ),
     )
     write_bundle(paths, bundle)
-    output = Path(args[args.index("--output") + 1])
     output.write_text(archive_performance.render_release_artifacts(paths), encoding="utf-8")
 
 
@@ -670,6 +674,41 @@ def test_resolve_archive_request_infer_release_uses_package_version_and_previous
     assert request.tags_to_fetch == ("v0.4.2",)
 
 
+@pytest.mark.parametrize("package_version", ["0.4.4", "0.4.3"])
+def test_resolve_archive_request_infer_release_requires_unpublished_package_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    package_version: str,
+) -> None:
+    (tmp_path / "Cargo.toml").write_text(f'[package]\nversion = "{package_version}"\n', encoding="utf-8")
+
+    def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+        assert command == "gh"
+        assert args[:2] == ["release", "list"]
+        assert cwd == tmp_path
+        return _result(
+            "["
+            '{"tagName":"v0.4.3","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"},'
+            '{"tagName":"v0.4.4","isDraft":false,"isPrerelease":false,"publishedAt":"2026-03-01T00:00:00Z"}'
+            "]"
+        )
+
+    monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
+
+    with pytest.raises(ValueError, match=r"must be newer than latest published stable release v0\.4\.4"):
+        archive_performance.resolve_archive_request(
+            archive_performance.ArchiveRequestOptions(
+                current_tag=None,
+                baseline_tag=None,
+                published_latest=False,
+                infer_release=True,
+                current_vs_latest=False,
+                worktree_ref="HEAD",
+                repo_root=tmp_path,
+            )
+        )
+
+
 def test_resolve_archive_request_current_vs_latest_uses_package_version_and_latest_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
 
@@ -704,7 +743,7 @@ def test_resolve_archive_request_current_vs_latest_uses_package_version_and_late
     assert request.tags_to_fetch == ("v0.4.2",)
 
 
-def test_resolve_archive_request_current_vs_latest_rejects_equal_release_tags_before_benchmarking(
+def test_resolve_archive_request_current_vs_latest_allows_equal_release_tags_for_local_reports(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -718,18 +757,22 @@ def test_resolve_archive_request_current_vs_latest_rejects_equal_release_tags_be
 
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
-    with pytest.raises(ValueError, match=r"both v0\.4\.3"):
-        archive_performance.resolve_archive_request(
-            archive_performance.ArchiveRequestOptions(
-                current_tag=None,
-                baseline_tag=None,
-                published_latest=False,
-                infer_release=False,
-                current_vs_latest=True,
-                worktree_ref="HEAD",
-                repo_root=tmp_path,
-            )
+    request = archive_performance.resolve_archive_request(
+        archive_performance.ArchiveRequestOptions(
+            current_tag=None,
+            baseline_tag=None,
+            published_latest=False,
+            infer_release=False,
+            current_vs_latest=True,
+            worktree_ref="HEAD",
+            repo_root=tmp_path,
         )
+    )
+
+    assert request.current_tag == "v0.4.3"
+    assert request.baseline_tag == "v0.4.3"
+    assert request.worktree_ref == "HEAD"
+    assert request.tags_to_fetch == ("v0.4.3",)
 
 
 def test_benchmark_env_uses_current_repo_toolchain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1126,6 +1169,118 @@ def test_main_rejects_local_option_conflict_before_release_discovery(
     assert "--output-only requires --generate-in-temp-worktree" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["--local-report"], "--local-report requires --output-only"),
+        (
+            ["--local-report", "--output-only", "--generate-in-temp-worktree", "--github-assets"],
+            "--local-report cannot be combined with --github-assets",
+        ),
+    ],
+)
+def test_main_rejects_invalid_local_report_options_before_release_discovery(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    argv: list[str],
+    message: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def fail_discovery(_options: object) -> None:
+        msg = "release discovery must not run"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(archive_performance, "resolve_archive_request", fail_discovery)
+
+    assert main(argv) == 1
+    assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("selection", [["--suite", "exact"], ["--scope", "all-benches"]])
+def test_main_rejects_artifact_promotion_benchmark_selectors_before_loading_artifacts(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    selection: list[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def fail_load(_paths: object) -> None:
+        msg = "artifact loading must not start"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(archive_performance, "load_bundle", fail_load)
+
+    assert main(["--promote-artifacts", *selection]) == 1
+    assert "--promote-artifacts cannot be combined" in capsys.readouterr().err
+
+
+def test_archive_performance_help_describes_local_and_release_workflows() -> None:
+    help_text = archive_performance.build_parser().format_help()
+
+    assert "Generate local benchmark comparisons or promote validated comparison artifacts" in help_text
+    assert "Rendered local comparison report path" in help_text
+    assert "Retained comparison CSV path" in help_text
+    assert "before promoting it" not in help_text
+
+
+def test_main_rejects_explicit_current_tag_mismatch_before_external_work(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.4"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    def fail_external_work(*_args: object, **_kwargs: object) -> None:
+        msg = "external work must not start"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(archive_performance, "_fetch_required_tags", fail_external_work)
+
+    rc = main(
+        [
+            "v0.4.5",
+            "v0.4.4",
+            "--generate-in-temp-worktree",
+            "--output-only",
+            "--local-report",
+        ]
+    )
+
+    assert rc == 1
+    assert "explicit current tag v0.4.5 does not match the current Cargo package tag v0.4.4" in capsys.readouterr().err
+
+
+def test_main_rejects_equal_release_artifact_tags_before_external_work(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.4"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    def fail_external_work(*_args: object, **_kwargs: object) -> None:
+        msg = "external work must not start"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(archive_performance, "_fetch_required_tags", fail_external_work)
+
+    rc = main(
+        [
+            "v0.4.4",
+            "v0.4.4",
+            "--generate-in-temp-worktree",
+            "--output-only",
+        ]
+    )
+
+    assert rc == 1
+    assert "release performance artifacts require distinct current and baseline releases" in capsys.readouterr().err
+
+
 def test_local_release_generation_rejects_unavailable_cpu_before_external_work(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1155,7 +1310,7 @@ def test_local_release_generation_rejects_unavailable_cpu_before_external_work(
 
 
 @pytest.mark.parametrize("alias", ["artifact-csv", "current-report"])
-def test_main_rerender_rejects_output_alias_without_mutation(
+def test_main_promote_artifacts_rejects_output_alias_without_mutation(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -1188,7 +1343,7 @@ def test_main_rerender_rejects_output_alias_without_mutation(
 
     rc = main(
         [
-            "--rerender",
+            "--promote-artifacts",
             "--artifact-csv",
             str(artifacts.csv),
             "--artifact-provenance",
@@ -1278,8 +1433,10 @@ def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pyt
     captured = capsys.readouterr()
     assert rc == 0
     assert current.read_text(encoding="utf-8") == _retained_report(tmp_path)
+    output = tmp_path / "target" / "bench-reports" / "performance.md"
+    assert output.read_text(encoding="utf-8") == current.read_text(encoding="utf-8")
     assert "Generated benchmark report in a temporary worktree" in captured.out
-    assert "target/bench-reports/performance.md" not in captured.out
+    assert str(output) in captured.out
     assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.3" for kind, args, _ in calls)
     assert any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
     assert any(kind == "uv" and "--suite" in args and args[args.index("--suite") + 1] == "exact" for kind, args, _ in calls)
@@ -1288,23 +1445,24 @@ def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pyt
     assert not any(kind == "git-stdin" for kind, _, _ in calls)
 
     external_call_count = len(calls)
-    rerender_rc = main(
+    promote_rc = main(
         [
-            "--rerender",
+            "--promote-artifacts",
             "--current",
             str(current),
             "--archive-dir",
             str(archive_dir),
         ]
     )
-    rerendered = capsys.readouterr()
-    assert rerender_rc == 0
-    assert "Re-rendered" in rerendered.out
+    promoted = capsys.readouterr()
+    assert promote_rc == 0
+    assert "Rendered" in promoted.out
     assert len(calls) == external_call_count
-    assert (tmp_path / "target" / "bench-reports" / "performance.md").read_text(encoding="utf-8") == current.read_text(encoding="utf-8")
+    assert output.read_text(encoding="utf-8") == current.read_text(encoding="utf-8")
 
 
 def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
@@ -1426,6 +1584,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
     (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
     current = tmp_path / "docs" / "PERFORMANCE.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
@@ -1532,7 +1691,10 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
     assert sum(1 for kind, args, _ in calls if kind == "git" and args[:3] == ("worktree", "remove", "--force")) == 2
 
 
-def test_generate_report_vs_linalg_suite_uses_copied_current_baseline_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generate_local_non_exact_report_retains_same_version_comparison_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
     (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
     output = tmp_path / "target" / "bench-reports" / "performance.md"
@@ -1555,7 +1717,7 @@ def test_generate_report_vs_linalg_suite_uses_copied_current_baseline_recipe(tmp
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
-        if command == "just" and args == ["bench-save-baseline", "v0.4.2", "vs_linalg"]:
+        if command == "just" and args == ["bench-save-baseline", "v0.4.3", "vs_linalg"]:
             assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
             assert cwd is not None
             assert "bench-latest" in (cwd / "justfile").read_text(encoding="utf-8")
@@ -1565,7 +1727,7 @@ def test_generate_report_vs_linalg_suite_uses_copied_current_baseline_recipe(tmp
         if command == "just" and args == ["bench-vs-linalg-la-stack"]:
             assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
         if command == "uv":
-            _write_fake_rendered_artifacts(args, version="0.4.3", baseline="v0.4.2")
+            _write_fake_rendered_artifacts(args, version="0.4.3", baseline="v0.4.3")
         return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
@@ -1577,23 +1739,39 @@ def test_generate_report_vs_linalg_suite_uses_copied_current_baseline_recipe(tmp
         config=GenerationConfig(
             repo_root=tmp_path,
             current_tag="v0.4.3",
-            baseline_tag="v0.4.2",
+            baseline_tag="v0.4.3",
             worktree_ref="HEAD",
             suite="vs_linalg",
             apply_current_diff=False,
         ),
     )
 
-    assert report_id.archive_name == "v0.4.3-vs-v0.4.2.md"
+    assert report_id.archive_name == "v0.4.3-vs-v0.4.3.md"
     assert output.read_text(encoding="utf-8") == _retained_report(tmp_path)
-    assert any(kind == "just" and args == ("bench-save-baseline", "v0.4.2", "vs_linalg") for kind, args, _ in calls)
+    assert output.with_suffix(".csv").is_file()
+    assert output.with_suffix(".provenance.json").is_file()
+    assert any(kind == "just" and args == ("bench-save-baseline", "v0.4.3", "vs_linalg") for kind, args, _ in calls)
     assert any(kind == "just" and args == ("bench-vs-linalg-la-stack",) for kind, args, _ in calls)
+    assert any(kind == "uv" and "--csv-output" in args and "--provenance-output" in args for kind, args, _ in calls)
     assert not any(kind == "cargo" for kind, _, _ in calls)
     assert not any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
     assert not any(kind == "just" and args == ("bench-latest",) for kind, args, _ in calls)
 
+    current = tmp_path / "docs" / "PERFORMANCE.md"
+    with pytest.raises(ValueError, match="cannot promote a same-version local performance comparison"):
+        archive_performance.render_and_promote_artifacts(
+            artifacts=ArtifactPaths(
+                csv=output.with_suffix(".csv"),
+                provenance=output.with_suffix(".provenance.json"),
+            ),
+            output=output,
+            current=current,
+            archive_dir=tmp_path / "docs" / "archive" / "performance",
+        )
+    assert not current.exists()
 
-def test_generate_report_vs_linalg_suite_uses_suite_aware_baseline_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
+def test_generate_local_report_artifacts_can_be_rendered_and_promoted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output = tmp_path / "target" / "bench-reports" / "performance.md"
     calls: list[RunnerCall] = []
 
@@ -1641,6 +1819,19 @@ def test_generate_report_vs_linalg_suite_uses_suite_aware_baseline_recipe(tmp_pa
     assert any(kind == "just" and args == ("bench-vs-linalg-la-stack",) for kind, args, _ in calls)
     assert not any(kind == "cargo" for kind, _, _ in calls)
     assert not any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
+
+    current = tmp_path / "docs" / "PERFORMANCE.md"
+    promoted = archive_performance.render_and_promote_artifacts(
+        artifacts=ArtifactPaths(
+            csv=output.with_suffix(".csv"),
+            provenance=output.with_suffix(".provenance.json"),
+        ),
+        output=output,
+        current=current,
+        archive_dir=tmp_path / "docs" / "archive" / "performance",
+    )
+    assert promoted == report_id
+    assert current.read_text(encoding="utf-8") == output.read_text(encoding="utf-8")
 
 
 def test_main_generates_latest_published_report_from_github_releases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1905,7 +2096,7 @@ def test_failed_archive_index_update_rolls_back_report_and_new_archive(
     assert not (archive_dir / "README.md").exists()
 
 
-def test_failed_rerender_output_write_rolls_back_report_archive_and_index(
+def test_failed_artifact_promotion_output_write_rolls_back_report_archive_and_index(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1926,13 +2117,13 @@ def test_failed_rerender_output_write_rolls_back_report_archive_and_index(
 
     def fail_output_write(path: Path, text: str) -> None:
         if path == output:
-            msg = "simulated rerender output failure"
+            msg = "simulated artifact promotion output failure"
             raise OSError(msg)
         real_write(path, text)
 
     monkeypatch.setattr(archive_performance, "_write_text", fail_output_write)
 
-    with pytest.raises(OSError, match="simulated rerender output failure"):
+    with pytest.raises(OSError, match="simulated artifact promotion output failure"):
         archive_performance._promote_report_text(
             source_text=_report("0.4.3", "v0.4.2"),
             request=archive_performance.PromotionRequest(
@@ -1961,6 +2152,7 @@ def test_generate_and_promote_rejects_artifact_alias_before_worktree(tmp_path: P
 
     with pytest.raises(ValueError, match="must use distinct paths"):
         generate_and_promote_worktree_report(
+            output=tmp_path / "target" / "bench-reports" / "performance.md",
             current=current,
             archive_dir=archive_dir,
             config=GenerationConfig(
@@ -1998,10 +2190,15 @@ def test_generate_output_only_rejects_artifact_alias_before_worktree(tmp_path: P
     assert not output.exists()
 
 
-def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_generate_and_promote_uses_temp_worktree_and_current_diff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
     (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
     current = tmp_path / "docs" / "PERFORMANCE.md"
+    output = tmp_path / "target" / "bench-reports" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     current.parent.mkdir(parents=True)
     current.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
@@ -2042,6 +2239,7 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path: Path
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     report_id = generate_and_promote_worktree_report(
+        output=output,
         current=current,
         archive_dir=archive_dir,
         config=GenerationConfig(
@@ -2055,15 +2253,18 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(tmp_path: Path
 
     assert report_id.archive_name == "v0.4.3-vs-v0.4.2.md"
     assert current.read_text(encoding="utf-8") == _retained_report(tmp_path)
+    assert output.read_text(encoding="utf-8") == current.read_text(encoding="utf-8")
     assert (archive_dir / "v0.4.2-vs-v0.4.1.md").exists()
     assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "HEAD" for kind, args, _ in calls)
     assert any(kind == "git-stdin" and args == ("apply", "--binary") for kind, args, _ in calls)
     assert any(kind == "just" and args == ("bench-latest",) for kind, args, _ in calls)
     assert any(kind == "git" and args[:3] == ("worktree", "remove", "--force") for kind, args, _ in calls)
+    assert "applying staged and unstaged tracked changes; untracked files are excluded" in capsys.readouterr().err
 
 
 def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     current = tmp_path / "docs" / "PERFORMANCE.md"
+    output = tmp_path / "target" / "bench-reports" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
 
@@ -2095,6 +2296,7 @@ def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     report_id = generate_and_promote_worktree_report(
+        output=output,
         current=current,
         archive_dir=archive_dir,
         config=GenerationConfig(
@@ -2108,6 +2310,7 @@ def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path
 
     assert report_id.archive_name == "v0.4.2-vs-v0.4.1.md"
     assert current.read_text(encoding="utf-8") == _retained_report(tmp_path)
+    assert output.read_text(encoding="utf-8") == current.read_text(encoding="utf-8")
     assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.2" for kind, args, _ in calls)
     assert any(kind == "cargo" and args == ("bench", "--locked", "--features", "bench,exact") for kind, args, _ in calls)
     assert not any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)

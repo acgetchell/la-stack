@@ -702,26 +702,26 @@ def test_collect_vs_linalg_all_benches_includes_latest_peer_rows(tmp_path: Path)
 # ---------------------------------------------------------------------------
 
 
-def test_snapshot_tables_per_dimension(tmp_path: Path) -> None:
+def test_snapshot_uses_one_table_per_suite_with_case_column(tmp_path: Path) -> None:
     _build_criterion_tree(tmp_path)
     results = bench_compare._collect_results(tmp_path, "new", "median")
     tables = bench_compare._snapshot_tables(results, "median")
-    assert "### D=2" in tables
-    assert "### D=3" in tables
-    assert "### Random corpus D=3" in tables
-    assert "### Near-singular 3x3" in tables
-    assert "| Benchmark | Median | Criterion CI |" in tables
+    assert tables.count("| Case | Benchmark | Median | Criterion CI |") == 1
+    assert "| D=2 |" in tables
+    assert "| D=3 |" in tables
+    assert "| Random corpus D=3 |" in tables
+    assert "| Near-singular 3x3 |" in tables
 
 
 def test_snapshot_tables_uses_stat_label(tmp_path: Path) -> None:
     _build_criterion_tree(tmp_path, stat="mean")
     results = bench_compare._collect_results(tmp_path, "new", "mean")
     tables = bench_compare._snapshot_tables(results, "mean")
-    assert "| Benchmark | Mean | Criterion CI |" in tables
+    assert "| Case | Benchmark | Mean | Criterion CI |" in tables
     assert "Median" not in tables
 
 
-def test_comparison_tables_per_dimension(tmp_path: Path) -> None:
+def test_comparison_uses_one_table_per_suite_with_case_column(tmp_path: Path) -> None:
     _build_criterion_tree(tmp_path)
     for d, det, det_exact in [(2, 2.0, 8000.0), (3, 10.0, 42000.0)]:
         group = tmp_path / f"exact_d{d}"
@@ -732,9 +732,9 @@ def test_comparison_tables_per_dimension(tmp_path: Path) -> None:
 
     comparisons = bench_compare._collect_comparisons(tmp_path, "v0.3.0", "median").comparisons
     tables = bench_compare._comparison_tables(comparisons, "v0.3.0")
-    assert "### D=2" in tables
-    assert "### D=3" in tables
-    assert "| Benchmark | v0.3.0 (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | Point-estimate ratio |" in tables
+    assert tables.count("| Case | Benchmark | v0.3.0 (point + CI)") == 1
+    assert "| D=2 |" in tables
+    assert "| D=3 |" in tables
     assert "det_exact_rounded_f64 (vs det_exact_f64)" in tables
     assert "solve_exact_f64_result (vs solve_exact_f64)" in tables
 
@@ -745,16 +745,16 @@ def test_comparison_tables_include_vs_linalg_peer_context(tmp_path: Path) -> Non
     tables = bench_compare._comparison_tables(comparisons, "last")
 
     assert (
-        "| Benchmark | last (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | "
+        "| Case | Benchmark | last (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | "
         "Point-estimate ratio | last nalgebra | last faer |" in tables
     )
     assert (
-        "| la_stack_lu_solve | 20.0 ns [18.0 ns, 22.0 ns] | 10.0 ns [9.0 ns, 11.0 ns] | -50.0% | "
+        "| D=2 | la_stack_lu_solve | 20.0 ns [18.0 ns, 22.0 ns] | 10.0 ns [9.0 ns, 11.0 ns] | -50.0% | "
         "faster point estimate; marginal CIs separated | 2.00x | "
         "30.0 ns [27.0 ns, 33.0 ns] | 40.0 ns [36.0 ns, 44.0 ns] |" in tables
     )
     assert (
-        "| la_stack_ldlt_solve | 24.0 ns [21.6 ns, 26.4 ns] | 12.0 ns [10.8 ns, 13.2 ns] | -50.0% | "
+        "| D=2 | la_stack_ldlt_solve | 24.0 ns [21.6 ns, 26.4 ns] | 12.0 ns [10.8 ns, 13.2 ns] | -50.0% | "
         "faster point estimate; marginal CIs separated | 2.00x | "
         "36.0 ns [32.4 ns, 39.6 ns] | 48.0 ns [43.2 ns, 52.8 ns] |" in tables
     )
@@ -993,13 +993,18 @@ def test_main_snapshot_writes_output(tmp_path: Path) -> None:
     assert output.exists()
 
     text = output.read_text(encoding="utf-8")
-    assert "### D=2" in text
-    assert "### Random corpus D=3" in text
-    assert "### Near-singular 3x3" in text
+    assert "| D=2 |" in text
+    assert "| Random corpus D=3 |" in text
+    assert "| Near-singular 3x3 |" in text
     assert "just performance-local" in text
     assert "just performance-release" in text
+    assert "just performance-doc" in text
     assert "just performance-github-assets" in text
     assert "just performance-release <current-tag> <previous-tag>" in text
+    assert "untracked files are excluded" in text
+    assert "performance-local` writes `performance.md` plus retained `performance.csv`" in text
+    assert "performance-doc` consumes the retained pair from either workflow" in text
+    assert "performance-local` followed by `performance-doc` is equivalent" in text
     assert "Older curated release-to-release reports are archived in `docs/archive/performance/`." in text
     assert "git checkout" not in text
     assert text.endswith(bench_compare.HOW_TO_UPDATE_SECTION)

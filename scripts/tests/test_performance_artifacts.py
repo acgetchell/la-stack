@@ -170,6 +170,20 @@ def test_artifact_round_trip_preserves_comparable_and_one_sided_rows() -> None:
     assert provenance_payload.endswith(b"\n")
 
 
+def test_artifact_round_trip_allows_same_version_local_comparison() -> None:
+    original = _bundle()
+    bundle = PerformanceBundle(
+        context=_context(current="v0.4.4", baseline="v0.4.4"),
+        rows=original.rows,
+    )
+
+    csv_payload, provenance_payload = serialize_bundle(bundle)
+    parsed = load_bundle_bytes(csv_payload, provenance_payload, source="same-version local fixture")
+
+    assert parsed.context.release == ReleasePair(current="v0.4.4", baseline="v0.4.4")
+    assert parsed.rows == bundle.sorted_rows
+
+
 def test_artifact_serialization_is_independent_of_input_row_order() -> None:
     bundle = _bundle()
     reordered = PerformanceBundle(context=bundle.context, rows=tuple(reversed(bundle.rows)))

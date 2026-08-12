@@ -183,9 +183,11 @@ just performance-local
 ```
 
 It writes `target/bench-reports/performance.md` without changing committed
-release documentation. Treat regressions as design feedback. If a slowdown is
-intentional, explain the correctness, API clarity, or composability benefit
-that justifies it.
+release documentation or requiring a version bump. Staged and unstaged changes
+to tracked files participate; untracked files are excluded, so stage any new
+benchmark-relevant file first. Treat regressions as design feedback. If a
+slowdown is intentional, explain the correctness, API clarity, or composability
+benefit that justifies it.
 
 Core Rust, Cargo, or public-behavior changes must pass `just ci` before a pull
 request is ready. Documentation, configuration, Python, test-only,

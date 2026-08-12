@@ -130,7 +130,7 @@ def test_readme_tag_references_reject_longer_non_semver_tags(tmp_path: Path, tag
     assert check_docs_version_sync._readme_tag_references(readme) == []
 
 
-@pytest.mark.parametrize("recipe", ["performance-github-assets", "performance-local-vs-linalg", "performance-release"])
+@pytest.mark.parametrize("recipe", ["performance-github-assets", "performance-local-non-exact", "performance-release"])
 def test_find_version_mismatches_reports_stale_benchmark_current_tags(tmp_path: Path, recipe: str) -> None:
     _write_project(tmp_path)
     docs = tmp_path / "docs"
@@ -138,7 +138,7 @@ def test_find_version_mismatches_reports_stale_benchmark_current_tags(tmp_path: 
     workflows = docs / "workflows.md"
     workflows.write_text(
         f"| Release workflow | `just {recipe} v1.2.2 v1.2.1` |\n"
-        "```bash\njust performance-local-vs-linalg v1.2.3 v1.2.2\n```\n"
+        "```bash\njust performance-local-non-exact v1.2.3 v1.2.2\n```\n"
         "Historical v1.2.1 behavior remains documented.\n",
         encoding="utf-8",
     )

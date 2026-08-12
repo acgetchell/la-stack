@@ -25,12 +25,12 @@ the commands measure and where their outputs go.
 | Goal | Recipe |
 |------|--------|
 | Latest-release local audit | `just performance-local` |
-| Release-signal check against tags | `just performance-local-vs-linalg v0.4.4 v0.4.3` |
+| Non-exact release-signal check against tags | `just performance-local-non-exact v0.4.4 v0.4.3` |
 | Fast saved-baseline loop | `just bench-save-baseline <name> <suite>` then `just bench-compare <name> <suite> all-benches` |
 | Full crate comparison | `just bench-vs-linalg` |
 | README table and plot | `just plot-vs-linalg-readme` |
 | Release report | `just performance-release v0.4.4 v0.4.3` |
-| Re-render retained release inputs | `just performance-rerender` |
+| Build docs from retained release inputs | `just performance-doc` |
 | Published-asset comparison | `just performance-github-assets v0.4.4 v0.4.3` |
 
 Rule of thumb:
@@ -40,12 +40,33 @@ Rule of thumb:
 - Use `bench-vs-linalg` plus plotting when updating README crate-to-crate
   comparisons.
 - Use `performance-release` only when preparing committed release artifacts.
-- Use `performance-rerender` for report-format changes after a valid release
-  dataset has already been retained.
+- Use `performance-doc` for report-format changes after a valid, promotable
+  comparison dataset has already been retained.
+
+The three canonical workflows compose around one artifact schema, metric set,
+and renderer:
+
+| Recipe | Measure | Retain CSV/JSON | Promote release docs |
+|--------|---------|-----------------|----------------------|
+| `performance-local` | Yes | Yes | No |
+| `performance-doc` | No | Consumes retained inputs | Yes |
+| `performance-release` | Yes | Yes | Yes |
+
+For a distinct release pair with no intervening source or configuration changes,
+running `performance-local` followed by `performance-doc` produces the same
+report and committed documentation as `performance-release`.
+`performance-release` exists as the safer one-step release operation: it keeps
+fresh measurement, validated artifact publication, and rollback-capable document
+promotion in one command.
 
 ## Benchmark Suites
 
 `la-stack` has two Criterion benchmark suites.
+
+Newly rendered reports use one table per selected suite. Dimension and
+adversarial-input group appear in a `Case` column instead of creating a separate
+table for every group. The `vs_linalg` table is the one wider variant because it
+adds nalgebra and faer context columns where matching peer measurements exist.
 
 **`vs_linalg`** (`benches/vs_linalg.rs`) compares `la-stack` against
 `nalgebra` and `faer` across D=2-64 for LU, solve, determinant, dot, norm, and
@@ -76,16 +97,20 @@ just performance-local
 
 This creates isolated temporary worktrees and runs both library revisions on the
 same machine with the current checkout's benchmark sources, manifests, lockfile,
-benchmark-input tests, recipes, and Rust toolchain. Only the baseline library
-implementation comes from the release tag. Before either timing run, the command
-runs `just test-bench-inputs` against that revision under the shared current
-fixture harness. This is a prerequisite correctness gate over the deterministic
-fixtures and operations, not validation of each timed Criterion sample. It
-writes `target/bench-reports/performance.md` and records both
-commits, CPU, operating system, Rust toolchain, lockfile and harness digests,
-Criterion selection/commands, and both correctness-gate results. The report
-reader rejects malformed or mismatched provenance and incomplete selected-suite
-coverage.
+benchmark-input tests, recipes, and Rust toolchain. Staged and unstaged changes
+to tracked files are applied to the current worktree. Untracked files are
+excluded; stage a new file before running the command if it must participate in
+the comparison. Only the baseline library implementation comes from the release
+tag. Before either timing run, the command runs `just test-bench-inputs` against
+that revision under the shared current fixture harness. This is a prerequisite
+correctness gate over the deterministic fixtures and operations, not validation
+of each timed Criterion sample. It writes
+`target/bench-reports/performance.md` plus retained `performance.csv` and
+`performance.provenance.json` comparison inputs. The report and sidecar embed
+both commits, CPU, operating system, Rust toolchain, lockfile and harness
+digests, Criterion selection/commands, and both correctness-gate results. The
+report reader rejects malformed or mismatched provenance and incomplete
+selected-suite coverage.
 
 The shared harness carries an explicit v0.4.3-only API adapter for renamed or
 ownership-adjusted calls (`det_sign_exact`, `Tolerance`, and vector dot
@@ -116,23 +141,32 @@ timing, current validation, and current timing, so a long comparison exposes
 completed samples and its active phase instead of remaining silent until the
 final report is rendered.
 
-If the checkout's package version is identical to the latest published release,
-the command now stops before creating worktrees or running benchmarks because a
-release report requires two distinct identifiers. For repeated optimization
-within one package version, use the named-baseline loop below instead.
+The local report may compare a checkout whose package version is identical to
+the latest published release. Commit/ref and source-state provenance distinguish
+the modified checkout from the tagged baseline even though both display the same
+package version. Release artifact publication remains stricter and requires two
+distinct release identifiers.
 
 ### Compare Current Code With A Specific Release
 
 For a narrower non-exact check against a known release pair, run:
 
 ```bash
-just performance-local-vs-linalg v0.4.4 v0.4.3
+just performance-local-non-exact v0.4.4 v0.4.3
 ```
 
 This generates a local `v0.4.3` `vs_linalg` baseline, measures the current
 la-stack `vs_linalg` rows, and renders a `vs_linalg` report. The report includes
 saved baseline nalgebra/faer timings as context where matching peer rows exist,
 without rerunning current peer crates.
+
+This narrowed peer-context view uses the same metrics and renderer but writes a
+separate `performance-non-exact.*` scratch bundle so it cannot replace the
+canonical full comparison inputs accidentally.
+
+When tags are provided explicitly, the current tag must match the package
+version in the `HEAD` checkout. A mismatch is rejected before tags are fetched,
+worktrees are created, or benchmarks run.
 
 ### Iterate Against A Local Saved Baseline
 
@@ -240,13 +274,18 @@ To reproduce and promote the report without running Cargo or creating Git
 worktrees, use:
 
 ```bash
-just performance-rerender
+just performance-doc
 ```
 
 This command fails closed on a missing, partial, malformed, mismatched, or
-unsupported artifact pair. Use it for presentation-only report corrections;
-changes to benchmark inputs, code, toolchains, or measurement configuration
-require a fresh `performance-release` run.
+unsupported artifact pair. It consumes the default CSV/JSON pair retained by a
+successful `performance-local` or `performance-release` run, rewrites the
+scratch Markdown, promotes it to `docs/PERFORMANCE.md`, and archives the previous
+committed report when the release pair changes. Promotion requires distinct
+current and baseline package versions, so a same-version local comparison is
+retained and reproducible but cannot become release documentation. Use promotion
+for presentation-only report corrections; changes to benchmark inputs, code,
+toolchains, or measurement configuration require a fresh local or release run.
 
 ### Compare Published Release Artifacts
 
@@ -276,14 +315,15 @@ shared-harness workflow before attributing a difference solely to library code.
 | Path | Committed? | Producer | Purpose |
 |------|------------|----------|---------|
 | `target/criterion/` | No | `cargo bench`, `bench-save-*` | Local Criterion measurements and named baselines. |
-| `target/bench-reports/performance.md` | No | `bench-compare`, `performance-local*` | Local comparison report. |
-| `target/bench-reports/performance.csv` | No | `performance-local*`, `performance-release` | Validated tabular inputs for the release comparison. |
-| `target/bench-reports/performance.provenance.json` | No | `performance-local*`, `performance-release` | Schema, release, source, command, toolchain, host, digest, and harness provenance. |
+| `target/bench-reports/performance.md` | No | `bench-compare`, `performance-local`, `performance-release`, `performance-doc` | Canonical local comparison report. |
+| `target/bench-reports/performance.csv` | No | `performance-local`, `performance-release` | Validated tabular inputs for the canonical comparison. |
+| `target/bench-reports/performance.provenance.json` | No | `performance-local`, `performance-release` | Schema, package identifiers, source, command, toolchain, host, digest, and harness provenance. |
+| `target/bench-reports/performance-non-exact.*` | No | `performance-local-non-exact` | Narrowed non-exact report and retained peer-context comparison inputs. |
 | `target/bench-reports/github-assets-performance.md` | No | `performance-github-assets` | Local report from published release artifacts. |
 | `target/bench-reports/github-assets-performance.csv` | No | `performance-github-assets` | Tabular inputs derived from published native archives. |
 | `target/bench-reports/github-assets-performance.provenance.json` | No | `performance-github-assets` | Provenance for the published-asset report inputs. |
-| `docs/PERFORMANCE.md` | Yes | `performance-release` | Latest curated release-to-release comparison. |
-| `docs/archive/performance/` | Yes | `performance-release` | Older curated release-to-release comparisons. |
+| `docs/PERFORMANCE.md` | Yes | `performance-release`, `performance-doc` | Latest curated release-to-release comparison. |
+| `docs/archive/performance/` | Yes | `performance-release`, `performance-doc` | Older curated release-to-release comparisons. |
 | `docs/assets/bench/` | Yes | `plot-vs-linalg-readme` | README benchmark CSV/SVG assets and JSON provenance. |
 | GitHub Release | Remote | `.github/workflows/release-benchmarks.yml` | Criterion baseline archive. |
 
@@ -293,9 +333,10 @@ Published baseline assets use the filename
 Everything under `target/bench-reports/` is reproducible local scratch owned by
 the performance-report workflows. It survives temporary-worktree cleanup but
 may be removed by `just clean` or `cargo clean`; retain or copy the CSV/JSON pair
-while reviewing or rerendering a release PR. The compact CSV is the analysis
-and Markdown-reproduction layer. It does not replace the full native Criterion
-`.tar.gz` archive attached to each GitHub Release, which remains the durable raw
+while reviewing or re-rendering a release PR. The compact CSV is the analysis and
+Markdown-reproduction layer for both local and release comparisons. It does not
+replace the full native Criterion `.tar.gz` archive attached to each GitHub
+Release, which remains the durable raw
 baseline for post-release comparisons.
 
 ## `vs_linalg` Methodology

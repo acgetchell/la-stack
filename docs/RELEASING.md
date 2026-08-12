@@ -140,20 +140,36 @@ incomplete.
 just performance-release
 ```
 
+Run this only after the package version has been bumped. The no-argument form
+uses the `Cargo.toml` version as the current release and discovers the previous
+stable published release. For an explicit repair, the supplied current tag must
+match the package version in the `HEAD` checkout; mismatches are rejected before
+tag fetching, worktree creation, or benchmarking. Release report publication
+also requires distinct current and baseline release identifiers.
+
 Review `docs/PERFORMANCE.md` for the latest release-to-release comparison. Older
 committed comparisons are archived under `docs/archive/performance/` with
 lexicographically sorted filenames such as `v0.4.2-vs-v0.4.1.md`. Iterative
 local reports still live under `target/bench-reports/`.
+
+The temporary current worktree includes staged and unstaged changes to tracked
+files. Untracked files are excluded, so stage every new benchmark-relevant file
+before running the release comparison.
 
 The release command retains `target/bench-reports/performance.csv` and
 `performance.provenance.json` before its temporary worktrees are removed, then
 renders and promotes Markdown from a validated reload of that pair. Review the
 CSV coverage/timing rows and JSON release, revision, command, toolchain, host,
 harness, and digest metadata alongside the Markdown. For a presentation-only
-correction, run `just performance-rerender`; it reproduces and promotes the
-report from those files without invoking Cargo or creating worktrees. The pair
-is local scratch and may be removed by `just clean` or `cargo clean`, so do not
-clean `target/` until the release report review is complete.
+correction, run `just performance-doc`; it reproduces and promotes the
+report from those files without invoking Cargo or creating worktrees. The same
+command can consume a pair retained by `performance-local` after the version
+bump. It rejects same-version local artifacts because committed performance docs
+must compare distinct releases. The command updates `docs/PERFORMANCE.md` and the
+performance archive, so review and stage those changes as release artifacts.
+The retained pair is local scratch and may be removed by `just clean` or
+`cargo clean`, so do not clean `target/` until the release report review is
+complete.
 
 For an explicit measurement repair, run
 `just performance-release <current-tag> <previous-tag>`. To compare the stored
@@ -164,6 +180,16 @@ harness, recording source-state, environment, toolchain, dependency, Criterion,
 and validation provenance. Stored release assets retain their original
 per-release harnesses; unavailable historical measurement metadata is labelled
 explicitly rather than treated as an isolated library-code comparison.
+
+`just performance-local` is the non-promoting half of the release workflow: it
+measures and writes `target/bench-reports/performance.md` plus the adjacent
+retained CSV/JSON pair. The local report may compare revisions with the same
+package version because commit/ref and source-state provenance distinguish them.
+For a distinct pair, following it with `performance-doc` is equivalent to
+`performance-release`; the latter performs fresh measurement, retention, and
+rollback-capable promotion atomically. `performance-local-non-exact` uses the
+same metric and report model for the narrowed peer-context view but writes a
+separate `performance-non-exact.*` scratch bundle.
 
 After the GitHub Release is published, the `Release Benchmarks` workflow checks
 out the release tag, runs the independent benchmark-input tests, saves a full

@@ -360,6 +360,9 @@ just performance-local
 # Release PR: update docs/PERFORMANCE.md and archive the previous report
 just performance-release
 
+# Build release docs from retained CSV/JSON inputs (no benchmarks)
+just performance-doc
+
 # GitHub Actions release assets
 just performance-github-assets
 
@@ -367,8 +370,13 @@ just performance-github-assets
 just performance-release <current-tag> <previous-tag>
 ```
 
-`just performance-local` writes `target/bench-reports/performance.md`.
+`just performance-local` writes `performance.md` plus retained `performance.csv` and
+`performance.provenance.json` comparison inputs under `target/bench-reports/` without promoting documentation.
+It applies staged and unstaged tracked changes; untracked files are excluded.
 `just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.
+`just performance-release` performs the same measurement and retention work, then promotes distinct-release documentation.
+`just performance-doc` consumes the retained pair from either workflow without benchmarking and promotes it when the package versions differ.
+For a distinct pair, `performance-local` followed by `performance-doc` is equivalent to the atomic `performance-release` workflow.
 
 Older curated release-to-release reports are archived in `docs/archive/performance/`.
 
