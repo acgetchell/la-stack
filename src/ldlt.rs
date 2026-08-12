@@ -20,7 +20,7 @@
 use core::hint::cold_path;
 
 use crate::matrix::SymmetricMatrix;
-use crate::scaled_product::{RangeCheckedProduct, ScaledProduct, range_checked_product};
+use crate::scaled_product::{ScaledProduct, range_checked_product};
 use crate::vector::Vector;
 use crate::{ArithmeticOperation, FactorizationKind, LaError, Tolerance};
 
@@ -276,18 +276,36 @@ impl<const D: usize> Ldlt<D> {
     pub const fn det(&self) -> Result<f64, LaError> {
         let mut det = 1.0;
         let mut i = 0;
-        while i < D {
-            let factor = self.factors.diag(i);
-            match range_checked_product(det, factor) {
-                RangeCheckedProduct::Safe(next) => det = next,
-                RangeCheckedProduct::NeedsScaling => {
+
+        if D <= 4 {
+            // Tiny determinants compose better with factorization when range
+            // loss exits immediately instead of carrying an aggregate proof.
+            while i < D {
+                let step = range_checked_product(det, self.factors.diag(i));
+                if !step.range_preserved() {
                     cold_path();
                     return self.scaled_det();
                 }
+                det = step.product();
+                i += 1;
             }
+            return Ok(det);
+        }
+
+        let mut range_preserved = true;
+        while i < D {
+            let factor = self.factors.diag(i);
+            let step = range_checked_product(det, factor);
+            det = step.product();
+            range_preserved &= step.range_preserved();
             i += 1;
         }
-        Ok(det)
+        if range_preserved {
+            Ok(det)
+        } else {
+            cold_path();
+            self.scaled_det()
+        }
     }
 
     /// Recompute the determinant with normalized mantissa/exponent scaling.
