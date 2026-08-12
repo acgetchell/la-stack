@@ -53,8 +53,8 @@ just performance-local
 # Release PR: update docs/PERFORMANCE.md and archive the previous report
 just performance-release
 
-# Re-render the release report from retained CSV/JSON inputs
-just performance-rerender
+# Build release docs from retained CSV/JSON inputs
+just performance-doc
 
 # GitHub Actions release assets, without local cargo benchmark runs
 just performance-github-assets
@@ -62,22 +62,35 @@ just performance-github-assets
 
 Local benchmark generation streams Cargo and Criterion progress while retaining
 the existing fail-closed report and provenance checks. Lines prefixed with
-`[performance]` identify the active validation or timing phase. A
-current-vs-latest request whose package and release identifiers match is
-rejected before benchmark work starts.
+`[performance]` identify the active validation or timing phase. Staged and
+unstaged changes to tracked files participate. Untracked files are excluded;
+stage a new file before running the command if it must participate. A local
+current-vs-latest report may use the same package and release identifier because
+its commit/ref and source-state provenance still distinguish the revisions.
 
 The local release workflows run the independent benchmark-input correctness gate
 and then measure both library revisions with one hashed current benchmark
 harness. Reports record source-state, environment, toolchain, dependency,
 Criterion, harness, and validation provenance and fail on incomplete selected
-coverage. `performance-release` retains schema-versioned `performance.csv` and
-`performance.provenance.json` inputs under `target/bench-reports/`, then renders
-the promoted Markdown from their validated reload. `performance-rerender` uses
-that pair without Cargo or temporary worktrees. These files are reproducible
-scratch and may be removed with `target/`; native Criterion release archives
-remain the durable raw baselines. Direct comparisons of separately published
-artifacts retain their original per-release harnesses and label unavailable
-historical measurement metadata explicitly.
+coverage. `performance-local` writes Markdown plus schema-versioned
+`performance.csv` and `performance.provenance.json` inputs under
+`target/bench-reports/` without promoting documentation. `performance-release`
+does the same measurement and retention work, requires distinct releases, and
+promotes the validated result. `performance-doc` consumes the retained pair
+from either workflow without Cargo or temporary worktrees, then promotes the
+result into `docs/PERFORMANCE.md` and the archive. Same-version local artifacts
+remain valid comparison evidence but cannot be promoted as a release report.
+These files are reproducible scratch and may be removed with `target/`; native
+Criterion release archives remain the durable raw baselines. Direct comparisons
+of separately published artifacts retain their original per-release harnesses
+and label unavailable historical measurement metadata explicitly.
+
+Operationally, `performance-release` is the atomic composition of
+`performance-local` and `performance-doc`: measure, retain the common
+comparison inputs, render, and promote. The narrowed
+`performance-local-non-exact` view uses the same metrics and renderer with
+nalgebra/faer context, but writes `performance-non-exact.*` so it does not
+overwrite the canonical full comparison bundle.
 
 See `docs/BENCHMARKING.md` for the current command matrix, local saved-baseline
 workflow, explicit tag arguments, output locations, and release-artifact
@@ -233,7 +246,7 @@ validates SemVer, and handles GitHub's 125KB tag-annotation size limit.
 |---|---|
 | `archive_changelog.py` | Split completed changelog minor series into archives |
 | `archive_performance.py` | Promote release performance docs and archive older comparisons |
-| `performance_artifacts.py` | Validate and publish schema-versioned release-report CSV/JSON inputs |
+| `performance_artifacts.py` | Validate and publish schema-versioned performance-comparison CSV/JSON inputs |
 | `bench_compare.py` | Compare Criterion benchmark baselines and render Markdown reports |
 | `check_docs_version_sync.py` | Verify versioned documentation links and snippets stay synchronized |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |

@@ -1,12 +1,12 @@
 #!/usr/bin/env -S uv run --locked
-"""Promote a benchmark report into docs/PERFORMANCE.md and archive the old one.
+"""Generate, retain, render, and promote benchmark comparison reports.
 
 Release performance docs have two different lifetimes:
 
   - ``target/bench-reports/performance.md`` is local scratch output for the
     current machine and branch.
   - ``target/bench-reports/performance.csv`` and the adjacent provenance JSON
-    are validated, rerenderable release-report inputs.
+    are validated, reproducible performance-comparison inputs.
   - ``docs/PERFORMANCE.md`` is the latest curated release-to-release comparison.
   - ``docs/archive/performance/*.md`` stores older curated comparisons.
 
@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from bench_compare import HOW_TO_UPDATE_SECTION, render_release_artifacts
-from performance_artifacts import ArtifactPaths, PerformanceBundle, ensure_distinct_paths, load_bundle, publish_bundle
+from performance_artifacts import ArtifactPaths, ensure_distinct_paths, load_bundle, publish_bundle
 from subprocess_utils import ExecutableNotFoundError, cpu_description, run_git_command, run_git_command_with_input, run_safe_command
 
 _VERSION_RE = re.compile(r"^\*\*la-stack\*\* v(?P<version>[^\s`]+)", re.MULTILINE)
@@ -173,10 +173,9 @@ class ArchivePaths:
 
 @dataclass(frozen=True)
 class GeneratedReport:
-    """A report rendered from a validated, durable artifact bundle."""
+    """A generated benchmark report that remains valid after worktree cleanup."""
 
     text: str
-    bundle: PerformanceBundle
 
 
 @dataclass(frozen=True)
@@ -184,7 +183,7 @@ class ArchiveResult:
     """Result and destination metadata for a completed archive operation."""
 
     report_id: ReportId
-    action: Literal["output", "promote-generated", "promote-source", "rerender"]
+    action: Literal["output", "promote-generated", "promote-source", "promote-artifacts"]
 
 
 @dataclass(frozen=True)
@@ -341,10 +340,6 @@ def _previous_release_from_list(stable_releases: list[PublishedRelease], current
     return previous_releases[-1]
 
 
-def _previous_published_release(repo_root: Path, current_tag: str) -> PublishedRelease:
-    return _previous_release_from_list(_published_stable_releases(repo_root), current_tag)
-
-
 def _normalize_worktree_ref_for_tag(worktree_ref: str, current_tag: str) -> str:
     try:
         normalized_ref = normalize_tag(worktree_ref)
@@ -376,6 +371,25 @@ def _published_release_pair(repo_root: Path) -> ReportId:
     current = max(stable_releases, key=lambda release: release.published_at)
     previous = _previous_release_from_list(stable_releases, current.tag)
     return ReportId(current_tag=current.tag, baseline_tag=previous.tag)
+
+
+def _unpublished_package_release_pair(repo_root: Path) -> ReportId:
+    """Pair an unpublished package version with its newest prior release."""
+    current = _current_package_tag(repo_root)
+    stable_releases = _published_stable_releases(repo_root)
+    if not stable_releases:
+        msg = "expected at least one published stable semver release"
+        raise RuntimeError(msg)
+    latest_version = max(stable_releases, key=lambda release: _semver_sort_key(release.tag))
+    if _semver_sort_key(current) <= _semver_sort_key(latest_version.tag):
+        msg = (
+            f"current package tag {current} must be newer than latest published stable release "
+            f"{latest_version.tag}; update the package version before running --infer-release, "
+            "or pass explicit tags for a repair"
+        )
+        raise ValueError(msg)
+    previous = _previous_release_from_list(stable_releases, current)
+    return ReportId(current_tag=current, baseline_tag=previous.tag)
 
 
 def _read_text(path: Path) -> str:
@@ -1244,31 +1258,35 @@ def _render_report(
     artifacts: ArtifactPaths,
     config: GenerationConfig,
 ) -> None:
-    """Export report inputs and render Markdown from their validated reload."""
-    _run_tool(
-        "uv",
+    """Render Markdown and export validated comparison artifacts."""
+    command = [
+        "run",
+        "--locked",
+        "--project",
+        str(config.repo_root),
+        "bench-compare",
+        config.baseline_tag,
+        "--repo-root",
+        str(worktree),
+        "--criterion-dir",
+        str(worktree / "target" / "criterion"),
+        "--suite",
+        config.suite,
+        "--scope",
+        config.scope,
+    ]
+    command.extend(
         [
-            "run",
-            "--locked",
-            "--project",
-            str(config.repo_root),
-            "bench-compare",
-            config.baseline_tag,
-            "--repo-root",
-            str(worktree),
-            "--criterion-dir",
-            str(worktree / "target" / "criterion"),
-            "--suite",
-            config.suite,
-            "--scope",
-            config.scope,
             "--csv-output",
             str(artifacts.csv),
             "--provenance-output",
             str(artifacts.provenance),
-            "--output",
-            str(report),
-        ],
+        ]
+    )
+    command.extend(["--output", str(report)])
+    _run_tool(
+        "uv",
+        command,
         cwd=config.repo_root,
     )
 
@@ -1313,7 +1331,7 @@ def _run_benchmarks_and_render_report(
 
 
 def _default_artifact_paths(repo_root: Path) -> ArtifactPaths:
-    """Return the canonical retained release-report artifact pair."""
+    """Return the canonical retained comparison-artifact pair."""
     return ArtifactPaths(
         csv=repo_root / _DEFAULT_ARTIFACT_CSV,
         provenance=repo_root / _DEFAULT_ARTIFACT_PROVENANCE,
@@ -1326,7 +1344,7 @@ def _generated_report_in_temp_worktree(
     config: GenerationConfig,
     published_artifacts: ArtifactPaths,
 ) -> Iterator[GeneratedReport]:
-    """Generate, publish, and expose a report before its worktree is removed."""
+    """Generate and expose a report before its temporary worktree is removed."""
     if config.baseline_source == "local":
         _require_recorded_measurement_cpu()
     with tempfile.TemporaryDirectory(prefix="la-stack-performance-") as tmp:
@@ -1345,6 +1363,7 @@ def _generated_report_in_temp_worktree(
             label="temporary worktree",
         ):
             if config.apply_current_diff:
+                _progress("applying staged and unstaged tracked changes; untracked files are excluded")
                 _apply_current_diff_to_worktree(repo_root=config.repo_root, worktree=worktree)
             if config.baseline_source == "github-assets":
                 _prepare_github_release_assets(
@@ -1390,14 +1409,14 @@ def _generated_report_in_temp_worktree(
                     config=config,
                     baseline_run=baseline_run,
                 )
-            bundle = load_bundle(temporary_artifacts)
             report_text = _read_text(report)
+            bundle = load_bundle(temporary_artifacts)
             with publish_bundle(published_artifacts, bundle):
                 durable_text = render_release_artifacts(published_artifacts)
                 if durable_text != report_text:
-                    msg = "durable release-performance artifacts did not reproduce the generated Markdown"
+                    msg = "durable performance-comparison artifacts did not reproduce the generated Markdown"
                     raise ValueError(msg)
-                yield GeneratedReport(text=durable_text, bundle=bundle)
+                yield GeneratedReport(text=durable_text)
 
 
 def _current_archive_state(
@@ -1482,6 +1501,9 @@ def _promotion_snapshots(
 
 def _promote_report_text(*, source_text: str, request: PromotionRequest) -> ReportId:
     """Archive the old report and atomically promote validated Markdown text."""
+    if request.expected.current_tag == request.expected.baseline_tag:
+        msg = "cannot promote a same-version local performance comparison as release documentation"
+        raise ValueError(msg)
     source_text = _normalize_how_to_update(source_text)
     source_id = parse_report_id(source_text)
     if source_id != request.expected:
@@ -1554,6 +1576,7 @@ def promote_report(
 
 def generate_and_promote_worktree_report(
     *,
+    output: Path,
     current: Path,
     archive_dir: Path,
     config: GenerationConfig,
@@ -1562,6 +1585,9 @@ def generate_and_promote_worktree_report(
     """Generate a comparison in a temp worktree, then promote it."""
     current_tag = normalize_tag(config.current_tag)
     baseline_tag = normalize_tag(config.baseline_tag)
+    if current_tag == baseline_tag:
+        msg = "release performance promotion requires distinct current and baseline releases"
+        raise ValueError(msg)
     config = GenerationConfig(
         repo_root=config.repo_root,
         current_tag=current_tag,
@@ -1582,6 +1608,7 @@ def generate_and_promote_worktree_report(
         current=current,
         archive_dir=archive_dir,
         expected=expected,
+        output=output,
         reserved_paths=reserved_paths,
     )
     _current_text, _current_id, archive_path = _current_archive_state(
@@ -1652,7 +1679,7 @@ def generate_worktree_report(
         return report_id
 
 
-def rerender_and_promote_artifacts(
+def render_and_promote_artifacts(
     *,
     artifacts: ArtifactPaths,
     output: Path,
@@ -1661,15 +1688,18 @@ def rerender_and_promote_artifacts(
 ) -> ReportId:
     """Reproduce and promote Markdown using only retained CSV/JSON inputs."""
     bundle = load_bundle(artifacts)
-    report_text = _normalize_how_to_update(render_release_artifacts(artifacts))
     expected = ReportId(
         current_tag=normalize_tag(bundle.context.release.current),
         baseline_tag=normalize_tag(bundle.context.release.baseline),
     )
+    if expected.current_tag == expected.baseline_tag:
+        msg = "cannot promote a same-version local performance comparison as release documentation"
+        raise ValueError(msg)
+    report_text = _normalize_how_to_update(render_release_artifacts(artifacts))
     observed = parse_report_id(report_text)
     if observed != expected:
         msg = (
-            "rerendered benchmark report does not match retained release pair: "
+            "rendered benchmark report does not match retained release pair: "
             f"found {observed.current_tag} vs {observed.baseline_tag}, "
             f"expected {expected.current_tag} vs {expected.baseline_tag}"
         )
@@ -1720,13 +1750,12 @@ def resolve_archive_request(options: ArchiveRequestOptions) -> ResolvedArchiveRe
         if current_tag is not None or baseline_tag is not None:
             msg = "do not pass current_tag or baseline_tag with --infer-release"
             raise ValueError(msg)
-        inferred_current = _current_package_tag(repo_root)
-        inferred_baseline = _previous_published_release(repo_root, inferred_current).tag
+        inferred_pair = _unpublished_package_release_pair(repo_root)
         return ResolvedArchiveRequest(
-            current_tag=inferred_current,
-            baseline_tag=inferred_baseline,
+            current_tag=inferred_pair.current_tag,
+            baseline_tag=inferred_pair.baseline_tag,
             worktree_ref=worktree_ref,
-            tags_to_fetch=(inferred_baseline,),
+            tags_to_fetch=(inferred_pair.baseline_tag,),
         )
 
     if current_vs_latest:
@@ -1735,14 +1764,6 @@ def resolve_archive_request(options: ArchiveRequestOptions) -> ResolvedArchiveRe
             raise ValueError(msg)
         inferred_current = _current_package_tag(repo_root)
         latest = _latest_published_release(repo_root).tag
-        if inferred_current == latest:
-            msg = (
-                f"current package tag and latest published release are both {latest}; "
-                "a release-performance report requires distinct identifiers. "
-                "Use a named local Criterion baseline for same-version worktree comparisons, "
-                "or rerun after the maintainer updates the package version."
-            )
-            raise ValueError(msg)
         return ResolvedArchiveRequest(
             current_tag=inferred_current,
             baseline_tag=latest,
@@ -1766,9 +1787,9 @@ def resolve_archive_request(options: ArchiveRequestOptions) -> ResolvedArchiveRe
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
-        description="Promote a benchmark comparison into docs/PERFORMANCE.md and archive the previous report.",
+        description="Generate local benchmark comparisons or promote validated comparison artifacts into release documentation.",
     )
-    parser.add_argument("current_tag", nargs="?", help="Release tag for the new report, e.g. v0.4.3")
+    parser.add_argument("current_tag", nargs="?", help="Current package-version label, e.g. v0.4.3")
     parser.add_argument("baseline_tag", nargs="?", help="Previous release tag used as the comparison baseline, e.g. v0.4.2")
     parser.add_argument(
         "--source",
@@ -1783,17 +1804,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         default=_DEFAULT_SOURCE,
-        help=f"Generated report path for --output-only (default: {_DEFAULT_SOURCE})",
+        help=f"Rendered local comparison report path (default: {_DEFAULT_SOURCE})",
     )
     parser.add_argument(
         "--artifact-csv",
         default=_DEFAULT_ARTIFACT_CSV,
-        help=f"Retained release-report CSV path (default: {_DEFAULT_ARTIFACT_CSV})",
+        help=f"Retained comparison CSV path (default: {_DEFAULT_ARTIFACT_CSV})",
     )
     parser.add_argument(
         "--artifact-provenance",
         default=_DEFAULT_ARTIFACT_PROVENANCE,
-        help=f"Retained release-report JSON provenance path (default: {_DEFAULT_ARTIFACT_PROVENANCE})",
+        help=f"Retained comparison JSON provenance path (default: {_DEFAULT_ARTIFACT_PROVENANCE})",
     )
     parser.add_argument(
         "--archive-dir",
@@ -1803,7 +1824,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--generate-in-temp-worktree",
         action="store_true",
-        help="Generate the comparison in a temporary detached worktree before promoting it.",
+        help="Generate the comparison in a temporary detached worktree.",
     )
     parser.add_argument(
         "--published-latest",
@@ -1813,7 +1834,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--infer-release",
         action="store_true",
-        help="Infer current_tag from Cargo.toml and baseline_tag from the previous stable published release.",
+        help="Require an unpublished Cargo.toml version and compare it with the previous stable published release.",
     )
     parser.add_argument(
         "--current-vs-latest",
@@ -1831,7 +1852,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write the generated report to --output without promoting docs/PERFORMANCE.md.",
     )
     parser.add_argument(
-        "--rerender",
+        "--local-report",
+        action="store_true",
+        help=(
+            "Generate a local report and retained comparison artifacts without promoting release documentation; "
+            "the current package version may match the baseline release."
+        ),
+    )
+    parser.add_argument(
+        "--promote-artifacts",
         action="store_true",
         help="Render and promote from retained CSV/JSON artifacts without benchmarks or worktrees.",
     )
@@ -1847,13 +1876,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--suite",
-        default=_DEFAULT_SUITE,
+        default=None,
         choices=_SUPPORTED_SUITES,
         help=f"Benchmark suite for --generate-in-temp-worktree (default: {_DEFAULT_SUITE})",
     )
     parser.add_argument(
         "--scope",
-        default=_DEFAULT_SCOPE,
+        default=None,
         choices=_SUPPORTED_SCOPES,
         help=f"Comparison scope for --generate-in-temp-worktree (default: {_DEFAULT_SCOPE})",
     )
@@ -1902,14 +1931,36 @@ def _generation_config(*, args: argparse.Namespace, request: ResolvedArchiveRequ
         current_tag=request.current_tag,
         baseline_tag=request.baseline_tag,
         worktree_ref=request.worktree_ref,
-        suite=cast("BenchmarkSuite", args.suite),
-        scope=cast("ComparisonScope", args.scope),
+        suite=cast("BenchmarkSuite", args.suite or _DEFAULT_SUITE),
+        scope=cast("ComparisonScope", args.scope or _DEFAULT_SCOPE),
         apply_current_diff=not args.no_apply_current_diff and not args.github_assets,
         baseline_source="github-assets" if args.github_assets else "local",
     )
 
 
+def _validate_generation_request(
+    *,
+    args: argparse.Namespace,
+    request: ResolvedArchiveRequest,
+    repo_root: Path,
+) -> None:
+    """Reject invalid release identities before fetching tags or benchmarking."""
+    if not args.local_report and request.current_tag == request.baseline_tag:
+        msg = "release performance artifacts require distinct current and baseline releases"
+        raise ValueError(msg)
+
+    if args.generate_in_temp_worktree and not args.github_assets and args.current_tag is not None and request.worktree_ref == "HEAD":
+        package_tag = _current_package_tag(repo_root)
+        if request.current_tag != package_tag:
+            msg = (
+                f"explicit current tag {request.current_tag} does not match the current Cargo package tag "
+                f"{package_tag}; update the package version or pass the matching current tag"
+            )
+            raise ValueError(msg)
+
+
 def _run_archive_request(*, args: argparse.Namespace, paths: ArchivePaths, request: ResolvedArchiveRequest, repo_root: Path) -> ArchiveResult:
+    _validate_generation_request(args=args, request=request, repo_root=repo_root)
     if args.generate_in_temp_worktree:
         _fetch_required_tags(request=request, repo_root=repo_root, include_current=args.github_assets)
         config = _generation_config(args=args, request=request, repo_root=repo_root)
@@ -1924,6 +1975,7 @@ def _run_archive_request(*, args: argparse.Namespace, paths: ArchivePaths, reque
             )
         return ArchiveResult(
             report_id=generate_and_promote_worktree_report(
+                output=paths.output,
                 current=paths.current,
                 archive_dir=paths.archive_dir,
                 config=config,
@@ -1953,7 +2005,7 @@ def _run_archive_request(*, args: argparse.Namespace, paths: ArchivePaths, reque
 
 def _validate_cli_preflight(args: argparse.Namespace) -> None:
     """Reject locally invalid options before release discovery or tag fetching."""
-    if args.rerender and any(
+    if args.promote_artifacts and any(
         (
             args.current_tag,
             args.baseline_tag,
@@ -1963,12 +2015,21 @@ def _validate_cli_preflight(args: argparse.Namespace) -> None:
             args.github_assets,
             args.generate_in_temp_worktree,
             args.output_only,
+            args.local_report,
+            args.suite,
+            args.scope,
         )
     ):
-        msg = "--rerender cannot be combined with release selection, generation, GitHub-asset, or output-only options"
+        msg = "--promote-artifacts cannot be combined with release selection, generation, GitHub-asset, output-only, suite, or scope options"
         raise ValueError(msg)
     if args.output_only and not args.generate_in_temp_worktree:
         msg = "--output-only requires --generate-in-temp-worktree"
+        raise ValueError(msg)
+    if args.local_report and not args.output_only:
+        msg = "--local-report requires --output-only"
+        raise ValueError(msg)
+    if args.local_report and args.github_assets:
+        msg = "--local-report cannot be combined with --github-assets"
         raise ValueError(msg)
     if args.github_assets and not args.generate_in_temp_worktree:
         msg = "--github-assets requires --generate-in-temp-worktree"
@@ -1983,15 +2044,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _validate_cli_preflight(args)
         paths = _resolve_cli_paths(root, args)
-        if args.rerender:
+        if args.promote_artifacts:
             result = ArchiveResult(
-                report_id=rerender_and_promote_artifacts(
+                report_id=render_and_promote_artifacts(
                     artifacts=paths.artifacts,
                     output=paths.output,
                     current=paths.current,
                     archive_dir=paths.archive_dir,
                 ),
-                action="rerender",
+                action="promote-artifacts",
             )
         else:
             request = resolve_archive_request(
@@ -2022,9 +2083,9 @@ def main(argv: list[str] | None = None) -> int:
     if result.action == "output":
         print(f"Generated benchmark report in a temporary worktree and wrote it to {paths.output}")
     elif result.action == "promote-generated":
-        print(f"Generated benchmark report in a temporary worktree and promoted it to {paths.current}")
-    elif result.action == "rerender":
-        print(f"Re-rendered {paths.output} from {paths.artifacts.csv} and promoted it to {paths.current}")
+        print(f"Generated benchmark report in a temporary worktree, wrote it to {paths.output}, and promoted it to {paths.current}")
+    elif result.action == "promote-artifacts":
+        print(f"Rendered {paths.output} from {paths.artifacts.csv} and promoted it to {paths.current}")
     else:
         print(f"Promoted {paths.source} to {paths.current}")
     print(f"Current performance report: {result.report_id.current_tag} vs {result.report_id.baseline_tag}")

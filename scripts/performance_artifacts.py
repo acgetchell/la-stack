@@ -1,4 +1,4 @@
-"""Schema-versioned release-performance CSV and provenance artifacts."""
+"""Schema-versioned performance-comparison CSV and provenance artifacts."""
 
 import csv
 import hashlib
@@ -136,18 +136,15 @@ class PerformanceRow:
 
 @dataclass(frozen=True, slots=True)
 class ReleasePair:
-    """The current and baseline release identifiers represented by a report."""
+    """The current and baseline package identifiers represented by a report."""
 
     current: str
     baseline: str
 
     def __post_init__(self) -> None:
-        """Require two distinct, non-empty release identifiers."""
+        """Require two non-empty identifiers; local comparisons may match."""
         if not self.current.strip() or not self.baseline.strip():
             msg = "current and baseline releases must not be empty"
-            raise ValueError(msg)
-        if self.current == self.baseline:
-            msg = "current and baseline releases must differ"
             raise ValueError(msg)
 
 
@@ -187,7 +184,7 @@ class ArtifactContext:
     def __post_init__(self) -> None:
         """Bind report settings and benchmark provenance to the release pair."""
         if self.statistic != "median":
-            msg = f"unsupported release-report statistic: {self.statistic!r}"
+            msg = f"unsupported performance-comparison statistic: {self.statistic!r}"
             raise ValueError(msg)
         if self.suite not in SUITES:
             msg = f"unsupported suite: {self.suite!r}"

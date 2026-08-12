@@ -200,8 +200,8 @@ just performance-local
 # Release PR: update docs/PERFORMANCE.md and archive the previous report
 just performance-release
 
-# Re-render and promote from retained CSV/JSON inputs (no benchmarks)
-just performance-rerender
+# Build release docs from retained CSV/JSON inputs (no benchmarks)
+just performance-doc
 
 # GitHub Actions release assets
 just performance-github-assets
@@ -210,9 +210,13 @@ just performance-github-assets
 just performance-release <current-tag> <previous-tag>
 ```
 
-`just performance-local` writes `target/bench-reports/performance.md`.
+`just performance-local` writes `performance.md` plus retained `performance.csv` and
+`performance.provenance.json` comparison inputs under `target/bench-reports/` without promoting documentation.
+It applies staged and unstaged tracked changes; untracked files are excluded.
 `just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.
-`just performance-release` also retains `performance.csv` and `performance.provenance.json` beside the local report.
+`just performance-release` performs the same measurement and retention work, then promotes distinct-release documentation.
+`just performance-doc` consumes the retained pair from either workflow without benchmarking and promotes it when the package versions differ.
+For a distinct pair, `performance-local` followed by `performance-doc` is equivalent to the atomic `performance-release` workflow.
 
 Older curated release-to-release reports are archived in `docs/archive/performance/`.
 
@@ -1377,59 +1381,52 @@ def _group_heading_for_suite(suite: str, group: str) -> str:
 
 
 def _snapshot_tables(results: list[BenchResult], stat: str) -> str:
-    """Generate per-dimension markdown tables for a single set of results."""
+    """Generate one Markdown table per suite for a single set of results."""
     stat_label = stat.capitalize()
     sections: list[str] = []
 
     for suite, suite_items in _group_by_suite(results).items():
         sections.append(f"## {_suite_heading(suite)}")
+        lines = [
+            f"| Case | Benchmark | {stat_label} | Criterion CI |",
+            "|:-----|:----------|-------:|-------:|",
+        ]
         for group, items in _group_by_group(suite_items).items():
-            lines = [
-                f"### {_group_heading_for_suite(suite, group)}",
-                "",
-                f"| Benchmark | {stat_label} | Criterion CI |",
-                "|-----------|-------:|-------:|",
-            ]
+            case = _group_heading_for_suite(suite, group)
             for r in items:
                 ci_range = _format_confidence_interval(r.estimate)
-                lines.append(f"| {r.bench} | {_format_time(r.point_ns)} | {ci_range} |")
-            sections.append("\n".join(lines))
+                lines.append(f"| {case} | {r.bench} | {_format_time(r.point_ns)} | {ci_range} |")
+        sections.append("\n".join(lines))
 
     return "\n\n".join(sections)
 
 
 def _comparison_tables(comparisons: list[Comparison], baseline_name: str) -> str:
-    """Generate per-dimension markdown tables comparing baseline vs current."""
+    """Generate one Markdown comparison table per suite."""
     sections: list[str] = []
 
     for suite, suite_items in _group_by_suite(comparisons).items():
         sections.append(f"## {_suite_heading(suite)}")
-        for group, items in _group_by_group(suite_items).items():
-            has_peer_context = any(item.baseline_nalgebra_ns is not None or item.baseline_faer_ns is not None for item in items)
+        has_peer_context = any(item.baseline_nalgebra_ns is not None or item.baseline_faer_ns is not None for item in suite_items)
+        if has_peer_context:
+            header = (
+                f"| Case | Benchmark | {baseline_name} (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | "
+                f"Point-estimate ratio | {baseline_name} nalgebra | {baseline_name} faer |"
+            )
             lines = [
-                f"### {_group_heading_for_suite(suite, group)}",
-                "",
+                header,
+                "|:-----|:----------|-------:|-------:|-------:|:-----------|--------:|-------:|-------:|",
             ]
-            if has_peer_context:
-                header = (
-                    f"| Benchmark | {baseline_name} (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | Point-estimate ratio | "
-                    f"{baseline_name} nalgebra | {baseline_name} faer |"
-                )
-                lines.extend(
-                    [
-                        header,
-                        "|-----------|-------:|-------:|-------:|:-----------|--------:|-------:|-------:|",
-                    ]
-                )
-            else:
-                lines.extend(
-                    [
-                        f"| Benchmark | {baseline_name} (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | Point-estimate ratio |",
-                        "|-----------|-------:|-------:|-------:|:-----------|--------:|",
-                    ]
-                )
+        else:
+            lines = [
+                f"| Case | Benchmark | {baseline_name} (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | Point-estimate ratio |",
+                "|:-----|:----------|-------:|-------:|-------:|:-----------|--------:|",
+            ]
+        for group, items in _group_by_group(suite_items).items():
+            case = _group_heading_for_suite(suite, group)
             for c in items:
                 cells = [
+                    case,
                     _comparison_bench_label(c),
                     _format_estimate(c.baseline),
                     _format_estimate(c.current),
@@ -1445,7 +1442,7 @@ def _comparison_tables(comparisons: list[Comparison], baseline_name: str) -> str
                         ]
                     )
                 lines.append(f"| {' | '.join(cells)} |")
-            sections.append("\n".join(lines))
+        sections.append("\n".join(lines))
 
     return "\n\n".join(sections)
 
@@ -2023,11 +2020,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--csv-output",
-        help="Write schema-versioned release-report CSV input; requires an adjacent, distinct --provenance-output.",
+        help="Write schema-versioned comparison CSV input; requires an adjacent, distinct --provenance-output.",
     )
     parser.add_argument(
         "--provenance-output",
-        help="Write an adjacent release-report JSON provenance sidecar; requires a distinct --csv-output.",
+        help="Write an adjacent comparison JSON provenance sidecar; requires a distinct --csv-output.",
     )
     return parser.parse_args(argv)
 

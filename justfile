@@ -457,9 +457,9 @@ help-workflows:
     @echo "  just bench-vs-linalg-latest-vs # Run non-exact latest and compare against last"
     @echo "  just performance-github-assets # Compare stored GitHub Actions release assets"
     @echo "  just performance-local      # Compare current tree against latest release locally"
-    @echo "  just performance-local-vs-linalg # Compare current non-exact kernels locally"
-    @echo "  just performance-release    # Promote local release performance docs"
-    @echo "  just performance-rerender   # Re-render release docs from retained CSV/JSON"
+    @echo "  just performance-local-non-exact # Compare current non-exact kernels locally"
+    @echo "  just performance-release    # Measure, retain, and publish release docs"
+    @echo "  just performance-doc        # Build release docs from retained CSV/JSON"
     @echo "  just bench-save-last        # Save full baseline as 'last'"
     @echo "  just bench-vs-linalg        # Run vs_linalg bench (optional filter)"
     @echo "  just bench-vs-linalg-la-stack # Run la-stack rows from vs_linalg"
@@ -572,10 +572,6 @@ markdown-fix: _ensure-rumdl
 
 markdown-lint: markdown-check
 
-# Backward-compatible alias for the GitHub Actions release-asset comparison.
-performance-archive-published current_tag="" baseline_tag="":
-    just performance-github-assets {{ quote(current_tag) }} {{ quote(baseline_tag) }}
-
 # Compare stored GitHub Actions release benchmark assets without local cargo runs.
 performance-github-assets current_tag="" baseline_tag="": python-sync
     #!/usr/bin/env bash
@@ -592,12 +588,12 @@ performance-github-assets current_tag="" baseline_tag="": python-sync
         uv run --locked archive-performance --published-latest --github-assets --generate-in-temp-worktree --output-only --output target/bench-reports/github-assets-performance.md --artifact-csv target/bench-reports/github-assets-performance.csv --artifact-provenance target/bench-reports/github-assets-performance.provenance.json
     fi
 
-# Compare the current tree against the latest published release locally.
+# Compare the current tree against the latest release; untracked files are excluded.
 performance-local: python-sync
-    uv run --locked archive-performance --current-vs-latest --generate-in-temp-worktree --output-only --output target/bench-reports/performance.md
+    uv run --locked archive-performance --current-vs-latest --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance.md
 
 # Compare current non-exact kernels locally without rerunning current peer crates.
-performance-local-vs-linalg current_tag="" baseline_tag="": python-sync
+performance-local-non-exact current_tag="" baseline_tag="": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     current_tag={{ quote(current_tag) }}
@@ -607,9 +603,9 @@ performance-local-vs-linalg current_tag="" baseline_tag="": python-sync
             echo "current_tag and baseline_tag must be provided together" >&2
             exit 2
         fi
-        uv run --locked archive-performance "$current_tag" "$baseline_tag" --suite vs_linalg --generate-in-temp-worktree --worktree-ref HEAD --output-only --output target/bench-reports/performance.md
+        uv run --locked archive-performance "$current_tag" "$baseline_tag" --suite vs_linalg --generate-in-temp-worktree --worktree-ref HEAD --output-only --local-report --output target/bench-reports/performance-non-exact.md --artifact-csv target/bench-reports/performance-non-exact.csv --artifact-provenance target/bench-reports/performance-non-exact.provenance.json
     else
-        uv run --locked archive-performance --current-vs-latest --suite vs_linalg --generate-in-temp-worktree --output-only --output target/bench-reports/performance.md
+        uv run --locked archive-performance --current-vs-latest --suite vs_linalg --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance-non-exact.md --artifact-csv target/bench-reports/performance-non-exact.csv --artifact-provenance target/bench-reports/performance-non-exact.provenance.json
     fi
 
 # Generate local release-signal measurements in a temp worktree, then promote/archive docs.
@@ -628,9 +624,9 @@ performance-release current_tag="" baseline_tag="": python-sync
         uv run --locked archive-performance --infer-release --generate-in-temp-worktree --worktree-ref HEAD
     fi
 
-# Re-render and promote release performance docs from retained report inputs.
-performance-rerender: python-sync
-    uv run --locked archive-performance --rerender
+# Build and promote release performance docs from retained report inputs.
+performance-doc: python-sync
+    uv run --locked archive-performance --promote-artifacts
 
 # Plot: generate a single time-vs-dimension SVG from Criterion results.
 plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_partial="false": python-sync
