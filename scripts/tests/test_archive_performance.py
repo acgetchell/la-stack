@@ -2064,6 +2064,27 @@ def test_failed_atomic_replace_preserves_existing_report(tmp_path: Path, monkeyp
     assert not list(current.parent.glob(".PERFORMANCE.md.*.tmp"))
 
 
+def test_restore_file_removes_temp_when_fsync_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "docs" / "PERFORMANCE.md"
+    target.parent.mkdir()
+    target.write_text("current\n", encoding="utf-8")
+
+    def fail_fsync(_descriptor: int) -> None:
+        msg = "simulated fsync failure"
+        raise OSError(msg)
+
+    monkeypatch.setattr(archive_performance.os, "fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="simulated fsync failure"):
+        archive_performance._restore_file(target, b"restored\n")
+
+    assert target.read_text(encoding="utf-8") == "current\n"
+    assert not list(target.parent.glob(".PERFORMANCE.md.*.restore"))
+
+
 def test_failed_archive_index_update_rolls_back_report_and_new_archive(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

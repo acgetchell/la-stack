@@ -24,6 +24,13 @@ uv sync --locked --group dev
 - Give writer/parser pairs round-trip tests and explicit malformed-input tests.
 - Update this README whenever Python entry points in `pyproject.toml` change.
 
+### Updating dependencies and repository-owned tools
+
+Run `just update` for the deliberate maintenance workflow. It updates Cargo and
+uv dependency declarations and locks, upgrades only the Cargo CLI packages
+owned by `setup-tools`, and then uses `update-cargo-tool-pins` to reconcile the
+installed package versions with the root `justfile` atomically.
+
 ## How to use it
 
 ### Comparing performance
@@ -253,5 +260,6 @@ validates SemVer, and handles GitHub's 125KB tag-annotation size limit.
 | `tag_release.py` | Create annotated git tags from CHANGELOG.md sections |
 | `postprocess_changelog.py` | Normalize and reflow generated git-cliff Markdown safely |
 | `subprocess_utils.py` | Safe subprocess wrappers for git commands |
+| `update_cargo_tool_pins.py` | Reconcile repository-owned Cargo tool pins with installed versions |
 
 See `docs/RELEASING.md` for the full release workflow.

@@ -180,6 +180,9 @@ When user requests commit message generation:
 
 - **Unsafe Rust is forbidden.** Keep the manifest-level `unsafe_code = "forbid"`
   lint and crate/module `#![forbid(unsafe_code)]` enforcement intact.
+- **Dead code is forbidden.** Remove unused items instead of suppressing the
+  lint; never add `#[allow(dead_code)]` or `#![allow(dead_code)]`, including in
+  tests and static-analysis fixtures.
 - **ALLOWED**: Run formatters/linters: `cargo fmt`, `cargo clippy`, `cargo doc`, `taplo fmt`, `taplo lint`,
   `uv run --locked ruff check --fix`, `uv run --locked ruff format`, `rumdl`, `dprint`,
   `typos`, `actionlint`
@@ -207,7 +210,7 @@ When user requests commit message generation:
 
 ### Rust
 
-- The current MSRV and pinned contributor/CI toolchain are Rust 1.97.1. Keep
+- The current MSRV and pinned contributor/CI toolchain are Rust 1.98.0. Keep
   `Cargo.toml`, `rust-toolchain.toml`, and `clippy.toml` aligned when that
   baseline changes deliberately.
 - Prefer borrowed APIs by default:
@@ -292,6 +295,7 @@ just ci               # Full CI simulation (checks + tests + examples + bench co
 just test             # Lib + doc tests (fast)
 just test-all         # All tests (Rust, benchmark inputs, and Python)
 just examples         # Run all examples
+just update           # Update dependency locks and repository-owned Cargo tools
 ```
 
 ### Detailed Command Reference

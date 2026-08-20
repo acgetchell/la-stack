@@ -287,33 +287,53 @@ def _build_archive_text(
 
 def _stage_text(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        handle.write(text)
-        handle.flush()
-        os.fsync(handle.fileno())
-        return Path(handle.name)
+    staged: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            staged = Path(handle.name)
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+        raise
+    if staged is None:
+        msg = "temporary changelog staging completed without a path"
+        raise AssertionError(msg)
+    return staged
 
 
 def _stage_bytes(path: Path, payload: bytes) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "wb",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        handle.write(payload)
-        handle.flush()
-        os.fsync(handle.fileno())
-        return Path(handle.name)
+    staged: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            staged = Path(handle.name)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+        raise
+    if staged is None:
+        msg = "temporary changelog restoration completed without a path"
+        raise AssertionError(msg)
+    return staged
 
 
 def _replace_path(source: Path, destination: Path) -> None:
@@ -336,9 +356,11 @@ def _publish_texts(payloads: dict[Path, str]) -> None:
     if not payloads:
         return
     previous = {path: path.read_bytes() if path.is_file() else None for path in payloads}
-    staged = {path: _stage_text(path, text) for path, text in payloads.items()}
+    staged: dict[Path, Path] = {}
     replaced: list[Path] = []
     try:
+        for path, text in payloads.items():
+            staged[path] = _stage_text(path, text)
         for path, staged_path in staged.items():
             _replace_path(staged_path, path)
             replaced.append(path)

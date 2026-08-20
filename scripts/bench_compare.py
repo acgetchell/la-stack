@@ -2130,10 +2130,10 @@ def _write_text_atomic(path: Path, text: str) -> None:
             suffix=".tmp",
             delete=False,
         ) as handle:
+            staged = Path(handle.name)
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-            staged = Path(handle.name)
         staged.replace(path)
     finally:
         if staged is not None:

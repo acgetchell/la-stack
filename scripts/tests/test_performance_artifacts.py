@@ -393,6 +393,50 @@ def test_artifact_loader_fails_closed_on_partial_pair(tmp_path: Path) -> None:
         load_bundle(paths)
 
 
+def test_stage_payload_removes_temporary_file_when_fsync_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "performance.csv"
+
+    def fail_fsync(_descriptor: int) -> None:
+        msg = "simulated fsync failure"
+        raise OSError(msg)
+
+    monkeypatch.setattr(performance_artifacts.os, "fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="simulated fsync failure"):
+        performance_artifacts._stage_payload(target, b"payload")
+
+    assert not list(tmp_path.glob(".performance.csv.*.tmp"))
+
+
+def test_failed_second_stage_removes_first_temporary_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = ArtifactPaths(
+        csv=tmp_path / "performance.csv",
+        provenance=tmp_path / "performance.provenance.json",
+    )
+    real_stage_payload = performance_artifacts._stage_payload
+
+    def fail_provenance_stage(path: Path, payload: bytes) -> Path:
+        if path == paths.provenance:
+            msg = "simulated provenance staging failure"
+            raise OSError(msg)
+        return real_stage_payload(path, payload)
+
+    monkeypatch.setattr(performance_artifacts, "_stage_payload", fail_provenance_stage)
+
+    with pytest.raises(OSError, match="simulated provenance staging failure"):
+        write_bundle(paths, _bundle())
+
+    assert not list(tmp_path.glob(".performance.csv.*.tmp"))
+    assert not paths.csv.exists()
+    assert not paths.provenance.exists()
+
+
 def test_failed_second_replace_restores_prior_valid_pair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     paths = ArtifactPaths(
         csv=tmp_path / "performance.csv",

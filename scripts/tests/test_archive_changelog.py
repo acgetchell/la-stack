@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import archive_changelog as archive_changelog_module
 from archive_changelog import (
     _extract_link_defs,
     _format_link_defs,
@@ -378,6 +379,71 @@ class TestArchiveChangelog:
         assert changelog.read_text(encoding="utf-8") == original_root
         assert existing_archive.read_bytes() == original_archive
         assert not (archive_dir / "0.2.md").exists()
+
+    def test_stage_text_removes_temporary_file_when_fsync_fails(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / "CHANGELOG.md"
+
+        def fail_fsync(_descriptor: int) -> None:
+            msg = "simulated fsync failure"
+            raise OSError(msg)
+
+        monkeypatch.setattr(archive_changelog_module.os, "fsync", fail_fsync)
+
+        with pytest.raises(OSError, match="simulated fsync failure"):
+            archive_changelog_module._stage_text(target, "payload\n")
+
+        assert not list(tmp_path.glob(".CHANGELOG.md.*.tmp"))
+
+    def test_stage_bytes_removes_temporary_file_when_fsync_fails(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / "0.4.md"
+
+        def fail_fsync(_descriptor: int) -> None:
+            msg = "simulated fsync failure"
+            raise OSError(msg)
+
+        monkeypatch.setattr(archive_changelog_module.os, "fsync", fail_fsync)
+
+        with pytest.raises(OSError, match="simulated fsync failure"):
+            archive_changelog_module._stage_bytes(target, b"payload\n")
+
+        assert not list(tmp_path.glob(".0.4.md.*.tmp"))
+
+    def test_partial_staging_failure_removes_prior_temporary_files(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        first = tmp_path / "first.md"
+        second = tmp_path / "second.md"
+        real_stage_text = archive_changelog_module._stage_text
+
+        def fail_second_stage(path: Path, text: str) -> Path:
+            if path == second:
+                msg = "simulated second staging failure"
+                raise OSError(msg)
+            return real_stage_text(path, text)
+
+        monkeypatch.setattr(archive_changelog_module, "_stage_text", fail_second_stage)
+
+        with pytest.raises(OSError, match="simulated second staging failure"):
+            archive_changelog_module._publish_texts(
+                {
+                    first: "first\n",
+                    second: "second\n",
+                }
+            )
+
+        assert not first.exists()
+        assert not second.exists()
+        assert not list(tmp_path.glob(".*.tmp"))
 
     def test_idempotent(self, tmp_path: Path) -> None:
         """Running archive twice produces the same output."""

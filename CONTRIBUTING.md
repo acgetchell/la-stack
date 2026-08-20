@@ -6,8 +6,8 @@ clarity, and the fixed-dimension stack-allocation model.
 
 ## Getting Started
 
-Install Rust 1.97.1 through [rustup](https://rustup.rs/), Git, Python 3.14,
-[`uv` 0.12.3](https://docs.astral.sh/uv/), and `jq`. Install the repository's
+Install Rust 1.98.0 through [rustup](https://rustup.rs/), Git, Python 3.14,
+[`uv` 0.12.5](https://docs.astral.sh/uv/), and `jq`. Install the repository's
 pinned `just` version from its locked dependency graph:
 
 ```bash
@@ -24,6 +24,14 @@ just ci           # run the comprehensive local CI path
 
 Use `just fix` when you intentionally want formatters and automatic fixes to
 change files. Run `just --list` for the full command surface.
+
+Use `just update` for deliberate dependency and tool maintenance. It composes
+`just update-dependencies`, which advances Cargo dependency requirements and
+the Cargo/uv locks, with `just update-cargo-tools`, which upgrades only the
+Cargo CLI packages owned by `setup-tools` and atomically reconciles their root
+`justfile` pins. The tool updater requires `cargo-install-update` from the
+`cargo-update` package and does not touch unrelated Cargo executables or uv's
+user-global tool environments.
 
 The repository uses `cargo-nextest` for runnable Rust tests, `cargo-machete`
 for unused-dependency checks, and `just cargo-lock-check` to verify that the
@@ -44,25 +52,34 @@ global `RUSTFLAGS='-D warnings'`, this denies lint warnings only for local
 packages without changing rustc arguments and creating separate cache
 artifacts. Rustdoc has a separate warning contract, so `doc-check` continues to
 set `RUSTDOCFLAGS='-D warnings'` for the default and `exact` documentation
-surfaces. See the [Rust 1.97 release notes](https://doc.rust-lang.org/stable/releases.html#version-1970-2026-07-09)
+surfaces. See the [Rust 1.98 release notes](https://doc.rust-lang.org/stable/releases.html#version-1980-2026-08-20)
 and [Cargo configuration reference](https://doc.rust-lang.org/cargo/reference/config.html#buildwarnings).
 
-The remaining Rust 1.97 tooling changes require no repository configuration:
+Rust 1.98's `f32`/`f64::algebraic_{add,sub,mul,div,rem}` operations are
+forbidden in `src/`, examples, and benchmark implementations. They permit
+real-number transformations such as reassociation with unspecified precision,
+which can invalidate the crate's documented error bounds and deterministic
+operation order. Their relaxed treatment of non-finite values and signed zero
+also conflicts with typed non-finite classification, while varying results
+would weaken reproducibility and benchmark comparability. Repository Semgrep
+rules enforce this policy; retain ordinary IEEE-754 operations and `mul_add` in
+the existing numerical paths.
 
-- Rust's default v0 symbol mangling is accepted. Repository code, benchmark
-  reporting, and support scripts do not parse raw Rust symbols or require the
-  legacy format. Any future symbol-processing tool must support v0 rather than
-  forcing the nightly-only legacy override.
-- The warn-by-default `linker_messages` lint is covered by the manifest's
-  warnings-deny policy. The Rust 1.97.1 upgrade completed `just ci` on Linux,
-  macOS, and Windows without linker diagnostics, so no platform suppression is
-  justified.
-- `resolver.lockfile-path` is not configured. Local, CI, release-benchmark, and
-  historical-comparison worktrees are writable and use the committed root
-  `Cargo.lock`; an alternate path would split the lockfile and provenance source
-  without helping a read-only-source workflow.
-- The updated must-use behavior for `Result<_, Infallible>` and
-  `RepeatN::default` do not intersect production code in this repository.
+Any future approximate or fast-math API requires a separate design issue, an
+explicit public contract, independent correctness analysis, and representative
+benchmarks. It must remain opt-in and must not change existing APIs.
+
+The remaining Rust 1.98 changes require no repository configuration:
+
+- `core::fmt::NumBuffer`, integer `format_into`, `NonZero::from_str_radix`,
+  circumfix stripping, UTF-16 decoding, and mutable atomic-slice APIs do not
+  simplify an existing path or address a demonstrated bottleneck.
+- The compatibility changes for runtime symbols, trait-object lifetimes,
+  ambiguous imports, attributes, structural equality, `assert_eq!` temporaries,
+  and derived ordering require no source change after comprehensive validation.
+- New or promoted targets do not alter the Linux, macOS, and Windows MSVC CI
+  matrix. Cargo 1.98's stable changes are fixes for Windows credential-provider
+  line endings and diagnostic capitalization; no configuration change is needed.
 
 ## Contributor Workflow
 

@@ -83,6 +83,33 @@ rules:
       - pattern: $VALUE.unwrap_or_else(|| std::f64::INFINITY)
       - pattern: $VALUE.unwrap_or_else(|| std::f64::NEG_INFINITY)
 
+  - id: la-stack.rust.no-algebraic-float-operations
+    languages:
+      - rust
+    severity: WARNING
+    message: "Use the crate's defined IEEE-754 operation order; algebraic float operations are forbidden."
+    metadata:
+      category: correctness
+      rationale: >-
+        Algebraic float operations permit real-number transformations with
+        unspecified precision. Reassociation or relaxed NaN and signed-zero
+        behavior can invalidate error bounds, reproducibility, non-finite
+        classification, exact-fallback filters, and benchmark comparisons.
+    paths:
+      include:
+        - "/src/**/*.rs"
+        - "/examples/**/*.rs"
+        - "/benches/**/*.rs"
+        # Test-only violation fixture: `just semgrep` excludes it, while
+        # `just semgrep-test` scans it directly.
+        - "/tests/semgrep/src/project_rules/algebraic_float.rs"
+    pattern-either:
+      - pattern: $VALUE.algebraic_add(...)
+      - pattern: $VALUE.algebraic_sub(...)
+      - pattern: $VALUE.algebraic_mul(...)
+      - pattern: $VALUE.algebraic_div(...)
+      - pattern: $VALUE.algebraic_rem(...)
+
   - id: la-stack.rust.no-public-infallible-raw-f64-constructors
     languages:
       - rust
