@@ -207,7 +207,7 @@ When user requests commit message generation:
 
 ### Rust
 
-- The current MSRV and pinned contributor/CI toolchain are Rust 1.97.1. Keep
+- The current MSRV and pinned contributor/CI toolchain are Rust 1.98.0. Keep
   `Cargo.toml`, `rust-toolchain.toml`, and `clippy.toml` aligned when that
   baseline changes deliberately.
 - Prefer borrowed APIs by default:
@@ -292,6 +292,7 @@ just ci               # Full CI simulation (checks + tests + examples + bench co
 just test             # Lib + doc tests (fast)
 just test-all         # All tests (Rust, benchmark inputs, and Python)
 just examples         # Run all examples
+just update           # Update dependency locks and repository-owned Cargo tools
 ```
 
 ### Detailed Command Reference

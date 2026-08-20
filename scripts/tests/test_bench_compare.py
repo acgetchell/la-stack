@@ -1229,6 +1229,26 @@ def test_markdown_failure_rolls_back_release_artifact_pair(tmp_path: Path, monke
     assert output.read_text(encoding="utf-8") == "old markdown\n"
 
 
+def test_atomic_markdown_write_removes_temp_when_fsync_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "performance.md"
+    output.write_text("old\n", encoding="utf-8")
+
+    def fail_fsync(_descriptor: int) -> None:
+        msg = "simulated fsync failure"
+        raise OSError(msg)
+
+    monkeypatch.setattr(bench_compare.os, "fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="simulated fsync failure"):
+        bench_compare._write_text_atomic(output, "new\n")
+
+    assert output.read_text(encoding="utf-8") == "old\n"
+    assert not list(tmp_path.glob(".performance.md.*.tmp"))
+
+
 def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

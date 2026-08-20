@@ -146,6 +146,21 @@ The goal is targeted profiling and implementation cleanup for operations where
 to changes that preserve numerical behavior, allocation-free fixed-size storage,
 and clear const-generic code.
 
+### v0.4.5 Rust 1.98 Numerical Policy
+
+The `v0.4.5` milestone continues stable-Rust maintenance without broadening the
+crate's scalar or algorithm scope.
+
+- [#208](https://github.com/acgetchell/la-stack/issues/208) raises the MSRV and
+  pinned contributor/CI toolchain to Rust 1.98, audits the final stable release,
+  and adds a repository guard against the new algebraic floating-point
+  operations in correctness-sensitive source, examples, and benchmarks.
+
+The existing IEEE 754 operations, deterministic accumulation order, error
+bounds, exact fallbacks, and typed non-finite behavior remain authoritative.
+Any future approximate or fast-math API requires a separate opt-in design and
+correctness analysis.
+
 ### v0.5.0 Generic Const Expressions
 
 `v0.5.0` is reserved for the post-stabilization const-generic API revision.

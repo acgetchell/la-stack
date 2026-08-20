@@ -434,21 +434,23 @@ def _restore_file(path: Path, payload: bytes | None) -> None:
         path.unlink(missing_ok=True)
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "wb",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".restore",
-        delete=False,
-    ) as tmp:
-        restore_path = Path(tmp.name)
-        tmp.write(payload)
-        tmp.flush()
-        os.fsync(tmp.fileno())
+    restore_path: Path | None = None
     try:
+        with tempfile.NamedTemporaryFile(
+            "wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".restore",
+            delete=False,
+        ) as tmp:
+            restore_path = Path(tmp.name)
+            tmp.write(payload)
+            tmp.flush()
+            os.fsync(tmp.fileno())
         restore_path.replace(path)
     finally:
-        restore_path.unlink(missing_ok=True)
+        if restore_path is not None:
+            restore_path.unlink(missing_ok=True)
 
 
 def _snapshot_regular_file(path: Path, *, label: str) -> bytes | None:

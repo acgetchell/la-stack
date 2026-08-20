@@ -41,11 +41,12 @@ criterion-dim-plot = "criterion_dim_plot:main"
 postprocess-changelog = "postprocess_changelog:main"
 tag-release = "tag_release:main"
 check-docs-version-sync = "check_docs_version_sync:main"
+update-cargo-tool-pins = "update_cargo_tool_pins:main"
 
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-py-modules = [ "archive_changelog", "archive_performance", "bench_compare", "check_docs_version_sync", "check_semgrep_fixtures", "criterion_dim_plot", "performance_artifacts", "postprocess_changelog", "subprocess_utils", "tag_release" ]
+py-modules = [ "archive_changelog", "archive_performance", "bench_compare", "check_docs_version_sync", "check_semgrep_fixtures", "criterion_dim_plot", "performance_artifacts", "postprocess_changelog", "subprocess_utils", "tag_release", "update_cargo_tool_pins" ]
 
 [tool.ruff]
 line-length = 160
@@ -95,6 +96,7 @@ known-first-party = [
     "postprocess_changelog",
     "subprocess_utils",
     "tag_release",
+    "update_cargo_tool_pins",
 ]
 force-single-line = false
 split-on-trailing-comma = true

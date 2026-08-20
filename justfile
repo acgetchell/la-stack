@@ -17,18 +17,19 @@ export PATH := cargo_home + "/bin" + path_separator + env_var("PATH")
 _coverage_base_args := '''--features exact \
   --workspace --lib --tests \
   --verbose'''
-cargo_llvm_cov_version := "0.8.7"
+cargo_edit_version := "0.13.13"
+cargo_llvm_cov_version := "0.9.0"
 cargo_machete_version := "0.9.2"
 cargo_nextest_version := "0.9.143"
 clippy_sarif_version := "0.8.0"
-dprint_version := "0.55.2"
+dprint_version := "0.56.0"
 git_cliff_version := "2.13.1"
 just_version := "1.58.0"
-rumdl_version := "0.2.53"
+rumdl_version := "0.2.58"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
 typos_version := "1.49.0"
-uv_version := "0.12.3"
+uv_version := "0.12.5"
 zizmor_version := "1.29.0"
 
 # Internal helpers: ensure external tooling is installed
@@ -36,6 +37,19 @@ _ensure-actionlint: _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
     uv run --locked actionlint -version >/dev/null
+
+_ensure-cargo-edit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    installed_version=""
+    if cargo upgrade --version >/dev/null 2>&1; then
+        installed_version="$(cargo upgrade --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+    fi
+    if [[ "$installed_version" != "{{ cargo_edit_version }}" ]]; then
+        echo "❌ 'cargo-edit' {{ cargo_edit_version }} not found. Install with:"
+        echo "   cargo install --locked cargo-edit --version {{ cargo_edit_version }}"
+        exit 1
+    fi
 
 _ensure-cargo-llvm-cov:
     #!/usr/bin/env bash
@@ -478,6 +492,7 @@ help-workflows:
     @echo "Setup:"
     @echo "  just setup             # Setup project environment (depends on setup-tools)"
     @echo "  just setup-tools       # Install/verify external tooling"
+    @echo "  just update            # Update dependencies and repository-owned Cargo tools"
     @echo ""
     @echo "Testing:"
     @echo "  just coverage          # Generate coverage report (HTML)"
@@ -773,6 +788,11 @@ setup-tools:
         cargo install --locked just --version "$just_version"
     fi
 
+    cargo_edit_version="{{ cargo_edit_version }}"
+    if ! cargo upgrade --version >/dev/null 2>&1 || [[ "$(cargo upgrade --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$cargo_edit_version" ]]; then
+        cargo install --locked cargo-edit --version "$cargo_edit_version"
+    fi
+
     cargo_llvm_cov_version="{{ cargo_llvm_cov_version }}"
     if ! have cargo-llvm-cov || [[ "$(cargo llvm-cov --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$cargo_llvm_cov_version" ]]; then
         cargo install --locked cargo-llvm-cov --version "$cargo_llvm_cov_version"
@@ -821,6 +841,7 @@ setup-tools:
     have jq || { echo "❌ 'jq' is still missing."; exit 1; }
     echo "  ✓ jq"
     verify_tool_version just "$just_version"
+    verify_tool_version cargo-upgrade "$cargo_edit_version"
     verify_tool_version cargo-llvm-cov "$cargo_llvm_cov_version"
     verify_tool_version cargo-machete "$cargo_machete_version"
     verify_tool_version cargo-nextest "$cargo_nextest_version"
@@ -1019,6 +1040,46 @@ toml-parse-check: python-sync
 # Check for unused direct Cargo dependencies.
 unused-deps: _ensure-cargo-machete
     cargo machete
+
+# Update dependency requirements, locks, and locally installed Cargo tools owned by this repository.
+update: update-dependencies update-cargo-tools
+    @echo "✅ Repository dependencies and tools updated."
+
+# Update locally installed Cargo CLI tools owned by `setup-tools` and reconcile their pins.
+[doc('Update Cargo CLI tools owned by setup-tools and reconcile their root justfile pins.')]
+update-cargo-tools: _ensure-uv
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! command -v cargo-install-update >/dev/null 2>&1; then
+        echo "❌ 'cargo-install-update' not found. Install it with:"
+        echo "   cargo install --locked cargo-update"
+        exit 1
+    fi
+
+    packages=(
+        cargo-edit
+        cargo-llvm-cov
+        cargo-machete
+        cargo-nextest
+        dprint
+        git-cliff
+        just
+        rumdl
+        taplo-cli
+        typos-cli
+        zizmor
+    )
+    cargo install-update --locked "${packages[@]}"
+    uv run --locked update-cargo-tool-pins
+
+# Advance Cargo dependency declarations, update Cargo and uv locks, then sync uv dev tools.
+[doc('Update Cargo.toml dependency requirements and all Cargo/uv locked dependencies.')]
+update-dependencies: _ensure-uv _ensure-cargo-edit
+    cargo upgrade
+    cargo update
+    uv lock --upgrade
+    uv sync --locked --group dev
 
 validate-json: _ensure-jq
     #!/usr/bin/env bash

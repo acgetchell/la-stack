@@ -791,11 +791,21 @@ def load_bundle(paths: ArtifactPaths) -> PerformanceBundle:
 
 def _stage_payload(path: Path, payload: bytes) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("wb", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False) as tmp:
-        tmp.write(payload)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        return Path(tmp.name)
+    staged: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("wb", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False) as tmp:
+            staged = Path(tmp.name)
+            tmp.write(payload)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+    except BaseException:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+        raise
+    if staged is None:
+        msg = "temporary artifact staging completed without a path"
+        raise AssertionError(msg)
+    return staged
 
 
 def _atomic_restore(path: Path, payload: bytes | None) -> None:
@@ -810,26 +820,30 @@ def _atomic_restore(path: Path, payload: bytes | None) -> None:
 
 
 def _publish_payloads(paths: ArtifactPaths, csv_payload: bytes, provenance_payload: bytes) -> None:
-    staged_csv = _stage_payload(paths.csv, csv_payload)
-    staged_provenance = _stage_payload(paths.provenance, provenance_payload)
-    previous_csv = paths.csv.read_bytes() if paths.csv.is_file() else None
-    previous_provenance = paths.provenance.read_bytes() if paths.provenance.is_file() else None
+    staged_paths: list[Path] = []
     try:
-        _replace_path(staged_csv, paths.csv)
-        _replace_path(staged_provenance, paths.provenance)
-        load_bundle(paths)
-    except BaseException as publication_error:
-        rollback_errors = _restore_artifact_pair(paths, previous_csv, previous_provenance)
-        if rollback_errors:
-            group_message = "release-performance artifact publication and rollback failed"
-            raise BaseExceptionGroup(
-                group_message,
-                [publication_error, *rollback_errors],
-            ) from None
-        raise
+        staged_csv = _stage_payload(paths.csv, csv_payload)
+        staged_paths.append(staged_csv)
+        staged_provenance = _stage_payload(paths.provenance, provenance_payload)
+        staged_paths.append(staged_provenance)
+        previous_csv = paths.csv.read_bytes() if paths.csv.is_file() else None
+        previous_provenance = paths.provenance.read_bytes() if paths.provenance.is_file() else None
+        try:
+            _replace_path(staged_csv, paths.csv)
+            _replace_path(staged_provenance, paths.provenance)
+            load_bundle(paths)
+        except BaseException as publication_error:
+            rollback_errors = _restore_artifact_pair(paths, previous_csv, previous_provenance)
+            if rollback_errors:
+                group_message = "release-performance artifact publication and rollback failed"
+                raise BaseExceptionGroup(
+                    group_message,
+                    [publication_error, *rollback_errors],
+                ) from None
+            raise
     finally:
-        staged_csv.unlink(missing_ok=True)
-        staged_provenance.unlink(missing_ok=True)
+        for staged in staged_paths:
+            staged.unlink(missing_ok=True)
 
 
 def _replace_path(source: Path, destination: Path) -> None:
