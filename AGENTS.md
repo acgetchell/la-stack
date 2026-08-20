@@ -180,6 +180,9 @@ When user requests commit message generation:
 
 - **Unsafe Rust is forbidden.** Keep the manifest-level `unsafe_code = "forbid"`
   lint and crate/module `#![forbid(unsafe_code)]` enforcement intact.
+- **Dead code is forbidden.** Remove unused items instead of suppressing the
+  lint; never add `#[allow(dead_code)]` or `#![allow(dead_code)]`, including in
+  tests and static-analysis fixtures.
 - **ALLOWED**: Run formatters/linters: `cargo fmt`, `cargo clippy`, `cargo doc`, `taplo fmt`, `taplo lint`,
   `uv run --locked ruff check --fix`, `uv run --locked ruff format`, `rumdl`, `dprint`,
   `typos`, `actionlint`

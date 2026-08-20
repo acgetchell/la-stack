@@ -693,7 +693,7 @@ rust-core-check: cargo-lock-check fmt-check clippy-core doc-check semgrep semgre
 
 # Repository-owned Semgrep rules for project-specific diagnostics.
 semgrep: _ensure-uv
-    uv run --locked semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .
+    uv run --locked semgrep --metrics off --error --strict --timeout 30 --exclude tests/semgrep/src/project_rules/algebraic_float.rs --config semgrep.yaml .
 
 # Fixture tests for repository-owned Semgrep rules.
 semgrep-test: _ensure-uv

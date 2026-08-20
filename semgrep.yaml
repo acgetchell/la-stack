@@ -100,6 +100,8 @@ rules:
         - "/src/**/*.rs"
         - "/examples/**/*.rs"
         - "/benches/**/*.rs"
+        # Test-only violation fixture: `just semgrep` excludes it, while
+        # `just semgrep-test` scans it directly.
         - "/tests/semgrep/src/project_rules/algebraic_float.rs"
     pattern-either:
       - pattern: $VALUE.algebraic_add(...)

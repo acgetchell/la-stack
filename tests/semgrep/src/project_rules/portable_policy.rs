@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_imports)]
-
 use num_traits::NumCast;
 
 pub fn stdio_diagnostic_fixture() {
