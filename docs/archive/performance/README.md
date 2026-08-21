@@ -6,3 +6,4 @@ Older release-to-release benchmark comparisons are archived here.
 - [v0.4.1-vs-v0.4.0](v0.4.1-vs-v0.4.0.md)
 - [v0.4.2-vs-v0.4.1](v0.4.2-vs-v0.4.1.md)
 - [v0.4.3-vs-v0.4.2](v0.4.3-vs-v0.4.2.md)
+- [v0.4.4-vs-v0.4.3](v0.4.4-vs-v0.4.3.md)

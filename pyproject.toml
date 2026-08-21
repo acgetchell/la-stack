@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "la-stack-scripts"
-version = "0.4.4"
+version = "0.4.5"
 description = "Python utility scripts for the la-stack Rust library"
 readme = "scripts/README.md"
 requires-python = ">=3.14"
@@ -41,12 +41,13 @@ criterion-dim-plot = "criterion_dim_plot:main"
 postprocess-changelog = "postprocess_changelog:main"
 tag-release = "tag_release:main"
 check-docs-version-sync = "check_docs_version_sync:main"
+update-release-version = "update_release_version:main"
 update-cargo-tool-pins = "update_cargo_tool_pins:main"
 
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-py-modules = [ "archive_changelog", "archive_performance", "bench_compare", "check_docs_version_sync", "check_semgrep_fixtures", "criterion_dim_plot", "performance_artifacts", "postprocess_changelog", "subprocess_utils", "tag_release", "update_cargo_tool_pins" ]
+py-modules = [ "archive_changelog", "archive_performance", "bench_compare", "benchmark_contract", "check_docs_version_sync", "check_semgrep_fixtures", "criterion_dim_plot", "performance_artifacts", "postprocess_changelog", "subprocess_utils", "tag_release", "update_cargo_tool_pins", "update_release_version" ]
 
 [tool.ruff]
 line-length = 160
@@ -90,6 +91,7 @@ known-first-party = [
     "archive_changelog",
     "archive_performance",
     "bench_compare",
+    "benchmark_contract",
     "check_semgrep_fixtures",
     "criterion_dim_plot",
     "performance_artifacts",

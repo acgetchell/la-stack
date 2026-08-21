@@ -25,21 +25,23 @@ the commands measure and where their outputs go.
 | Goal | Recipe |
 |------|--------|
 | Latest-release local audit | `just performance-local` |
-| Non-exact release-signal check against tags | `just performance-local-non-exact v0.4.4 v0.4.3` |
+| Non-exact release-signal check against tags | `just performance-local-non-exact v0.4.5 v0.4.4` |
 | Fast saved-baseline loop | `just bench-save-baseline <name> <suite>` then `just bench-compare <name> <suite> all-benches` |
 | Full crate comparison | `just bench-vs-linalg` |
-| README table and plot | `just plot-vs-linalg-readme` |
-| Release report | `just performance-release v0.4.4 v0.4.3` |
+| README table and plot | `just performance-release` then `just performance-readme` |
+| Release report | `just performance-release v0.4.5 v0.4.4` |
 | Build docs from retained release inputs | `just performance-doc` |
-| Published-asset comparison | `just performance-github-assets v0.4.4 v0.4.3` |
+| Published-asset comparison | `just performance-github-assets v0.4.5 v0.4.4` |
 
 Rule of thumb:
 
 - Use `performance-local*` for clean, self-contained answers.
 - Use `bench-save-*` plus `bench-compare` for tight local optimization loops.
-- Use `bench-vs-linalg` plus plotting when updating README crate-to-crate
-  comparisons.
+- Use `bench-vs-linalg` plus `plot-vs-linalg` for exploratory crate-to-crate
+  plots.
 - Use `performance-release` only when preparing committed release artifacts.
+- After `performance-release`, use `performance-readme` to publish its
+  retained crate-to-crate measurements without benchmarking again.
 - Use `performance-doc` for report-format changes after a valid, promotable
   comparison dataset has already been retained.
 
@@ -152,10 +154,10 @@ distinct release identifiers.
 For a narrower non-exact check against a known release pair, run:
 
 ```bash
-just performance-local-non-exact v0.4.4 v0.4.3
+just performance-local-non-exact v0.4.5 v0.4.4
 ```
 
-This generates a local `v0.4.3` `vs_linalg` baseline, measures the current
+This generates a local `v0.4.4` `vs_linalg` baseline, measures the current
 la-stack `vs_linalg` rows, and renders a `vs_linalg` report. The report includes
 saved baseline nalgebra/faer timings as context where matching peer rows exist,
 without rerunning current peer crates.
@@ -210,28 +212,41 @@ revision-to-revision comparison.
 
 ### Update The README nalgebra/faer Table
 
-The README benchmark table and SVG plot are crate-to-crate comparisons from the
-current checkout:
+The README benchmark table and SVG plot are derived from the retained release
+comparison. Generate and validate that comparison first, then publish its
+crate-to-crate measurements:
 
 ```bash
-just plot-vs-linalg-readme
+just performance-release
+just performance-readme
 ```
 
-This publication recipe validates the benchmark fixtures, runs a fresh benchmark
-for the selected metric only, and requires la-stack, nalgebra, and faer results
-for every canonical dimension (D=2, 3, 4, 5, 8, 16, 32, and 64) before updating:
+`performance-readme` does not run benchmarks. It loads the canonical
+`target/bench-reports/performance.csv` and adjacent provenance JSON retained by
+`performance-release`, then uses the current la-stack result and the peer
+nalgebra/faer results measured by that same shared current harness. It requires
+all three timings for every canonical dimension (D=2, 3, 4, 5, 8, 16, 32, and
+64) before updating:
 
 - `README.md`
 - `docs/assets/bench/vs_linalg_lu_solve_median.csv`
 - `docs/assets/bench/vs_linalg_lu_solve_median.svg`
 - `docs/assets/bench/vs_linalg_lu_solve_median.provenance.json`
 
-The provenance sidecar records the measured source state, CPU, operating system,
-Rust toolchain, dependency lock and harness digests, Criterion dependency and
-selection, dimensions, benchmark command, and correctness-gate result. Missing
-coverage or provenance aborts publication. Use `--allow-partial` only for
-exploratory CSV/SVG output; it cannot update README and its sidecar explicitly
-marks measurement provenance unavailable.
+The publisher verifies the retained artifact digest and schema, release version,
+measured source state, commit, dependency lock, complete peer coverage, and
+recorded measurement provenance before writing anything. When the retained
+provenance includes a benchmark-contract digest, it also verifies the benchmark
+code, inputs, dependencies, and toolchain against the current checkout. Legacy
+retained artifacts without that field remain publishable but are labeled
+`legacy-retained-artifact` rather than contract-matched. The derived provenance
+sidecar preserves the measurement commands and environment and records the
+retained CSV/JSON digests. Missing, stale, or inconsistent input aborts
+publication atomically.
+
+For exploratory CSV/SVG output, run `bench-vs-linalg` and `plot-vs-linalg`.
+That path still reads raw Criterion output; `--allow-partial` remains
+exploratory-only and cannot update README.
 
 See `uv run --locked criterion-dim-plot --help` for plotting options.
 
@@ -241,7 +256,7 @@ Release PRs promote one curated release-to-release comparison into committed
 docs:
 
 ```bash
-just performance-release v0.4.4 v0.4.3
+just performance-release v0.4.5 v0.4.4
 ```
 
 With no arguments, `just performance-release` infers the current release tag
@@ -252,10 +267,12 @@ This command creates temporary worktrees, validates the complete comparison,
 and writes the exact report inputs to
 `target/bench-reports/performance.csv` with adjacent
 `performance.provenance.json`. The CSV records deterministic benchmark keys,
-coverage status and notes, and baseline/current median estimates with complete
-confidence intervals in nanoseconds. The JSON sidecar binds the CSV digest and
-row count to the release pair, source states, commands, toolchain, Criterion
-version, harness/configuration digests, host, and schema version.
+coverage status and notes, baseline/current median estimates, and
+same-current-harness nalgebra/faer peer estimates with complete confidence
+intervals in nanoseconds. Those peer fields are the source for
+`performance-readme`. The JSON sidecar binds the CSV digest and row count to
+the release pair, source states, commands, toolchain, Criterion version,
+harness/configuration digests, host, and schema version.
 
 Before creating worktrees or running either benchmark revision, structured
 local and release-report workflows require an identifiable CPU model. Raw
@@ -297,7 +314,7 @@ requirement applies even when both release tags are supplied explicitly because
 the recipe still downloads their GitHub Release assets:
 
 ```bash
-just performance-github-assets v0.4.4 v0.4.3
+just performance-github-assets v0.4.5 v0.4.4
 ```
 
 With no arguments, the recipe discovers the latest and previous stable
@@ -316,15 +333,15 @@ shared-harness workflow before attributing a difference solely to library code.
 |------|------------|----------|---------|
 | `target/criterion/` | No | `cargo bench`, `bench-save-*` | Local Criterion measurements and named baselines. |
 | `target/bench-reports/performance.md` | No | `bench-compare`, `performance-local`, `performance-release`, `performance-doc` | Canonical local comparison report. |
-| `target/bench-reports/performance.csv` | No | `performance-local`, `performance-release` | Validated tabular inputs for the canonical comparison. |
-| `target/bench-reports/performance.provenance.json` | No | `performance-local`, `performance-release` | Schema, package identifiers, source, command, toolchain, host, digest, and harness provenance. |
+| `target/bench-reports/performance.csv` | No | `performance-local`, `performance-release` | Validated tabular inputs for the canonical comparison and README publisher. |
+| `target/bench-reports/performance.provenance.json` | No | `performance-local`, `performance-release` | Schema, package identifiers, source, command, toolchain, host, digest, and harness provenance consumed by the README publisher. |
 | `target/bench-reports/performance-non-exact.*` | No | `performance-local-non-exact` | Narrowed non-exact report and retained peer-context comparison inputs. |
 | `target/bench-reports/github-assets-performance.md` | No | `performance-github-assets` | Local report from published release artifacts. |
 | `target/bench-reports/github-assets-performance.csv` | No | `performance-github-assets` | Tabular inputs derived from published native archives. |
 | `target/bench-reports/github-assets-performance.provenance.json` | No | `performance-github-assets` | Provenance for the published-asset report inputs. |
 | `docs/PERFORMANCE.md` | Yes | `performance-release`, `performance-doc` | Latest curated release-to-release comparison. |
 | `docs/archive/performance/` | Yes | `performance-release`, `performance-doc` | Older curated release-to-release comparisons. |
-| `docs/assets/bench/` | Yes | `plot-vs-linalg-readme` | README benchmark CSV/SVG assets and JSON provenance. |
+| `docs/assets/bench/` | Yes | `performance-readme` | README benchmark CSV/SVG assets and JSON provenance. |
 | GitHub Release | Remote | `.github/workflows/release-benchmarks.yml` | Criterion baseline archive. |
 
 Published baseline assets use the filename

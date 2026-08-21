@@ -23,11 +23,13 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from dataclasses import dataclass, field as dataclass_field
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol, TypeGuard, cast
 
-from performance_artifacts import ensure_distinct_paths
+from benchmark_contract import benchmark_contract_digest
+from performance_artifacts import ArtifactPaths, PerformanceBundle, TimingEstimate, ensure_distinct_paths, load_bundle
 from subprocess_utils import ExecutableNotFoundError, cpu_description, find_project_root, run_git_command, run_safe_command
 
 
@@ -64,6 +66,7 @@ class PlotCliArgs:
     stat: str
     sample: str
     criterion_dir: str
+    performance_csv: str
     out: str | None
     csv: str | None
     log_y: bool
@@ -71,6 +74,15 @@ class PlotCliArgs:
     update_readme: bool
     readme: str
     allow_partial: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _ValidatedPerformance:
+    """One retained bundle bound to the checkout used for publication."""
+
+    bundle: PerformanceBundle
+    validation: dict[str, object]
+    paths: ArtifactPaths
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,51 +122,6 @@ class Row:
         _require_confidence_interval(self.fa_lo, self.fa_hi, "faer row")
 
 
-@dataclass(slots=True)
-class _CriterionSampleTransaction:
-    """Move stale samples aside and restore them atomically on timing failure."""
-
-    criterion_dir: Path
-    backup_root: Path
-    moved: list[Path] = dataclass_field(default_factory=list)
-
-    def stage(self) -> None:
-        """Move all existing vs_linalg `new` samples into the backup tree."""
-        for sample in _vs_linalg_new_samples(self.criterion_dir):
-            relative = sample.relative_to(self.criterion_dir)
-            backup = self.backup_root / relative
-            backup.parent.mkdir(parents=True, exist_ok=True)
-            sample.replace(backup)
-            self.moved.append(relative)
-
-    def rollback(self, *, remove_fresh: bool) -> None:
-        """Restore moved samples, retaining backups when any step fails."""
-        errors: list[str] = []
-        if remove_fresh:
-            for sample in _vs_linalg_new_samples(self.criterion_dir):
-                try:
-                    shutil.rmtree(sample)
-                except OSError as exc:
-                    errors.append(f"could not remove fresh sample {sample}: {exc}")
-
-        for relative in reversed(self.moved):
-            source = self.backup_root / relative
-            destination = self.criterion_dir / relative
-            if not source.exists():
-                continue
-            if destination.exists():
-                errors.append(f"could not restore {destination}: destination already exists")
-                continue
-            try:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                source.replace(destination)
-            except OSError as exc:
-                errors.append(f"could not restore {destination}: {exc}")
-
-        if errors:
-            raise RuntimeError("; ".join(errors))
-
-
 class ReadmeMarkerError(ValueError):
     """Base error for invalid README BENCH_TABLE markers."""
 
@@ -165,6 +132,10 @@ class MarkerNotFoundError(ReadmeMarkerError):
 
 class MarkerOrderError(ReadmeMarkerError):
     """Raised when README markers are out of order."""
+
+
+class ReadmeBenchmarkLinkError(ValueError):
+    """Raised when canonical README benchmark artifact links are incomplete."""
 
 
 class PublicationRollbackError(RuntimeError):
@@ -249,18 +220,10 @@ METRICS: Final[dict[str, Metric]] = {
 }
 
 CANONICAL_DIMS: Final[tuple[int, ...]] = (2, 3, 4, 5, 8, 16, 32, 64)
-_PUBLICATION_GATE: Final[tuple[str, ...]] = ("just", "test-bench-inputs")
-_PUBLICATION_BENCHMARK_BASE: Final[tuple[str, ...]] = (
-    "cargo",
-    "bench",
-    "--locked",
-    "--features",
-    "bench",
-    "--bench",
-    "vs_linalg",
-)
-_COMMAND_TIMEOUT_SECONDS: Final[int] = 7200
+_DEFAULT_PERFORMANCE_CSV: Final[str] = "target/bench-reports/performance.csv"
+_RELEASE_VERSION_PATTERN: Final[str] = r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
 _PROVENANCE_HARNESS_FILES: Final[tuple[str, ...]] = (
+    ".config/nextest.toml",
     "Cargo.toml",
     "Cargo.lock",
     "rust-toolchain.toml",
@@ -502,6 +465,28 @@ def _update_readme_table(readme_path: Path, marker_begin: str, marker_end: str, 
     return True
 
 
+def _replace_readme_benchmark_asset_versions(text: str, *, metric: str, stat: str, version: str) -> str:
+    """Update the selected README benchmark links only after its artifacts exist."""
+    if re.fullmatch(_RELEASE_VERSION_PATTERN, version) is None:
+        msg = f"Cargo package version is not valid for a release-pinned README link: {version!r}"
+        raise ReadmeBenchmarkLinkError(msg)
+
+    asset_stem = f"/docs/assets/bench/vs_linalg_{metric}_{stat}"
+    expected_assets = sorted((f"{asset_stem}.csv", f"{asset_stem}.provenance.json", f"{asset_stem}.svg"))
+    pattern = re.compile(
+        r"(?P<prefix>https://(?:github\.com/acgetchell/la-stack/(?:blob|raw|tree)/|raw\.githubusercontent\.com/acgetchell/la-stack/))"
+        rf"v(?P<version>{_RELEASE_VERSION_PATTERN})"
+        rf"(?P<asset>{re.escape(asset_stem)}(?:\.csv|\.provenance\.json|\.svg))"
+    )
+    matches = list(pattern.finditer(text))
+    actual_assets = sorted(match.group("asset") for match in matches)
+    if actual_assets != expected_assets:
+        msg = f"README must contain exactly one tag-pinned link for each published benchmark asset; expected {expected_assets}, found {actual_assets}"
+        raise ReadmeBenchmarkLinkError(msg)
+
+    return pattern.sub(lambda match: f"{match.group('prefix')}v{version}{match.group('asset')}", text)
+
+
 def _gp_quote(s: str) -> str:
     # gnuplot supports single-quoted strings; escape backslashes and single quotes.
     return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
@@ -573,7 +558,14 @@ def _parse_args(argv: list[str]) -> PlotCliArgs:
     parser.add_argument(
         "--criterion-dir",
         default="target/criterion",
-        help="Criterion output directory (default: target/criterion).",
+        help="Criterion output directory for exploratory rendering (default: target/criterion).",
+    )
+    parser.add_argument(
+        "--performance-csv",
+        default=_DEFAULT_PERFORMANCE_CSV,
+        help=(
+            "Retained performance-release CSV used by --update-readme; the provenance JSON must be adjacent (default: target/bench-reports/performance.csv)."
+        ),
     )
     parser.add_argument(
         "--out",
@@ -617,6 +609,7 @@ def _parse_args(argv: list[str]) -> PlotCliArgs:
         stat=_required_str_attr(args, "stat"),
         sample=_required_str_attr(args, "sample"),
         criterion_dir=_required_str_attr(args, "criterion_dir"),
+        performance_csv=_required_str_attr(args, "performance_csv"),
         out=_optional_str_attr(args, "out"),
         csv=_optional_str_attr(args, "csv"),
         log_y=_required_bool_attr(args, "log_y"),
@@ -668,6 +661,12 @@ def _resolve_output_paths(root: Path, metric: str, stat: str, out_svg: str | Non
     return (svg, csv)
 
 
+def _resolve_performance_paths(root: Path, performance_csv: str) -> ArtifactPaths:
+    """Resolve a retained performance CSV and its adjacent provenance JSON."""
+    csv = _resolve_under_root(root, performance_csv)
+    return ArtifactPaths(csv=csv, provenance=csv.with_suffix(".provenance.json"))
+
+
 def _collect_rows(criterion_dir: Path, dims: list[int], metric: Metric, stat: str, sample: str) -> tuple[list[Row], list[str]]:
     rows: list[Row] = []
     skipped: list[str] = []
@@ -710,95 +709,6 @@ def _collect_rows(criterion_dir: Path, dims: list[int], metric: Metric, stat: st
         )
 
     return (rows, skipped)
-
-
-def _publication_benchmark_command(metric_name: str) -> tuple[str, ...]:
-    """Return the focused Criterion command for one published metric."""
-    metric = METRICS[metric_name]
-    benchmark_filter = "(" + "|".join(re.escape(name) for name in (metric.la_bench, metric.na_bench, metric.fa_bench)) + ")$"
-    return (*_PUBLICATION_BENCHMARK_BASE, "--", benchmark_filter)
-
-
-def _run_publication_benchmarks(root: Path, metric_name: str) -> None:
-    """Validate fixtures, then measure one complete README metric."""
-    _run_publication_command(root, _PUBLICATION_GATE)
-    criterion_dir = root / "target" / "criterion"
-    criterion_dir.parent.mkdir(parents=True, exist_ok=True)
-    backup_root = Path(tempfile.mkdtemp(prefix="la-stack-stale-criterion-", dir=criterion_dir.parent))
-    transaction = _CriterionSampleTransaction(criterion_dir=criterion_dir, backup_root=backup_root)
-    preserve_backup = False
-    try:
-        try:
-            transaction.stage()
-        except OSError as primary:
-            try:
-                transaction.rollback(remove_fresh=False)
-            except RuntimeError as rollback:
-                preserve_backup = True
-                msg = f"could not stage Criterion samples and rollback failed: {rollback}; backups preserved at {backup_root}"
-                raise RuntimeError(msg) from primary
-            msg = f"could not stage existing Criterion samples: {primary}"
-            raise RuntimeError(msg) from primary
-
-        try:
-            _run_publication_command(root, _publication_benchmark_command(metric_name))
-        except RuntimeError as primary:
-            try:
-                transaction.rollback(remove_fresh=True)
-            except RuntimeError as rollback:
-                preserve_backup = True
-                msg = f"{primary}\nCriterion sample rollback failed: {rollback}; backups preserved at {backup_root}"
-                raise RuntimeError(msg) from primary
-            raise
-    finally:
-        if not preserve_backup:
-            try:
-                shutil.rmtree(backup_root)
-            except OSError as exc:
-                print(f"Warning: could not remove Criterion sample backup {backup_root}: {exc}", file=sys.stderr)
-
-
-def _run_publication_command(root: Path, command: tuple[str, ...]) -> None:
-    """Run one publication command with complete failure context."""
-    try:
-        run_safe_command(
-            command[0],
-            list(command[1:]),
-            cwd=root,
-            timeout=_COMMAND_TIMEOUT_SECONDS,
-        )
-    except subprocess.CalledProcessError as exc:
-        stderr = exc.stderr.strip() if isinstance(exc.stderr, str) else ""
-        detail = f"\nstderr:\n{stderr}" if stderr else ""
-        msg = f"publication command failed ({exc.returncode}): {' '.join(command)}{detail}"
-        raise RuntimeError(msg) from exc
-    except ExecutableNotFoundError as exc:
-        msg = f"publication command could not start: {' '.join(command)}: {exc}"
-        raise RuntimeError(msg) from exc
-    except subprocess.TimeoutExpired as exc:
-        stderr = exc.stderr.strip() if isinstance(exc.stderr, str) else ""
-        detail = f"\nstderr:\n{stderr}" if stderr else ""
-        msg = f"publication command timed out after {exc.timeout} seconds: {' '.join(command)}{detail}"
-        raise RuntimeError(msg) from exc
-    except OSError as exc:
-        msg = f"publication command could not start: {' '.join(command)}: {exc}"
-        raise RuntimeError(msg) from exc
-
-
-def _vs_linalg_new_samples(criterion_dir: Path) -> list[Path]:
-    """Return every current vs_linalg sample in deterministic order."""
-    if not criterion_dir.is_dir():
-        return []
-    return sorted(
-        (
-            sample
-            for group in criterion_dir.iterdir()
-            if group.is_dir() and _dim_from_group_dir(group.name) is not None
-            for sample in group.glob("*/new")
-            if sample.is_dir()
-        ),
-        key=lambda path: path.relative_to(criterion_dir).as_posix(),
-    )
 
 
 def _git_value(root: Path, args: list[str]) -> str:
@@ -912,14 +822,8 @@ def _rustc_version(root: Path) -> str:
     return value or "unavailable"
 
 
-def _capture_provenance(
-    root: Path,
-    *,
-    args: PlotCliArgs,
-    dims: list[int],
-    measurement_recorded: bool,
-) -> dict[str, object]:
-    """Capture deterministic provenance for CSV/SVG and README publication."""
+def _capture_environment(root: Path) -> dict[str, object]:
+    """Capture the current source, harness, toolchain, host, and Git state."""
     harness_sha256, missing_harness_files = _provenance_harness_digest(root)
     cargo_lock = root / "Cargo.lock"
     cargo_lock_sha256 = hashlib.sha256(cargo_lock.read_bytes()).hexdigest() if cargo_lock.is_file() else "unavailable"
@@ -927,7 +831,7 @@ def _capture_provenance(
     os_description = " ".join(part for part in (platform.system(), platform.release(), platform.machine()) if part).strip() or "unavailable"
     git_clean, git_status_sha256 = _git_status_metadata(root)
     source_state_sha256, source_missing = _source_state_digest(root)
-    environment: dict[str, object] = {
+    return {
         "cargo_lock_sha256": cargo_lock_sha256,
         "commit": _git_value(root, ["--no-pager", "rev-parse", "HEAD"]),
         "cpu": cpu,
@@ -940,19 +844,16 @@ def _capture_provenance(
         "source_missing": source_missing,
         "source_state_sha256": source_state_sha256,
     }
-    measurement: dict[str, object]
-    if measurement_recorded:
-        measurement = {"status": "recorded", **environment}
-    else:
-        measurement = {
-            "reason": "the exploratory renderer did not run the benchmark command that produced these Criterion samples",
-            "status": "unavailable",
-        }
+
+
+def _capture_exploratory_provenance(root: Path, *, args: PlotCliArgs, dims: list[int]) -> dict[str, object]:
+    """Capture provenance for rendering unverified local Criterion samples."""
+    environment = _capture_environment(root)
     criterion_version = _read_cargo_dependency_versions(root / "Cargo.toml", {"criterion"}).get("criterion", "unavailable")
     return {
-        "artifact": "README vs_linalg dimension plot" if args.update_readme else "exploratory vs_linalg dimension plot",
+        "artifact": "exploratory vs_linalg dimension plot",
         "criterion": {
-            "benchmark_command": list(_publication_benchmark_command(args.metric)) if measurement_recorded else "unavailable",
+            "benchmark_command": "unavailable",
             "criterion_dependency": criterion_version,
             "dimensions": dims,
             "log_y": args.log_y,
@@ -960,12 +861,234 @@ def _capture_provenance(
             "sample": args.sample,
             "statistic": args.stat,
         },
-        "measurement": measurement,
+        "measurement": {
+            "reason": "the exploratory renderer did not run the benchmark command that produced these Criterion samples",
+            "status": "unavailable",
+        },
         "publication": {
             **environment,
-            "correctness_gate": "passed" if measurement_recorded else "not-run-exploratory",
+            "correctness_gate": "not-run-exploratory",
         },
         "schema": 1,
+    }
+
+
+def _required_mapping(value: object, context: str) -> Mapping[str, object]:
+    """Parse one already-validated frozen provenance object."""
+    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
+        msg = f"retained performance provenance requires a {context} object"
+        raise TypeError(msg)
+    return cast("Mapping[str, object]", value)
+
+
+def _json_compatible(value: object) -> object:
+    """Convert frozen retained-provenance containers into JSON containers."""
+    if isinstance(value, Mapping):
+        return {str(key): _json_compatible(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_json_compatible(item) for item in value]
+    return value
+
+
+def _validate_performance_selection(root: Path, args: PlotCliArgs, bundle: PerformanceBundle) -> Mapping[str, object]:
+    """Validate the retained report selection and return recorded measurement metadata."""
+    context = bundle.context
+    if context.suite not in {"all", "vs_linalg"}:
+        msg = f"retained performance data does not include vs_linalg: suite={context.suite!r}"
+        raise ValueError(msg)
+    if context.scope != "release-signal":
+        msg = f"README publication requires release-signal performance data, got {context.scope!r}"
+        raise ValueError(msg)
+    if context.statistic != args.stat:
+        msg = f"README statistic {args.stat!r} does not match retained performance statistic {context.statistic!r}"
+        raise ValueError(msg)
+    if context.release.current == context.release.baseline:
+        msg = "README publication requires a distinct release pair retained by `just performance-release`"
+        raise ValueError(msg)
+
+    package_version = _read_cargo_package_version(root / "Cargo.toml")
+    if package_version is None:
+        msg = f"{root / 'Cargo.toml'} has no string package version"
+        raise ValueError(msg)
+    expected_release = f"v{package_version.removeprefix('v')}"
+    if context.release.current != expected_release:
+        msg = (
+            f"retained performance data is for {context.release.current}, but Cargo.toml is {expected_release}; "
+            "run `just performance-release` for the current release"
+        )
+        raise ValueError(msg)
+
+    benchmark_provenance = context.benchmark_provenance
+    if benchmark_provenance.get("mode") != "shared-current-harness":
+        msg = "README publication requires locally recorded shared-current-harness performance data"
+        raise ValueError(msg)
+    measurement = _required_mapping(benchmark_provenance.get("measurement"), "measurement")
+    if measurement.get("status") != "recorded":
+        msg = "README publication requires recorded performance measurements"
+        raise ValueError(msg)
+    return measurement
+
+
+def _validate_current_measurement(root: Path, measurement: Mapping[str, object]) -> dict[str, object]:
+    """Require retained measurements to match stable current checkout inputs."""
+    cargo_lock = root / "Cargo.lock"
+    current_source_state, source_missing = _source_state_digest(root)
+    if source_missing:
+        msg = "current measured source directory is missing: src/"
+        raise ValueError(msg)
+    current = {
+        "cargo_lock_sha256": hashlib.sha256(cargo_lock.read_bytes()).hexdigest() if cargo_lock.is_file() else "unavailable",
+        "commit": _git_value(root, ["--no-pager", "rev-parse", "HEAD"]),
+        "source_state_sha256": current_source_state,
+    }
+    for retained_field, current_field in (
+        ("cargo_lock_sha256", "cargo_lock_sha256"),
+        ("current_commit", "commit"),
+        ("current_source_state_sha256", "source_state_sha256"),
+    ):
+        retained = measurement.get(retained_field)
+        current_value = current.get(current_field)
+        if retained != current_value:
+            msg = (
+                f"retained performance {retained_field} {retained!r} does not match the current checkout {current_field} {current_value!r}; "
+                "run `just performance-release` again"
+            )
+            raise ValueError(msg)
+
+    retained_contract = measurement.get("benchmark_contract_sha256")
+    contract_status = "legacy-retained-artifact"
+    if retained_contract is not None:
+        current_contract = benchmark_contract_digest(root)
+        if retained_contract != current_contract:
+            msg = (
+                f"retained performance benchmark_contract_sha256 {retained_contract!r} does not match "
+                f"the current checkout benchmark contract {current_contract!r}; run `just performance-release` again"
+            )
+            raise ValueError(msg)
+        contract_status = "matched"
+    return {
+        **current,
+        "benchmark_contract": contract_status,
+    }
+
+
+def _validate_performance_bundle(root: Path, args: PlotCliArgs, bundle: PerformanceBundle) -> dict[str, object]:
+    """Bind retained release measurements to the current release checkout."""
+    measurement = _validate_performance_selection(root, args, bundle)
+    return _validate_current_measurement(root, measurement)
+
+
+def _row_from_estimates(
+    *,
+    dim: int,
+    la_stack: TimingEstimate,
+    nalgebra: TimingEstimate,
+    faer: TimingEstimate,
+) -> Row:
+    return Row(
+        dim=dim,
+        la_time=la_stack.median_ns,
+        la_lo=la_stack.ci_lower_ns,
+        la_hi=la_stack.ci_upper_ns,
+        na_time=nalgebra.median_ns,
+        na_lo=nalgebra.ci_lower_ns,
+        na_hi=nalgebra.ci_upper_ns,
+        fa_time=faer.median_ns,
+        fa_lo=faer.ci_lower_ns,
+        fa_hi=faer.ci_upper_ns,
+    )
+
+
+def _collect_performance_rows(bundle: PerformanceBundle, metric: Metric) -> list[Row]:
+    """Extract current la-stack and retained same-harness peer timings."""
+    rows_by_key = {(row.group, row.benchmark): row for row in bundle.rows if row.suite == "vs_linalg"}
+    rows: list[Row] = []
+    for dim in CANONICAL_DIMS:
+        key = (f"d{dim}", metric.la_bench)
+        performance_row = rows_by_key.get(key)
+        if performance_row is None:
+            msg = f"retained performance data is missing {key[0]}/{key[1]}"
+            raise ValueError(msg)
+        missing = [
+            name
+            for name, estimate in (
+                ("current la-stack", performance_row.current),
+                ("nalgebra peer", performance_row.baseline_nalgebra),
+                ("faer peer", performance_row.baseline_faer),
+            )
+            if estimate is None
+        ]
+        if missing:
+            msg = f"retained performance data for {key[0]}/{key[1]} is missing {', '.join(missing)} timing"
+            raise ValueError(msg)
+        if performance_row.current is None or performance_row.baseline_nalgebra is None or performance_row.baseline_faer is None:
+            msg = "retained performance timing presence invariant violated"
+            raise AssertionError(msg)
+        rows.append(
+            _row_from_estimates(
+                dim=dim,
+                la_stack=performance_row.current,
+                nalgebra=performance_row.baseline_nalgebra,
+                faer=performance_row.baseline_faer,
+            )
+        )
+    return rows
+
+
+def _display_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return str(path.resolve())
+
+
+def _capture_performance_provenance(
+    root: Path,
+    *,
+    args: PlotCliArgs,
+    dims: list[int],
+    retained: _ValidatedPerformance,
+) -> dict[str, object]:
+    """Derive README artifact provenance from a validated performance bundle."""
+    bundle = retained.bundle
+    paths = retained.paths
+    benchmark_provenance = bundle.context.benchmark_provenance
+    criterion = _required_mapping(benchmark_provenance.get("criterion"), "criterion")
+    measurement = _required_mapping(benchmark_provenance.get("measurement"), "measurement")
+    return {
+        "artifact": "README vs_linalg dimension plot",
+        "criterion": {
+            "baseline_command": _json_compatible(criterion.get("baseline_command")),
+            "criterion_dependency": criterion.get("criterion_version"),
+            "current_command": _json_compatible(criterion.get("current_command")),
+            "dimensions": dims,
+            "log_y": args.log_y,
+            "metric": args.metric,
+            "sample": args.sample,
+            "statistic": args.stat,
+        },
+        "measurement": {
+            **cast("dict[str, object]", _json_compatible(measurement)),
+            "la_stack_sample": "current",
+            "peer_release_context": bundle.context.release.baseline,
+            "peer_sample": "baseline phase under shared current harness",
+            "source": "retained performance-release artifact",
+        },
+        "performance_artifact": {
+            "csv": _display_path(root, paths.csv),
+            "csv_sha256": hashlib.sha256(paths.csv.read_bytes()).hexdigest(),
+            "provenance": _display_path(root, paths.provenance),
+            "provenance_sha256": hashlib.sha256(paths.provenance.read_bytes()).hexdigest(),
+            "release": {
+                "baseline": bundle.context.release.baseline,
+                "current": bundle.context.release.current,
+            },
+        },
+        "publication": {
+            **retained.validation,
+            "correctness_gate": "validated-performance-release-artifact",
+        },
+        "schema": 2,
     }
 
 
@@ -975,29 +1098,29 @@ def _write_provenance(path: Path, provenance: dict[str, object]) -> None:
     path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _validate_readme_target(root: Path, args: PlotCliArgs) -> int:  # noqa: C901, PLR0911
-    """Validate publication-only CLI invariants and README markers before timing."""
+def _validate_readme_target(root: Path, args: PlotCliArgs) -> int:  # noqa: C901, PLR0911, PLR0912
+    """Validate publication-only CLI invariants and README markers before rendering."""
     if not args.update_readme:
         return 0
     if args.allow_partial:
         print("--allow-partial is exploratory-only and cannot be combined with --update-readme", file=sys.stderr)
         return 2
     if args.sample != "new":
-        print("README publication requires --sample new so the gated timing run is the data being published", file=sys.stderr)
+        print("README publication requires --sample new to identify the retained current-release measurements", file=sys.stderr)
+        return 2
+    if args.stat != "median":
+        print("README publication requires --stat median to match performance-release artifacts", file=sys.stderr)
         return 2
     if args.no_plot:
         print("README publication requires SVG rendering; --no-plot is exploratory-only", file=sys.stderr)
         return 2
-    criterion_dir = _resolve_under_root(root, args.criterion_dir).resolve()
-    expected_criterion_dir = (root / "target" / "criterion").resolve()
-    if criterion_dir != expected_criterion_dir:
-        print(
-            f"README publication requires Criterion output at {expected_criterion_dir}; got {criterion_dir}",
-            file=sys.stderr,
-        )
-        return 2
     readme_path = _resolve_under_root(root, args.readme)
     canonical_readme = (root / "README.md").resolve()
+    try:
+        readme_text = readme_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     if readme_path.resolve() == canonical_readme:
         expected_svg, expected_csv = _resolve_output_paths(root, args.metric, args.stat, None, None)
         selected_svg, selected_csv = _resolve_output_paths(root, args.metric, args.stat, args.out, args.csv)
@@ -1007,12 +1130,30 @@ def _validate_readme_target(root: Path, args: PlotCliArgs) -> int:  # noqa: C901
                 file=sys.stderr,
             )
             return 2
+        expected_performance = _resolve_performance_paths(root, _DEFAULT_PERFORMANCE_CSV)
+        selected_performance = _resolve_performance_paths(root, args.performance_csv)
+        if selected_performance.csv.resolve() != expected_performance.csv.resolve():
+            print(
+                f"README publication requires the canonical performance-release input {expected_performance.csv}; got {selected_performance.csv}",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            package_version = _read_cargo_package_version(root / "Cargo.toml")
+            if package_version is None:
+                msg = f"{root / 'Cargo.toml'} has no string package version"
+                raise ReadmeBenchmarkLinkError(msg)
+            _replace_readme_benchmark_asset_versions(
+                readme_text,
+                metric=args.metric,
+                stat=args.stat,
+                version=package_version,
+            )
+        except (OSError, TypeError, ValueError, tomllib.TOMLDecodeError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
     marker_begin, marker_end = _readme_table_markers(args.metric, args.stat, args.sample)
-    try:
-        lines = readme_path.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
+    lines = readme_text.splitlines()
     begin_count = sum(line.strip() == marker_begin for line in lines)
     end_count = sum(line.strip() == marker_end for line in lines)
     if begin_count != 1 or end_count != 1:
@@ -1027,7 +1168,7 @@ def _validate_readme_target(root: Path, args: PlotCliArgs) -> int:  # noqa: C901
 
 
 def _validate_publication_paths(root: Path, args: PlotCliArgs, *, out_svg: Path, out_csv: Path) -> int:
-    """Reject output aliases before benchmarks or publication can begin."""
+    """Reject input/output aliases before publication can begin."""
     paths = {
         "CSV output": out_csv,
         "provenance output": out_csv.with_suffix(".provenance.json"),
@@ -1036,6 +1177,9 @@ def _validate_publication_paths(root: Path, args: PlotCliArgs, *, out_svg: Path,
         paths["SVG output"] = out_svg
     if args.update_readme:
         paths["README output"] = _resolve_under_root(root, args.readme)
+        performance = _resolve_performance_paths(root, args.performance_csv)
+        paths["performance input CSV"] = performance.csv
+        paths["performance input provenance"] = performance.provenance
     try:
         ensure_distinct_paths(paths)
     except (OSError, ValueError) as exc:
@@ -1044,10 +1188,21 @@ def _validate_publication_paths(root: Path, args: PlotCliArgs, *, out_svg: Path,
     return 0
 
 
+def _changed_staged_files(pairs: list[tuple[Path, Path]]) -> list[tuple[Path, Path]]:
+    """Return staged files whose destination bytes differ or do not exist."""
+    changed_pairs: list[tuple[Path, Path]] = []
+    for staged, destination in pairs:
+        if destination.is_file() and staged.read_bytes() == destination.read_bytes():
+            continue
+        changed_pairs.append((staged, destination))
+    return changed_pairs
+
+
 def _replace_staged_files(pairs: list[tuple[Path, Path]], backup_dir: Path) -> None:
     """Replace a group of publication files and roll back on any failure."""
+    changed_pairs = _changed_staged_files(pairs)
     backups: dict[Path, Path | None] = {}
-    for index, (_staged, destination) in enumerate(pairs):
+    for index, (_staged, destination) in enumerate(changed_pairs):
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.is_file():
             backup = backup_dir / f"backup-{index}"
@@ -1061,7 +1216,7 @@ def _replace_staged_files(pairs: list[tuple[Path, Path]], backup_dir: Path) -> N
 
     replaced: list[Path] = []
     try:
-        for staged, destination in pairs:
+        for staged, destination in changed_pairs:
             staged.replace(destination)
             replaced.append(destination)
     except OSError as primary:
@@ -1101,6 +1256,34 @@ def _publish_staged_files(pairs: list[tuple[Path, Path]], root: Path) -> bool:
             except OSError as exc:
                 print(f"Warning: could not remove artifact backup {backup_dir}: {exc}", file=sys.stderr)
     return True
+
+
+def _update_staged_readme_publication(
+    *,
+    root: Path,
+    args: PlotCliArgs,
+    rows: list[Row],
+    staged_readme: Path,
+) -> None:
+    """Stage the README table and canonical artifact links as one publication."""
+    marker_begin, marker_end = _readme_table_markers(args.metric, args.stat, args.sample)
+    _update_readme_table(staged_readme, marker_begin, marker_end, _markdown_table(rows, args.stat))
+
+    readme_path = _resolve_under_root(root, args.readme)
+    if readme_path.resolve() != (root / "README.md").resolve():
+        return
+
+    package_version = _read_cargo_package_version(root / "Cargo.toml")
+    if package_version is None:
+        msg = f"{root / 'Cargo.toml'} has no string package version"
+        raise ReadmeBenchmarkLinkError(msg)
+    updated_readme = _replace_readme_benchmark_asset_versions(
+        staged_readme.read_text(encoding="utf-8"),
+        metric=args.metric,
+        stat=args.stat,
+        version=package_version,
+    )
+    staged_readme.write_text(updated_readme, encoding="utf-8")
 
 
 def _stage_and_publish_outputs(  # noqa: PLR0913
@@ -1150,9 +1333,8 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
             readme_path = _resolve_under_root(root, args.readme)
             staged_readme = stage_dir / "README.md"
             shutil.copy2(readme_path, staged_readme)
-            marker_begin, marker_end = _readme_table_markers(args.metric, args.stat, args.sample)
             try:
-                _update_readme_table(staged_readme, marker_begin, marker_end, _markdown_table(rows, args.stat))
+                _update_staged_readme_publication(root=root, args=args, rows=rows, staged_readme=staged_readme)
             except (OSError, ValueError) as exc:
                 print(str(exc), file=sys.stderr)
                 print("No benchmark publication files were changed.", file=sys.stderr)
@@ -1171,7 +1353,7 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
         print(f"Wrote SVG: {req.out_svg}")
     print(f"Wrote provenance: {final_provenance}")
     if args.update_readme:
-        print(f"Updated README table: {_resolve_under_root(root, args.readme)}")
+        print(f"Updated README benchmark publication: {_resolve_under_root(root, args.readme)}")
     return 0
 
 
@@ -1231,13 +1413,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
     rc = _validate_publication_paths(root, args, out_svg=out_svg, out_csv=out_csv)
     if rc != 0:
         return rc
-    if args.update_readme:
-        try:
-            _run_publication_benchmarks(root, args.metric)
-        except (FileNotFoundError, RuntimeError) as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
-
     versions = _detect_versions(root)
     _print_versions(versions)
 
@@ -1245,73 +1420,70 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
     na_label = _format_legend_label("nalgebra", versions.get("nalgebra", "unknown"))
     fa_label = _format_legend_label("faer", versions.get("faer", "unknown"))
 
-    criterion_dir = _resolve_under_root(root, args.criterion_dir)
-
-    discovered_dims = _discover_dims(criterion_dir) if criterion_dir.exists() else []
-    dims = discovered_dims if args.allow_partial else list(CANONICAL_DIMS)
-    if not args.allow_partial and not discovered_dims:
-        dims = []
-    if not dims:
-        print(
-            f"No Criterion results found under {criterion_dir}.\n\nRun benchmarks first, e.g.:\n  cargo bench --bench vs_linalg\n",
-            file=sys.stderr,
-        )
-        return 2
-
     metric = METRICS[args.metric]
-
-    try:
-        rows, skipped = _collect_rows(criterion_dir, dims, metric, args.stat, args.sample)
-    except (OSError, KeyError, TypeError, ValueError) as exc:
-        print(f"Invalid Criterion estimate data: {exc}", file=sys.stderr)
-        return 2
-    if not rows:
-        print(
-            "No benchmark results found to plot for the selected metric/stat.\n"
-            f"Expected files like:\n  {criterion_dir}/d32/{metric.la_bench}/{args.sample}/estimates.json\n",
-            file=sys.stderr,
-        )
-        if skipped:
-            print("Skipped groups:", *skipped, sep="\n  - ", file=sys.stderr)
-        return 2
-
-    if not args.allow_partial and skipped:
-        print(
-            "Canonical benchmark coverage is incomplete; no CSV, SVG, provenance, or README file was written.",
-            file=sys.stderr,
-        )
-        print("Required dimensions: " + ", ".join(f"D={dim}" for dim in CANONICAL_DIMS), file=sys.stderr)
-        print("Coverage gaps:", *skipped, sep="\n  - ", file=sys.stderr)
-        return 2
+    if args.update_readme:
+        performance_paths = _resolve_performance_paths(root, args.performance_csv)
+        try:
+            performance_bundle = load_bundle(performance_paths)
+            validation = _validate_performance_bundle(root, args, performance_bundle)
+            rows = _collect_performance_rows(performance_bundle, metric)
+            retained = _ValidatedPerformance(bundle=performance_bundle, validation=validation, paths=performance_paths)
+            provenance = _capture_performance_provenance(
+                root,
+                args=args,
+                dims=[row.dim for row in rows],
+                retained=retained,
+            )
+        except (FileNotFoundError, OSError, TypeError, ValueError, AssertionError, tomllib.TOMLDecodeError) as exc:
+            print(f"Invalid retained performance-release data: {exc}", file=sys.stderr)
+            return 2
+        skipped: list[str] = []
+    else:
+        criterion_dir = _resolve_under_root(root, args.criterion_dir)
+        discovered_dims = _discover_dims(criterion_dir) if criterion_dir.exists() else []
+        dims = discovered_dims if args.allow_partial else list(CANONICAL_DIMS)
+        if not args.allow_partial and not discovered_dims:
+            dims = []
+        if not dims:
+            print(
+                f"No Criterion results found under {criterion_dir}.\n\nRun benchmarks first, e.g.:\n  cargo bench --bench vs_linalg\n",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            rows, skipped = _collect_rows(criterion_dir, dims, metric, args.stat, args.sample)
+        except (OSError, KeyError, TypeError, ValueError) as exc:
+            print(f"Invalid Criterion estimate data: {exc}", file=sys.stderr)
+            return 2
+        if not rows:
+            print(
+                "No benchmark results found to plot for the selected metric/stat.\n"
+                f"Expected files like:\n  {criterion_dir}/d32/{metric.la_bench}/{args.sample}/estimates.json\n",
+                file=sys.stderr,
+            )
+            if skipped:
+                print("Skipped groups:", *skipped, sep="\n  - ", file=sys.stderr)
+            return 2
+        if not args.allow_partial and skipped:
+            print(
+                "Canonical benchmark coverage is incomplete; no CSV, SVG, provenance, or README file was written.",
+                file=sys.stderr,
+            )
+            print("Required dimensions: " + ", ".join(f"D={dim}" for dim in CANONICAL_DIMS), file=sys.stderr)
+            print("Coverage gaps:", *skipped, sep="\n  - ", file=sys.stderr)
+            return 2
+        provenance = _capture_exploratory_provenance(root, args=args, dims=[row.dim for row in rows])
 
     dims_present = [row.dim for row in rows]
-    provenance = _capture_provenance(
-        root,
-        args=args,
-        dims=dims_present,
-        measurement_recorded=args.update_readme,
-    )
-    publication = provenance.get("publication")
-    if not isinstance(publication, dict):
-        msg = "publication provenance invariant violated"
-        raise TypeError(msg)
-    missing_harness_files = publication.get("missing_harness_files")
-    if not isinstance(missing_harness_files, list) or not all(isinstance(path, str) for path in missing_harness_files):
-        msg = "publication missing_harness_files invariant violated"
-        raise AssertionError(msg)
-    provenance_gaps = list(cast("list[str]", missing_harness_files))
-    if publication.get("source_missing") is True:
-        provenance_gaps.append("src/")
-    provenance_gaps.extend(field for field in ("cargo_lock_sha256", "commit", "cpu", "os", "rustc") if publication.get(field) == "unavailable")
-    if publication.get("git_clean") is None:
-        provenance_gaps.append("git status")
-    if args.update_readme and provenance_gaps:
-        print(
-            "Publication provenance is incomplete; no CSV, SVG, provenance, or README file was written because required fields are unavailable: "
-            + ", ".join(provenance_gaps),
-            file=sys.stderr,
-        )
-        return 2
+    if not args.update_readme:
+        publication = provenance.get("publication")
+        if not isinstance(publication, dict):
+            msg = "publication provenance invariant violated"
+            raise TypeError(msg)
+        missing_harness_files = publication.get("missing_harness_files")
+        if not isinstance(missing_harness_files, list) or not all(isinstance(path, str) for path in missing_harness_files):
+            msg = "publication missing_harness_files invariant violated"
+            raise AssertionError(msg)
 
     title = f"{metric.title}: {args.stat} time vs dimension"
     req = PlotRequest(

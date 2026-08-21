@@ -103,9 +103,9 @@ See `docs/BENCHMARKING.md` for the current command matrix, local saved-baseline
 workflow, explicit tag arguments, output locations, and release-artifact
 comparison details.
 
-### Plotting Criterion benchmarks (la-stack vs nalgebra/faer)
+### Plotting la-stack vs nalgebra/faer benchmarks
 
-The plotter reads Criterion output under:
+The exploratory plotter reads Criterion output under:
 
 - `target/criterion/d{D}/{benchmark}/{new|base}/estimates.json`
 
@@ -123,7 +123,7 @@ By default, the benchmark suite runs for dimensions 2–5, 8, 16, 32, and 64.
    `target/criterion/...`):
 
 ```bash
-# full run (takes longer, better for README plots)
+# full run (takes longer, better for exploratory plots)
 just bench-vs-linalg lu_solve
 
 # or quick run (fast sanity check; still produces estimates.json)
@@ -140,23 +140,30 @@ just plot-vs-linalg lu_solve median new true
 just plot-vs-linalg lu_solve mean new true
 ```
 
-Use the dedicated publication path to update README's benchmark table (between
-`BENCH_TABLE` markers):
+For release publication, first retain the validated release comparison, then
+update README's benchmark table (between `BENCH_TABLE` markers):
 
 ```bash
-just plot-vs-linalg-readme lu_solve median new true
+just performance-release
+just performance-readme lu_solve median new true
 ```
 
-That recipe runs the benchmark-input gate and a fresh full `vs_linalg` benchmark,
-requires la-stack/nalgebra/faer results at every canonical dimension, and then
-publishes CSV, SVG, JSON provenance, and README together. Partial dimensions are
-available only through the plotter's explicit `--allow-partial` exploratory
+The README recipe consumes `target/bench-reports/performance.csv` and its
+adjacent provenance JSON; it does not run the benchmark-input gate or Criterion
+again. It uses the current la-stack timing and retained same-current-harness
+nalgebra/faer timings, requires all three at every canonical dimension, and then
+publishes CSV, SVG, derived JSON provenance, the README table, and its tag-pinned
+benchmark artifact links together. Until publication succeeds, those links keep
+referencing the previous published artifacts. Partial dimensions are available
+only through the raw-Criterion plotter's explicit `--allow-partial` exploratory
 option and cannot update README.
 
 This writes:
 
 - `docs/assets/bench/vs_linalg_lu_solve_median.csv`
 - `docs/assets/bench/vs_linalg_lu_solve_median.svg` (requires `gnuplot`)
+- `docs/assets/bench/vs_linalg_lu_solve_median.provenance.json`
+- the benchmark table and tag-pinned asset links in `README.md`
 
 (For `stat=mean`, the filenames end in `_mean` instead of `_median`.)
 
@@ -222,6 +229,20 @@ This repo has been tested with `gnuplot 6.0 patchlevel 3` (Homebrew `gnuplot 6.0
 
 ## Changelog and release tooling
 
+### Updating release metadata
+
+```bash
+just update-version vX.Y.Z
+```
+
+The updater infers the previous stable release from published GitHub releases,
+updates package, lockfile, citation, non-artifact README, and active
+benchmark workflow version references transactionally, and records the current
+UTC date in `CITATION.cff`. It leaves README benchmark artifact links for
+`performance-readme`, and it does not upgrade dependencies. If the target
+changelog heading already exists, the updater advances its date atomically with
+the citation date.
+
 ### Generating the changelog
 
 ```bash
@@ -261,5 +282,6 @@ validates SemVer, and handles GitHub's 125KB tag-annotation size limit.
 | `postprocess_changelog.py` | Normalize and reflow generated git-cliff Markdown safely |
 | `subprocess_utils.py` | Safe subprocess wrappers for git commands |
 | `update_cargo_tool_pins.py` | Reconcile repository-owned Cargo tool pins with installed versions |
+| `update_release_version.py` | Transactionally update deterministic release-version metadata |
 
 See `docs/RELEASING.md` for the full release workflow.

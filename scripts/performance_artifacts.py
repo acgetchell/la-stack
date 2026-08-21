@@ -339,6 +339,8 @@ def _validate_environment_provenance(data: Mapping[str, object], *, context: str
         _required_provenance_string(data, field, context=context)
     for field in ("cargo_lock_sha256", "harness_sha256", "source_state_sha256"):
         _required_provenance_sha256(data, field, context=context)
+    if "benchmark_contract_sha256" in data:
+        _required_provenance_sha256(data, "benchmark_contract_sha256", context=context)
     _required_provenance_bool(data, "git_clean", context=context)
     gate = _required_provenance_string(data, "correctness_gate", context=context)
     if gate != "passed":
@@ -395,6 +397,8 @@ def _validate_measurement_provenance(measurement: Mapping[str, object], *, mode:
             "baseline_source_state_sha256",
         ):
             _required_provenance_sha256(measurement, field, context="measurement")
+        if "benchmark_contract_sha256" in measurement:
+            _required_provenance_sha256(measurement, "benchmark_contract_sha256", context="measurement")
         for field in ("current_git_clean", "baseline_git_clean"):
             _required_provenance_bool(measurement, field, context="measurement")
     elif measurement_status == "unavailable":
@@ -462,6 +466,14 @@ def _validate_recorded_measurement_consistency(
             measurement,
             publication,
             field,
+            first_context="measurement",
+            second_context="publication",
+        )
+    if "benchmark_contract_sha256" in measurement or "benchmark_contract_sha256" in publication:
+        _require_matching_provenance(
+            measurement,
+            publication,
+            "benchmark_contract_sha256",
             first_context="measurement",
             second_context="publication",
         )

@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from bench_compare import HOW_TO_UPDATE_SECTION, render_release_artifacts
+from benchmark_contract import benchmark_contract_digest
 from performance_artifacts import ArtifactPaths, ensure_distinct_paths, load_bundle, publish_bundle
 from subprocess_utils import ExecutableNotFoundError, cpu_description, run_git_command, run_git_command_with_input, run_safe_command
 
@@ -318,6 +319,11 @@ def _github_release_list(repo_root: Path) -> object:
 
 def _published_stable_releases(repo_root: Path) -> list[PublishedRelease]:
     return _stable_published_releases(_github_release_list(repo_root))
+
+
+def published_stable_release_tags(repo_root: Path) -> list[str]:
+    """Return stable published GitHub release tags for release tooling."""
+    return [release.tag for release in _published_stable_releases(repo_root)]
 
 
 def _latest_published_release(repo_root: Path) -> PublishedRelease:
@@ -699,6 +705,7 @@ def _environment_metadata(checkout: Path, *, harness_sha256: str) -> dict[str, o
     cpu = cpu_description()
     os_description = " ".join(part for part in (platform.system(), platform.release(), platform.machine()) if part).strip()
     return {
+        "benchmark_contract_sha256": benchmark_contract_digest(checkout),
         "cargo_lock_sha256": _sha256_file(checkout / "Cargo.lock"),
         "commit": _checkout_commit(checkout),
         "correctness_gate": "passed",
@@ -781,6 +788,7 @@ def _write_local_run_provenance(
     measurement = {
         "baseline_api_compatibility": baseline_run.api_compatibility or "none",
         "baseline_commit": baseline_run.commit,
+        "benchmark_contract_sha256": publication["benchmark_contract_sha256"],
         "cargo_lock_sha256": publication["cargo_lock_sha256"],
         "cpu": publication["cpu"],
         "current_commit": publication["commit"],
