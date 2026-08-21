@@ -141,20 +141,33 @@ the small fixed-dimension API model.
   primitive and `num-bigint` operations where the new helpers do not simplify
   current hot paths or preserve benchmark performance.
 
-The goal is targeted profiling and implementation cleanup for operations where
-`vs_linalg` shows a meaningful peer-crate gap. Release scope should stay limited
-to changes that preserve numerical behavior, allocation-free fixed-size storage,
-and clear const-generic code.
+Release outcome:
 
-### v0.4.5 Rust 1.98 Numerical Policy
+- `Matrix::inf_norm` moved finiteness checks off the ordinary per-cell success
+  path while replaying only overflowed rows to preserve exact error locations.
+- `Vector::dot` and `Vector::norm2_sq` adopted the same success-path reduction
+  strategy while retaining left-to-right fused accumulation, `const fn`
+  evaluation, and typed failure metadata.
+- The MSRV moved to Rust 1.97.0 after auditing the new integer bit helpers; the
+  existing exact-arithmetic operations remained where alternatives did not
+  improve clarity or preserve measured performance.
+- Direct and exact determinant hot paths were restored without weakening the
+  numerical contracts or the fixed-size allocation model.
 
-The `v0.4.5` milestone continues stable-Rust maintenance without broadening the
-crate's scalar or algorithm scope.
+### v0.4.5 Rust 1.98 Numerical Policy (released)
 
-- [#208](https://github.com/acgetchell/la-stack/issues/208) raises the MSRV and
-  pinned contributor/CI toolchain to Rust 1.98, audits the final stable release,
-  and adds a repository guard against the new algebraic floating-point
+This milestone completed stable-Rust maintenance without broadening the crate's
+scalar or algorithm scope.
+
+- [#208](https://github.com/acgetchell/la-stack/issues/208) raised the MSRV and
+  pinned contributor/CI toolchain to Rust 1.98, audited the final stable release,
+  and added a repository guard against the new algebraic floating-point
   operations in correctness-sensitive source, examples, and benchmarks.
+- Local and release performance workflows were unified around retained,
+  schema-versioned CSV/JSON inputs, validated rerendering, and transactional
+  report promotion.
+- Dependency, contributor-tool, and GitHub Action maintenance was refreshed
+  while preserving explicit repository ownership of update scope.
 
 The existing IEEE 754 operations, deterministic accumulation order, error
 bounds, exact fallbacks, and typed non-finite behavior remain authoritative.

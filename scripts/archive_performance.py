@@ -37,7 +37,14 @@ from typing import Any, Literal, cast
 from bench_compare import HOW_TO_UPDATE_SECTION, render_release_artifacts
 from benchmark_contract import benchmark_contract_digest
 from performance_artifacts import ArtifactPaths, ensure_distinct_paths, load_bundle, publish_bundle
-from subprocess_utils import ExecutableNotFoundError, cpu_description, run_git_command, run_git_command_with_input, run_safe_command
+from subprocess_utils import (
+    ExecutableNotFoundError,
+    cpu_description,
+    format_exception_diagnostics,
+    run_git_command,
+    run_git_command_with_input,
+    run_safe_command,
+)
 
 _VERSION_RE = re.compile(r"^\*\*la-stack\*\* v(?P<version>[^\s`]+)", re.MULTILINE)
 _BASELINE_RE = re.compile(r"^Comparison against baseline \*\*(?P<baseline>[^*]+)\*\*:", re.MULTILINE)
@@ -223,15 +230,24 @@ def normalize_tag(tag: str) -> str:
 
 def parse_report_id(text: str) -> ReportId:
     """Parse the current version and baseline tag from a benchmark report."""
-    version_match = _VERSION_RE.search(text)
-    if version_match is None:
+    version_matches = list(_VERSION_RE.finditer(text))
+    if not version_matches:
         msg = "could not find la-stack version line in benchmark report"
         raise ValueError(msg)
+    if len(version_matches) != 1:
+        msg = f"expected exactly one la-stack version line in benchmark report, found {len(version_matches)}"
+        raise ValueError(msg)
 
-    baseline_match = _BASELINE_RE.search(text)
-    if baseline_match is None:
+    baseline_matches = list(_BASELINE_RE.finditer(text))
+    if not baseline_matches:
         msg = "could not find comparison baseline line in benchmark report"
         raise ValueError(msg)
+    if len(baseline_matches) != 1:
+        msg = f"expected exactly one comparison baseline line in benchmark report, found {len(baseline_matches)}"
+        raise ValueError(msg)
+
+    version_match = version_matches[0]
+    baseline_match = baseline_matches[0]
 
     return ReportId(
         current_tag=normalize_tag(version_match.group("version")),
@@ -2087,7 +2103,7 @@ def main(argv: list[str] | None = None) -> int:
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
     ) as exc:
-        print(f"archive-performance: {exc}", file=sys.stderr)
+        print(f"archive-performance: {format_exception_diagnostics(exc)}", file=sys.stderr)
         return 1
 
     if result.action == "output":

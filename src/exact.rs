@@ -3534,58 +3534,26 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn f64_to_big_rational_positive_zero() {
-        let r = f64_to_big_rational(0.0);
-        assert_eq!(r, BigRational::from_integer(BigInt::from(0)));
-    }
+    fn f64_to_big_rational_scalar_cases() {
+        let cases = [
+            ("positive zero", 0.0, 0, 1),
+            ("negative zero", -0.0, 0, 1),
+            ("one", 1.0, 1, 1),
+            ("negative one", -1.0, -1, 1),
+            ("half", 0.5, 1, 2),
+            ("quarter", 0.25, 1, 4),
+            ("negative three and a half", -3.5, -7, 2),
+            ("integer", 42.0, 42, 1),
+            ("power of two", 1024.0, 1024, 1),
+        ];
 
-    #[test]
-    fn f64_to_big_rational_negative_zero() {
-        let r = f64_to_big_rational(-0.0);
-        assert_eq!(r, BigRational::from_integer(BigInt::from(0)));
-    }
-
-    #[test]
-    fn f64_to_big_rational_one() {
-        let r = f64_to_big_rational(1.0);
-        assert_eq!(r, BigRational::from_integer(BigInt::from(1)));
-    }
-
-    #[test]
-    fn f64_to_big_rational_negative_one() {
-        let r = f64_to_big_rational(-1.0);
-        assert_eq!(r, BigRational::from_integer(BigInt::from(-1)));
-    }
-
-    #[test]
-    fn f64_to_big_rational_half() {
-        let r = f64_to_big_rational(0.5);
-        assert_eq!(r, BigRational::new(BigInt::from(1), BigInt::from(2)));
-    }
-
-    #[test]
-    fn f64_to_big_rational_quarter() {
-        let r = f64_to_big_rational(0.25);
-        assert_eq!(r, BigRational::new(BigInt::from(1), BigInt::from(4)));
-    }
-
-    #[test]
-    fn f64_to_big_rational_negative_three_and_a_half() {
-        // -3.5 = -7/2
-        let r = f64_to_big_rational(-3.5);
-        assert_eq!(r, BigRational::new(BigInt::from(-7), BigInt::from(2)));
-    }
-
-    #[test]
-    fn f64_to_big_rational_integer() {
-        let r = f64_to_big_rational(42.0);
-        assert_eq!(r, BigRational::from_integer(BigInt::from(42)));
-    }
-
-    #[test]
-    fn f64_to_big_rational_power_of_two() {
-        let r = f64_to_big_rational(1024.0);
-        assert_eq!(r, BigRational::from_integer(BigInt::from(1024)));
+        for (label, value, numerator, denominator) in cases {
+            assert_eq!(
+                f64_to_big_rational(value),
+                BigRational::new(BigInt::from(numerator), BigInt::from(denominator)),
+                "{label}"
+            );
+        }
     }
 
     #[test]

@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import tempfile
+from itertools import pairwise
 from pathlib import Path
 
 from postprocess_changelog import normalize_entry_headings_text, postprocess_text
@@ -215,6 +216,16 @@ def group_by_minor(
         key = _minor_key(ver)
         groups.setdefault(key, []).append((ver, block))
     return groups
+
+
+def _validate_release_order(version_blocks: list[tuple[str, str]]) -> None:
+    """Require release headings to be in strictly descending SemVer order."""
+    for (previous, _), (current, _) in pairwise(version_blocks):
+        same_precedence = _version_sort_key(previous) == _version_sort_key(current)
+        out_of_order = sorted((previous, current), key=_version_sort_key, reverse=True) != [previous, current]
+        if same_precedence or out_of_order:
+            msg = f"changelog release headings must be in strictly descending semantic-version order: {previous} appears before {current}"
+            raise ValueError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -496,6 +507,7 @@ def archive_changelog(
     text, link_defs = _extract_link_defs(text)
 
     preamble, unreleased, version_blocks = parse_changelog(text)
+    _validate_release_order(version_blocks)
 
     if not version_blocks:
         _postprocess_existing_archives(archive_dir)
@@ -547,7 +559,7 @@ def archive_changelog(
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``archive-changelog``."""
     parser = argparse.ArgumentParser(
         prog="archive-changelog",
@@ -564,16 +576,20 @@ def main() -> None:
         default=None,
         help=f"Archive output directory (default: {_DEFAULT_ARCHIVE_DIR})",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     changelog = Path(args.path)
-    if not changelog.is_file():
-        print(f"Error: {changelog} not found", file=sys.stderr)
-        sys.exit(1)
-
-    archive_dir = Path(args.archive_dir) if args.archive_dir else None
-    archive_changelog(changelog, archive_dir)
+    try:
+        if not changelog.is_file():
+            msg = f"{changelog} not found"
+            raise FileNotFoundError(msg)
+        archive_dir = Path(args.archive_dir) if args.archive_dir else None
+        archive_changelog(changelog, archive_dir)
+    except (OSError, UnicodeError, ValueError) as error:
+        print(f"archive-changelog: {error}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

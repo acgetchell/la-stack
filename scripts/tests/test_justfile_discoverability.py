@@ -105,6 +105,14 @@ def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
     assert updated_packages == set(update_cargo_tool_pins.PIN_TO_PACKAGE.values())
 
 
+def test_setup_tools_installs_and_verifies_cargo_update_provider() -> None:
+    """A clean setup must provide the updater used by the update workflow."""
+    body = json.dumps(just_recipes()["setup-tools"]["body"])
+
+    assert "cargo install --locked cargo-update --version" in body
+    assert "verify_tool_version cargo-install-update" in body
+
+
 def test_managed_cargo_tool_pins_exist_once_in_root_justfile() -> None:
     """Every managed Cargo package should map to one real root Just pin."""
     justfile_text = (REPO_ROOT / "justfile").read_text(encoding="utf-8")

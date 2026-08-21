@@ -1,5 +1,6 @@
 """Tests for tag_release.py — annotated tag creation with size-limit handling."""
 
+import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
@@ -228,6 +229,29 @@ class TestCreateTag:
     @pytest.fixture(autouse=True)
     def _matching_package_version(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(tag_release, "_package_version", lambda _changelog: "1.0.0")
+
+    def test_main_preserves_captured_git_diagnostics(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        def fail_create_tag(_version: str, *, force: bool = False) -> None:
+            del force
+            raise subprocess.CalledProcessError(
+                128,
+                ["git", "tag", "v1.0.0"],
+                output="tag stdout",
+                stderr="tag rejected by hook",
+            )
+
+        monkeypatch.setattr(tag_release, "create_tag", fail_create_tag)
+
+        assert tag_release.main(["v1.0.0"]) == 1
+        captured = capsys.readouterr()
+        assert "git tag v1.0.0" in captured.err
+        assert "tag stdout" in captured.err
+        assert "tag rejected by hook" in captured.err
+        assert "Traceback" not in captured.err
 
     def test_next_step_sets_release_title(
         self,

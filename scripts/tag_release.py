@@ -23,6 +23,7 @@ from urllib.parse import urlsplit
 
 from subprocess_utils import (
     ExecutableNotFoundError,
+    format_exception_diagnostics,
     run_git_command,
     run_git_command_with_input,
 )
@@ -399,7 +400,7 @@ def create_tag(tag_version: str, *, force: bool = False) -> None:
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point for ``tag-release``."""
     parser = argparse.ArgumentParser(
         prog="tag-release",
@@ -408,7 +409,7 @@ def main() -> None:
     parser.add_argument("version", help="Tag version (e.g. v1.2.3)")
     parser.add_argument("--force", action="store_true", help="Recreate tag if it already exists")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.debug:
         logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
@@ -426,9 +427,10 @@ def main() -> None:
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
     ) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
+        print(f"Error: {format_exception_diagnostics(exc)}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

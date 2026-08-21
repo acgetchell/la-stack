@@ -1,7 +1,11 @@
 """Tests for postprocess_changelog.py — trailing blanks, reflow, code blocks, summaries."""
 
-from typing import TYPE_CHECKING
+import os
+from typing import TYPE_CHECKING, Never
 
+import pytest
+
+import postprocess_changelog
 from postprocess_changelog import (
     _CodeFence,
     _compact_entry,
@@ -36,6 +40,44 @@ class TestStripTrailingBlanks:
         postprocess(f)
 
         assert f.read_text(encoding="utf-8") == "# Changelog\n\n- Item\n"
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX mode preservation is not meaningful on Windows")
+    def test_atomic_write_preserves_file_mode(self, tmp_path: Path) -> None:
+        f = tmp_path / "CHANGELOG.md"
+        f.write_text("# Changelog\n\n- Item\n\n\n", encoding="utf-8")
+        f.chmod(0o640)
+
+        postprocess(f)
+
+        assert f.stat().st_mode & 0o777 == 0o640
+
+    @pytest.mark.parametrize("failure_point", ["stage", "fsync", "replace"])
+    def test_atomic_write_failure_preserves_original(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        failure_point: str,
+    ) -> None:
+        f = tmp_path / "CHANGELOG.md"
+        original = b"# Changelog\n\n- Item\n\n\n"
+        f.write_bytes(original)
+
+        def fail(*_args: object, **_kwargs: object) -> Never:
+            msg = f"simulated {failure_point} failure"
+            raise OSError(msg)
+
+        if failure_point == "stage":
+            monkeypatch.setattr(postprocess_changelog.tempfile, "NamedTemporaryFile", fail)
+        elif failure_point == "fsync":
+            monkeypatch.setattr(postprocess_changelog.os, "fsync", fail)
+        else:
+            monkeypatch.setattr(postprocess_changelog.Path, "replace", fail)
+
+        with pytest.raises(OSError, match=f"simulated {failure_point} failure"):
+            postprocess(f)
+
+        assert f.read_bytes() == original
+        assert not list(tmp_path.glob(".CHANGELOG.md.*.tmp"))
 
     def test_preserves_single_trailing_newline(self, tmp_path: Path) -> None:
         f = tmp_path / "CHANGELOG.md"
