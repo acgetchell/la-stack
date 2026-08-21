@@ -27,9 +27,11 @@ uv sync --locked --group dev
 ### Updating dependencies and repository-owned tools
 
 Run `just update` for the deliberate maintenance workflow. It updates Cargo and
-uv dependency declarations and locks, upgrades only the Cargo CLI packages
-owned by `setup-tools`, and then uses `update-cargo-tool-pins` to reconcile the
-installed package versions with the root `justfile` atomically.
+exact Python development-tool declarations and their locks, upgrades only the
+Cargo CLI packages owned by `setup-tools`, and then reconciles the installed
+package versions with the root `justfile` atomically. The Python updater asks
+uv to resolve one cross-platform tool set before applying all changed exact
+pins together; it does not change runtime or build-system requirements.
 
 ## How to use it
 
@@ -282,6 +284,7 @@ validates SemVer, and handles GitHub's 125KB tag-annotation size limit.
 | `postprocess_changelog.py` | Normalize and reflow generated git-cliff Markdown safely |
 | `subprocess_utils.py` | Safe subprocess wrappers for git commands |
 | `update_cargo_tool_pins.py` | Reconcile repository-owned Cargo tool pins with installed versions |
+| `update_python_dev_pins.py` | Resolve and advance exact Python development-tool pins through uv |
 | `update_release_version.py` | Transactionally update deterministic release-version metadata |
 
 See `docs/RELEASING.md` for the full release workflow.

@@ -26,12 +26,12 @@ Use `just fix` when you intentionally want formatters and automatic fixes to
 change files. Run `just --list` for the full command surface.
 
 Use `just update` for deliberate dependency and tool maintenance. It composes
-`just update-dependencies`, which advances Cargo dependency requirements and
-the Cargo/uv locks, with `just update-cargo-tools`, which upgrades only the
-Cargo CLI packages owned by `setup-tools` and atomically reconciles their root
-`justfile` pins. The tool updater requires `cargo-install-update` from the
-`cargo-update` package and does not touch unrelated Cargo executables or uv's
-user-global tool environments.
+`just update-dependencies`, which advances Cargo dependency requirements, exact
+Python development-tool pins, and the Cargo/uv locks, with
+`just update-cargo-tools`, which upgrades only the Cargo CLI packages owned by
+`setup-tools` and atomically reconciles their root `justfile` pins. The tool
+updater requires `cargo-install-update` from the `cargo-update` package and does
+not touch unrelated Cargo executables or uv's user-global tool environments.
 
 The repository uses `cargo-nextest` for runnable Rust tests, `cargo-machete`
 for unused-dependency checks, and `just cargo-lock-check` to verify that the
