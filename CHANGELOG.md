@@ -5,6 +5,117 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-08-21
+
+### ⚠️ Breaking Changes
+
+- Unify local and release performance workflows
+- Require Rust 1.97.1
+- Require Rust 1.98.0
+
+### Merged Pull Requests
+
+- Bump the dependencies group with 3 updates [#211](https://github.com/acgetchell/la-stack/pull/211)
+- Bump the github-actions group with 7 updates [#200](https://github.com/acgetchell/la-stack/pull/200)
+
+### Added
+
+- Persist release report artifacts for rerendering [`600445c`](https://github.com/acgetchell/la-stack/commit/600445c325ade517631d50a5f625923f56387f1c)
+
+  - Store deterministic comparison CSV with an adjacent schema-versioned provenance sidecar before temporary worktrees are removed.
+  - Render and promote reports only from validated artifact reloads, with fail-closed path checks and transactional rollback.
+  - Add performance-rerender and document artifact retention, GitHub assets, and the release workflow.
+  - Refresh Rust, Python, contributor-tool, and GitHub Action pins, and separate Dependabot security update groups.
+
+### Dependencies
+
+- Bump the github-actions group with 7 updates [#200](https://github.com/acgetchell/la-stack/pull/200)
+  [`9728daf`](https://github.com/acgetchell/la-stack/commit/9728dafc026bb2a849bae49feaca6144c5598698)
+
+### Fixed
+
+- Enforce pinned uv in local recipe guards [`938aff6`](https://github.com/acgetchell/la-stack/commit/938aff62517d5055d1db49bc7734e4069ef74d72)
+
+  - Reject missing or mismatched uv versions with actionable diagnostics.
+  - Reuse the canonical version guard across uv-backed validation helpers.
+- Harden release artifact promotion [`8b8537b`](https://github.com/acgetchell/la-stack/commit/8b8537b86226285a343976ea987cf2759bf3dd7d)
+  - Treat CRLF and LF archive reports as equivalent while preserving stored bytes.
+  - Share comparison selection and report-update guidance across generation paths.
+  - Isolate artifact path resolution and retained-artifact rendering.
+  - Clarify that durable benchmark downloads are GitHub Release assets.
+- Harden numerical and release evidence [`c878701`](https://github.com/acgetchell/la-stack/commit/c8787017122c3e94958e82d327fdab8a305999b8)
+  - Surface determinant overflow even when error-bound terms underflow.
+  - Measure complete benchmark operations symmetrically and bind retained reports to atomic, validated provenance.
+  - Fail closed on inconsistent release metadata, tags, changelog sections, Semgrep annotations, and recorded CPU provenance.
+  - Align docs.rs feature annotations, citation identifiers, all-target linting, and configurable property-test runs with documented contracts.
+- Harden release and validation edge cases [`260afb8`](https://github.com/acgetchell/la-stack/commit/260afb85fdc8eaa873bdb64b6d7eae76ab6b9abc)
+  - Preserve archived changelog bytes during rollback and reject malformed Unreleased headings.
+  - Match overlapping Semgrep fixture spans deterministically and centralize immutable benchmark provenance handling.
+  - Document exact matrix/RHS scaling and the power-of-two factor that preserves linear systems.
+- [**breaking**] Unify local and release performance workflows
+  [`c601c41`](https://github.com/acgetchell/la-stack/commit/c601c4146b01868a29288b7221e413706e3e01c7)
+  - Retain local Markdown, CSV, and provenance artifacts while allowing same-version comparisons of tracked changes.
+  - Exclude untracked files explicitly and isolate the narrowed non-exact comparison bundle.
+  - Promote distinct-release artifacts through performance-doc and keep performance-release atomic and rollback-capable.
+  - Render one consolidated table per benchmark suite and reject invalid release publication states.
+- Isolate algebraic float fixture scans [`56e848f`](https://github.com/acgetchell/la-stack/commit/56e848fb3dbbc93f2fd4c0b566d71489c96dc857)
+  - exclude intentional algebraic float violations from production Semgrep scans while preserving direct fixture validation
+  - cover f64 associated-call syntax alongside f32 and receiver forms
+  - forbid dead-code suppressions and remove blanket allowances from static-analysis fixtures
+
+### Maintenance
+
+- Gate auto-merge on CodeRabbit approval [`2a37961`](https://github.com/acgetchell/la-stack/commit/2a37961ee8c95f2482541910de78680af22bb968)
+
+  - Request one SHA-scoped CodeRabbit review for each Dependabot update.
+  - Enable squash auto-merge only for the triggering head after required checks pass.
+  - Group GitHub Actions updates, remove autopep8, and refresh pinned tooling.
+  - Print an explicit release title in tag-release follow-up guidance.
+- [**breaking**] Require Rust 1.97.1 [`99bac26`](https://github.com/acgetchell/la-stack/commit/99bac263ae773cc8cb42c418630c8e7dd7d023b8)
+  - align contributor, CI, release, and Clippy toolchain baselines
+  - compile benchmarks with Cargo's warning policy to preserve cache reuse
+  - publish CodeRabbit's canonical review check for ruleset enforcement
+- Restore ruleset-compatible status [`5235365`](https://github.com/acgetchell/la-stack/commit/5235365efaf38a0d4035d74a46a7468ad10921d0)
+  - publish the legacy CodeRabbit commit status required by the main ruleset
+  - keep review progress disabled until CodeRabbit can publish the required check run
+- Standardize validation and centralize tool pins [`54a7e3a`](https://github.com/acgetchell/la-stack/commit/54a7e3a8e8a640fa5069d5c07fffbf1c1dfab903)
+  - Compose CI from orthogonal leaf validators with one release-profile nextest pass and separate doctests.
+  - Resolve workflow tooling through the justfile and shared setup action.
+  - Document focused validation, notebook scope, and Rust 1.97 tooling policy.
+  - Refresh development tools, security actions, Dependabot schedules, and lockfiles.
+- [**breaking**] Require Rust 1.98.0 [`2f9e0a8`](https://github.com/acgetchell/la-stack/commit/2f9e0a83c4fd974f34f87f29409cf1eac4da5343)
+  - align the MSRV, contributor toolchain, dependency locks, and documented maintenance baseline
+  - forbid algebraic float operations in numerical kernels to preserve IEEE-754 error and reproducibility contracts
+  - add a scoped just update workflow with atomic Cargo tool-pin reconciliation
+  - clean failed changelog and performance staging files without disturbing published artifacts
+- Bump the dependencies group with 3 updates [#211](https://github.com/acgetchell/la-stack/pull/211)
+  [`493068a`](https://github.com/acgetchell/la-stack/commit/493068ac653724959f7083f34d5c909a496314bd)
+
+  Updates the requirements on [ruff](https://github.com/astral-sh/ruff) , [ty](https://github.com/astral-sh/ty) and
+  [setuptools](https://github.com/pypa/setuptools) to permit the latest version.
+
+  Updates `ruff` from 0.16.1 to 0.16.2
+  - [Release notes](https://github.com/astral-sh/ruff/releases)
+  - [Changelog](https://github.com/astral-sh/ruff/blob/main/CHANGELOG.md)
+  - [Commits](https://github.com/astral-sh/ruff/compare/0.16.1...0.16.2)
+
+  Updates `ty` from 0.0.66 to 0.0.69
+  - [Release notes](https://github.com/astral-sh/ty/releases)
+  - [Changelog](https://github.com/astral-sh/ty/blob/main/CHANGELOG.md)
+  - [Commits](https://github.com/astral-sh/ty/compare/0.0.66...0.0.69)
+
+  Updates `setuptools` to 84.0.0
+  - [Release notes](https://github.com/pypa/setuptools/releases)
+  - [Changelog](https://github.com/pypa/setuptools/blob/main/NEWS.rst)
+  - [Commits](https://github.com/pypa/setuptools/compare/v83.0.0...v84.0.0)
+
+### Performance
+
+- Reduce checked determinant query overhead [`2bdf1d3`](https://github.com/acgetchell/la-stack/commit/2bdf1d3dc4b4a27928a888be678b4c360916e94c)
+
+  - Aggregate D≥5 range proofs before a single cold scaled replay.
+  - Preserve immediate small-dimension fallback and range-safe determinant behavior.
+
 ## [0.4.4] - 2026-07-13
 
 ### ⚠️ Breaking Changes
@@ -67,6 +178,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - fail benchmark publication closed on invalid samples or mismatched provenance
   - make release and changelog tooling transactional, path-safe, and Windows-portable
   - align benchmark CI with pinned local tools and least-privilege publishing
+- Harden changelog and version generation [`2e1eb2e`](https://github.com/acgetchell/la-stack/commit/2e1eb2e965333fab51934c2b605fe3465e4b57e6)
+  - Reject tag prefixes embedded in longer non-semver revisions
+  - Preserve fenced examples when stripping Dependabot metadata
+  - Document the conditional exact-solve scaling invariant
+  - Regenerate the v0.4.4 changelog through the release workflow
 
 ### Maintenance
 
@@ -775,6 +891,7 @@ Older releases are archived by minor series:
 - [0.2.x](docs/archive/changelog/0.2.md)
 - [0.1.x](docs/archive/changelog/0.1.md)
 
+[0.4.5]: https://github.com/acgetchell/la-stack/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/acgetchell/la-stack/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/acgetchell/la-stack/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/acgetchell/la-stack/compare/v0.4.1...v0.4.2

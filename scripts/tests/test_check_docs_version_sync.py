@@ -119,6 +119,19 @@ def test_find_version_mismatches_reports_readme_tag_links(tmp_path: Path) -> Non
     assert [mismatch.reference.version for mismatch in mismatches] == ["1.2.2", "1.2.1", "abc1234"]
 
 
+def test_find_version_mismatches_ignores_plot_owned_readme_benchmark_asset_links(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        readme=(
+            "[csv](https://github.com/acgetchell/la-stack/blob/v1.2.2/docs/assets/bench/result.csv)\n"
+            "[provenance](https://github.com/acgetchell/la-stack/blob/v1.2.2/docs/assets/bench/result.provenance.json)\n"
+            "[svg](https://raw.githubusercontent.com/acgetchell/la-stack/v1.2.2/docs/assets/bench/result.svg)\n"
+        ),
+    )
+
+    assert check_docs_version_sync.find_version_mismatches(tmp_path) == []
+
+
 @pytest.mark.parametrize("tag", ["v1.2.3.4", "v1.2.3.extra", "v1.2.3_suffix"])
 def test_readme_tag_references_reject_longer_non_semver_tags(tmp_path: Path, tag: str) -> None:
     readme = tmp_path / "README.md"

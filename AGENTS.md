@@ -296,6 +296,7 @@ just test             # Lib + doc tests (fast)
 just test-all         # All tests (Rust, benchmark inputs, and Python)
 just examples         # Run all examples
 just update           # Update dependency locks and repository-owned Cargo tools
+just update-version vX.Y.Z # Update release metadata without upgrading dependencies
 ```
 
 ### Detailed Command Reference
@@ -305,9 +306,9 @@ just update           # Update dependency locks and repository-owned Cargo tools
 - Benchmarks: `cargo bench --locked --features bench` (or `just bench`)
 - Benchmarks (exact arithmetic): `just bench-exact`
 - Benchmarks (la-stack vs nalgebra/faer): `just bench-vs-linalg [filter]` (full run) or `just bench-vs-linalg-quick [filter]` (reduced)
-- Benchmarks (plot vs_linalg CSV/SVG/JSON provenance): `just plot-vs-linalg [metric] [stat] [sample] [log_y]`;
-  publish a freshly gated full run to README with
-  `just plot-vs-linalg-readme [metric] [stat] [sample] [log_y]`
+- Benchmarks (plot exploratory vs_linalg CSV/SVG/JSON provenance): `just plot-vs-linalg [metric] [stat] [sample] [log_y]`;
+  after `just performance-release`, publish its retained measurements to README
+  with `just performance-readme [metric] [stat] [sample] [log_y]`
 - Benchmarks (save baseline): `just bench-save-baseline v0.4.1`
 - Build (debug): `cargo build` (or `just build`)
 - Build (release): `cargo build --release` (or `just build-release`)
@@ -326,6 +327,7 @@ just update           # Update dependency locks and repository-owned Cargo tools
 - Lint/validate: `just check`
 - Cargo manifest/lockfile synchronization: `just cargo-lock-check`
 - Unused dependency check: `just unused-deps` (uses `cargo-machete`)
+- Update release metadata: `just update-version vX.Y.Z` (infers the previous stable published GitHub release)
 - Pre-commit validation / CI simulation: `just ci` (lint + tests + examples + bench compile)
 - Python setup from the lockfile: `uv sync --locked --group dev` (or `just python-sync`)
 - Python tests: `just test-python`

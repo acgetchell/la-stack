@@ -1,344 +1,237 @@
 # Releasing la-stack
 
-This guide documents the release flow for `vX.Y.Z`: prepare a dedicated
-release PR, merge it, create the final annotated tag from the generated
-changelog, publish to crates.io, and create the GitHub release.
+Prepare each `vX.Y.Z` release in a dedicated PR. After that PR is merged,
+create the annotated tag, publish to crates.io, and create the GitHub release.
 
-The release changelog is generated with `git-cliff --tag` through
-`just changelog-unreleased`, so no temporary local tag is needed.
+The changelog is generated for the target tag before the tag exists, so the
+release process does not require a temporary local tag.
 
-Applies to versions vX.Y.Z. Prefer updating documentation before publishing
-to crates.io.
+Release recipes are content-idempotent where their inputs permit it. Repeating
+`update-version` on the same UTC date or repeating `performance-readme` for the
+same retained bundle produces no file changes. Crossing UTC midnight
+intentionally advances the release date, and repeated `performance-release`
+runs can produce different measurements.
 
----
+## Prepare the environment
 
-## Conventions and environment
-
-The current MSRV and pinned release-validation toolchain are Rust 1.98.0. Keep
-`Cargo.toml`, `rust-toolchain.toml`, and `clippy.toml` aligned whenever a future
-release deliberately changes that baseline.
-
-Set these variables to avoid repeating the version string:
+Set the target tag once:
 
 ```bash
-# tag has the leading v, version does not
 TAG=vX.Y.Z
-VERSION=${TAG#v}
-PREVIOUS_TAG=vA.B.C
 ```
 
-Verify your git remotes:
+Verify the repository remotes and synchronize `main`:
 
 ```bash
+gh auth status
 git remote -v
-```
-
-Ensure your local `main` is up to date before beginning:
-
-```bash
 git switch main
 git pull --ff-only
 ```
 
----
+Refresh dependency requirements, lockfiles, and repository-owned Cargo tool
+pins before creating the release branch:
 
-## Step 1: Create a clean release PR
+```bash
+just update
+```
 
-This PR should primarily include version bumps, changelog updates, benchmark
-comparison updates, and documentation updates. All major code changes should
+Review any tracked changes and land them separately before continuing with the
+release PR, then synchronize `main` again. This keeps dependency and tool
+upgrades independently reviewable; `just update-version` deliberately does not
+run `just update`.
+
+`update-version` and the release performance recipes use GitHub's published
+stable releases as the authoritative release history.
+
+## Step 1: Prepare the release PR
+
+Keep the release PR focused on version metadata, the generated changelog,
+benchmark artifacts, and release documentation. Major code changes should
 already be on `main`.
 
-Finalize release-facing metadata and documentation in this dedicated release
-PR. Ordinary feature, fix, review, and hygiene work should not preemptively
-bump versions or prepare release artifacts.
-
-Small, critical fixes discovered during the release process may be included,
-but keep them minimal and release-critical.
-
-1. Create the release branch
+### 1. Create the release branch
 
 ```bash
 git switch -c "release/$TAG"
 ```
 
-2. Bump versions
-
-Preferred, if `cargo-edit` is installed:
+### 2. Update release metadata
 
 ```bash
-cargo set-version "$VERSION"
+just update-version "$TAG"
 ```
 
-Alternative: edit `Cargo.toml` manually and update `version = "..."` under
-`[package]`.
+The recipe requires a stable `vX.Y.Z` target that is not older than any
+published stable GitHub release and that has at least one earlier published
+stable release. It infers the previous release from GitHub and updates the Rust
+and Python package metadata and lockfiles, `CITATION.cff`, README dependency and
+non-artifact links, and active benchmark examples. `date-released` uses the
+current UTC date; if the target changelog section already exists, its date is
+updated in the same transaction. `CITATION.cff` retains the Zenodo all-versions
+concept DOI.
 
-Update release metadata to match the crate version:
+The recipe validates the synchronized references but does not update dependency
+requirements, generate the changelog, or run benchmarks. Review its diff before
+continuing.
 
-- `CITATION.cff`: update `version`, the version-specific DOI identifier, and
-  `date-released`. Use the UTC calendar date written into the generated
-  changelog heading; keep the all-versions concept DOI as the primary `doi`.
-- `pyproject.toml`: update `[project] version` for the Python utility package
-
-Review the citation identity fields at the same time: author name and contact,
-ORCID, repository URL, and license. Preserve la-stack's Zenodo concept DOI
-(`all versions`) as the primary `doi` unless the archival policy is deliberately
-changed; retain the release DOI as a version-specific identifier.
-
-Refresh both committed lockfiles after those manual metadata edits:
+### 3. Generate the release changelog
 
 ```bash
-cargo metadata --format-version 1 --no-deps > /dev/null
-uv lock
-```
-
-Review version references in documentation:
-
-```bash
-just docs-version-check
-```
-
-The automated check covers package metadata, lockfiles, README dependency
-snippets, release-pinned README links, and current-tag arguments in the active
-benchmark workflow examples. Historical prose, compatibility notes, archived
-reports, baseline arguments, and tool versions intentionally remain independent
-of the current package version.
-
-3. Generate the release changelog
-
-```bash
-# Generates CHANGELOG.md as though TAG already exists, then applies
-# markdown hygiene and archives completed minor release series.
 just changelog-unreleased "$TAG"
 ```
 
-`just changelog-unreleased` runs
-`GIT_CLIFF_OFFLINE=true git-cliff --tag "$TAG" -o CHANGELOG.md`, then
-`postprocess-changelog`, then `archive-changelog`. The generated tagged-release
-changelog may begin directly with the active minor series; when git-cliff emits
-an Unreleased block, the archiver preserves it. Older completed minor series
-live under `docs/archive/changelog/`.
+This generates `CHANGELOG.md` as though the target tag already existed, archives
+completed minor series under `docs/archive/changelog/`, and synchronizes the
+changelog heading with the UTC preparation date recorded in `CITATION.cff`.
+Review the generated changelog and any archive changes.
 
-4. Run benchmarks and update the README comparison table
+### 4. Generate the release performance comparison
 
-```bash
-# Validate inputs, run a fresh complete vs_linalg benchmark, and atomically
-# update the README table plus CSV/SVG/JSON-provenance assets
-just plot-vs-linalg-readme
-```
-
-Review the updated table in `README.md`, the plot and CSV in `docs/assets/`, and
-the adjacent provenance JSON. The publication command fails if the independent
-correctness gate, canonical-dimension coverage, or required provenance is
-incomplete.
-
-5. Update the release performance comparison
+Run this after the package version has been updated:
 
 ```bash
-# Infers TAG from Cargo.toml, compares it against the previous stable published
-# release, writes docs/PERFORMANCE.md, and archives the previous docs/PERFORMANCE.md
-# under docs/archive/performance/.
 just performance-release
 ```
 
-Run this only after the package version has been bumped. The no-argument form
-uses the `Cargo.toml` version as the current release and discovers the previous
-stable published release. For an explicit repair, the supplied current tag must
-match the package version in the `HEAD` checkout; mismatches are rejected before
-tag fetching, worktree creation, or benchmarking. Release report publication
-also requires distinct current and baseline release identifiers.
-
-Review `docs/PERFORMANCE.md` for the latest release-to-release comparison. Older
-committed comparisons are archived under `docs/archive/performance/` with
-lexicographically sorted filenames such as `v0.4.2-vs-v0.4.1.md`. Iterative
-local reports still live under `target/bench-reports/`.
+The no-argument form compares the current package version with the previous
+stable published release. Review `docs/PERFORMANCE.md`, any archived comparison
+under `docs/archive/performance/`, and the retained CSV and provenance JSON under
+`target/bench-reports/`.
 
 The temporary current worktree includes staged and unstaged changes to tracked
-files. Untracked files are excluded, so stage every new benchmark-relevant file
-before running the release comparison.
+files, but excludes untracked files. Stage any new benchmark-relevant file before
+running the comparison. Do not run `just clean` or `cargo clean` until the
+retained report inputs have been reviewed.
 
-The release command retains `target/bench-reports/performance.csv` and
-`performance.provenance.json` before its temporary worktrees are removed, then
-renders and promotes Markdown from a validated reload of that pair. Review the
-CSV coverage/timing rows and JSON release, revision, command, toolchain, host,
-harness, and digest metadata alongside the Markdown. For a presentation-only
-correction, run `just performance-doc`; it reproduces and promotes the
-report from those files without invoking Cargo or creating worktrees. The same
-command can consume a pair retained by `performance-local` after the version
-bump. It rejects same-version local artifacts because committed performance docs
-must compare distinct releases. The command updates `docs/PERFORMANCE.md` and the
-performance archive, so review and stage those changes as release artifacts.
-The retained pair is local scratch and may be removed by `just clean` or
-`cargo clean`, so do not clean `target/` until the release report review is
-complete.
+### 5. Refresh the README benchmark comparison
 
-For an explicit measurement repair, run
-`just performance-release <current-tag> <previous-tag>`. To compare the stored
-GitHub Release assets instead of running Cargo locally, use
-`just performance-github-assets`. The local release workflow validates and then
-compiles both library revisions with the current checkout's hashed benchmark
-harness, recording source-state, environment, toolchain, dependency, Criterion,
-and validation provenance. Stored release assets retain their original
-per-release harnesses; unavailable historical measurement metadata is labelled
-explicitly rather than treated as an isolated library-code comparison.
+```bash
+just performance-readme
+```
 
-`just performance-local` is the non-promoting half of the release workflow: it
-measures and writes `target/bench-reports/performance.md` plus the adjacent
-retained CSV/JSON pair. The local report may compare revisions with the same
-package version because commit/ref and source-state provenance distinguish them.
-For a distinct pair, following it with `performance-doc` is equivalent to
-`performance-release`; the latter performs fresh measurement, retention, and
-rollback-capable promotion atomically. `performance-local-non-exact` uses the
-same metric and report model for the narrowed peer-context view but writes a
-separate `performance-non-exact.*` scratch bundle.
+This consumes the validated CSV and provenance JSON retained by
+`just performance-release`; it does not run benchmarks again. It atomically
+updates the table and tag-pinned benchmark links in `README.md` with the CSV,
+SVG, and provenance JSON under `docs/assets/bench/`. Until it succeeds, those
+README links continue to reference the previous published artifacts.
 
-After the GitHub Release is published, the `Release Benchmarks` workflow checks
-out the release tag, runs the independent benchmark-input tests, saves a full
-Criterion baseline, and attaches
-`la-stack-$TAG-criterion-baseline.tar.gz` to the release. That release asset is
-the durable native Criterion archive for historical baseline comparisons. The
-compact release-report CSV is an analysis and report-reproduction layer, not a
-replacement for that raw archive. The workflow also uploads a short-lived
-Actions artifact for debugging the run.
+See `docs/BENCHMARKING.md` for repair commands, local comparison modes, artifact
+ownership, and provenance details.
 
-See `docs/BENCHMARKING.md` for local saved-baseline workflows and the full
-comparison command reference.
-
-6. Validate the release branch
+### 6. Validate the release branch
 
 ```bash
 just ci
-just cargo-lock-check
-just citation-check
 cargo publish --locked --allow-dirty --dry-run
 ```
 
-7. Stage and commit release artifacts
+`just ci` includes the lockfile, citation, documentation, test, and benchmark
+compile checks.
+
+### 7. Review, stage, and commit the release artifacts
+
+Inspect all changes before staging:
 
 ```bash
-git add Cargo.toml Cargo.lock CITATION.cff pyproject.toml uv.lock CHANGELOG.md README.md docs/
+git status --short
+git --no-pager diff
+```
+
+Expected release artifacts include package metadata and lockfiles,
+`CITATION.cff`, `CHANGELOG.md`, `README.md`, `docs/PERFORMANCE.md`, and generated
+files under `docs/archive/` and `docs/assets/bench/`. Stage only the reviewed
+paths that were intentionally changed; do not stage the entire `docs/` tree.
+Then inspect the staged diff and commit it:
+
+```bash
+git --no-pager diff --cached
 
 git commit -m "chore(release): release $TAG
 
 - Bump version to $TAG
 - Update citation and utility package metadata
-- Update changelog with latest changes
-- Update benchmark comparison table and release performance report
-- Update documentation for release"
+- Generate the release changelog
+- Update benchmark and performance artifacts
+- Update release documentation"
 ```
 
-8. Push the branch and open a PR
+### 8. Push the branch and open the PR
 
 ```bash
 git push -u origin "release/$TAG"
 ```
 
-PR metadata:
+Use `chore(release): release $TAG` as the PR title and describe the PR as a
+focused release preparation without feature work.
 
-- Title: chore(release): release $TAG
-- Description: Clean release PR with version bump, changelog, and
-  documentation updates. No feature work.
+### Handling fixes found during preparation
 
-### Handling fixes discovered during the release process
+For a critical fix that must be included, make and commit the fix, rerun
+`just changelog-unreleased "$TAG"`, review and stage only the resulting changelog
+files, and commit that generated update separately.
 
-If you discover issues after generating the changelog:
+For a non-critical fix, file an issue and defer it to a later release. Do not
+hand-edit the generated changelog to add a known-issue note.
 
-1. For critical fixes that must be in this release, make and commit the fix,
-   then regenerate the release changelog:
+## Step 2: Publish after the PR is merged
 
-   ```bash
-   just changelog-unreleased "$TAG"
-   git add CHANGELOG.md docs/archive/changelog/
-   git commit -m "docs: update changelog with release fixes"
-   ```
-
-2. For non-critical fixes, document them as known issues in the release notes
-   or include them in the next release.
-
----
-
-## Step 2: After the PR is merged into main
-
-1. Sync your local `main` to the merge commit
+### 1. Synchronize `main`
 
 ```bash
 git switch main
 git pull --ff-only
 ```
 
-2. Create the final annotated tag using the changelog content
+### 2. Create and verify the annotated tag
 
 ```bash
-# Creates the annotated tag from the matching CHANGELOG.md section.
-# Archived versions are read from docs/archive/changelog/ automatically.
-# For large changelogs (>125KB), the tag message points to the changelog
-# section instead of embedding the full content.
 just tag "$TAG"
+git --no-pager tag -l --format='%(contents)' "$TAG"
 ```
 
-3. Optional: verify the tag message content
+`just tag` builds the annotation from the matching active or archived changelog
+section. For a changelog larger than 125 kB, the annotation points to that
+section instead of embedding it.
 
-```bash
-git tag -l --format='%(contents)' "$TAG"
-```
-
-4. Push the tag
+### 3. Push the tag
 
 ```bash
 git push origin "$TAG"
 ```
 
-5. Publish to crates.io
+### 4. Publish to crates.io
 
 ```bash
-# Publish the crate (ensure docs are already updated on main via the PR)
 cargo publish --locked
 ```
 
-6. Create the GitHub release with notes from the tag annotation
+### 5. Create the GitHub release
 
 ```bash
-# Requires GitHub CLI (gh) and authenticated session
 gh release create "$TAG" --title "$TAG" --notes-from-tag
 ```
 
-Always set the GitHub release title to the exact tag string, including the
-leading `v`.
+Keep the release title identical to the tag, including its leading `v`.
 
-7. Verify the durable Criterion baseline asset
+### 6. Verify the durable Criterion baseline
 
-After the `Release Benchmarks` workflow completes, verify that the GitHub
-release contains the expected long-lived baseline archive:
+After the `Release Benchmarks` workflow completes, verify that the release
+contains its long-lived baseline archive:
 
 ```bash
 gh release view "$TAG" --json assets \
   --jq ".assets[] | select(.name == \"la-stack-$TAG-criterion-baseline.tar.gz\") | .name" | cat
 ```
 
-The command must print `la-stack-$TAG-criterion-baseline.tar.gz`. An Actions
-artifact alone is not a durable release baseline.
+The command must print `la-stack-$TAG-criterion-baseline.tar.gz`. A short-lived
+Actions artifact is not a substitute for this release asset.
 
-8. Clean up the merged release branch
+### 7. Remove the merged release branch
 
-After publishing and asset verification succeed, remove the release branch
-locally and on the remote:
+After publication and baseline verification succeed:
 
 ```bash
 git branch -d "release/$TAG"
 git push origin --delete "release/$TAG"
 ```
-
----
-
-## Notes and tips
-
-- Do not create a temporary local release tag for changelog generation; use
-  `just changelog-unreleased "$TAG"`.
-- Keep the release PR scoped to version, changelog, archive, benchmark
-  comparison, and documentation changes.
-- `just changelog` regenerates the current changelog from existing tags and may
-  update `docs/archive/changelog/`.
-- `just changelog-unreleased "$TAG"` is for release PR preparation before the
-  final tag exists.
-- `just tag "$TAG"` is for the final post-merge annotated tag.
-- If multiple crates or files reference the version, confirm all of them are
-  updated consistently.

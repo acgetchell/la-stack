@@ -103,6 +103,11 @@ _ensure-dprint:
         exit 1
     fi
 
+_ensure-gh:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v gh >/dev/null || { echo "❌ 'gh' not found. Install GitHub CLI and re-run this command."; exit 1; }
+
 _ensure-git-cliff:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -339,6 +344,7 @@ changelog-unreleased version: _ensure-git-cliff _ensure-rumdl python-sync
     GIT_CLIFF_OFFLINE=true git-cliff --tag {{ quote(version) }} -o CHANGELOG.md
     uv run --locked postprocess-changelog
     uv run --locked archive-changelog
+    uv run --locked update-release-version {{ quote(version) }} --sync-changelog-date
     archive_files=()
     if [ -d docs/archive/changelog ]; then
         while IFS= read -r -d '' file; do
@@ -468,26 +474,27 @@ help-workflows:
     @echo "  just bench-compile          # Compile benches with warnings-as-errors"
     @echo "  just bench-latest           # Run cheap latest measurements"
     @echo "  just bench-latest-vs-last   # Run latest and compare against last"
-    @echo "  just bench-vs-linalg-latest-vs # Run non-exact latest and compare against last"
-    @echo "  just performance-github-assets # Compare stored GitHub Actions release assets"
-    @echo "  just performance-local      # Compare current tree against latest release locally"
-    @echo "  just performance-local-non-exact # Compare current non-exact kernels locally"
-    @echo "  just performance-release    # Measure, retain, and publish release docs"
-    @echo "  just performance-doc        # Build release docs from retained CSV/JSON"
     @echo "  just bench-save-last        # Save full baseline as 'last'"
     @echo "  just bench-vs-linalg        # Run vs_linalg bench (optional filter)"
     @echo "  just bench-vs-linalg-la-stack # Run la-stack rows from vs_linalg"
+    @echo "  just bench-vs-linalg-latest-vs # Run non-exact latest and compare against last"
     @echo "  just bench-vs-linalg-quick  # Quick vs_linalg bench (reduced samples)"
+    @echo "  just performance-doc        # Build release docs from retained CSV/JSON"
+    @echo "  just performance-github-assets # Compare stored GitHub Actions release assets"
+    @echo "  just performance-local      # Compare current tree against latest release locally"
+    @echo "  just performance-local-non-exact # Compare current non-exact kernels locally"
+    @echo "  just performance-readme     # Publish retained release data to README assets/table"
+    @echo "  just performance-release    # Measure, retain, and publish release docs"
     @echo ""
     @echo "Benchmark plotting:"
     @echo "  just plot-vs-linalg         # Plot Criterion results (CSV + SVG + provenance)"
-    @echo "  just plot-vs-linalg-readme  # Gate, rerun, and publish canonical README assets/table"
     @echo ""
     @echo "Changelog & releases:"
     @echo "  just changelog              # Regenerate CHANGELOG.md from full history"
     @echo "  just changelog-unreleased <ver>  # Prepend unreleased changes for a version"
     @echo "  just tag <ver>              # Create annotated tag from CHANGELOG.md"
     @echo "  just tag-force <ver>        # Recreate an existing tag"
+    @echo "  just update-version <tag>       # Update release metadata and infer the previous tag"
     @echo ""
     @echo "Setup:"
     @echo "  just setup             # Setup project environment (depends on setup-tools)"
@@ -587,8 +594,12 @@ markdown-fix: _ensure-rumdl
 
 markdown-lint: markdown-check
 
+# Build and promote release performance docs from retained report inputs.
+performance-doc: python-sync
+    uv run --locked archive-performance --promote-artifacts
+
 # Compare stored GitHub Actions release benchmark assets without local cargo runs.
-performance-github-assets current_tag="" baseline_tag="": python-sync
+performance-github-assets current_tag="" baseline_tag="": _ensure-gh python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     current_tag={{ quote(current_tag) }}
@@ -604,11 +615,11 @@ performance-github-assets current_tag="" baseline_tag="": python-sync
     fi
 
 # Compare the current tree against the latest release; untracked files are excluded.
-performance-local: python-sync
+performance-local: _ensure-gh python-sync
     uv run --locked archive-performance --current-vs-latest --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance.md
 
 # Compare current non-exact kernels locally without rerunning current peer crates.
-performance-local-non-exact current_tag="" baseline_tag="": python-sync
+performance-local-non-exact current_tag="" baseline_tag="": _ensure-gh python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     current_tag={{ quote(current_tag) }}
@@ -623,8 +634,18 @@ performance-local-non-exact current_tag="" baseline_tag="": python-sync
         uv run --locked archive-performance --current-vs-latest --suite vs_linalg --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance-non-exact.md --artifact-csv target/bench-reports/performance-non-exact.csv --artifact-provenance target/bench-reports/performance-non-exact.provenance.json
     fi
 
+# Validate retained release measurements and atomically publish the canonical README assets/table.
+performance-readme metric="lu_solve" stat="median" sample="new" log_y="true": python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(--metric {{ quote(metric) }} --stat {{ quote(stat) }} --sample {{ quote(sample) }} --update-readme)
+    if [ {{ quote(log_y) }} = "true" ]; then
+        args+=(--log-y)
+    fi
+    uv run --locked criterion-dim-plot "${args[@]}"
+
 # Generate local release-signal measurements in a temp worktree, then promote/archive docs.
-performance-release current_tag="" baseline_tag="": python-sync
+performance-release current_tag="" baseline_tag="": _ensure-gh python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     current_tag={{ quote(current_tag) }}
@@ -639,10 +660,6 @@ performance-release current_tag="" baseline_tag="": python-sync
         uv run --locked archive-performance --infer-release --generate-in-temp-worktree --worktree-ref HEAD
     fi
 
-# Build and promote release performance docs from retained report inputs.
-performance-doc: python-sync
-    uv run --locked archive-performance --promote-artifacts
-
 # Plot: generate a single time-vs-dimension SVG from Criterion results.
 plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_partial="false": python-sync
     #!/usr/bin/env bash
@@ -653,16 +670,6 @@ plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_
     fi
     if [ {{ quote(allow_partial) }} = "true" ]; then
         args+=(--allow-partial)
-    fi
-    uv run --locked criterion-dim-plot "${args[@]}"
-
-# Validate fixtures, rerun the selected metric across all peers and dimensions, and atomically publish the canonical README assets/table.
-plot-vs-linalg-readme metric="lu_solve" stat="median" sample="new" log_y="true": python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    args=(--metric {{ quote(metric) }} --stat {{ quote(stat) }} --sample {{ quote(sample) }} --update-readme)
-    if [ {{ quote(log_y) }} = "true" ]; then
-        args+=(--log-y)
     fi
     uv run --locked criterion-dim-plot "${args[@]}"
 
@@ -771,6 +778,10 @@ setup-tools:
     verify_tool_version uv "$uv_version"
     if ! have jq; then
         echo "❌ 'jq' not found. Install jq and re-run: just setup-tools" >&2
+        exit 1
+    fi
+    if ! have gh; then
+        echo "❌ 'gh' not found. Install GitHub CLI and re-run: just setup-tools" >&2
         exit 1
     fi
 
@@ -1080,6 +1091,13 @@ update-dependencies: _ensure-uv _ensure-cargo-edit
     cargo update
     uv lock --upgrade
     uv sync --locked --group dev
+
+# Update deterministic release metadata, inferring the previous stable published GitHub release.
+[doc('Update package, citation, lockfile, and non-artifact documentation release versions.')]
+update-version tag: _ensure-gh _ensure-uv
+    uv run --locked update-release-version {{ quote(tag) }}
+    cargo metadata --locked --format-version 1 --no-deps > /dev/null
+    uv run --locked check-docs-version-sync
 
 validate-json: _ensure-jq
     #!/usr/bin/env bash

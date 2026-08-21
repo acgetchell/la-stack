@@ -1632,6 +1632,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
             assert metadata["mode"] == "shared-current-harness"
             assert metadata["schema"] == 2
             assert metadata["measurement"]["harness_sha256"] == archive_performance._benchmark_harness_digest(report_root)
+            assert metadata["measurement"]["benchmark_contract_sha256"] == archive_performance.benchmark_contract_digest(report_root)
             assert metadata["measurement"]["current_source_state_sha256"] == archive_performance._source_state_digest(report_root)
             assert metadata["criterion"]["criterion_version"] == "manifest requirement 0.7.0"
             assert metadata["validation"]["baseline_revision"] == "passed"

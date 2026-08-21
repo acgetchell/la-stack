@@ -110,7 +110,8 @@ class VersionMismatch:
     package: PackageInfo
 
 
-def _read_cargo_package_info(cargo_toml: Path) -> PackageInfo:
+def read_cargo_package_info(cargo_toml: Path) -> PackageInfo:
+    """Read the authoritative Cargo package name and version."""
     package = _require_table(_read_toml(cargo_toml), "package", cargo_toml)
     return PackageInfo(
         name=_require_string(package, "name", f"{cargo_toml} [package]"),
@@ -118,7 +119,8 @@ def _read_cargo_package_info(cargo_toml: Path) -> PackageInfo:
     )
 
 
-def _read_python_project_info(pyproject_toml: Path) -> PythonProjectInfo:
+def read_python_project_info(pyproject_toml: Path) -> PythonProjectInfo:
+    """Read the Python support-package name and version."""
     project = _require_table(_read_toml(pyproject_toml), "project", pyproject_toml)
     return PythonProjectInfo(
         name=_require_string(project, "name", f"{pyproject_toml} [project]"),
@@ -126,7 +128,8 @@ def _read_python_project_info(pyproject_toml: Path) -> PythonProjectInfo:
     )
 
 
-def _toml_table_key_line(path: Path, table_name: str, key: str) -> int:
+def toml_table_key_line(path: Path, table_name: str, key: str) -> int:
+    """Return the unique key line within one TOML table."""
     current_table: str | None = None
     key_re = re.compile(rf"^{re.escape(key)}\s*=")
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -187,18 +190,21 @@ def _single_package_reference(
     return _version_reference(path, line, version, kind)
 
 
-def _cargo_lock_reference(path: Path, package: PackageInfo) -> VersionReference:
+def cargo_lock_reference(path: Path, package: PackageInfo) -> VersionReference:
+    """Return the local root-package version reference from Cargo.lock."""
     entries = _package_entries(path)
     candidate_indices = [index for index, entry in enumerate(entries) if entry.get("name") == package.name and "source" not in entry]
     return _single_package_reference(path, entries, candidate_indices, package.name, ReferenceKind.CARGO_LOCK)
 
 
-def _pyproject_reference(path: Path, project: PythonProjectInfo) -> VersionReference:
-    line = _toml_table_key_line(path, "project", "version")
+def pyproject_reference(path: Path, project: PythonProjectInfo) -> VersionReference:
+    """Return the Python project version reference from pyproject.toml."""
+    line = toml_table_key_line(path, "project", "version")
     return _version_reference(path, line, project.version, ReferenceKind.PYPROJECT)
 
 
-def _uv_lock_reference(path: Path, project: PythonProjectInfo) -> VersionReference:
+def uv_lock_reference(path: Path, project: PythonProjectInfo) -> VersionReference:
+    """Return the editable support-package version reference from uv.lock."""
     entries = _package_entries(path)
     candidate_indices: list[int] = []
     for index, entry in enumerate(entries):
@@ -212,7 +218,8 @@ _CITATION_VERSION_RE = re.compile(r"^version:\s*(?P<quote>['\"]?)(?P<version>[0-
 _CITATION_DATE_RE = re.compile(r"^date-released:\s*(?P<quote>['\"]?)(?P<date>\d{4}-\d{2}-\d{2})(?P=quote)\s*(?:#.*)?$")
 
 
-def _citation_reference(path: Path) -> VersionReference:
+def citation_reference(path: Path) -> VersionReference:
+    """Return the top-level CFF software version reference."""
     references: list[VersionReference] = []
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.startswith("version:"):
@@ -228,7 +235,8 @@ def _citation_reference(path: Path) -> VersionReference:
     return references[0]
 
 
-def _release_date(path: Path) -> tuple[int, str]:
+def citation_release_date(path: Path) -> tuple[int, str]:
+    """Return the unique top-level CFF release date and its line."""
     matches: list[tuple[int, str]] = []
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.startswith("date-released:"):
@@ -250,25 +258,33 @@ def _release_date(path: Path) -> tuple[int, str]:
     return matches[0]
 
 
-def _validate_release_date_sync(root: Path, package: PackageInfo) -> None:
-    """Require CFF and generated changelog to use the same UTC release date."""
-    changelog = root / "CHANGELOG.md"
-    if not changelog.is_file():
-        return
-    heading_re = re.compile(rf"^## \[v?{re.escape(package.version)}\] - (?P<date>\d{{4}}-\d{{2}}-\d{{2}})$")
+def changelog_release_date(path: Path, version: str) -> tuple[int, str] | None:
+    """Return the unique generated release-heading date for *version*, if present."""
+    if not path.is_file():
+        return None
+    heading_re = re.compile(rf"^## \[v?{re.escape(version)}\] - (?P<date>\d{{4}}-\d{{2}}-\d{{2}})$")
     changelog_matches: list[tuple[int, str]] = []
-    for line_number, line in enumerate(changelog.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         match = heading_re.fullmatch(line)
         if match is not None:
             changelog_matches.append((line_number, match.group("date")))
     if not changelog_matches:
-        return
+        return None
     if len(changelog_matches) != 1:
-        msg = f"{changelog} must contain exactly one release heading for {package.version}; found {len(changelog_matches)}"
+        msg = f"{path} must contain exactly one release heading for {version}; found {len(changelog_matches)}"
         raise TypeError(msg)
+    return changelog_matches[0]
+
+
+def _validate_release_date_sync(root: Path, package: PackageInfo) -> None:
+    """Require CFF and generated changelog to use the same UTC release date."""
+    changelog = root / "CHANGELOG.md"
+    changelog_match = changelog_release_date(changelog, package.version)
+    if changelog_match is None:
+        return
     citation = root / "CITATION.cff"
-    citation_line, citation_date = _release_date(citation)
-    changelog_line, changelog_date = changelog_matches[0]
+    citation_line, citation_date = citation_release_date(citation)
+    changelog_line, changelog_date = changelog_match
     if citation_date != changelog_date:
         msg = (
             f"release date mismatch: {citation}:{citation_line} has {citation_date}, "
@@ -277,7 +293,8 @@ def _validate_release_date_sync(root: Path, package: PackageInfo) -> None:
         raise TypeError(msg)
 
 
-def _iter_markdown_files(root: Path) -> list[Path]:
+def iter_active_markdown_files(root: Path) -> list[Path]:
+    """Return active Markdown files, excluding archives, fixtures, and generated history."""
     markdown_files: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [dirname for dirname in dirnames if not (set((Path(dirpath) / dirname).relative_to(root).parts) & SKIP_DIRS)]
@@ -285,13 +302,14 @@ def _iter_markdown_files(root: Path) -> list[Path]:
     return sorted(markdown_files)
 
 
-def _dependency_regex(package_name: str) -> re.Pattern[str]:
+def dependency_regex(package_name: str) -> re.Pattern[str]:
+    """Build the dependency-snippet matcher for one Cargo package."""
     escaped_name = re.escape(package_name)
     return re.compile(rf'(?<![\w.-]){escaped_name}\s*=\s*(?:"(?P<plain>[^"]+)"|\{{[^}}]*version\s*=\s*"(?P<table>[^"]+)"[^}}]*\}})')
 
 
 def _dependency_references(path: Path, package_name: str) -> list[VersionReference]:
-    dependency_re = _dependency_regex(package_name)
+    dependency_re = dependency_regex(package_name)
     references: list[VersionReference] = []
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         for match in dependency_re.finditer(line):
@@ -308,11 +326,17 @@ def _dependency_references(path: Path, package_name: str) -> list[VersionReferen
     return references
 
 
-_README_TAG_LINK_RE = re.compile(
+README_TAG_LINK_RE = re.compile(
     r"https://(?:github\.com/acgetchell/la-stack/(?:blob|raw|tree)/|raw\.githubusercontent\.com/acgetchell/la-stack/)"
     r"(?:v(?P<version>[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)"
     r"|(?P<revision>[0-9a-f]{7,40}))(?=/|$|[^0-9A-Za-z._+-])"
 )
+README_BENCHMARK_ASSET_PATH_PREFIX = "/docs/assets/bench/"
+
+
+def readme_tag_link_is_benchmark_asset(match: re.Match[str]) -> bool:
+    """Return true when a tag-pinned README URL names a generated benchmark asset."""
+    return match.string.startswith(README_BENCHMARK_ASSET_PATH_PREFIX, match.end())
 
 
 def _readme_tag_references(path: Path) -> list[VersionReference]:
@@ -326,7 +350,8 @@ def _readme_tag_references(path: Path) -> list[VersionReference]:
                 ReferenceKind.README_TAG_LINK,
                 line.strip(),
             )
-            for match in _README_TAG_LINK_RE.finditer(line)
+            for match in README_TAG_LINK_RE.finditer(line)
+            if not readme_tag_link_is_benchmark_asset(match)
         )
     return references
 
@@ -349,14 +374,14 @@ def _benchmark_current_tag_references(path: Path) -> list[VersionReference]:
 
 def _version_references(root: Path, package: PackageInfo) -> list[VersionReference]:
     pyproject_path = root / "pyproject.toml"
-    project = _read_python_project_info(pyproject_path)
+    project = read_python_project_info(pyproject_path)
     references = [
-        _cargo_lock_reference(root / "Cargo.lock", package),
-        _pyproject_reference(pyproject_path, project),
-        _uv_lock_reference(root / "uv.lock", project),
-        _citation_reference(root / "CITATION.cff"),
+        cargo_lock_reference(root / "Cargo.lock", package),
+        pyproject_reference(pyproject_path, project),
+        uv_lock_reference(root / "uv.lock", project),
+        citation_reference(root / "CITATION.cff"),
     ]
-    for path in _iter_markdown_files(root):
+    for path in iter_active_markdown_files(root):
         references.extend(_dependency_references(path, package.name))
         references.extend(_benchmark_current_tag_references(path))
     references.extend(_readme_tag_references(root / "README.md"))
@@ -366,7 +391,7 @@ def _version_references(root: Path, package: PackageInfo) -> list[VersionReferen
 def find_version_mismatches(root: Path) -> list[VersionMismatch]:
     """Return release-version references that differ from Cargo.toml."""
 
-    package = _read_cargo_package_info(root / "Cargo.toml")
+    package = read_cargo_package_info(root / "Cargo.toml")
     _validate_release_date_sync(root, package)
     return [VersionMismatch(reference=reference, package=package) for reference in _version_references(root, package) if reference.version != package.version]
 
