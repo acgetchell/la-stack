@@ -6,7 +6,7 @@ import subprocess
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Never
 
 import pytest
 
@@ -538,6 +538,38 @@ def test_parse_report_id_reads_current_and_baseline_tags() -> None:
     assert report_id.current_tag == "v0.4.2"
     assert report_id.baseline_tag == "v0.4.1"
     assert report_id.archive_name == "v0.4.2-vs-v0.4.1.md"
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        ("\n**la-stack** v0.4.3 · `def5678` (release/test) · 2026-06-09 12:00:00 UTC\n", "la-stack version line"),
+        ("\nComparison against baseline **v0.4.0**:\n", "comparison baseline line"),
+    ],
+)
+def test_parse_report_id_rejects_duplicate_identity_lines(extra: str, message: str) -> None:
+    with pytest.raises(ValueError, match=rf"exactly one {message}.*found 2"):
+        parse_report_id(_report("0.4.2", "v0.4.1") + extra)
+
+
+def test_main_preserves_exception_group_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_request(_options: object) -> Never:
+        message = "publication and rollback failed"
+        raise ExceptionGroup(
+            message,
+            [OSError("could not publish docs/PERFORMANCE.md"), OSError("could not restore prior report")],
+        )
+
+    monkeypatch.setattr(archive_performance, "resolve_archive_request", fail_request)
+
+    assert main(["v0.4.3", "v0.4.2"]) == 1
+    captured = capsys.readouterr()
+    assert "publication and rollback failed (2 sub-exceptions)" in captured.err
+    assert "could not publish docs/PERFORMANCE.md" in captured.err
+    assert "could not restore prior report" in captured.err
 
 
 def test_published_release_pair_discovers_latest_stable_semver_pair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

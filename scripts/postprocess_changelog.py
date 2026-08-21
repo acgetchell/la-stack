@@ -19,8 +19,11 @@ Usage:
 """
 
 import argparse
+import os
 import re
+import stat
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -893,12 +896,37 @@ def postprocess_text(text: str) -> str:
     return text.rstrip("\n") + "\n"
 
 
+def _write_text_atomic(path: Path, text: str) -> None:
+    """Replace an existing UTF-8 file atomically while preserving its mode."""
+    mode = stat.S_IMODE(path.stat().st_mode)
+    staged: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            staged = Path(handle.name)
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        staged.chmod(mode)
+        staged.replace(path)
+        staged = None
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+
+
 def postprocess(path: Path) -> None:
     """Read *path*, apply hygiene fixes, and write it back."""
     text = path.read_text(encoding="utf-8")
     text = postprocess_text(text)
 
-    path.write_text(text, encoding="utf-8")
+    _write_text_atomic(path, text)
 
 
 def main() -> None:

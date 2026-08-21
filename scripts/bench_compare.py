@@ -50,7 +50,7 @@ from performance_artifacts import (
     load_bundle,
     publish_bundle,
 )
-from subprocess_utils import ExecutableNotFoundError, find_project_root, run_git_command
+from subprocess_utils import ExecutableNotFoundError, find_project_root, format_exception_diagnostics, run_git_command
 
 # ---------------------------------------------------------------------------
 # Benchmark group / bench discovery
@@ -572,14 +572,18 @@ def _parse_harness_provenance(
         msg = f"benchmark harness provenance baseline {baseline!r} does not match requested Criterion baseline {expected_baseline!r} in {path}"
         raise ValueError(msg)
 
-    if not isinstance(schema, bool) and schema == 1:
+    if not isinstance(schema, int) or isinstance(schema, bool):
+        msg = f"unsupported or missing schema in {path}: expected integer 1 or 2, got {schema!r}"
+        raise TypeError(msg)
+
+    if schema == 1:
         if mode != "shared-current-harness":
             msg = f"unsupported or missing mode in {path}: {mode!r}"
             raise ValueError(msg)
         sha256 = _required_sha256(data, "sha256", path)
         return HarnessProvenance(schema=1, mode=mode, sha256=sha256, baseline=baseline)
 
-    if isinstance(schema, bool) or schema != 2:
+    if schema != 2:
         msg = f"unsupported or missing schema in {path}: expected 1 or 2, got {schema!r}"
         raise ValueError(msg)
     if mode not in {"shared-current-harness", "historical-assets"}:
@@ -2257,7 +2261,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
                 collection=collection,
             )
         except (ExceptionGroup, OSError, KeyError, TypeError, ValueError) as err:
-            print(f"Invalid release-performance artifact data: {err}", file=sys.stderr)
+            print(
+                f"Invalid release-performance artifact data: {format_exception_diagnostics(err)}",
+                file=sys.stderr,
+            )
             return 2
         print(f"📊 Wrote {artifact_paths.csv} and {artifact_paths.provenance}")
         print(f"📊 Wrote {output_path}")

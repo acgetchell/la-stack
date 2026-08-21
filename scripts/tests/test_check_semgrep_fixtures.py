@@ -71,6 +71,20 @@ def test_main_reports_missing_check_id(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert "missing positive integer field 'end.line'" in captured.err
 
 
+def test_main_rejects_reversed_result_span(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = tmp_path / "fixture.rs"
+    fixture.write_text("// ruleid: rust.foo\nbad();\n", encoding="utf-8")
+    monkeypatch.setenv("SEMGREP_JSON", json.dumps({"results": [_result("rust.foo", 4, 2)]}))
+    monkeypatch.setattr(check_semgrep_fixtures.sys, "argv", ["check_semgrep_fixtures.py", str(fixture)])
+
+    assert check_semgrep_fixtures.main() == 1
+    assert "result 0 has end.line 2 before start.line 4" in capsys.readouterr().err
+
+
 def test_main_rejects_findings_at_wrong_lines_even_when_rule_counts_match(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

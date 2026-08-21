@@ -115,6 +115,16 @@ def _actual_findings(semgrep: SemgrepResults) -> tuple[ActualFinding, ...] | Non
         if not isinstance(end_line, int) or isinstance(end_line, bool) or end_line < 1:
             malformed_results.append(f"result {index} is missing positive integer field 'end.line'")
         if (
+            isinstance(start_line, int)
+            and not isinstance(start_line, bool)
+            and start_line >= 1
+            and isinstance(end_line, int)
+            and not isinstance(end_line, bool)
+            and end_line >= 1
+            and end_line < start_line
+        ):
+            malformed_results.append(f"result {index} has end.line {end_line} before start.line {start_line}")
+        if (
             isinstance(check_id, str)
             and isinstance(start_line, int)
             and not isinstance(start_line, bool)

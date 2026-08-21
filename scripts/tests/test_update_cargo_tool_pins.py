@@ -62,6 +62,15 @@ def test_parse_installed_packages_accepts_prerelease_with_build_metadata() -> No
     assert installed["rumdl"] == version
 
 
+@pytest.mark.parametrize(
+    "version",
+    ["01.2.3", "1.02.3", "1.2.03", "1.2.3-01", "1.2.3-alpha..beta", "1.2.3+", "1.2.3+build..1"],
+)
+def test_parse_installed_packages_rejects_noncanonical_semver(version: str) -> None:
+    with pytest.raises(ValueError, match="invalid installed version for rumdl"):
+        update_cargo_tool_pins.parse_installed_packages(installed_output(override=("rumdl", version)))
+
+
 def test_reconcile_pins_preserves_prerelease_with_build_metadata(tmp_path: Path) -> None:
     version = "1.2.3-rc.1+build.5"
     justfile = tmp_path / "justfile"

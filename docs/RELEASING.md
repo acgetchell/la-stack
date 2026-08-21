@@ -29,6 +29,14 @@ git switch main
 git pull --ff-only
 ```
 
+Install or verify the pinned development tools before running maintenance
+recipes. This includes the `cargo-update` package that provides
+`cargo-install-update` for `just update`:
+
+```bash
+just setup
+```
+
 Refresh Cargo dependency requirements, exact Python development-tool pins,
 lockfiles, and repository-owned Cargo tool pins before creating the release
 branch:

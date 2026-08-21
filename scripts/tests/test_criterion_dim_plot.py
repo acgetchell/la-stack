@@ -1196,19 +1196,29 @@ def test_main_publication_rejects_stale_harness_without_writing(
     assert "old table" in readme.read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize(
-    ("include_contract", "expected_status"),
-    [(True, "matched"), (False, "legacy-retained-artifact")],
-)
-def test_main_publication_ignores_justfile_only_changes(
+def test_main_publication_rejects_benchmark_recipe_changes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    include_contract: bool,
-    expected_status: str,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     _write_benchmark_checkout(tmp_path)
-    _write_performance_bundle(tmp_path, include_contract=include_contract)
-    (tmp_path / "justfile").write_text("test-bench-inputs:\n\n# publication help changed\n", encoding="utf-8")
+    _write_performance_bundle(tmp_path)
+    (tmp_path / "justfile").write_text("test-bench-inputs:\n    cargo test --test changed-input-gate\n", encoding="utf-8")
+    readme = tmp_path / "README.md"
+    readme.write_text(_canonical_benchmark_readme("0.0.8"), encoding="utf-8")
+    _mock_publication_environment(tmp_path, monkeypatch)
+
+    assert criterion_dim_plot.main(["--update-readme"]) == 2
+    assert "benchmark_contract_sha256" in capsys.readouterr().err
+    assert "old table" in readme.read_text(encoding="utf-8")
+
+
+def test_main_publication_labels_legacy_artifact_without_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_benchmark_checkout(tmp_path)
+    _write_performance_bundle(tmp_path, include_contract=False)
     readme = tmp_path / "README.md"
     readme.write_text(_canonical_benchmark_readme("0.0.8"), encoding="utf-8")
     _mock_publication_environment(tmp_path, monkeypatch)
@@ -1220,7 +1230,7 @@ def test_main_publication_ignores_justfile_only_changes(
 
     assert criterion_dim_plot.main(["--update-readme"]) == 0
     provenance = json.loads((tmp_path / "docs/assets/bench/vs_linalg_lu_solve_median.provenance.json").read_text(encoding="utf-8"))
-    assert provenance["publication"]["benchmark_contract"] == expected_status
+    assert provenance["publication"]["benchmark_contract"] == "legacy-retained-artifact"
 
 
 def test_main_publication_rejects_tampered_performance_csv(

@@ -369,6 +369,25 @@ For experimental-design background on controlled repetitions and uncertainty,
 see [REFERENCES.md](../REFERENCES.md) \[13\]; these workflows do not claim to
 implement every recommendation in that study.
 
+The harness calls native crate APIs where they expose the same operation. Where
+a peer crate does not expose a matching convenience method, repository-owned
+adapter code computes the agreed mathematical kernel inside the timed closure:
+
+| Metric family | la-stack implementation | nalgebra implementation | faer implementation |
+|---------------|-------------------------|-------------------------|---------------------|
+| LU factorization and solve rows | Native `Lu` APIs | Native `LU` APIs | Native partial-pivoting LU APIs |
+| LDLT/Cholesky factorization and solve rows | Native `Ldlt` APIs | Native `Cholesky` APIs | Native LDLT APIs |
+| `det_via_lu`, `det_from_lu` | Native `Lu::det` | Native `LU::determinant` | Harness adapter: product of the U diagonal and permutation sign |
+| `det_from_ldlt` / `det_from_cholesky` | Native `Ldlt::det` | Native `Cholesky::determinant` | Harness adapter: product of the D diagonal |
+| `dot` | Native `Vector::dot` | Native `dot` | Harness adapter: left-to-right fused multiply-add loop |
+| `norm2_sq` | Native `Vector::norm2_sq` | Native `norm_squared` | Native `squared_norm_l2` |
+| `inf_norm` | Native `Matrix::inf_norm` | Harness adapter: maximum absolute row sum | Harness adapter: maximum absolute row sum |
+
+These adapter timings are benchmark-kernel comparisons, not claims about the
+speed of an identically named public convenience method in every crate. The
+adapter implementation is versioned with the benchmark harness, included in the
+benchmark-contract digest, and covered by the cross-crate input smoke tests.
+
 All three crates receive equivalent deterministic inputs for a given dimension:
 
 - matrix entries come from the same strictly diagonally-dominant generator

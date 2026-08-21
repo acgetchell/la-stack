@@ -15,6 +15,7 @@ PIN_TO_PACKAGE = {
     "cargo_llvm_cov_version": "cargo-llvm-cov",
     "cargo_machete_version": "cargo-machete",
     "cargo_nextest_version": "cargo-nextest",
+    "cargo_update_version": "cargo-update",
     "dprint_version": "dprint",
     "git_cliff_version": "git-cliff",
     "just_version": "just",
@@ -24,7 +25,12 @@ PIN_TO_PACKAGE = {
     "zizmor_version": "zizmor",
 }
 PACKAGE_HEADER = re.compile(r"^(?P<package>[A-Za-z0-9_-]+) v(?P<version>[^\s:]+):$", re.MULTILINE)
-VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+_SEMVER_IDENTIFIER = r"(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+VERSION = re.compile(
+    rf"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+    rf"(?:-{_SEMVER_IDENTIFIER}(?:\.{_SEMVER_IDENTIFIER})*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
 
 
 def parse_installed_packages(output: str) -> dict[str, str]:

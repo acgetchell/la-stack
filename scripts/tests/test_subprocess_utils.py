@@ -14,6 +14,7 @@ from subprocess_utils import (
     check_git_repo,
     cpu_description,
     find_project_root,
+    format_exception_diagnostics,
     get_git_commit_hash,
     get_git_remote_url,
     get_safe_executable,
@@ -39,6 +40,25 @@ class TestGetSafeExecutable:
     def test_raises_for_nonexistent_command(self) -> None:
         with pytest.raises(ExecutableNotFoundError, match="not found in PATH"):
             get_safe_executable("definitely_not_a_real_command_12345")
+
+
+class TestFormatExceptionDiagnostics:
+    def test_preserves_nested_subprocess_output(self) -> None:
+        failure = subprocess_utils.subprocess.CalledProcessError(
+            128,
+            ["git", "tag", "v1.2.3"],
+            output="tag stdout",
+            stderr="tag rejected by hook",
+        )
+        error = ExceptionGroup("publication and rollback failed", [failure, OSError("rollback target unavailable")])
+
+        rendered = format_exception_diagnostics(error)
+
+        assert "publication and rollback failed (2 sub-exceptions)" in rendered
+        assert "git tag v1.2.3" in rendered
+        assert "tag stdout" in rendered
+        assert "tag rejected by hook" in rendered
+        assert "rollback target unavailable" in rendered
 
 
 # ---------------------------------------------------------------------------

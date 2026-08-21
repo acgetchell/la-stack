@@ -3,6 +3,7 @@
 import json
 import re
 import subprocess
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -940,6 +941,9 @@ def test_read_harness_provenance_rejects_different_requested_baseline(tmp_path: 
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
+        ("schema", True, "unsupported or missing schema"),
+        ("schema", 1.0, "unsupported or missing schema"),
+        ("schema", 2.0, "unsupported or missing schema"),
         ("schema", 3, "unsupported or missing schema"),
         ("mode", "independent-harnesses", "unsupported or missing mode"),
         ("sha256", "not-a-digest", "invalid or missing sha256"),
@@ -962,7 +966,7 @@ def test_read_harness_provenance_rejects_malformed_fields(
     tmp_path.mkdir(parents=True, exist_ok=True)
     (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises((TypeError, ValueError), match=message):
         _read_harness_provenance(tmp_path)
 
 
@@ -1160,6 +1164,57 @@ def test_main_rejects_invalid_artifact_option_combinations(
     assert expected_error in capsys.readouterr().err
     assert not csv_output.exists()
     assert not provenance_output.exists()
+
+
+def test_main_preserves_artifact_exception_group_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    criterion_dir = tmp_path / "criterion"
+    criterion_dir.mkdir()
+    csv_output = tmp_path / "performance.csv"
+    provenance_output = tmp_path / "performance.provenance.json"
+    output = tmp_path / "performance.md"
+
+    monkeypatch.setattr(bench_compare, "_read_harness_provenance", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        bench_compare,
+        "_collect_comparisons",
+        lambda *_args, **_kwargs: SimpleNamespace(comparisons=[object()], gaps=[]),
+    )
+    monkeypatch.setattr(bench_compare, "_comparison_tables", lambda *_args, **_kwargs: "table")
+
+    def fail_publication(*_args: object, **_kwargs: object) -> None:
+        message = "artifact publication and rollback failed"
+        raise ExceptionGroup(
+            message,
+            [OSError("could not publish performance.csv"), OSError("could not restore provenance")],
+        )
+
+    monkeypatch.setattr(bench_compare, "_write_and_render_artifacts", fail_publication)
+
+    status = bench_compare.main(
+        [
+            "last",
+            "--repo-root",
+            str(tmp_path),
+            "--criterion-dir",
+            str(criterion_dir),
+            "--output",
+            str(output),
+            "--csv-output",
+            str(csv_output),
+            "--provenance-output",
+            str(provenance_output),
+        ]
+    )
+
+    assert status == 2
+    captured = capsys.readouterr()
+    assert "artifact publication and rollback failed (2 sub-exceptions)" in captured.err
+    assert "could not publish performance.csv" in captured.err
+    assert "could not restore provenance" in captured.err
 
 
 def test_markdown_failure_rolls_back_release_artifact_pair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

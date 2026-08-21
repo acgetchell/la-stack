@@ -286,6 +286,12 @@ values were rounded to `f64` before construction.
 - **`ExactF64Conversion`** — converts an existing exact determinant or solution
   under the strict or rounded contract without repeating exact elimination
 
+Exact determinant value and conversion methods return
+`LaError::DeterminantScaleOverflow` if the aggregate power-of-two scaling
+exceeds the internal exponent representation. Exact solve methods return
+`LaError::Singular` with `SingularityReason::Exact` when the stored matrix is
+exactly singular.
+
 For exact-to-f64 output, strict conversions use
 `UnrepresentableReason::RequiresRounding` when explicit rounding can produce a
 finite value and `UnrepresentableReason::NotFinite` otherwise. Rounded
@@ -379,6 +385,8 @@ the conservative absolute error bound used by the fast filter, computed from
 one call that evaluates the determinant once and computes its matching bound.
 It returns `None` when a D ≤ 4 computation may be affected by gradual
 underflow, as well as for unsupported D ≥ 5 dimensions.
+It returns `LaError::NonFinite` if the determinant or bound computation
+overflows to NaN or infinity.
 This method does NOT require the `exact` feature — it uses pure f64 arithmetic
 and is available by default. Use `det_errbound()` when only the bound is needed.
 The paired API enables custom adaptive-precision logic for geometric predicates:
@@ -460,8 +468,10 @@ Storage shown above reflects the intentional `f64` scalar model.
 
 For a runtime dimension from 0 through `MAX_STACK_MATRIX_DISPATCH_DIM` (7),
 `try_with_stack_matrix!` dispatches to a concrete `Matrix<N>` while preserving
-inline stack storage. Larger dimensions return `LaError::UnsupportedDimension`;
-the macro does not introduce a dynamically sized matrix representation.
+inline stack storage. Larger dimensions produce
+`LaError::UnsupportedDimension`, converted through `From<LaError>` into the
+closure's declared `Result` error type; the macro does not introduce a
+dynamically sized matrix representation.
 
 `Matrix<D>` key methods: `as_rows`, `into_rows`, `lu`, `ldlt`, `det`,
 `det_direct`, `det_direct_with_errbound`, `det_errbound`,
@@ -570,13 +580,14 @@ cargo run --features exact --example exact_solve_3x3
 
 A short contributor workflow:
 
-Install Rust 1.98.0 through [rustup](https://rustup.rs/), Git, Python 3.14,
+Install Rust 1.98.0 through [rustup](https://rustup.rs/), Git,
+[GitHub CLI](https://cli.github.com/), Python 3.14,
 [`uv` 0.12.5](https://docs.astral.sh/uv/), and `jq`. Then install the pinned
 `just` release from its locked dependency graph:
 
 ```bash
 cargo install --locked just --version 1.58.0
-just setup        # install/verify dev tools + sync Python deps
+just setup        # install/verify dev tools + sync Python deps + build
 just check        # lint/validate (non-mutating)
 just fix          # apply auto-fixes (mutating)
 just ci           # lint + tests + examples + bench compile

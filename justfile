@@ -21,6 +21,7 @@ cargo_edit_version := "0.13.13"
 cargo_llvm_cov_version := "0.9.0"
 cargo_machete_version := "0.9.2"
 cargo_nextest_version := "0.9.143"
+cargo_update_version := "22.1.1"
 clippy_sarif_version := "0.8.0"
 dprint_version := "0.56.0"
 git_cliff_version := "2.13.1"
@@ -799,6 +800,11 @@ setup-tools:
         cargo install --locked just --version "$just_version"
     fi
 
+    cargo_update_version="{{ cargo_update_version }}"
+    if ! have cargo-install-update || [[ "$(cargo-install-update --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$cargo_update_version" ]]; then
+        cargo install --locked cargo-update --version "$cargo_update_version"
+    fi
+
     cargo_edit_version="{{ cargo_edit_version }}"
     if ! cargo upgrade --version >/dev/null 2>&1 || [[ "$(cargo upgrade --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$cargo_edit_version" ]]; then
         cargo install --locked cargo-edit --version "$cargo_edit_version"
@@ -852,6 +858,7 @@ setup-tools:
     have jq || { echo "❌ 'jq' is still missing."; exit 1; }
     echo "  ✓ jq"
     verify_tool_version just "$just_version"
+    verify_tool_version cargo-install-update "$cargo_update_version"
     verify_tool_version cargo-upgrade "$cargo_edit_version"
     verify_tool_version cargo-llvm-cov "$cargo_llvm_cov_version"
     verify_tool_version cargo-machete "$cargo_machete_version"
@@ -1073,6 +1080,7 @@ update-cargo-tools: _ensure-uv
         cargo-llvm-cov
         cargo-machete
         cargo-nextest
+        cargo-update
         dprint
         git-cliff
         just

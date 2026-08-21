@@ -314,6 +314,42 @@ class TestBuildRoot:
 
 
 class TestArchiveChangelog:
+    def test_out_of_order_releases_preserve_root_and_archives(self, tmp_path: Path) -> None:
+        changelog = tmp_path / "CHANGELOG.md"
+        original = _PREAMBLE + _V071 + _V072 + _V062
+        changelog.write_text(original, encoding="utf-8")
+        archive_dir = tmp_path / "docs" / "archive" / "changelog"
+        archive_dir.mkdir(parents=True)
+        existing_archive = archive_dir / "0.6.md"
+        existing = b"# Existing archive\r\n"
+        existing_archive.write_bytes(existing)
+
+        with pytest.raises(ValueError, match="strictly descending semantic-version order"):
+            archive_changelog(changelog, archive_dir)
+
+        assert changelog.read_text(encoding="utf-8") == original
+        assert existing_archive.read_bytes() == existing
+        assert sorted(path.name for path in archive_dir.iterdir()) == ["0.6.md"]
+
+    def test_cli_reports_order_error_without_traceback(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        changelog = tmp_path / "CHANGELOG.md"
+        original = _PREAMBLE + _V071 + _V072 + _V062
+        changelog.write_text(original, encoding="utf-8")
+        archive_dir = tmp_path / "archive"
+
+        status = archive_changelog_module.main([str(changelog), "--archive-dir", str(archive_dir)])
+
+        captured = capsys.readouterr()
+        assert status == 1
+        assert "strictly descending semantic-version order" in captured.err
+        assert "Traceback" not in captured.err
+        assert changelog.read_text(encoding="utf-8") == original
+        assert not archive_dir.exists()
+
     def test_unknown_heading_preserves_root_and_archives(self, tmp_path: Path) -> None:
         """An unknown version-like heading fails before any output is rewritten."""
         changelog = tmp_path / "CHANGELOG.md"

@@ -6,9 +6,11 @@ clarity, and the fixed-dimension stack-allocation model.
 
 ## Getting Started
 
-Install Rust 1.98.0 through [rustup](https://rustup.rs/), Git, Python 3.14,
-[`uv` 0.12.5](https://docs.astral.sh/uv/), and `jq`. Install the repository's
-pinned `just` version from its locked dependency graph:
+Install Rust 1.98.0 through [rustup](https://rustup.rs/), Git, the
+[GitHub CLI](https://cli.github.com/), Python 3.14,
+[`uv` 0.12.5](https://docs.astral.sh/uv/), and `jq`. Authenticate the GitHub
+CLI for repository operations, then install the repository's pinned `just`
+version from its locked dependency graph:
 
 ```bash
 cargo install --locked just --version 1.58.0
@@ -17,7 +19,7 @@ cargo install --locked just --version 1.58.0
 Set up the remaining development tools and validate the checkout:
 
 ```bash
-just setup        # install or verify dev tools and sync Python dependencies
+just setup        # install or verify dev tools, sync Python dependencies, and build
 just check        # lint and validate without changing files
 just ci           # run the comprehensive local CI path
 ```
@@ -29,9 +31,10 @@ Use `just update` for deliberate dependency and tool maintenance. It composes
 `just update-dependencies`, which advances Cargo dependency requirements, exact
 Python development-tool pins, and the Cargo/uv locks, with
 `just update-cargo-tools`, which upgrades only the Cargo CLI packages owned by
-`setup-tools` and atomically reconciles their root `justfile` pins. The tool
-updater requires `cargo-install-update` from the `cargo-update` package and does
-not touch unrelated Cargo executables or uv's user-global tool environments.
+`setup-tools` and atomically reconciles their root `justfile` pins. `just setup`
+installs and verifies the pinned `cargo-update` package that provides
+`cargo-install-update`; the updater does not touch unrelated Cargo executables
+or uv's user-global tool environments.
 
 The repository uses `cargo-nextest` for runnable Rust tests, `cargo-machete`
 for unused-dependency checks, and `just cargo-lock-check` to verify that the
