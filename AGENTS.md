@@ -295,7 +295,7 @@ just ci               # Full CI simulation (checks + tests + examples + bench co
 just test             # Lib + doc tests (fast)
 just test-all         # All tests (Rust, benchmark inputs, and Python)
 just examples         # Run all examples
-just update           # Update dependency locks and repository-owned Cargo tools
+just update           # Update dependency requirements, locks, and repository-owned Cargo tools
 just update-version vX.Y.Z # Update release metadata without upgrading dependencies
 ```
 

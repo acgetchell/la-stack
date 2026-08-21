@@ -1084,11 +1084,20 @@ update-cargo-tools: _ensure-uv
     cargo install-update --locked "${packages[@]}"
     uv run --locked update-cargo-tool-pins
 
-# Advance Cargo dependency declarations, update Cargo and uv locks, then sync uv dev tools.
-[doc('Update Cargo.toml dependency requirements and all Cargo/uv locked dependencies.')]
-update-dependencies: _ensure-uv _ensure-cargo-edit
+# Advance Cargo and exact Python development requirements plus their lockfiles.
+[doc('Update Cargo and Python development requirements plus all Cargo/uv locked dependencies.')]
+update-dependencies: update-cargo-dependencies update-python-dependencies
+
+# Advance Cargo dependency declarations and lockfile entries.
+[doc('Update Cargo.toml dependency requirements and Cargo.lock.')]
+update-cargo-dependencies: _ensure-cargo-edit
     cargo upgrade
     cargo update
+
+# Resolve latest Python development tools, retain exact pins, and sync the environment.
+[doc('Update exact dependency-groups.dev pins and uv.lock through uv.')]
+update-python-dependencies: _ensure-uv
+    uv run --locked update-python-dev-pins
     uv lock --upgrade
     uv sync --locked --group dev
 

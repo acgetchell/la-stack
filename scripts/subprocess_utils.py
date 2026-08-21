@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 type RunKwargs = dict[str, Any]
 
@@ -105,10 +105,13 @@ def run_git_command(
     """
     git_path = get_safe_executable("git")
     run_kwargs = _build_run_kwargs("run_git_command", **kwargs)
-    return subprocess.run(  # noqa: S603,PLW1510
-        [git_path, *args],
-        cwd=cwd,
-        **run_kwargs,
+    return cast(
+        "subprocess.CompletedProcess[str]",
+        subprocess.run(  # noqa: S603,PLW1510
+            [git_path, *args],
+            cwd=cwd,
+            **run_kwargs,
+        ),
     )
 
 
@@ -134,10 +137,13 @@ def run_cargo_command(
     """
     cargo_path = get_safe_executable("cargo")
     run_kwargs = _build_run_kwargs("run_cargo_command", **kwargs)
-    return subprocess.run(  # noqa: S603,PLW1510
-        [cargo_path, *args],
-        cwd=cwd,
-        **run_kwargs,
+    return cast(
+        "subprocess.CompletedProcess[str]",
+        subprocess.run(  # noqa: S603,PLW1510
+            [cargo_path, *args],
+            cwd=cwd,
+            **run_kwargs,
+        ),
     )
 
 
@@ -165,10 +171,13 @@ def run_safe_command(
     """
     command_path = get_safe_executable(command)
     run_kwargs = _build_run_kwargs(f"run_safe_command for {command}", **kwargs)
-    return subprocess.run(  # noqa: S603,PLW1510
-        [command_path, *args],
-        cwd=cwd,
-        **run_kwargs,
+    return cast(
+        "subprocess.CompletedProcess[str]",
+        subprocess.run(  # noqa: S603,PLW1510
+            [command_path, *args],
+            cwd=cwd,
+            **run_kwargs,
+        ),
     )
 
 
@@ -279,11 +288,14 @@ def run_git_command_with_input(
     with tempfile.TemporaryFile() as stdin:
         stdin.write(payload)
         stdin.seek(0)
-        return subprocess.run(  # noqa: S603,PLW1510
-            [git_path, *args],
-            cwd=cwd,
-            stdin=stdin,
-            **run_kwargs,
+        return cast(
+            "subprocess.CompletedProcess[str]",
+            subprocess.run(  # noqa: S603,PLW1510
+                [git_path, *args],
+                cwd=cwd,
+                stdin=stdin,
+                **run_kwargs,
+            ),
         )
 
 

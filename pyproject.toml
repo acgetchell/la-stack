@@ -43,11 +43,12 @@ tag-release = "tag_release:main"
 check-docs-version-sync = "check_docs_version_sync:main"
 update-release-version = "update_release_version:main"
 update-cargo-tool-pins = "update_cargo_tool_pins:main"
+update-python-dev-pins = "update_python_dev_pins:main"
 
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-py-modules = [ "archive_changelog", "archive_performance", "bench_compare", "benchmark_contract", "check_docs_version_sync", "check_semgrep_fixtures", "criterion_dim_plot", "performance_artifacts", "postprocess_changelog", "subprocess_utils", "tag_release", "update_cargo_tool_pins", "update_release_version" ]
+py-modules = [ "archive_changelog", "archive_performance", "bench_compare", "benchmark_contract", "check_docs_version_sync", "check_semgrep_fixtures", "criterion_dim_plot", "performance_artifacts", "postprocess_changelog", "subprocess_utils", "tag_release", "update_cargo_tool_pins", "update_python_dev_pins", "update_release_version" ]
 
 [tool.ruff]
 line-length = 160
@@ -99,6 +100,7 @@ known-first-party = [
     "subprocess_utils",
     "tag_release",
     "update_cargo_tool_pins",
+    "update_python_dev_pins",
 ]
 force-single-line = false
 split-on-trailing-comma = true
@@ -149,10 +151,10 @@ package = true
 dev = [
     "actionlint-py==1.7.12.24",
     "pytest==9.1.1",
-    "ruff==0.16.2",
-    "semgrep==1.172.0",
+    "ruff==0.16.4",
+    "semgrep==1.174.0",
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.0.0",
-    "ty==0.0.69",
+    "ty==0.0.73",
     "yamllint==1.38.0",
 ]

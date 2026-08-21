@@ -23,6 +23,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 # rumdl MD013 line-length limit used by this project.
 MAX_LINE_WIDTH = 160
@@ -216,17 +217,17 @@ def _squash_heading_parts(line: str) -> tuple[str, str, str] | None:
     if match is None:
         return None
 
-    raw_prefix = match.group("prefix")
+    raw_prefix = cast("str", match.group("prefix"))
     kind = re.sub(r"\([^)]+\)", "", raw_prefix).rstrip("!").casefold()
     label = _SQUASH_HEADING_LABELS.get(kind)
     if label is None:
         return None
 
-    title = match.group("title").strip()
+    title = cast("str", match.group("title")).strip()
     if not title:
         return None
 
-    return match.group("indent"), label, title[0].upper() + title[1:]
+    return cast("str", match.group("indent")), label, title[0].upper() + title[1:]
 
 
 def _normalize_squash_heading(line: str, *, nested: bool = False) -> str:
@@ -678,7 +679,11 @@ def _fence_parts(line: str) -> tuple[str, str, str] | None:
     match = _FENCE_RE.fullmatch(line)
     if match is None:
         return None
-    return match.group("indent"), match.group("fence"), match.group("info")
+    return (
+        cast("str", match.group("indent")),
+        cast("str", match.group("fence")),
+        cast("str", match.group("info")),
+    )
 
 
 def _opening_code_fence(line: str) -> _CodeFence | None:

@@ -29,8 +29,9 @@ git switch main
 git pull --ff-only
 ```
 
-Refresh dependency requirements, lockfiles, and repository-owned Cargo tool
-pins before creating the release branch:
+Refresh Cargo dependency requirements, exact Python development-tool pins,
+lockfiles, and repository-owned Cargo tool pins before creating the release
+branch:
 
 ```bash
 just update

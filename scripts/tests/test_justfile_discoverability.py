@@ -77,14 +77,17 @@ def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
     """Update recipes should cover repo state without touching unrelated global tools."""
     recipes = just_recipes()
     update_dependencies = {dependency["recipe"] for dependency in recipes["update"]["dependencies"]}
+    dependency_updates = {dependency["recipe"] for dependency in recipes["update-dependencies"]["dependencies"]}
 
     assert update_dependencies == {"update-cargo-tools", "update-dependencies"}
+    assert dependency_updates == {"update-cargo-dependencies", "update-python-dependencies"}
 
     dependency_result = run_just("--dry-run", "update-dependencies")
     dependency_update = dependency_result.stdout + dependency_result.stderr
     assert "cargo upgrade" in dependency_update
     assert "cargo upgrade --incompatible allow" not in dependency_update
     assert "cargo update" in dependency_update
+    assert "update-python-dev-pins" in dependency_update
     assert "uv lock --upgrade" in dependency_update
     assert "uv sync --locked --group dev" in dependency_update
     assert "cargo install-update --all" not in dependency_update
