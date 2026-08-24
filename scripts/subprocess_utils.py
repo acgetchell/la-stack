@@ -331,8 +331,8 @@ def run_git_command_with_input(
     """
     git_path = get_safe_executable("git")
     run_kwargs = _build_run_kwargs("run_git_command_with_input", **kwargs)
-    encoding: str = run_kwargs.get("encoding") or "utf-8"
-    errors: str = run_kwargs.get("errors") or "strict"
+    encoding = cast("str", run_kwargs.get("encoding") or "utf-8")
+    errors = cast("str", run_kwargs.get("errors") or "strict")
     payload = input_data if isinstance(input_data, bytes) else input_data.encode(encoding, errors)
     with tempfile.TemporaryFile() as stdin:
         stdin.write(payload)
