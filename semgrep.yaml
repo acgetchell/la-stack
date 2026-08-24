@@ -111,6 +111,17 @@ rules:
       - pattern: $VALUE.algebraic_div(...)
       - pattern: $VALUE.algebraic_rem(...)
       - patterns:
+          - pattern: <f64>::$METHOD(...)
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^algebraic_(?:add|sub|mul|div|rem)$
+      - patterns:
+          - pattern: <f64>::$METHOD
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^algebraic_(?:add|sub|mul|div|rem)$
+          - pattern-not-inside: <f64>::$METHOD(...)
+      - patterns:
           - pattern: $FLOAT::$METHOD
           - metavariable-regex:
               metavariable: $FLOAT
