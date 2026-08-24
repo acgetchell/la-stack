@@ -42,22 +42,28 @@ With `features = ["exact"]`, stored binary64 inputs are lifted losslessly to
 rationals for exact determinant signs, determinant values, and solves. Exactness
 starts at the stored values and cannot recover information rounded away before
 construction. See the
-[mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md)
+[mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md)
 for the algorithms, validity boundaries, and supporting references.
 
 ## ✨ Design goals
 
-- ✅ `Copy` types where possible
-- ✅ Const-generic storage (no dynamically sized matrix or vector representation)
 - ✅ `const fn` where possible (compile-time evaluation of determinants, dot products, etc.)
-- ✅ Explicit algorithms (LU, solve, determinant)
+- ✅ Const-generic storage (no dynamically sized matrix or vector representation)
+- ✅ `Copy` types where possible
+- ✅ Defined binary64 arithmetic semantics: Rust's `f64::algebraic_*`
+  operations are forbidden because their unspecified reassociation, precision,
+  and special-value behavior is incompatible with the crate's error bounds,
+  non-finite classification, exact fallbacks, and reproducibility contract;
+  deliberate `f64::mul_add` remains allowed for its defined single-rounding
+  semantics
 - ✅ Error-bounded f64 determinant filtering plus optional exact signs
   (`det_errbound`, `det_sign_exact`)
 - ✅ Exact determinant values and linear solves via optional arbitrary-precision
   arithmetic (`det_exact`, `solve_exact`, strict/rounded f64 conversions)
-- ✅ No runtime dependencies by default (optional features may add deps)
+- ✅ Explicit algorithms (LU, solve, determinant)
 - ✅ Inline, stack-backed storage for core types; optional arbitrary-precision
   exact values allocate as required
+- ✅ No runtime dependencies by default (optional features may add deps)
 - ✅ `unsafe` forbidden
 
 See [CHANGELOG.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/CHANGELOG.md)
@@ -67,11 +73,14 @@ for current release planning.
 
 ## 🚫 Anti-goals
 
-- Bare-metal performance: see [`blas-src`](https://crates.io/crates/blas-src),
-  [`lapack-src`](https://crates.io/crates/lapack-src), or [`openblas-src`](https://crates.io/crates/openblas-src)
+- Alternate floating-point scalar families: `la-stack` supports `f64` and optional exact arithmetic, not `f32` / `f16` APIs
+- Bare-metal performance: use [`blas`](https://crates.io/crates/blas) or
+  [`lapack`](https://crates.io/crates/lapack) with a native backend selected
+  through [`blas-src`](https://crates.io/crates/blas-src),
+  [`lapack-src`](https://crates.io/crates/lapack-src), or
+  [`openblas-src`](https://crates.io/crates/openblas-src)
 - Broad general-purpose linear algebra: use [`nalgebra`](https://crates.io/crates/nalgebra)
 - Large matrices/dimensions with parallelism: use [`faer`](https://crates.io/crates/faer)
-- Alternate floating-point scalar families: `la-stack` supports `f64` and optional exact arithmetic, not `f32` / `f16` APIs
 
 ## ✅ Use this crate when
 
@@ -97,6 +106,8 @@ crate's scope; they usually indicate large-matrix or accelerator-oriented use
 cases better served by broader linear-algebra libraries.
 
 ## 🚀 Quickstart
+
+The minimum supported Rust version (MSRV) is 1.98.0.
 
 Add this to your `Cargo.toml`:
 
@@ -445,7 +456,7 @@ fn main() -> Result<(), LaError> {
 
 The error coefficients (`ERR_COEFF_2`, `ERR_COEFF_3`, `ERR_COEFF_4`) are
 conservative, dimension-specific constants, not caller-tunable tolerances. The
-[mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#determinants-and-certified-sign-filtering)
+[mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md#determinants-and-certified-sign-filtering)
 documents the bound and states its range preconditions. The constants are explicit
 crate-root exports for advanced users who want to compose the same bound:
 `use la_stack::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};`. They intentionally stay

@@ -100,15 +100,36 @@ rules:
         - "/src/**/*.rs"
         - "/examples/**/*.rs"
         - "/benches/**/*.rs"
-        # Test-only violation fixture: `just semgrep` excludes it, while
+        # Includes integration/property tests and the deliberate violation
+        # fixture. `just semgrep` excludes that fixture, while
         # `just semgrep-test` scans it directly.
-        - "/tests/semgrep/src/project_rules/algebraic_float.rs"
+        - "/tests/**/*.rs"
     pattern-either:
       - pattern: $VALUE.algebraic_add(...)
       - pattern: $VALUE.algebraic_sub(...)
       - pattern: $VALUE.algebraic_mul(...)
       - pattern: $VALUE.algebraic_div(...)
       - pattern: $VALUE.algebraic_rem(...)
+      - patterns:
+          - pattern: <f64>::$METHOD(...)
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^algebraic_(?:add|sub|mul|div|rem)$
+      - patterns:
+          - pattern: <f64>::$METHOD
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^algebraic_(?:add|sub|mul|div|rem)$
+          - pattern-not-inside: <f64>::$METHOD(...)
+      - patterns:
+          - pattern: $FLOAT::$METHOD
+          - metavariable-regex:
+              metavariable: $FLOAT
+              regex: ^f64$
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^algebraic_(?:add|sub|mul|div|rem)$
+          - pattern-not-inside: $FLOAT::$METHOD(...)
 
   - id: la-stack.rust.no-public-infallible-raw-f64-constructors
     languages:
