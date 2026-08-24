@@ -213,6 +213,15 @@ When user requests commit message generation:
 - The current MSRV and pinned contributor/CI toolchain are Rust 1.98.0. Keep
   `Cargo.toml`, `rust-toolchain.toml`, and `clippy.toml` aligned when that
   baseline changes deliberately.
+- Rust's `f64::algebraic_*` operations are forbidden in all repository-owned
+  Rust code, including tests, examples, and benchmarks.
+  Their unspecified reassociation, precision, and special-value behavior can
+  invalidate defined operation order, error bounds, non-finite classification,
+  exact fallbacks, and reproducibility. Ordinary operators remain allowed.
+  Deliberate fused multiply-add through `f64::mul_add` is explicitly allowed;
+  existing numerical kernels and error bounds may rely on its single-rounding
+  evaluation. Any fast-math design requires a separate issue, opt-in contract,
+  correctness analysis, and benchmark evidence.
 - Prefer borrowed APIs by default:
   take references (`&T`, `&mut T`, `&[T]`) as arguments and return borrowed views (`&T`, `&[T]`) when possible.
   Only take ownership or return `Vec`/allocated data when required.

@@ -155,6 +155,6 @@ dev = [
     "semgrep==1.174.0",
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.0.0",
-    "ty==0.0.73",
+    "ty==0.0.74",
     "yamllint==1.38.0",
 ]
