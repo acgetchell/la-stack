@@ -206,6 +206,15 @@ _ensure-uv-available:
     }
     uv --version >/dev/null
 
+_ensure-stable-uv-version: _ensure-uv-available
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version_output="$(uv --version 2>&1)"
+    if [[ ! "$version_output" =~ ^uv[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
+        echo "❌ 'uv --version' must report a stable X.Y.Z version; got: $version_output" >&2
+        exit 1
+    fi
+
 _ensure-yamllint: _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1078,12 +1087,12 @@ unused-deps: _ensure-cargo-machete
     cargo machete
 
 # Update dependency requirements, locks, managed Cargo tools, and the active uv pin.
-update: _ensure-cargo-install-update update-dependencies update-cargo-tools
+update: _ensure-cargo-install-update _ensure-stable-uv-version update-dependencies update-cargo-tools
     @echo "✅ Repository dependencies and tools updated."
 
 # Update locally installed Cargo CLI tools and reconcile their pins plus the active uv version.
 [doc('Update managed Cargo CLI tools and reconcile all root justfile tool pins.')]
-update-cargo-tools: _ensure-cargo-install-update _ensure-uv-available
+update-cargo-tools: _ensure-stable-uv-version _ensure-cargo-install-update
     #!/usr/bin/env bash
     set -euo pipefail
 

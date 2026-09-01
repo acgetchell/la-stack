@@ -74,17 +74,40 @@ def test_uv_guard_reports_expected_and_actual_versions(tmp_path: Path) -> None:
     assert f"version '9.9.9', expected '{expected}'" in result.stderr
 
 
+def test_stable_uv_preflight_rejects_nonstable_or_embedded_versions(tmp_path: Path) -> None:
+    """Update preflights should reject uv versions the pin reconciler cannot store."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_uv = fake_bin / "uv"
+    environment = os.environ.copy()
+    environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+
+    for output in ("uv 9.9.9-beta.1", "uv 9.9.9.1", "uv release-9.9.9"):
+        fake_uv.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}'\n", encoding="utf-8")
+        fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        result = run_just("_ensure-stable-uv-version", check=False, env=environment)
+
+        assert result.returncode != 0
+        assert "must report a stable X.Y.Z version" in result.stderr
+
+
 def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
     """Update recipes should cover repo state without touching unrelated global tools."""
     recipes = just_recipes()
     update_dependencies = [dependency["recipe"] for dependency in recipes["update"]["dependencies"]]
 
-    assert update_dependencies == ["_ensure-cargo-install-update", "update-dependencies", "update-cargo-tools"]
+    assert update_dependencies == [
+        "_ensure-cargo-install-update",
+        "_ensure-stable-uv-version",
+        "update-dependencies",
+        "update-cargo-tools",
+    ]
 
     aggregate_result = run_just("--dry-run", "update")
     aggregate_update = aggregate_result.stdout + aggregate_result.stderr
     cargo_upgrade = "cargo upgrade --incompatible allow --exclude num-bigint --exclude num-rational"
     assert aggregate_update.index("command -v cargo-install-update") < aggregate_update.index(cargo_upgrade)
+    assert aggregate_update.index("must report a stable X.Y.Z version") < aggregate_update.index(cargo_upgrade)
 
     dependency_result = run_just("--dry-run", "update-dependencies")
     dependency_update = dependency_result.stdout + dependency_result.stderr
@@ -105,6 +128,7 @@ def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
     tool_update = tool_result.stdout + tool_result.stderr
     assert "command -v cargo-install-update" in tool_update
     assert "cargo install-update --locked" in tool_update
+    assert tool_update.index("must report a stable X.Y.Z version") < tool_update.index("cargo install-update --locked")
     assert "update-cargo-tool-pins" in tool_update
     assert "cargo install-update --all" not in tool_update
     assert "uv tool upgrade" not in tool_update
