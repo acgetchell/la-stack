@@ -41,7 +41,7 @@ jobs:
           cache-bin: false
 
       - name: Set up just
-        uses: ./.github/actions/setup-just
+        uses: ./.github/actions/setup-just # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
 
       - name: Export tool versions
         id: tool_versions

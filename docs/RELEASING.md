@@ -38,8 +38,8 @@ just setup
 ```
 
 Refresh Cargo dependency requirements, exact Python development-tool pins,
-lockfiles, and repository-owned Cargo tool pins before creating the release
-branch:
+lockfiles, repository-owned Cargo tool pins, and the active uv pin before
+creating the release branch:
 
 ```bash
 just update

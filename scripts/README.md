@@ -28,10 +28,15 @@ uv sync --locked --group dev
 
 Run `just update` for the deliberate maintenance workflow. It updates Cargo and
 exact Python development-tool declarations and their locks, upgrades only the
-Cargo CLI packages owned by `setup-tools`, and then reconciles the installed
-package versions with the root `justfile` atomically. The Python updater asks
-uv to resolve one cross-platform tool set before applying all changed exact
-pins together; it does not change runtime or build-system requirements.
+Cargo CLI packages owned by `setup-tools`, and then reconciles their installed
+versions plus the active uv version with the root `justfile` atomically. All
+required update tools are checked before the first dependency write, and the
+maintenance workflow accepts a newer active uv so it can become the new pin.
+The coupled `num-bigint` and `num-rational` requirements are excluded from
+independent incompatible upgrades and must be advanced together. The Python
+updater asks uv to resolve one cross-platform tool set before applying all
+changed exact pins together; it does not change runtime or build-system
+requirements.
 
 ## How to use it
 
@@ -283,7 +288,7 @@ validates SemVer, and handles GitHub's 125KB tag-annotation size limit.
 | `tag_release.py` | Create annotated git tags from CHANGELOG.md sections |
 | `postprocess_changelog.py` | Normalize and reflow generated git-cliff Markdown safely |
 | `subprocess_utils.py` | Safe subprocess wrappers for git commands |
-| `update_cargo_tool_pins.py` | Reconcile repository-owned Cargo tool pins with installed versions |
+| `update_cargo_tool_pins.py` | Reconcile repository-owned Cargo and active uv tool pins with installed versions |
 | `update_python_dev_pins.py` | Resolve and advance exact Python development-tool pins through uv |
 | `update_release_version.py` | Transactionally update deterministic release-version metadata |
 
