@@ -48,6 +48,7 @@ def test_uv_backed_helpers_reuse_pinned_guard() -> None:
 
     assert "uv --version" in ensure_uv_body
     assert "uv_version" in ensure_uv_body
+    assert [dependency["recipe"] for dependency in recipes["_ensure-uv"]["dependencies"]] == ["_ensure-uv-available"]
     assert "verify_tool_version uv" in setup_tools_body
     for name in ("_ensure-actionlint", "_ensure-shellcheck", "_ensure-shfmt", "_ensure-yamllint"):
         dependencies = {dependency["recipe"] for dependency in recipes[name]["dependencies"]}
@@ -76,25 +77,33 @@ def test_uv_guard_reports_expected_and_actual_versions(tmp_path: Path) -> None:
 def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
     """Update recipes should cover repo state without touching unrelated global tools."""
     recipes = just_recipes()
-    update_dependencies = {dependency["recipe"] for dependency in recipes["update"]["dependencies"]}
-    dependency_updates = {dependency["recipe"] for dependency in recipes["update-dependencies"]["dependencies"]}
+    update_dependencies = [dependency["recipe"] for dependency in recipes["update"]["dependencies"]]
 
-    assert update_dependencies == {"update-cargo-tools", "update-dependencies"}
-    assert dependency_updates == {"update-cargo-dependencies", "update-python-dependencies"}
+    assert update_dependencies == ["_ensure-cargo-install-update", "update-dependencies", "update-cargo-tools"]
+
+    aggregate_result = run_just("--dry-run", "update")
+    aggregate_update = aggregate_result.stdout + aggregate_result.stderr
+    cargo_upgrade = "cargo upgrade --incompatible allow --exclude num-bigint --exclude num-rational"
+    assert aggregate_update.index("command -v cargo-install-update") < aggregate_update.index(cargo_upgrade)
 
     dependency_result = run_just("--dry-run", "update-dependencies")
     dependency_update = dependency_result.stdout + dependency_result.stderr
-    assert "cargo upgrade" in dependency_update
-    assert "cargo upgrade --incompatible allow" not in dependency_update
+    dependency_preflights = [dependency["recipe"] for dependency in recipes["update-dependencies"]["dependencies"]]
+    assert dependency_preflights[:2] == ["_ensure-cargo-edit", "_ensure-uv-available"]
+    assert dependency_update.index("cargo upgrade --version") < dependency_update.index(cargo_upgrade)
+    assert dependency_update.index("uv --version") < dependency_update.index(cargo_upgrade)
+    assert cargo_upgrade in dependency_update
     assert "cargo update" in dependency_update
-    assert "update-python-dev-pins" in dependency_update
+    assert "uv run --locked update-python-dev-pins" in dependency_update
     assert "uv lock --upgrade" in dependency_update
+    assert dependency_update.index("uv run --locked update-python-dev-pins") < dependency_update.index("uv lock --upgrade")
     assert "uv sync --locked --group dev" in dependency_update
     assert "cargo install-update --all" not in dependency_update
     assert "uv tool upgrade" not in dependency_update
 
     tool_result = run_just("--dry-run", "update-cargo-tools")
     tool_update = tool_result.stdout + tool_result.stderr
+    assert "command -v cargo-install-update" in tool_update
     assert "cargo install-update --locked" in tool_update
     assert "update-cargo-tool-pins" in tool_update
     assert "cargo install-update --all" not in tool_update
@@ -113,9 +122,9 @@ def test_setup_tools_installs_and_verifies_cargo_update_provider() -> None:
     assert "verify_tool_version cargo-install-update" in body
 
 
-def test_managed_cargo_tool_pins_exist_once_in_root_justfile() -> None:
-    """Every managed Cargo package should map to one real root Just pin."""
+def test_managed_tool_pins_exist_once_in_root_justfile() -> None:
+    """Every managed Cargo package and uv should map to one root Just pin."""
     justfile_text = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
 
-    for pin in update_cargo_tool_pins.PIN_TO_PACKAGE:
+    for pin in update_cargo_tool_pins.PIN_TO_TOOL:
         assert len(re.findall(rf'(?m)^{re.escape(pin)}\s*:=\s*"[^"]+"\s*$', justfile_text)) == 1

@@ -23,15 +23,15 @@ cargo_machete_version := "0.9.2"
 cargo_nextest_version := "0.9.143"
 cargo_update_version := "22.1.1"
 clippy_sarif_version := "0.8.0"
-dprint_version := "0.56.1"
+dprint_version := "0.57.0"
 git_cliff_version := "2.13.1"
 just_version := "1.58.0"
-rumdl_version := "0.2.60"
+rumdl_version := "0.2.62"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
-typos_version := "1.49.0"
-uv_version := "0.12.5"
-zizmor_version := "1.29.0"
+typos_version := "1.50.0"
+uv_version := "0.12.7"
+zizmor_version := "1.30.0"
 
 # Internal helpers: ensure external tooling is installed
 _ensure-actionlint: _ensure-uv
@@ -51,6 +51,15 @@ _ensure-cargo-edit:
         echo "   cargo install --locked cargo-edit --version {{ cargo_edit_version }}"
         exit 1
     fi
+
+_ensure-cargo-install-update:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v cargo-install-update >/dev/null || {
+        echo "❌ 'cargo-install-update' not found. Run 'just setup-tools' or install it with:"
+        echo "   cargo install --locked cargo-update"
+        exit 1
+    }
 
 _ensure-cargo-llvm-cov:
     #!/usr/bin/env bash
@@ -177,7 +186,7 @@ _ensure-typos:
         exit 1
     fi
 
-_ensure-uv:
+_ensure-uv: _ensure-uv-available
     #!/usr/bin/env bash
     set -euo pipefail
     resolved="$(command -v uv 2>/dev/null || true)"
@@ -187,6 +196,15 @@ _ensure-uv:
         echo "   Install uv {{ uv_version }} and re-run: just setup-tools" >&2
         exit 1
     fi
+
+_ensure-uv-available:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v uv >/dev/null || {
+        echo "❌ 'uv' not found. Install it from https://github.com/astral-sh/uv" >&2
+        exit 1
+    }
+    uv --version >/dev/null
 
 _ensure-yamllint: _ensure-uv
     #!/usr/bin/env bash
@@ -500,7 +518,7 @@ help-workflows:
     @echo "Setup:"
     @echo "  just setup             # Setup project environment (depends on setup-tools)"
     @echo "  just setup-tools       # Install/verify external tooling"
-    @echo "  just update            # Update dependencies and repository-owned Cargo tools"
+    @echo "  just update            # Update dependencies and repository-owned tool pins"
     @echo ""
     @echo "Testing:"
     @echo "  just coverage          # Generate coverage report (HTML)"
@@ -1059,21 +1077,15 @@ toml-parse-check: python-sync
 unused-deps: _ensure-cargo-machete
     cargo machete
 
-# Update dependency requirements, locks, and locally installed Cargo tools owned by this repository.
-update: update-dependencies update-cargo-tools
+# Update dependency requirements, locks, managed Cargo tools, and the active uv pin.
+update: _ensure-cargo-install-update update-dependencies update-cargo-tools
     @echo "✅ Repository dependencies and tools updated."
 
-# Update locally installed Cargo CLI tools owned by `setup-tools` and reconcile their pins.
-[doc('Update Cargo CLI tools owned by setup-tools and reconcile their root justfile pins.')]
-update-cargo-tools: _ensure-uv
+# Update locally installed Cargo CLI tools and reconcile their pins plus the active uv version.
+[doc('Update managed Cargo CLI tools and reconcile all root justfile tool pins.')]
+update-cargo-tools: _ensure-cargo-install-update _ensure-uv-available
     #!/usr/bin/env bash
     set -euo pipefail
-
-    if ! command -v cargo-install-update >/dev/null 2>&1; then
-        echo "❌ 'cargo-install-update' not found. Install it with:"
-        echo "   cargo install --locked cargo-update"
-        exit 1
-    fi
 
     packages=(
         cargo-edit
@@ -1094,17 +1106,18 @@ update-cargo-tools: _ensure-uv
 
 # Advance Cargo and exact Python development requirements plus their lockfiles.
 [doc('Update Cargo and Python development requirements plus all Cargo/uv locked dependencies.')]
-update-dependencies: update-cargo-dependencies update-python-dependencies
+update-dependencies: _ensure-cargo-edit _ensure-uv-available update-cargo-dependencies update-python-dependencies
 
 # Advance Cargo dependency declarations and lockfile entries.
 [doc('Update Cargo.toml dependency requirements and Cargo.lock.')]
 update-cargo-dependencies: _ensure-cargo-edit
-    cargo upgrade
+    # num-bigint and num-rational share public types and must advance together.
+    cargo upgrade --incompatible allow --exclude num-bigint --exclude num-rational
     cargo update
 
 # Resolve latest Python development tools, retain exact pins, and sync the environment.
 [doc('Update exact dependency-groups.dev pins and uv.lock through uv.')]
-update-python-dependencies: _ensure-uv
+update-python-dependencies: _ensure-uv-available
     uv run --locked update-python-dev-pins
     uv lock --upgrade
     uv sync --locked --group dev
