@@ -700,26 +700,29 @@ plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_
     uv run --locked criterion-dim-plot "${args[@]}"
 
 # Python tooling (uv)
-python-check: python-format-check python-lint python-typecheck
+python-check: python-format-check python-lint python-fixture-lint python-typecheck
 
-python-ci: python-format-check python-lint python-typecheck test-python
+python-ci: python-format-check python-lint python-fixture-lint python-typecheck test-python
     @echo "✅ Python checks complete!"
 
 python-fix: python-sync
     uv run --locked ruff check scripts/ --fix
-    uv run --locked ruff format scripts/
+    uv run --locked ruff format scripts/ tests/semgrep/scripts/
 
 python-format-check: python-sync
-    uv run --locked ruff format --check scripts/
+    uv run --locked ruff format --check scripts/ tests/semgrep/scripts/
 
 python-lint: python-sync
     uv run --locked ruff check scripts/
+
+python-fixture-lint: python-sync
+    uv run --locked ruff check --select ANN001,ANN002,ANN003,ANN201,ANN202,ANN204,ANN205,ANN206 tests/semgrep/scripts/
 
 python-sync: _ensure-uv
     uv sync --locked --group dev
 
 python-typecheck: python-sync
-    uv run --locked ty check scripts/ --error all
+    uv run --locked ty check scripts/ tests/semgrep/scripts/ --error all
 
 rust-core-check: cargo-lock-check fmt-check clippy-core doc-check semgrep semgrep-test unused-deps
     @echo "✅ Rust core checks complete!"

@@ -4,17 +4,19 @@ import io
 import os
 import subprocess
 import tempfile
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from subprocess import run as run_process
 from tempfile import NamedTemporaryFile as named_file
+from typing import Any
 
 import subprocess_utils as utils
 from subprocess_utils import run_git_command, run_git_command_with_input as git_input, run_safe_command
 
 
-def run_git_command_with_input(payload, argv, options) -> None:
+def run_git_command_with_input(payload: str, argv: Sequence[str], options: Mapping[str, Any]) -> None:
     # Original failure: the text defaults were hidden in shared kwargs.
-    kwargs = {"text": True, "encoding": "utf-8"}
+    kwargs: dict[str, Any] = {"text": True, "encoding": "utf-8"}
     # ruleid: la-stack.python.git-stdin-binary-transport
     subprocess.run(argv, input=payload, **kwargs)
     # ruleid: la-stack.python.git-stdin-binary-transport
@@ -42,7 +44,7 @@ def run_git_command_with_input(payload, argv, options) -> None:
     subprocess.Popen(argv, stdin=subprocess.PIPE, text=False)
 
 
-def git_input_routing(payload, argv) -> None:
+def git_input_routing(payload: str, argv: Sequence[str]) -> None:
     # ruleid: la-stack.python.git-stdin-use-shared-helper
     run_git_command(argv, input=payload)
     # ruleid: la-stack.python.git-stdin-use-shared-helper

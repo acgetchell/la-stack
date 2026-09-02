@@ -55,7 +55,7 @@ line-length = 160
 src = [ "scripts" ]
 
 [tool.ruff.lint]
-select = [ "E", "F", "W", "ANN201", "ANN202", "ANN204", "C90", "I", "N", "UP", "YTT", "ASYNC", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "FA", "T10", "EM", "EXE", "FIX", "FLY", "FURB", "ISC", "ICN", "LOG", "G", "INP", "PERF", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "SLOT", "TC", "TID", "TD", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "RUF", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107" ]
+select = [ "E", "F", "W", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "C90", "I", "N", "UP", "YTT", "ASYNC", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "FA", "T10", "EM", "EXE", "FIX", "FLY", "FURB", "ISC", "ICN", "LOG", "G", "INP", "PERF", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "SLOT", "TC", "TID", "TD", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "RUF", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107" ]
 fixable = [ "ALL" ]
 unfixable = [  ]
 ignore = [

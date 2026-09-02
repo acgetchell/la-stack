@@ -87,7 +87,7 @@ def direct_subprocess_run() -> None:
 
 
 # ruleid: la-stack.python.no-untyped-defs-in-scripts
-def missing_return_annotation():
+def missing_return_annotation():  # noqa: ANN201 - intentional Semgrep violation fixture
     return None
 
 
