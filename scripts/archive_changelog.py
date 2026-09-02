@@ -303,6 +303,7 @@ def _stage_text(path: Path, text: str) -> Path:
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",
+            newline="",
             dir=path.parent,
             prefix=f".{path.name}.",
             suffix=".tmp",

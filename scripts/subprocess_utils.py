@@ -233,7 +233,12 @@ def run_safe_command(
 def _darwin_cpu_model() -> str:
     try:
         return run_safe_command("sysctl", ["-n", "machdep.cpu.brand_string"]).stdout.strip()
-    except ExecutableNotFoundError, OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired:
+    except (
+        ExecutableNotFoundError,
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ):
         return ""
 
 

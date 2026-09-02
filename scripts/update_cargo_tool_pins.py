@@ -114,31 +114,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--check-uv-version",
-        action="store_true",
-        help="validate that uv reports exactly one stable X.Y.Z version without reconciling pins",
+        metavar="OUTPUT",
+        help="validate captured uv output as exactly one stable X.Y.Z version without reconciling pins",
     )
     parser.add_argument("--justfile", type=Path, default=Path("justfile"), help="Just source containing repository tool pins")
     return parser.parse_args(argv)
 
 
-def check_uv_version() -> None:
-    """Reject uv output that cannot be stored by the pin reconciler."""
-    uv = run_safe_command("uv", ["--version"], timeout=30)
+def check_uv_version(output: str) -> str:
+    """Parse captured uv output or explain why the reconciler cannot store it."""
     try:
-        parse_tool_version(uv.stdout, "uv")
+        return parse_tool_version(output, "uv")
     except ValueError as error:
-        output = uv.stdout.strip() or "<empty>"
-        msg = f"'uv --version' must report exactly one stable X.Y.Z version; got: {output} ({error})"
+        observed = output.strip() or "<empty>"
+        msg = f"'uv --version' must report exactly one stable X.Y.Z version; got: {observed} ({error})"
         raise ValueError(msg) from error
 
 
 def main(argv: list[str] | None = None) -> int:
     """Validate uv output or reconcile pins from active tool installations."""
     args = parse_args(argv)
-    operation = "validate uv version" if args.check_uv_version else "update tool pins"
+    operation = "validate uv version" if args.check_uv_version is not None else "update tool pins"
     try:
-        if args.check_uv_version:
-            check_uv_version()
+        if args.check_uv_version is not None:
+            check_uv_version(args.check_uv_version)
             return 0
         cargo = run_cargo_command(["install", "--list"], timeout=30)
         uv = run_safe_command("uv", ["--version"], timeout=30)

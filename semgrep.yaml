@@ -905,6 +905,178 @@ rules:
       - pattern-regex: '^\s*#\s*\[\s*expect\s*\([^\]\n]*\)\s*\]'
       - pattern-not-regex: '\breason\s*='
 
+  - id: la-stack.python.git-stdin-binary-transport
+    languages:
+      - python
+    severity: WARNING
+    message: "Keep Git stdin byte-exact: use text=False and do not enable encoding, errors, or universal_newlines on the subprocess."
+    metadata:
+      category: correctness
+      rationale: "Windows text pipes rewrite LF and CRLF, corrupting hashes, patches, and verbatim tag messages before Git receives them."
+    paths:
+      include:
+        - "/scripts/**/*.py"
+        - "/tests/semgrep/scripts/**/*.py"
+      exclude:
+        - "/scripts/tests/**"
+        - "/tests/semgrep/scripts/tests/**"
+    patterns:
+      - pattern-inside: |
+          def run_git_command_with_input(...):
+              ...
+      - pattern-either:
+          - pattern: subprocess.run(..., input=$INPUT, ...)
+          - pattern: subprocess.Popen(...)
+      - pattern-either:
+          - patterns:
+              - pattern-either:
+                  - pattern: subprocess.run(..., input=$INPUT, ...)
+                  - pattern: subprocess.Popen(...)
+              - pattern-not: $CALL(..., text=False, ...)
+          - patterns:
+              - pattern-either:
+                  - pattern: subprocess.run(..., encoding=$ENCODING, ...)
+                  - pattern: subprocess.Popen(..., encoding=$ENCODING, ...)
+              - pattern-not: $CALL(..., encoding=None, ...)
+          - patterns:
+              - pattern-either:
+                  - pattern: subprocess.run(..., errors=$ERRORS, ...)
+                  - pattern: subprocess.Popen(..., errors=$ERRORS, ...)
+              - pattern-not: $CALL(..., errors=None, ...)
+          - patterns:
+              - pattern-either:
+                  - pattern: subprocess.run(..., universal_newlines=$NEWLINES, ...)
+                  - pattern: subprocess.Popen(..., universal_newlines=$NEWLINES, ...)
+              - pattern-not: $CALL(..., universal_newlines=False, ...)
+              - pattern-not: $CALL(..., universal_newlines=None, ...)
+
+  - id: la-stack.python.git-stdin-use-shared-helper
+    languages:
+      - python
+    severity: WARNING
+    message: "Send Git stdin through subprocess_utils.run_git_command_with_input so Windows cannot translate the input bytes."
+    metadata:
+      category: correctness
+      rationale: "The shared Git-input helper preserves exact encoded input; the generic text wrappers do not make that guarantee."
+    paths:
+      include:
+        - "/scripts/**/*.py"
+        - "/tests/semgrep/scripts/**/*.py"
+      exclude:
+        - "/scripts/tests/**"
+        - "/tests/semgrep/scripts/tests/**"
+    patterns:
+      - pattern-either:
+          - pattern: run_git_command(..., input=$INPUT, ...)
+          - pattern: subprocess_utils.run_git_command(..., input=$INPUT, ...)
+          - pattern: run_safe_command("git", ..., input=$INPUT, ...)
+          - pattern: subprocess_utils.run_safe_command("git", ..., input=$INPUT, ...)
+          - pattern: subprocess.run(["git", ...], ..., input=$INPUT, ...)
+          - pattern: subprocess.Popen(["git", ...], ..., stdin=subprocess.PIPE, ...)
+      - pattern-not: $CALL(..., input=None, ...)
+
+  - id: la-stack.python.text-writes-explicit-policy
+    languages:
+      - python
+    severity: WARNING
+    message: 'Pass explicit non-None encoding and newline keywords: UTF-8 with newline="\n" for generated LF text, or newline="" to preserve supplied endings.'
+    metadata:
+      category: correctness
+      rationale: "Platform-default text writes make artifact bytes depend on the host OS, even when Git checkout conversion is disabled."
+    paths:
+      include:
+        - "/scripts/**/*.py"
+        - "/tests/semgrep/scripts/**/*.py"
+      exclude:
+        - "/scripts/tests/**"
+        - "/tests/semgrep/scripts/tests/**"
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: $PATH.write_text(...)
+              - patterns:
+                  - pattern-either:
+                      - pattern: open($PATH, $MODE, ...)
+                      - pattern: open(..., mode=$MODE, ...)
+                      - pattern: io.open($PATH, $MODE, ...)
+                      - pattern: io.open(..., mode=$MODE, ...)
+                      - pattern: $PATH.open($MODE, ...)
+                      - pattern: $PATH.open(..., mode=$MODE, ...)
+                      - pattern: os.fdopen($FD, $MODE, ...)
+                      - pattern: os.fdopen(..., mode=$MODE, ...)
+                      - pattern: tempfile.NamedTemporaryFile($MODE, ...)
+                      - pattern: tempfile.NamedTemporaryFile(..., mode=$MODE, ...)
+                      - pattern: tempfile.TemporaryFile($MODE, ...)
+                      - pattern: tempfile.TemporaryFile(..., mode=$MODE, ...)
+                      - pattern: tempfile.SpooledTemporaryFile($MAX_SIZE, $MODE, ...)
+                      - pattern: tempfile.SpooledTemporaryFile(..., mode=$MODE, ...)
+                  - metavariable-regex:
+                      metavariable: $MODE
+                      regex: ^['"](?=[^'"]*[wax+])(?![^'"]*b)[rawxt+]+['"]$
+          - pattern-not: $CALL(..., encoding=$ENCODING, ..., newline=$NEWLINE, ...)
+      - pattern: $PATH.write_text(..., encoding=None, ...)
+      - pattern: $PATH.write_text(..., newline=None, ...)
+      - patterns:
+          - pattern-either:
+              - pattern: open($PATH, $MODE, ..., encoding=None, ...)
+              - pattern: open(..., mode=$MODE, ..., encoding=None, ...)
+              - pattern: io.open($PATH, $MODE, ..., encoding=None, ...)
+              - pattern: io.open(..., mode=$MODE, ..., encoding=None, ...)
+              - pattern: $PATH.open($MODE, ..., encoding=None, ...)
+              - pattern: $PATH.open(..., mode=$MODE, ..., encoding=None, ...)
+              - pattern: os.fdopen($FD, $MODE, ..., encoding=None, ...)
+              - pattern: os.fdopen(..., mode=$MODE, ..., encoding=None, ...)
+              - pattern: tempfile.NamedTemporaryFile($MODE, ..., encoding=None, ...)
+              - pattern: tempfile.NamedTemporaryFile(..., mode=$MODE, ..., encoding=None, ...)
+              - pattern: tempfile.TemporaryFile($MODE, ..., encoding=None, ...)
+              - pattern: tempfile.TemporaryFile(..., mode=$MODE, ..., encoding=None, ...)
+              - pattern: tempfile.SpooledTemporaryFile($MAX_SIZE, $MODE, ..., encoding=None, ...)
+              - pattern: tempfile.SpooledTemporaryFile(..., mode=$MODE, ..., encoding=None, ...)
+              - pattern: open($PATH, $MODE, ..., newline=None, ...)
+              - pattern: open(..., mode=$MODE, ..., newline=None, ...)
+              - pattern: io.open($PATH, $MODE, ..., newline=None, ...)
+              - pattern: io.open(..., mode=$MODE, ..., newline=None, ...)
+              - pattern: $PATH.open($MODE, ..., newline=None, ...)
+              - pattern: $PATH.open(..., mode=$MODE, ..., newline=None, ...)
+              - pattern: os.fdopen($FD, $MODE, ..., newline=None, ...)
+              - pattern: os.fdopen(..., mode=$MODE, ..., newline=None, ...)
+              - pattern: tempfile.NamedTemporaryFile($MODE, ..., newline=None, ...)
+              - pattern: tempfile.NamedTemporaryFile(..., mode=$MODE, ..., newline=None, ...)
+              - pattern: tempfile.TemporaryFile($MODE, ..., newline=None, ...)
+              - pattern: tempfile.TemporaryFile(..., mode=$MODE, ..., newline=None, ...)
+              - pattern: tempfile.SpooledTemporaryFile($MAX_SIZE, $MODE, ..., newline=None, ...)
+              - pattern: tempfile.SpooledTemporaryFile(..., mode=$MODE, ..., newline=None, ...)
+          - metavariable-regex:
+              metavariable: $MODE
+              regex: ^['"](?=[^'"]*[wax+])(?![^'"]*b)[rawxt+]+['"]$
+
+  - id: la-stack.python.explicit-path-text-encoding-in-tests
+    languages:
+      - python
+    severity: WARNING
+    message: 'Pass encoding="utf-8" to Path.read_text/write_text in Python tests.'
+    metadata:
+      category: portability
+      rationale: >-
+        Test fixtures that omit an explicit encoding can pass on UTF-8 platforms
+        while failing on Windows when output contains Unicode symbols.
+    paths:
+      include:
+        - "/scripts/tests/**/*.py"
+        - "/tests/semgrep/scripts/tests/**/*.py"
+    patterns:
+      - pattern-either:
+          - patterns:
+              - pattern: $PATH.read_text(...)
+              - pattern-not: $PATH.read_text(..., encoding="utf-8", ...)
+              - pattern-not: $PATH.read_text(..., encoding='utf-8', ...)
+              - pattern-not: $PATH.read_text(..., encoding=UTF8, ...)
+          - patterns:
+              - pattern: $PATH.write_text(...)
+              - pattern-not: $PATH.write_text(..., encoding="utf-8", ...)
+              - pattern-not: $PATH.write_text(..., encoding='utf-8', ...)
+              - pattern-not: $PATH.write_text(..., encoding=UTF8, ...)
+
   - id: la-stack.python.no-broad-exception
     languages:
       - python

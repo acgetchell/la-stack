@@ -30,7 +30,7 @@ rumdl_version := "0.2.63"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
 typos_version := "1.50.1"
-uv_version := "0.12.8"
+uv_version := "0.12.9"
 zizmor_version := "1.30.0"
 
 # Internal helpers: ensure external tooling is installed
@@ -207,7 +207,11 @@ _ensure-uv-available:
     uv --version >/dev/null
 
 _ensure-stable-uv-version: _ensure-uv-available
-    uv run --locked update-cargo-tool-pins --check-uv-version
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uv_executable="$(command -v uv)"
+    version_output="$("$uv_executable" --version)"
+    "$uv_executable" run --locked update-cargo-tool-pins "--check-uv-version=$version_output"
 
 _ensure-yamllint: _ensure-uv
     #!/usr/bin/env bash

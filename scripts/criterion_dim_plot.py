@@ -402,7 +402,7 @@ def _require_confidence_interval(lo: float, hi: float, context: str) -> None:
 
 def _write_csv(out_csv: Path, rows: list[Row]) -> None:
     out_csv.parent.mkdir(parents=True, exist_ok=True)
-    with out_csv.open("w", encoding="utf-8") as f:
+    with out_csv.open("w", encoding="utf-8", newline="\n") as f:
         f.write("D,la_stack,la_lo,la_hi,nalgebra,na_lo,na_hi,faer,fa_lo,fa_hi\n")
         for row in rows:
             f.write(f"{row.dim},{row.la_time},{row.la_lo},{row.la_hi},{row.na_time},{row.na_lo},{row.na_hi},{row.fa_time},{row.fa_lo},{row.fa_hi}\n")
@@ -461,7 +461,7 @@ def _update_readme_table(readme_path: Path, marker_begin: str, marker_end: str, 
     if new_lines == lines:
         return False
 
-    readme_path.write_text("".join(new_lines), encoding="utf-8")
+    readme_path.write_text("".join(new_lines), encoding="utf-8", newline="\n")
     return True
 
 
@@ -1095,7 +1095,7 @@ def _capture_performance_provenance(
 def _write_provenance(path: Path, provenance: dict[str, object]) -> None:
     """Write stable, sorted JSON provenance beside generated benchmark assets."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def _validate_readme_target(root: Path, args: PlotCliArgs) -> int:  # noqa: C901, PLR0911, PLR0912
@@ -1283,7 +1283,7 @@ def _update_staged_readme_publication(
         stat=args.stat,
         version=package_version,
     )
-    staged_readme.write_text(updated_readme, encoding="utf-8")
+    staged_readme.write_text(updated_readme, encoding="utf-8", newline="\n")
 
 
 def _stage_and_publish_outputs(  # noqa: PLR0913

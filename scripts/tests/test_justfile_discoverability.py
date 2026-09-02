@@ -43,11 +43,12 @@ def just_recipes() -> dict[str, dict[str, Any]]:
     return recipes
 
 
-def write_fake_uv(path: Path, version_output: str) -> None:
-    """Write a uv shim that overrides version output and delegates other commands."""
+def write_fake_uv(directory: Path, version_output: str, *, windows_lookup_output: str | None = None) -> None:
+    """Write a Bash uv shim and an optional conflicting native Windows shim."""
     real_uv = shutil.which("uv")
     assert real_uv is not None
-    path.write_text(
+    posix_shim = directory / "uv"
+    posix_shim.write_text(
         f"""#!/bin/sh
 if [ "$1" = "--version" ]; then
     printf '%s\\n' {shlex.quote(version_output)}
@@ -56,8 +57,33 @@ else
 fi
 """,
         encoding="utf-8",
+        newline="\n",
     )
-    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    posix_shim.chmod(posix_shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    if os.name == "nt":
+        native_output = windows_lookup_output or version_output
+        if re.fullmatch(r"[A-Za-z0-9 ._-]+", native_output) is None:
+            msg = f"unsupported native uv version fixture output: {native_output!r}"
+            raise ValueError(msg)
+        windows_shim = directory / "uv.cmd"
+        real_uv_command = subprocess.list2cmdline([real_uv])
+        script = "\r\n".join(
+            (
+                "@echo off",
+                'if "%~1"=="--version" (',
+                f"    echo({native_output}",
+                "    exit /b 0",
+                ")",
+                f"{real_uv_command} %*",
+                "",
+            )
+        )
+        windows_shim.write_text(
+            script,
+            encoding="utf-8",
+            newline="",
+        )
 
 
 def test_uv_backed_helpers_reuse_pinned_guard() -> None:
@@ -79,9 +105,7 @@ def test_uv_guard_reports_expected_and_actual_versions(tmp_path: Path) -> None:
     """A mismatched uv executable should fail with actionable version details."""
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    fake_uv = fake_bin / "uv"
-    fake_uv.write_text("#!/bin/sh\nprintf '%s\\n' 'uv 9.9.9'\n", encoding="utf-8")
-    fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    write_fake_uv(fake_bin, "uv 9.9.9")
 
     environment = os.environ.copy()
     environment["CARGO_HOME"] = str(tmp_path / "cargo")
@@ -96,14 +120,13 @@ def test_uv_guard_reports_expected_and_actual_versions(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "output",
-    ["uv 9.9.9 using runtime 3.14.0", "uv version unknown", "uv 9.9.9-beta.1", "uv release-9.9.9"],
+    ["uv 9.9.9 using runtime 3.14.0", "uv version unknown", "uv 9.9.9-beta.1", "uv 9.9.9.1", "uv release-9.9.9"],
 )
 def test_stable_uv_preflight_rejects_unstorable_versions(tmp_path: Path, output: str) -> None:
     """Update preflights should reject uv versions the pin reconciler cannot store."""
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    fake_uv = fake_bin / "uv"
-    write_fake_uv(fake_uv, output)
+    write_fake_uv(fake_bin, output, windows_lookup_output="uv 7.7.7")
     environment = os.environ.copy()
     environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
 
@@ -117,8 +140,7 @@ def test_stable_uv_preflight_accepts_newer_stable_version(tmp_path: Path) -> Non
     """Update reconciliation may advance the repository's active uv pin."""
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    fake_uv = fake_bin / "uv"
-    write_fake_uv(fake_uv, "uv 9.9.9")
+    write_fake_uv(fake_bin, "uv 9.9.9")
     environment = os.environ.copy()
     environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
 
