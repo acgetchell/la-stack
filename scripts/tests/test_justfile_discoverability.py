@@ -3,11 +3,14 @@
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 import update_cargo_tool_pins
 
@@ -38,6 +41,23 @@ def just_recipes() -> dict[str, dict[str, Any]]:
     recipes = json.loads(result.stdout)["recipes"]
     assert isinstance(recipes, dict)
     return recipes
+
+
+def write_fake_uv(path: Path, version_output: str) -> None:
+    """Write a uv shim that overrides version output and delegates other commands."""
+    real_uv = shutil.which("uv")
+    assert real_uv is not None
+    path.write_text(
+        f"""#!/bin/sh
+if [ "$1" = "--version" ]; then
+    printf '%s\\n' {shlex.quote(version_output)}
+else
+    exec {shlex.quote(real_uv)} "$@"
+fi
+""",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
 def test_uv_backed_helpers_reuse_pinned_guard() -> None:
@@ -74,21 +94,37 @@ def test_uv_guard_reports_expected_and_actual_versions(tmp_path: Path) -> None:
     assert f"version '9.9.9', expected '{expected}'" in result.stderr
 
 
-def test_stable_uv_preflight_rejects_nonstable_or_embedded_versions(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "output",
+    ["uv 9.9.9 using runtime 3.14.0", "uv version unknown", "uv 9.9.9-beta.1", "uv release-9.9.9"],
+)
+def test_stable_uv_preflight_rejects_unstorable_versions(tmp_path: Path, output: str) -> None:
     """Update preflights should reject uv versions the pin reconciler cannot store."""
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake_uv = fake_bin / "uv"
+    write_fake_uv(fake_uv, output)
     environment = os.environ.copy()
     environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
 
-    for output in ("uv 9.9.9-beta.1", "uv 9.9.9.1", "uv release-9.9.9"):
-        fake_uv.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}'\n", encoding="utf-8")
-        fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        result = run_just("_ensure-stable-uv-version", check=False, env=environment)
+    result = run_just("_ensure-stable-uv-version", check=False, env=environment)
 
-        assert result.returncode != 0
-        assert "must report a stable X.Y.Z version" in result.stderr
+    assert result.returncode != 0
+    assert "must report exactly one stable X.Y.Z version" in result.stderr
+
+
+def test_stable_uv_preflight_accepts_newer_stable_version(tmp_path: Path) -> None:
+    """Update reconciliation may advance the repository's active uv pin."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_uv = fake_bin / "uv"
+    write_fake_uv(fake_uv, "uv 9.9.9")
+    environment = os.environ.copy()
+    environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+
+    result = run_just("_ensure-stable-uv-version", check=False, env=environment)
+
+    assert result.returncode == 0
 
 
 def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
@@ -107,14 +143,14 @@ def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
     aggregate_update = aggregate_result.stdout + aggregate_result.stderr
     cargo_upgrade = "cargo upgrade --incompatible allow --exclude num-bigint --exclude num-rational"
     assert aggregate_update.index("command -v cargo-install-update") < aggregate_update.index(cargo_upgrade)
-    assert aggregate_update.index("must report a stable X.Y.Z version") < aggregate_update.index(cargo_upgrade)
+    assert aggregate_update.index("--check-uv-version") < aggregate_update.index(cargo_upgrade)
 
     dependency_result = run_just("--dry-run", "update-dependencies")
     dependency_update = dependency_result.stdout + dependency_result.stderr
     dependency_preflights = [dependency["recipe"] for dependency in recipes["update-dependencies"]["dependencies"]]
-    assert dependency_preflights[:2] == ["_ensure-cargo-edit", "_ensure-uv-available"]
+    assert dependency_preflights[:2] == ["_ensure-cargo-edit", "_ensure-stable-uv-version"]
     assert dependency_update.index("cargo upgrade --version") < dependency_update.index(cargo_upgrade)
-    assert dependency_update.index("uv --version") < dependency_update.index(cargo_upgrade)
+    assert dependency_update.index("--check-uv-version") < dependency_update.index(cargo_upgrade)
     assert cargo_upgrade in dependency_update
     assert "cargo update" in dependency_update
     assert "uv run --locked update-python-dev-pins" in dependency_update
@@ -128,7 +164,7 @@ def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
     tool_update = tool_result.stdout + tool_result.stderr
     assert "command -v cargo-install-update" in tool_update
     assert "cargo install-update --locked" in tool_update
-    assert tool_update.index("must report a stable X.Y.Z version") < tool_update.index("cargo install-update --locked")
+    assert tool_update.index("--check-uv-version") < tool_update.index("cargo install-update --locked")
     assert "update-cargo-tool-pins" in tool_update
     assert "cargo install-update --all" not in tool_update
     assert "uv tool upgrade" not in tool_update

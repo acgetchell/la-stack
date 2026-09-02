@@ -112,19 +112,39 @@ def reconcile_pins(justfile: Path, installed_output: str, uv_output: str) -> dic
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check-uv-version",
+        action="store_true",
+        help="validate that uv reports exactly one stable X.Y.Z version without reconciling pins",
+    )
     parser.add_argument("--justfile", type=Path, default=Path("justfile"), help="Just source containing repository tool pins")
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Reconcile managed pins from the active Cargo and uv installations."""
-    args = parse_args(argv)
+def check_uv_version() -> None:
+    """Reject uv output that cannot be stored by the pin reconciler."""
+    uv = run_safe_command("uv", ["--version"], timeout=30)
     try:
+        parse_tool_version(uv.stdout, "uv")
+    except ValueError as error:
+        output = uv.stdout.strip() or "<empty>"
+        msg = f"'uv --version' must report exactly one stable X.Y.Z version; got: {output} ({error})"
+        raise ValueError(msg) from error
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Validate uv output or reconcile pins from active tool installations."""
+    args = parse_args(argv)
+    operation = "validate uv version" if args.check_uv_version else "update tool pins"
+    try:
+        if args.check_uv_version:
+            check_uv_version()
+            return 0
         cargo = run_cargo_command(["install", "--list"], timeout=30)
         uv = run_safe_command("uv", ["--version"], timeout=30)
         changes = reconcile_pins(args.justfile, cargo.stdout, uv.stdout)
     except (ExecutableNotFoundError, OSError, subprocess.SubprocessError, ValueError) as error:
-        print(f"failed to update tool pins: {error}", file=sys.stderr)
+        print(f"failed to {operation}: {error}", file=sys.stderr)
         return 1
 
     if not changes:

@@ -24,13 +24,13 @@ cargo_nextest_version := "0.9.143"
 cargo_update_version := "22.1.1"
 clippy_sarif_version := "0.8.0"
 dprint_version := "0.57.0"
-git_cliff_version := "2.13.1"
+git_cliff_version := "2.14.1"
 just_version := "1.58.0"
-rumdl_version := "0.2.62"
+rumdl_version := "0.2.63"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
-typos_version := "1.50.0"
-uv_version := "0.12.7"
+typos_version := "1.50.1"
+uv_version := "0.12.8"
 zizmor_version := "1.30.0"
 
 # Internal helpers: ensure external tooling is installed
@@ -207,13 +207,7 @@ _ensure-uv-available:
     uv --version >/dev/null
 
 _ensure-stable-uv-version: _ensure-uv-available
-    #!/usr/bin/env bash
-    set -euo pipefail
-    version_output="$(uv --version 2>&1)"
-    if [[ ! "$version_output" =~ ^uv[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
-        echo "❌ 'uv --version' must report a stable X.Y.Z version; got: $version_output" >&2
-        exit 1
-    fi
+    uv run --locked update-cargo-tool-pins --check-uv-version
 
 _ensure-yamllint: _ensure-uv
     #!/usr/bin/env bash
@@ -1115,7 +1109,7 @@ update-cargo-tools: _ensure-stable-uv-version _ensure-cargo-install-update
 
 # Advance Cargo and exact Python development requirements plus their lockfiles.
 [doc('Update Cargo and Python development requirements plus all Cargo/uv locked dependencies.')]
-update-dependencies: _ensure-cargo-edit _ensure-uv-available update-cargo-dependencies update-python-dependencies
+update-dependencies: _ensure-cargo-edit _ensure-stable-uv-version update-cargo-dependencies update-python-dependencies
 
 # Advance Cargo dependency declarations and lockfile entries.
 [doc('Update Cargo.toml dependency requirements and Cargo.lock.')]
