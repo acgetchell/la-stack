@@ -405,17 +405,18 @@ def test_artifact_loader_rejects_incomplete_nested_provenance() -> None:
         )
 
 
-def test_artifact_loader_defaults_fields_absent_from_legacy_schema1_artifacts() -> None:
+def test_artifact_loader_defaults_fields_absent_from_legacy_schema2_artifacts() -> None:
     csv_payload, provenance_payload = serialize_bundle(_bundle())
     provenance = json.loads(provenance_payload)
     benchmark_provenance = provenance["benchmark_provenance"]
+    assert benchmark_provenance["schema"] == 2
     del benchmark_provenance["current"]
     del benchmark_provenance["validation"]["shared_harness_rational_inputs"]
 
     loaded = load_bundle_bytes(
         csv_payload,
         (json.dumps(provenance) + "\n").encode(),
-        source="legacy schema-1 artifact fixture",
+        source="legacy schema-2 artifact fixture",
     )
 
     loaded_provenance = loaded.context.benchmark_provenance
