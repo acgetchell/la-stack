@@ -210,3 +210,14 @@ def test_managed_tool_pins_exist_once_in_root_justfile() -> None:
 
     for pin in update_cargo_tool_pins.PIN_TO_TOOL:
         assert len(re.findall(rf'(?m)^{re.escape(pin)}\s*:=\s*"[^"]+"\s*$', justfile_text)) == 1
+
+
+def test_ci_enforces_full_python_fixture_lint_policy() -> None:
+    """Canonical CI should lint fixtures without narrowing the Ruff configuration."""
+    recipes = just_recipes()
+    ci_dependencies = {dependency["recipe"] for dependency in recipes["ci"]["dependencies"]}
+    fixture_lint_body = json.dumps(recipes["python-fixture-lint"]["body"])
+
+    assert "python-fixture-lint" in ci_dependencies
+    assert "ruff check tests/semgrep/scripts/" in fixture_lint_body
+    assert "--select" not in fixture_lint_body

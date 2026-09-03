@@ -16,7 +16,7 @@ import subprocess_utils as utils
 from subprocess_utils import run_git_command, run_git_command_with_input as git_input, run_safe_command
 
 
-def run_git_command_with_input(payload: str, argv: "Sequence[str]", options: "Mapping[str, Any]") -> None:
+def run_git_command_with_input(payload: str, argv: Sequence[str], options: Mapping[str, Any]) -> None:
     # Original failure: the text defaults were hidden in shared kwargs.
     kwargs: dict[str, Any] = {"text": True, "encoding": "utf-8"}
     # ruleid: la-stack.python.git-stdin-binary-transport
@@ -46,7 +46,7 @@ def run_git_command_with_input(payload: str, argv: "Sequence[str]", options: "Ma
     subprocess.Popen(argv, stdin=subprocess.PIPE, text=False)
 
 
-def git_input_routing(payload: str, argv: "Sequence[str]") -> None:
+def git_input_routing(payload: str, argv: Sequence[str]) -> None:
     # ruleid: la-stack.python.git-stdin-use-shared-helper
     run_git_command(argv, input=payload)
     # ruleid: la-stack.python.git-stdin-use-shared-helper
@@ -88,7 +88,7 @@ def git_input_routing(payload: str, argv: "Sequence[str]") -> None:
     subprocess.Popen(["git", "status"], stdout=subprocess.PIPE, text=True)
 
 
-def path_text_writes(path: "Path", contents: str, newline_policy: str) -> None:
+def path_text_writes(path: Path, contents: str, newline_policy: str) -> None:
     # The real extracted-notebook writer, before and after explicit LF output.
     # ruleid: la-stack.python.text-writes-explicit-policy
     path.write_text(contents, encoding="utf-8")
@@ -117,7 +117,7 @@ def path_text_writes(path: "Path", contents: str, newline_policy: str) -> None:
     path.write_text(open(path, encoding=None, newline=None).read(), encoding="utf-8", newline="\n")
 
 
-def temporary_text_writes(path: "Path") -> None:
+def temporary_text_writes(path: Path) -> None:
     # Production writers use both positional and keyword mode forms.
     # ruleid: la-stack.python.text-writes-explicit-policy
     tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False)
@@ -178,7 +178,7 @@ def spooled_text_writes() -> None:
     tempfile.SpooledTemporaryFile(max_size=1024, mode="w+", encoding="utf-8", newline="")
 
 
-def other_file_writers(path: "Path", descriptor: int) -> None:
+def other_file_writers(path: Path, descriptor: int) -> None:
     # ruleid: la-stack.python.text-writes-explicit-policy
     open(path, "w", encoding="utf-8")
     # ok: la-stack.python.text-writes-explicit-policy
@@ -215,7 +215,7 @@ def other_file_writers(path: "Path", descriptor: int) -> None:
     os.fdopen(descriptor, mode="w", encoding="utf-8", newline="\n")
 
 
-def byte_writes_and_reads_are_exempt(path: "Path", descriptor: int) -> None:
+def byte_writes_and_reads_are_exempt(path: Path, descriptor: int) -> None:
     # ok: la-stack.python.text-writes-explicit-policy
     path.write_bytes(b"line\r\n")
     # ok: la-stack.python.text-writes-explicit-policy

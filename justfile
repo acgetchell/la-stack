@@ -394,7 +394,7 @@ check-fast:
 # CI simulation: flat GitHub-equivalent union of leaf validators.
 # Keep this dependency list explicit so each validation surface runs once without
 # re-entering broad check/test bundles. All Cargo targets match the SARIF lint scope.
-ci: action-lint zizmor markdown-check spell-check docs-version-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-typecheck test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
+ci: action-lint zizmor markdown-check spell-check docs-version-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-fixture-lint python-typecheck test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
     @echo "🎯 CI checks complete!"
 
 # Validate CITATION.cff against the Citation File Format schema.
@@ -716,7 +716,7 @@ python-lint: python-sync
     uv run --locked ruff check scripts/
 
 python-fixture-lint: python-sync
-    uv run --locked ruff check --select ANN001,ANN002,ANN003,ANN201,ANN202,ANN204,ANN205,ANN206,TC tests/semgrep/scripts/
+    uv run --locked ruff check tests/semgrep/scripts/
 
 python-sync: _ensure-uv
     uv sync --locked --group dev
