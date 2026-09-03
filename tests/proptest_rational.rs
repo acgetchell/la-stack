@@ -112,15 +112,10 @@ macro_rules! gen_rational_properties {
                             let (numerator, denominator) = solution_entries[index];
                             rational(numerator, denominator)
                         });
-                        let rhs_array = rational_matvec(&rows, &expected_solution);
-                        let rhs = RationalVector::try_new(rhs_array.clone()).unwrap();
+                        let rhs = RationalVector::try_new(rational_matvec(&rows, &expected_solution)).unwrap();
                         let actual_solution = matrix.solve(&rhs).unwrap();
 
                         prop_assert_eq!(actual_solution.as_array(), &expected_solution);
-                        prop_assert_eq!(
-                            rational_matvec(&rows, actual_solution.as_array()),
-                            rhs_array,
-                        );
                     }
                 }
 

@@ -304,7 +304,8 @@ The feature exposes two deliberate input domains:
 
 **Linear system solve:**
 
-- **`solve_exact(b)`** — solves `Ax = b` exactly, returning `[BigRational; D]`
+- **`solve_exact(b)`** — solves `Ax = b` exactly, returning a
+  `RationalVector<D>`
 - **`solve_exact_f64(b)`** — solves `Ax = b` exactly, returning `Vector<D>` only when
   every component is exactly representable as `f64`
 - **`solve_exact_rounded_f64(b)`** — solves `Ax = b` exactly, returning each
@@ -323,9 +324,11 @@ The feature exposes two deliberate input domains:
 - **`try_with_rational_matrix!`** — dispatches a runtime-selected dimension
   through D=8 to a const-generic rational matrix on stable Rust
 
-Exact determinant value and conversion methods return
-`LaError::DeterminantScaleOverflow` if the aggregate power-of-two scaling
-exceeds the internal exponent representation. Exact solve methods return
+The `Matrix::det_exact*` value and conversion methods return
+`LaError::DeterminantScaleOverflow` if their aggregate power-of-two scaling
+exceeds the internal exponent representation. `RationalMatrix::det()` is
+infallible because it clears rational row denominators without an exponent-scale
+conversion. The exact solve methods for both input domains return
 `LaError::Singular` with `SingularityReason::Exact` when the stored matrix is
 exactly singular.
 
@@ -341,6 +344,8 @@ the same coefficients as `f64` inputs loses the `2^-60` perturbation at `1.0`,
 making the leading rows identical and the binary64 system singular.
 
 ```rust,ignore
+use core::assert_matches;
+
 use la_stack::prelude::*;
 
 fn main() -> Result<(), LaError> {
@@ -382,7 +387,7 @@ fn main() -> Result<(), LaError> {
     // Supplying the same coefficients as f64 inputs destroys the perturbation
     // and makes the matrix singular, even though the exact solution is integral.
     let epsilon_f64 = epsilon.try_to_f64()?;
-    assert_eq!(1.0 + epsilon_f64, 1.0);
+    assert_eq!((1.0 + epsilon_f64).to_bits(), 1.0_f64.to_bits());
     let f64_matrix = Matrix::<5>::try_from_rows([
         [1.0, 1.0, 0.0, 0.0, 0.0],
         [1.0, 1.0 + epsilon_f64, 0.0, 0.0, 0.0],
@@ -394,10 +399,10 @@ fn main() -> Result<(), LaError> {
     let f64_solve = f64_matrix
         .lu(DEFAULT_SINGULAR_TOL)
         .and_then(|lu| lu.solve(f64_rhs));
-    assert!(matches!(
+    assert_matches!(
         f64_solve,
         Err(LaError::Singular { .. })
-    ));
+    );
     Ok(())
 }
 ```
@@ -648,16 +653,17 @@ correctness-gate result in the adjacent JSON sidecar. The publication workflow
 requires complete canonical-dimension coverage and regenerates the CSV, SVG,
 README table, and provenance together.
 
-For the full per-kernel comparison methodology, input construction, and
-release-comparison workflow details, see
+For the full per-kernel comparison methodology, algorithm citations, input
+construction, and release-comparison workflow details, see
 [docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/BENCHMARKING.md).
 For the current release-to-release performance snapshot, see
 [docs/PERFORMANCE.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/PERFORMANCE.md).
 The exact release suite includes the already-exact rational-input groups for
 D=2 through D=8. Those rows report `RationalMatrix::det_sign`, `det`, and
 `solve` alongside straightforward `BigRational` Gaussian determinant and solve
-references, with Criterion point estimates and confidence intervals generated
-for every release.
+references. Releases produced with the rational-input harness include Criterion
+point estimates and confidence intervals for these rows; comparisons against a
+pre-API baseline retain them as explicit current-only measurements.
 
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
 
@@ -685,6 +691,7 @@ The `examples/` directory contains small, runnable programs:
 - **`exact_det_3x3`** — exact determinant value of a near-singular 3×3 matrix (requires `exact` feature)
 - **`exact_sign_3x3`** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
 - **`exact_solve_3x3`** — exact solve of a near-singular 3×3 system vs f64 LU (requires `exact` feature)
+- **`rational_input_5x5`** — exact rational solve of a 5×5 system that becomes singular as f64 (requires `exact` feature)
 
 ```bash
 just examples
@@ -696,6 +703,7 @@ cargo run --example const_det_4x4
 cargo run --features exact --example exact_det_3x3
 cargo run --features exact --example exact_sign_3x3
 cargo run --features exact --example exact_solve_3x3
+cargo run --features exact --example rational_input_5x5
 ```
 
 ## 🤝 Contributing

@@ -178,11 +178,12 @@ fn rational_determinant_gaussian<const D: usize>(mut rows: [[BigRational; D]; D]
             odd_swaps = !odd_swaps;
         }
 
-        let pivot = rows[pivot_col][pivot_col].clone();
-        let pivot_entries = rows[pivot_col].clone();
-        determinant *= &pivot;
-        for row_entries in rows.iter_mut().skip(pivot_col + 1) {
-            let factor = &row_entries[pivot_col] / &pivot;
+        let (pivot_rows, rows_below) = rows.split_at_mut(pivot_col + 1);
+        let pivot_entries = &pivot_rows[pivot_col];
+        let pivot = &pivot_entries[pivot_col];
+        determinant *= pivot;
+        for row_entries in rows_below {
+            let factor = &row_entries[pivot_col] / pivot;
             for (entry, pivot_entry) in row_entries
                 .iter_mut()
                 .zip(pivot_entries.iter())
@@ -211,11 +212,13 @@ fn rational_solve_gaussian<const D: usize>(
             rhs.swap(pivot_col, pivot_row);
         }
 
-        let pivot = rows[pivot_col][pivot_col].clone();
-        let pivot_entries = rows[pivot_col].clone();
-        let pivot_rhs = rhs[pivot_col].clone();
-        for (row_entries, rhs_entry) in rows.iter_mut().zip(rhs.iter_mut()).skip(pivot_col + 1) {
-            let factor = &row_entries[pivot_col] / &pivot;
+        let (pivot_rows, rows_below) = rows.split_at_mut(pivot_col + 1);
+        let pivot_entries = &pivot_rows[pivot_col];
+        let pivot = &pivot_entries[pivot_col];
+        let (pivot_rhs_entries, rhs_below) = rhs.split_at_mut(pivot_col + 1);
+        let pivot_rhs = &pivot_rhs_entries[pivot_col];
+        for (row_entries, rhs_entry) in rows_below.iter_mut().zip(rhs_below) {
+            let factor = &row_entries[pivot_col] / pivot;
             for (entry, pivot_entry) in row_entries
                 .iter_mut()
                 .zip(pivot_entries.iter())
@@ -223,7 +226,7 @@ fn rational_solve_gaussian<const D: usize>(
             {
                 *entry -= &factor * pivot_entry;
             }
-            let rhs_update = &factor * &pivot_rhs;
+            let rhs_update = &factor * pivot_rhs;
             *rhs_entry -= rhs_update;
             row_entries[pivot_col] = zero.clone();
         }

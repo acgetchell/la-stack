@@ -1,11 +1,13 @@
 # Mathematical basis
 
-`la-stack` provides fixed-dimension numerical linear algebra over finite IEEE
-754 binary64 values. For a compile-time dimension `D`, `Matrix<D>` is a dense
-`D × D` square matrix and `Vector<D>` is a length-`D` vector over the finite
-binary64 set `F`. The default algorithms operate in binary64 and are therefore
-approximate. The optional `exact` feature instead lifts each stored binary64
-value to the exact rational number it represents.
+`la-stack` provides fixed-dimension numerical linear algebra over two deliberate
+input domains. `Matrix<D>` and `Vector<D>` store finite IEEE 754 binary64 values;
+their default algorithms operate in binary64 and are therefore approximate. The
+optional `exact` feature can either lift each of those stored values to the exact
+rational number it represents or accept caller-supplied `BigRational` values
+through `RationalMatrix<D>` and `RationalVector<D>`. For either domain,
+`Matrix<D>` and `RationalMatrix<D>` are dense `D × D` square matrices and the
+corresponding vector type has length `D`.
 
 This document separates three questions that are easy to conflate:
 
@@ -30,9 +32,12 @@ x = (-1)^s m × 2^e,
 ```
 
 for integer `m` and exponent `e` \[9-11\]. Both signed-zero bit patterns
-represent rational zero. Exact APIs exploit this representation, but exactness
-begins only after construction: they cannot recover information lost when a
-decimal value or an earlier computation was rounded to `f64`.
+represent rational zero. Exact methods on `Matrix` and `Vector` exploit this
+representation, but their exactness begins only after binary64 construction:
+they cannot recover information lost when a decimal value or an earlier
+computation was rounded to `f64`. Caller-supplied `RationalMatrix` and
+`RationalVector` values instead enter the exact domain directly and do not pass
+through binary64.
 
 `Matrix`, `Vector`, `Lu`, and `Ldlt` use inline fixed-size storage.
 Arbitrary-precision `BigInt` and `BigRational` values allocate when the `exact` feature is
@@ -173,8 +178,11 @@ ties-to-even \[9-10\]. A nonzero exact value may consequently round to zero.
 ## Exact arithmetic over rational inputs
 
 `RationalMatrix<D>` and `RationalVector<D>` are a separate input domain for
-coefficients assembled exactly before linear algebra begins. For each matrix
-row `i`, the implementation selects a positive least common multiple `sᵢ` of
+coefficients assembled exactly before linear algebra begins. Their constructors
+reject zero denominators and store each accepted quotient in lowest terms with
+a positive denominator, so equivalent raw representations have identical
+storage and denominator-clearing cost. For each matrix row `i`, the
+implementation selects a positive least common multiple `sᵢ` of
 the rational denominators and forms the integer row `A_int[i, :] = sᵢ A[i, :]`.
 Therefore
 

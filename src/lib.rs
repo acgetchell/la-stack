@@ -147,6 +147,8 @@ mod readme_doctests {
 
     #[cfg(feature = "exact")]
     /// ```rust
+    /// use core::assert_matches;
+    ///
     /// use la_stack::prelude::*;
     ///
     /// # fn main() -> Result<(), LaError> {
@@ -183,7 +185,7 @@ mod readme_doctests {
     /// );
     ///
     /// let epsilon_f64 = epsilon.try_to_f64()?;
-    /// assert_eq!(1.0 + epsilon_f64, 1.0);
+    /// assert_eq!((1.0 + epsilon_f64).to_bits(), 1.0_f64.to_bits());
     /// let f64_matrix = Matrix::<5>::try_from_rows([
     ///     [1.0, 1.0, 0.0, 0.0, 0.0],
     ///     [1.0, 1.0 + epsilon_f64, 0.0, 0.0, 0.0],
@@ -195,10 +197,10 @@ mod readme_doctests {
     /// let f64_solve = f64_matrix
     ///     .lu(DEFAULT_SINGULAR_TOL)
     ///     .and_then(|lu| lu.solve(f64_rhs));
-    /// assert!(matches!(
+    /// assert_matches!(
     ///     f64_solve,
     ///     Err(LaError::Singular { .. })
-    /// ));
+    /// );
     /// # Ok(())
     /// # }
     /// ```
@@ -564,6 +566,7 @@ macro_rules! try_with_stack_matrix {
 /// # }
 /// ```
 #[cfg(feature = "exact")]
+#[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
 #[macro_export]
 macro_rules! try_with_rational_matrix {
     ($dim:expr, |$matrix:ident| -> $ret:ty $body:block $(,)?) => {{
@@ -629,18 +632,52 @@ macro_rules! try_with_rational_matrix {
 /// runtime-to-const matrix dispatch. Advanced custom-filter code should import
 /// [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`] explicitly from the
 /// crate root; those raw coefficients intentionally stay out of the prelude.
-///
-/// When the `exact` feature is enabled, `RationalMatrix`, `RationalVector`,
-/// `DeterminantSign`, `ExactF64Conversion`, `BigInt`, and `BigRational` are also
-/// re-exported.
-/// `ExactF64Conversion` converts an already-computed exact determinant or
-/// solution under either the strict or explicitly rounded binary64 contract,
-/// without repeating exact elimination. The number types let callers construct
-/// expected exact values without adding `num-bigint` / `num-rational` to their
-/// own dependencies. The most commonly needed `num-traits` items are re-exported
-/// alongside them: `FromPrimitive` for `BigRational::from_f64` / `from_i64`,
-/// `ToPrimitive` for `BigRational::to_f64` / `to_i64`, and `Signed` for
-/// `.is_positive()` / `.is_negative()` / `.abs()`.
+#[cfg_attr(feature = "exact", doc = "")]
+#[cfg_attr(
+    feature = "exact",
+    doc = "When the `exact` feature is enabled, [`RationalMatrix`], [`RationalVector`],"
+)]
+#[cfg_attr(
+    feature = "exact",
+    doc = "[`DeterminantSign`], [`ExactF64Conversion`], [`BigInt`], and [`BigRational`]"
+)]
+#[cfg_attr(
+    feature = "exact",
+    doc = "are also re-exported, together with [`MAX_RATIONAL_MATRIX_DISPATCH_DIM`] and"
+)]
+#[cfg_attr(
+    feature = "exact",
+    doc = "[`try_with_rational_matrix!`] for runtime-to-const exact-matrix dispatch."
+)]
+#[cfg_attr(
+    feature = "exact",
+    doc = "[`ExactF64Conversion`] converts an already-computed exact determinant or solution"
+)]
+#[cfg_attr(
+    feature = "exact",
+    doc = "under either the strict or explicitly rounded binary64 contract, without repeating"
+)]
+#[cfg_attr(
+    feature = "exact",
+    doc = "exact elimination. The number types let callers construct expected exact values"
+)]
+#[cfg_attr(
+    feature = "exact",
+    doc = "without adding `num-bigint` / `num-rational` to their own dependencies. The most"
+)]
+#[cfg_attr(
+    feature = "exact",
+    doc = "commonly needed `num-traits` items are re-exported alongside them: [`FromPrimitive`]"
+)]
+#[cfg_attr(
+    feature = "exact",
+    doc = "for `BigRational::from_f64` / `from_i64`, [`ToPrimitive`] for"
+)]
+#[cfg_attr(
+    feature = "exact",
+    doc = "`BigRational::to_f64` / `to_i64`, and [`Signed`] for `is_positive` / `is_negative` /"
+)]
+#[cfg_attr(feature = "exact", doc = "`abs`.")]
 pub mod prelude {
     pub use crate::{
         ArithmeticOperation, DEFAULT_SINGULAR_TOL, DeterminantWithErrorBound, FactorizationKind,
@@ -828,6 +865,23 @@ mod tests {
                 requested: 9,
                 max: MAX_RATIONAL_MATRIX_DISPATCH_DIM,
             })
+        );
+    }
+
+    #[cfg(feature = "exact")]
+    #[test]
+    fn try_with_rational_matrix_converts_unsupported_dimension_error() {
+        let got =
+            try_with_rational_matrix!(9usize, |matrix| -> Result<BigRational, DownstreamError> {
+                Ok(matrix.det())
+            });
+
+        assert_eq!(
+            got,
+            Err(DownstreamError(LaError::UnsupportedDimension {
+                requested: 9,
+                max: MAX_RATIONAL_MATRIX_DISPATCH_DIM,
+            }))
         );
     }
 }

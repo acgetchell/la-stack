@@ -434,6 +434,7 @@ def _write_performance_bundle(
             ),
             benchmark_provenance={
                 "baseline": baseline_tag,
+                "current": current_tag,
                 "criterion": {
                     "baseline_command": ["cargo", "bench", "--baseline", baseline_tag],
                     "criterion_version": "0.7.0",
@@ -444,7 +445,7 @@ def _write_performance_bundle(
                     "suite": "all",
                 },
                 "measurement": {
-                    "baseline_api_compatibility": "none",
+                    "baseline_api_compatibility": "la_stack_v0_4_3_api",
                     "baseline_commit": baseline_commit,
                     "baseline_git_clean": False,
                     "baseline_source_state_sha256": baseline_source_sha256,
@@ -459,7 +460,7 @@ def _write_performance_bundle(
                 "publication": environment,
                 "schema": 2,
                 "validation": {
-                    "baseline_api_compatibility": "none",
+                    "baseline_api_compatibility": "la_stack_v0_4_3_api",
                     "baseline_commit": baseline_commit,
                     "baseline_git_clean": False,
                     "baseline_revision": "passed",
@@ -470,6 +471,7 @@ def _write_performance_bundle(
                     "current_revision": "passed",
                     "current_source_state_sha256": source_sha256,
                     "harness": "shared-current",
+                    "shared_harness_rational_inputs": False,
                 },
             },
         ),

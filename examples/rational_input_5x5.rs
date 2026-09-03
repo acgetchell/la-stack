@@ -29,7 +29,7 @@ fn main() -> Result<(), LaError> {
     println!("exact solution: {:?}", exact_solution.as_array());
 
     let epsilon_f64 = epsilon.try_to_f64()?;
-    assert_eq!(1.0 + epsilon_f64, 1.0);
+    assert_eq!((1.0 + epsilon_f64).to_bits(), 1.0_f64.to_bits());
     let f64_matrix = Matrix::<5>::try_from_rows([
         [1.0, 1.0, 0.0, 0.0, 0.0],
         [1.0, 1.0 + epsilon_f64, 0.0, 0.0, 0.0],

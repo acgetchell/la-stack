@@ -613,17 +613,21 @@ pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> Validated
         .matrix
         .solve_exact(input.rhs)
         .or_abort("exact solve oracle check");
-    assert_exact_residual(&input, &solution);
+    assert_exact_residual(&input, solution.as_array());
 
     let strict_solution = input.matrix.solve_exact_f64(input.rhs);
-    let first_failure = solution.iter().enumerate().find_map(|(index, value)| {
-        expected_strict_f64(value)
-            .err()
-            .map(|reason| (index, reason))
-    });
+    let first_failure = solution
+        .as_array()
+        .iter()
+        .enumerate()
+        .find_map(|(index, value)| {
+            expected_strict_f64(value)
+                .err()
+                .map(|reason| (index, reason))
+        });
     match (strict_solution, first_failure) {
         (Ok(actual), None) => {
-            for (index, exact) in solution.iter().enumerate() {
+            for (index, exact) in solution.as_array().iter().enumerate() {
                 let Ok(expected) = expected_strict_f64(exact) else {
                     panic!("strict solution component {index} unexpectedly requires rounding");
                 };
@@ -650,6 +654,7 @@ pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> Validated
 
     let rounding_limit = finite_rounding_limit();
     let first_rounded_failure = solution
+        .as_array()
         .iter()
         .position(|exact| exact.abs() >= rounding_limit);
     match (
@@ -657,7 +662,7 @@ pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> Validated
         first_rounded_failure,
     ) {
         (Ok(rounded), None) => {
-            for (actual, exact) in rounded.as_array().iter().copied().zip(&solution) {
+            for (actual, exact) in rounded.as_array().iter().copied().zip(solution.as_array()) {
                 assert_nearest_even_f64(actual, exact);
             }
         }

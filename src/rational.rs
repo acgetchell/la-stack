@@ -14,15 +14,16 @@ use std::array::from_fn;
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
 
-use crate::exact::{determinant_big_int, solve_big_int};
+use crate::exact::{det_big_int, solve_big_int};
 use crate::{DeterminantSign, ExactF64Conversion, LaError, Vector};
 
 /// Exact rational square matrix with compile-time dimension `D`.
 ///
-/// Construction validates that every denominator is non-zero. The private
-/// storage then carries that invariant, so determinant and solve methods do not
-/// repeat input validation. Unlike [`crate::Matrix`], entries are already exact
-/// rational values rather than finite binary64 values interpreted exactly.
+/// Construction validates that every denominator is non-zero and canonicalizes
+/// every entry to lowest terms with a positive denominator. The private storage
+/// then carries those invariants, so determinant and solve methods do not repeat
+/// input validation. Unlike [`crate::Matrix`], entries are already exact rational
+/// values rather than finite binary64 values interpreted exactly.
 ///
 /// Direct field construction is intentionally unavailable:
 ///
@@ -41,9 +42,11 @@ pub struct RationalMatrix<const D: usize> {
 
 /// Exact rational vector with compile-time dimension `D`.
 ///
-/// Construction validates that every denominator is non-zero. Solutions
-/// returned by [`RationalMatrix::solve`] also use this type, making any later
-/// conversion to [`Vector`] explicit through [`ExactF64Conversion`].
+/// Construction validates that every denominator is non-zero and canonicalizes
+/// every entry to lowest terms with a positive denominator. Solutions returned
+/// by [`RationalMatrix::solve`] and [`crate::Matrix::solve_exact`] also use this
+/// type, making any later conversion to [`Vector`] explicit through
+/// [`ExactF64Conversion`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[must_use]
 pub struct RationalVector<const D: usize> {
@@ -54,9 +57,9 @@ impl<const D: usize> RationalMatrix<D> {
     /// Try to create an exact matrix from row-major rational storage.
     ///
     /// Raw, non-reduced [`BigRational::new_raw`] values and negative
-    /// denominators are accepted and interpreted as their mathematical
-    /// quotient. A raw zero denominator is not a rational value and is
-    /// rejected at this construction boundary.
+    /// denominators are accepted, interpreted as their mathematical quotient,
+    /// and stored canonically. A raw zero denominator is not a rational value
+    /// and is rejected at this construction boundary.
     ///
     /// # Examples
     /// ```
@@ -92,12 +95,27 @@ impl<const D: usize> RationalMatrix<D> {
                 }
             }
         }
-        Ok(Self { rows })
+        Ok(Self {
+            rows: rows.map(|row| row.map(canonicalize_rational)),
+        })
     }
 
     /// Try to create an exact matrix by evaluating a function at every cell.
     ///
     /// The function is evaluated once per cell in row-major order.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let diagonal = RationalMatrix::<3>::try_from_fn(|row, col| {
+    ///     BigRational::from_integer(u8::from(row == col).into())
+    /// })?;
+    /// assert_eq!(diagonal.det_sign(), DeterminantSign::Positive);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// Returns [`LaError::NonFinite`] at the first generated cell whose raw
@@ -134,8 +152,8 @@ impl<const D: usize> RationalMatrix<D> {
         self.rows.get(row)?.get(col)
     }
 
-    /// Replace one exact entry while preserving the non-zero-denominator
-    /// invariant.
+    /// Replace one exact entry while preserving the canonical non-zero-
+    /// denominator invariant.
     ///
     /// # Errors
     /// Returns [`LaError::IndexOutOfBounds`] when `(row, col)` lies outside the
@@ -148,7 +166,7 @@ impl<const D: usize> RationalMatrix<D> {
         if value.denom().sign() == Sign::NoSign {
             return Err(LaError::non_finite_input_matrix(row, col));
         }
-        self.rows[row][col] = value;
+        self.rows[row][col] = canonicalize_rational(value);
         Ok(())
     }
 
@@ -156,9 +174,10 @@ impl<const D: usize> RationalMatrix<D> {
     ///
     /// This path clears denominators and reads the sign of the resulting
     /// integer determinant. It does not construct a rational determinant.
+    /// For D=0, the empty-product determinant has positive sign.
     pub fn det_sign(&self) -> DeterminantSign {
         let (integer_rows, _) = self.integer_rows();
-        match determinant_big_int(integer_rows).sign() {
+        match det_big_int(integer_rows).sign() {
             Sign::Minus => DeterminantSign::Negative,
             Sign::NoSign => DeterminantSign::Zero,
             Sign::Plus => DeterminantSign::Positive,
@@ -169,11 +188,12 @@ impl<const D: usize> RationalMatrix<D> {
     ///
     /// Denominators are cleared independently per row. If row `i` uses
     /// positive scale `sᵢ`, the integer determinant is divided by `∏ᵢ sᵢ`.
+    /// For D=0, this returns the empty-product determinant `1`.
     #[must_use]
     pub fn det(&self) -> BigRational {
         let (integer_rows, row_scales) = self.integer_rows();
         let determinant_denominator = row_scales.iter().product();
-        BigRational::new(determinant_big_int(integer_rows), determinant_denominator)
+        BigRational::new(det_big_int(integer_rows), determinant_denominator)
     }
 
     /// Solve `A x = b` exactly.
@@ -181,6 +201,26 @@ impl<const D: usize> RationalMatrix<D> {
     /// Each augmented row is multiplied by one positive common denominator,
     /// then fraction-free Bareiss forward elimination runs in [`BigInt`]. Only
     /// the `O(D²)` back-substitution phase constructs [`BigRational`] values.
+    /// For D=0, the empty matrix and vector have the unique empty solution.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let zero = BigRational::from_integer(0.into());
+    /// let one = BigRational::from_integer(1.into());
+    /// let matrix = RationalMatrix::<2>::try_from_rows([
+    ///     [BigRational::new(1.into(), 2.into()), zero.clone()],
+    ///     [zero, BigRational::new(1.into(), 3.into())],
+    /// ])?;
+    /// let rhs = RationalVector::try_new([one.clone(), one])?;
+    ///
+    /// let solution = matrix.solve(&rhs)?.try_to_f64()?.into_array();
+    /// assert_eq!(solution, [2.0, 3.0]);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// Returns [`LaError::Singular`] with exact-singularity metadata when a
@@ -196,7 +236,7 @@ impl<const D: usize> RationalMatrix<D> {
         let integer_rows =
             from_fn(|row| from_fn(|col| integer_at_scale(&self.rows[row][col], &row_scales[row])));
         let integer_rhs = from_fn(|row| integer_at_scale(&rhs.data[row], &row_scales[row]));
-        solve_big_int(integer_rows, integer_rhs).map(|data| RationalVector { data })
+        solve_big_int(integer_rows, integer_rhs).map(RationalVector::from_canonical_array)
     }
 
     /// Clear matrix denominators with one positive common denominator per row.
@@ -209,10 +249,30 @@ impl<const D: usize> RationalMatrix<D> {
 }
 
 impl<const D: usize> RationalVector<D> {
+    /// Wrap values produced by `BigRational` arithmetic, which preserves the
+    /// canonical representation established at public input boundaries.
+    pub(crate) const fn from_canonical_array(data: [BigRational; D]) -> Self {
+        Self { data }
+    }
+
     /// Try to create an exact vector from rational storage.
     ///
-    /// Raw, non-reduced values and negative denominators are accepted. A raw
-    /// zero denominator is rejected.
+    /// Raw, non-reduced values and negative denominators are accepted and
+    /// stored canonically. A raw zero denominator is rejected.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let rhs = RationalVector::<2>::try_new([
+    ///     BigRational::new(1.into(), 2.into()),
+    ///     BigRational::from_integer(3.into()),
+    /// ])?;
+    /// assert_eq!(rhs.try_to_f64()?.into_array(), [0.5, 3.0]);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// Returns [`LaError::NonFinite`] at the first vector entry whose raw
@@ -223,7 +283,9 @@ impl<const D: usize> RationalVector<D> {
                 return Err(LaError::non_finite_input_vector(index));
             }
         }
-        Ok(Self { data })
+        Ok(Self {
+            data: data.map(canonicalize_rational),
+        })
     }
 
     /// Try to create an exact vector by evaluating a function at every index.
@@ -273,6 +335,13 @@ impl<const D: usize> ExactF64Conversion for RationalVector<D> {
     }
 }
 
+/// Reduce one validated rational and make its denominator positive before
+/// publishing it through the exact-input storage types.
+fn canonicalize_rational(value: BigRational) -> BigRational {
+    let (numerator, denominator) = value.into_raw();
+    BigRational::new(numerator, denominator)
+}
+
 /// Return a positive least common multiple of all raw denominator magnitudes.
 fn common_denominator<'a>(values: impl Iterator<Item = &'a BigRational>) -> BigInt {
     values.fold(BigInt::from(1), |scale, value| {
@@ -320,9 +389,10 @@ fn greatest_common_divisor(mut lhs: BigInt, mut rhs: BigInt) -> BigInt {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{NonFiniteLocation, NonFiniteOrigin, SingularityReason};
     use pastey::paste;
+
+    use super::*;
+    use crate::{NonFiniteLocation, NonFiniteOrigin, SingularityReason, UnrepresentableReason};
 
     fn ratio(numerator: i64, denominator: i64) -> BigRational {
         BigRational::new(BigInt::from(numerator), BigInt::from(denominator))
@@ -379,6 +449,40 @@ mod tests {
             ratio(-1, 2) - BigRational::new(BigInt::from(3), BigInt::from(1_u8) << 81_u32);
         assert_eq!(matrix.det(), expected);
         assert_eq!(matrix.det_sign(), DeterminantSign::Negative);
+        assert_eq!(matrix.as_rows()[0][0], ratio(-3, 4));
+        assert_eq!(matrix.as_rows()[1][0], ratio(1, 2));
+        assert_eq!(matrix.as_rows()[1][1], ratio(2, 3));
+    }
+
+    #[test]
+    fn construction_and_set_store_equal_quotients_identically() {
+        let huge_factor = BigInt::from(1_u8) << 256_u32;
+        let raw = RationalMatrix::<2>::try_from_rows([
+            [
+                BigRational::new_raw(huge_factor.clone(), &huge_factor * 2_u8),
+                BigRational::new_raw(BigInt::from(0), -&huge_factor),
+            ],
+            [ratio(0, 1), ratio(1, 1)],
+        ])
+        .unwrap();
+        let canonical = RationalMatrix::<2>::try_from_rows([
+            [ratio(1, 2), ratio(0, 1)],
+            [ratio(0, 1), ratio(1, 1)],
+        ])
+        .unwrap();
+
+        assert_eq!(raw, canonical);
+        assert_eq!(raw.as_rows()[0][1].denom(), &BigInt::from(1));
+
+        let mut updated = RationalMatrix::<2>::zero();
+        updated
+            .set(
+                0,
+                0,
+                BigRational::new_raw(&huge_factor * 3_u8, -&huge_factor * 6_u8),
+            )
+            .unwrap();
+        assert_eq!(updated.get(0, 0), Some(&ratio(-1, 2)));
     }
 
     #[test]
@@ -400,6 +504,39 @@ mod tests {
         .unwrap();
 
         assert_eq!(matrix.solve(&rhs).unwrap().into_array(), expected);
+    }
+
+    #[test]
+    fn exact_solve_accepts_signed_unreduced_matrix_and_rhs_values() {
+        let matrix = RationalMatrix::<2>::try_from_rows([
+            [
+                BigRational::new_raw(BigInt::from(10), BigInt::from(20)),
+                BigRational::new_raw(BigInt::from(-5), BigInt::from(-15)),
+            ],
+            [
+                BigRational::new_raw(BigInt::from(-6), BigInt::from(-15)),
+                BigRational::new_raw(BigInt::from(9), BigInt::from(21)),
+            ],
+        ])
+        .unwrap();
+        let rhs = RationalVector::try_new([
+            BigRational::new_raw(BigInt::from(0), BigInt::from(-99)),
+            BigRational::new_raw(BigInt::from(34), BigInt::from(-70)),
+        ])
+        .unwrap();
+
+        let solution = matrix.solve(&rhs).unwrap();
+        assert_eq!(solution.as_array(), &[ratio(2, 1), ratio(-3, 1)]);
+        assert_eq!(
+            &matrix.as_rows()[0][0] * &solution.as_array()[0]
+                + &matrix.as_rows()[0][1] * &solution.as_array()[1],
+            rhs.as_array()[0]
+        );
+        assert_eq!(
+            &matrix.as_rows()[1][0] * &solution.as_array()[0]
+                + &matrix.as_rows()[1][1] * &solution.as_array()[1],
+            rhs.as_array()[1]
+        );
     }
 
     #[test]
@@ -450,6 +587,49 @@ mod tests {
         ));
     }
 
+    macro_rules! gen_rejected_set_is_failure_atomic_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<rejected_set_is_failure_atomic_ $d d>]() {
+                    let mut matrix = RationalMatrix::<$d>::try_from_fn(|row, col| {
+                        BigRational::from_integer(BigInt::from(row * $d + col + 1))
+                    })
+                    .unwrap();
+                    let original = matrix.clone();
+
+                    assert!(matches!(
+                        matrix.set($d, 0, ratio(1, 2)),
+                        Err(LaError::IndexOutOfBounds {
+                            row: $d,
+                            col: 0,
+                            dim: $d,
+                            ..
+                        })
+                    ));
+                    assert_eq!(matrix, original);
+
+                    let zero_denominator =
+                        BigRational::new_raw(BigInt::from(1), BigInt::from(0));
+                    assert!(matches!(
+                        matrix.set(0, 1, zero_denominator),
+                        Err(LaError::NonFinite {
+                            location: NonFiniteLocation::MatrixCell { row: 0, col: 1, .. },
+                            origin: NonFiniteOrigin::Input,
+                            ..
+                        })
+                    ));
+                    assert_eq!(matrix, original);
+                }
+            }
+        };
+    }
+
+    gen_rejected_set_is_failure_atomic_tests!(2);
+    gen_rejected_set_is_failure_atomic_tests!(3);
+    gen_rejected_set_is_failure_atomic_tests!(4);
+    gen_rejected_set_is_failure_atomic_tests!(5);
+
     #[test]
     fn zero_dimension_uses_empty_determinant_and_unique_solve() {
         let matrix = RationalMatrix::<0>::zero();
@@ -466,7 +646,11 @@ mod tests {
         let vector = RationalVector::<2>::try_new([ratio(1, 2), ratio(1, 3)]).unwrap();
         assert!(matches!(
             vector.try_to_f64(),
-            Err(LaError::Unrepresentable { index: Some(1), .. })
+            Err(LaError::Unrepresentable {
+                index: Some(1),
+                reason: UnrepresentableReason::RequiresRounding,
+                ..
+            })
         ));
         let rounded = vector.to_rounded_f64().unwrap().into_array();
         assert_eq!(rounded[0].to_bits(), 0.5_f64.to_bits());

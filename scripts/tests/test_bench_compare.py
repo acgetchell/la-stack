@@ -76,6 +76,7 @@ def _schema2_provenance_data() -> dict[str, object]:
     }
     return {
         "baseline": "v0.4.3",
+        "current": "v0.4.4",
         "criterion": {
             "baseline_command": ["just", "bench-save-baseline", "v0.4.3"],
             "criterion_version": "0.7.0",
@@ -115,6 +116,7 @@ def _schema2_provenance_data() -> dict[str, object]:
             "current_revision": "passed",
             "current_source_state_sha256": "c" * 64,
             "harness": "shared-current",
+            "shared_harness_rational_inputs": True,
         },
     }
 
@@ -253,7 +255,13 @@ def test_exact_registry_only_tracks_supported_direct_determinant_filters() -> No
 
 
 def test_exact_registry_tracks_every_rational_input_release_dimension() -> None:
-    expected = bench_compare._RATIONAL_INPUT_BENCHES
+    expected = [
+        "det_sign_row_cleared_bareiss",
+        "det_row_cleared_bareiss",
+        "det_big_rational_gaussian",
+        "solve_row_cleared_bareiss",
+        "solve_big_rational_gaussian",
+    ]
     assert [group for group in bench_compare.EXACT_GROUPS if group.startswith("rational_input_d")] == [
         f"rational_input_d{dimension}" for dimension in range(2, 9)
     ]
@@ -550,6 +558,23 @@ def test_pre_rational_adapter_retains_current_rational_rows_without_baselines(tm
     assert len(rows) == len(bench_compare._RATIONAL_INPUT_ROWS)
     assert all(row.coverage_status == "current-only" for row in rows)
     assert all(row.baseline is None and row.current is not None for row in rows)
+
+
+def test_pre_rational_historical_harness_excludes_rational_registry_rows(tmp_path: Path) -> None:
+    policy = bench_compare.ComparisonPolicy(
+        baseline_api_compatibility="la_stack_pre_rational_input_api",
+        shared_harness_rational_inputs=False,
+    )
+
+    collection = bench_compare._collect_comparisons(
+        tmp_path,
+        "v0.4.4",
+        "median",
+        suite="exact",
+        policy=policy,
+    )
+
+    assert not [gap for gap in collection.gaps if gap.group.startswith("rational_input_d")]
 
 
 def test_collect_comparisons_reports_wholly_absent_selected_suite(tmp_path: Path) -> None:
@@ -1454,6 +1479,7 @@ def test_main_v045_comparison_publishes_current_only_rational_rows(
 
     provenance = _schema2_provenance_data()
     provenance["baseline"] = "v0.4.5"
+    provenance["current"] = "v0.4.6"
     criterion = provenance["criterion"]
     measurement = provenance["measurement"]
     validation = provenance["validation"]

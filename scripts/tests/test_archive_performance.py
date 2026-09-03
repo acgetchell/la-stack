@@ -871,7 +871,7 @@ def test_comparison_benchmark_env_preserves_flags_and_selects_v043_adapter(
     current = archive_performance._comparison_benchmark_env(tmp_path)
     baseline = archive_performance._comparison_benchmark_env(
         tmp_path,
-        baseline_tag="v0.4.3",
+        api_compatibility="la_stack_v0_4_3_api",
     )
 
     assert current["RUSTFLAGS"] == "-C target-cpu=native --cap-lints=warn"
@@ -894,7 +894,11 @@ def test_comparison_benchmark_env_selects_pre_rational_adapter(
 
     baseline = archive_performance._comparison_benchmark_env(
         tmp_path,
-        baseline_tag=baseline_tag,
+        api_compatibility=archive_performance._baseline_api_compatibility(
+            current_tag="v0.4.6",
+            baseline_tag=baseline_tag,
+            shared_harness_rational_inputs=True,
+        ),
     )
 
     assert baseline["RUSTFLAGS"] == ("--cap-lints=warn --cfg=la_stack_pre_rational_input_api")
@@ -909,7 +913,7 @@ def test_comparison_benchmark_env_extends_encoded_rustflags(
 
     env = archive_performance._comparison_benchmark_env(
         tmp_path,
-        baseline_tag="0.4.3",
+        api_compatibility="la_stack_v0_4_3_api",
     )
 
     assert env["CARGO_ENCODED_RUSTFLAGS"] == ("-C\x1ftarget-cpu=native\x1f--cap-lints=warn\x1f--cfg=la_stack_v0_4_3_api")
