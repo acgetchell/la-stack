@@ -24,13 +24,13 @@ cargo_nextest_version := "0.9.143"
 cargo_update_version := "22.1.1"
 clippy_sarif_version := "0.8.0"
 dprint_version := "0.57.0"
-git_cliff_version := "2.13.1"
+git_cliff_version := "2.14.1"
 just_version := "1.58.0"
-rumdl_version := "0.2.62"
+rumdl_version := "0.2.63"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
-typos_version := "1.50.0"
-uv_version := "0.12.7"
+typos_version := "1.50.1"
+uv_version := "0.12.9"
 zizmor_version := "1.30.0"
 
 # Internal helpers: ensure external tooling is installed
@@ -209,11 +209,9 @@ _ensure-uv-available:
 _ensure-stable-uv-version: _ensure-uv-available
     #!/usr/bin/env bash
     set -euo pipefail
-    version_output="$(uv --version 2>&1)"
-    if [[ ! "$version_output" =~ ^uv[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]|$) ]]; then
-        echo "❌ 'uv --version' must report a stable X.Y.Z version; got: $version_output" >&2
-        exit 1
-    fi
+    uv_executable="$(command -v uv)"
+    version_output="$("$uv_executable" --version)"
+    "$uv_executable" run --locked update-cargo-tool-pins "--check-uv-version=$version_output"
 
 _ensure-yamllint: _ensure-uv
     #!/usr/bin/env bash
@@ -396,7 +394,7 @@ check-fast:
 # CI simulation: flat GitHub-equivalent union of leaf validators.
 # Keep this dependency list explicit so each validation surface runs once without
 # re-entering broad check/test bundles. All Cargo targets match the SARIF lint scope.
-ci: action-lint zizmor markdown-check spell-check docs-version-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-typecheck test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
+ci: action-lint zizmor markdown-check spell-check docs-version-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-fixture-lint python-typecheck test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
     @echo "🎯 CI checks complete!"
 
 # Validate CITATION.cff against the Citation File Format schema.
@@ -702,26 +700,29 @@ plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_
     uv run --locked criterion-dim-plot "${args[@]}"
 
 # Python tooling (uv)
-python-check: python-format-check python-lint python-typecheck
+python-check: python-format-check python-lint python-fixture-lint python-typecheck
 
-python-ci: python-format-check python-lint python-typecheck test-python
+python-ci: python-format-check python-lint python-fixture-lint python-typecheck test-python
     @echo "✅ Python checks complete!"
 
 python-fix: python-sync
     uv run --locked ruff check scripts/ --fix
-    uv run --locked ruff format scripts/
+    uv run --locked ruff format scripts/ tests/semgrep/scripts/
 
 python-format-check: python-sync
-    uv run --locked ruff format --check scripts/
+    uv run --locked ruff format --check scripts/ tests/semgrep/scripts/
 
 python-lint: python-sync
     uv run --locked ruff check scripts/
+
+python-fixture-lint: python-sync
+    uv run --locked ruff check tests/semgrep/scripts/
 
 python-sync: _ensure-uv
     uv sync --locked --group dev
 
 python-typecheck: python-sync
-    uv run --locked ty check scripts/ --error all
+    uv run --locked ty check scripts/ tests/semgrep/scripts/ --error all
 
 rust-core-check: cargo-lock-check fmt-check clippy-core doc-check semgrep semgrep-test unused-deps
     @echo "✅ Rust core checks complete!"
@@ -1115,7 +1116,7 @@ update-cargo-tools: _ensure-stable-uv-version _ensure-cargo-install-update
 
 # Advance Cargo and exact Python development requirements plus their lockfiles.
 [doc('Update Cargo and Python development requirements plus all Cargo/uv locked dependencies.')]
-update-dependencies: _ensure-cargo-edit _ensure-uv-available update-cargo-dependencies update-python-dependencies
+update-dependencies: _ensure-cargo-edit _ensure-stable-uv-version update-cargo-dependencies update-python-dependencies
 
 # Advance Cargo dependency declarations and lockfile entries.
 [doc('Update Cargo.toml dependency requirements and Cargo.lock.')]

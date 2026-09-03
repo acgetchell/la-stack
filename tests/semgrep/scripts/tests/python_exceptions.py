@@ -1,5 +1,9 @@
 import subprocess
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, Mock
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def catches_broad_exception() -> None:
@@ -36,6 +40,23 @@ def raises_specific_exception() -> None:
     raise RuntimeError("specific failure")
 
 
+def implicit_path_read_text_encoding(path: Path) -> None:
+    # ruleid: la-stack.python.explicit-path-text-encoding-in-tests
+    path.read_text()
+
+
+def implicit_path_write_text_encoding(path: Path) -> None:
+    # ruleid: la-stack.python.explicit-path-text-encoding-in-tests
+    path.write_text("Time: [1.0, 1.0, 1.0] µs\n")
+
+
+def explicit_path_text_encoding(path: Path) -> None:
+    # ok: la-stack.python.explicit-path-text-encoding-in-tests
+    path.read_text(encoding="utf-8")
+    # ok: la-stack.python.explicit-path-text-encoding-in-tests
+    path.write_text("Time: [1.0, 1.0, 1.0] µs\n", encoding="utf-8")
+
+
 def adhoc_mock_stdout() -> None:
     # ruleid: la-stack.python.no-adhoc-completedprocess-mock
     result = Mock()
@@ -69,7 +90,7 @@ def direct_subprocess_run() -> None:
 
 
 # ruleid: la-stack.python.no-untyped-defs-in-scripts
-def missing_return_annotation():
+def missing_return_annotation():  # noqa: ANN201 - intentional Semgrep violation fixture
     return None
 
 

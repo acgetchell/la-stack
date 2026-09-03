@@ -104,10 +104,28 @@ def test_reconcile_pins_preserves_prerelease_with_build_metadata(tmp_path: Path)
     assert f'rumdl_version := "{version}"' in justfile.read_text(encoding="utf-8").splitlines()
 
 
-@pytest.mark.parametrize("output", ["uv 1.2.3-rc.1", "uv 1.2.3.4", "uv release-1.2.3"])
-def test_parse_tool_version_rejects_nonstable_or_embedded_versions(output: str) -> None:
+@pytest.mark.parametrize(
+    "output",
+    ["uv 1.2.3 using runtime 3.14.0", "uv version unknown", "uv 1.2.3-rc.1", "uv 1.2.3.4", "uv release-1.2.3"],
+)
+def test_parse_tool_version_rejects_ambiguous_missing_prerelease_or_embedded_versions(output: str) -> None:
     with pytest.raises(ValueError, match="expected exactly one uv version"):
         update_cargo_tool_pins.parse_tool_version(output, "uv")
+
+
+def test_check_uv_version_reuses_pin_reconciler_parser() -> None:
+    with pytest.raises(ValueError, match=r"must report exactly one stable X\.Y\.Z version"):
+        update_cargo_tool_pins.check_uv_version("uv 9.9.9 using runtime 3.14.0")
+
+
+def test_main_checks_captured_uv_output_without_resolving_another_executable(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected_uv_lookup(*_args: object, **_kwargs: object) -> Never:
+        msg = "captured uv output must not trigger another executable lookup"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(update_cargo_tool_pins, "run_safe_command", unexpected_uv_lookup)
+
+    assert update_cargo_tool_pins.main(["--check-uv-version=uv 9.9.9"]) == 0
 
 
 def test_main_reports_missing_cargo_without_traceback(

@@ -3,11 +3,14 @@
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 import update_cargo_tool_pins
 
@@ -40,6 +43,49 @@ def just_recipes() -> dict[str, dict[str, Any]]:
     return recipes
 
 
+def write_fake_uv(directory: Path, version_output: str, *, windows_lookup_output: str | None = None) -> None:
+    """Write a Bash uv shim and an optional conflicting native Windows shim."""
+    real_uv = shutil.which("uv")
+    assert real_uv is not None
+    posix_shim = directory / "uv"
+    posix_shim.write_text(
+        f"""#!/bin/sh
+if [ "$1" = "--version" ]; then
+    printf '%s\\n' {shlex.quote(version_output)}
+else
+    exec {shlex.quote(real_uv)} "$@"
+fi
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    posix_shim.chmod(posix_shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    if os.name == "nt":
+        native_output = windows_lookup_output or version_output
+        if re.fullmatch(r"[A-Za-z0-9 ._-]+", native_output) is None:
+            msg = f"unsupported native uv version fixture output: {native_output!r}"
+            raise ValueError(msg)
+        windows_shim = directory / "uv.cmd"
+        real_uv_command = subprocess.list2cmdline([real_uv])
+        script = "\r\n".join(
+            (
+                "@echo off",
+                'if "%~1"=="--version" (',
+                f"    echo({native_output}",
+                "    exit /b 0",
+                ")",
+                f"{real_uv_command} %*",
+                "",
+            )
+        )
+        windows_shim.write_text(
+            script,
+            encoding="utf-8",
+            newline="",
+        )
+
+
 def test_uv_backed_helpers_reuse_pinned_guard() -> None:
     """Local uv consumers should share one exact-version implementation."""
     recipes = just_recipes()
@@ -59,9 +105,7 @@ def test_uv_guard_reports_expected_and_actual_versions(tmp_path: Path) -> None:
     """A mismatched uv executable should fail with actionable version details."""
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    fake_uv = fake_bin / "uv"
-    fake_uv.write_text("#!/bin/sh\nprintf '%s\\n' 'uv 9.9.9'\n", encoding="utf-8")
-    fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    write_fake_uv(fake_bin, "uv 9.9.9")
 
     environment = os.environ.copy()
     environment["CARGO_HOME"] = str(tmp_path / "cargo")
@@ -74,21 +118,35 @@ def test_uv_guard_reports_expected_and_actual_versions(tmp_path: Path) -> None:
     assert f"version '9.9.9', expected '{expected}'" in result.stderr
 
 
-def test_stable_uv_preflight_rejects_nonstable_or_embedded_versions(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "output",
+    ["uv 9.9.9 using runtime 3.14.0", "uv version unknown", "uv 9.9.9-beta.1", "uv 9.9.9.1", "uv release-9.9.9"],
+)
+def test_stable_uv_preflight_rejects_unstorable_versions(tmp_path: Path, output: str) -> None:
     """Update preflights should reject uv versions the pin reconciler cannot store."""
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    fake_uv = fake_bin / "uv"
+    write_fake_uv(fake_bin, output, windows_lookup_output="uv 7.7.7")
     environment = os.environ.copy()
     environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
 
-    for output in ("uv 9.9.9-beta.1", "uv 9.9.9.1", "uv release-9.9.9"):
-        fake_uv.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}'\n", encoding="utf-8")
-        fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        result = run_just("_ensure-stable-uv-version", check=False, env=environment)
+    result = run_just("_ensure-stable-uv-version", check=False, env=environment)
 
-        assert result.returncode != 0
-        assert "must report a stable X.Y.Z version" in result.stderr
+    assert result.returncode != 0
+    assert "must report exactly one stable X.Y.Z version" in result.stderr
+
+
+def test_stable_uv_preflight_accepts_newer_stable_version(tmp_path: Path) -> None:
+    """Update reconciliation may advance the repository's active uv pin."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    write_fake_uv(fake_bin, "uv 9.9.9")
+    environment = os.environ.copy()
+    environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+
+    result = run_just("_ensure-stable-uv-version", check=False, env=environment)
+
+    assert result.returncode == 0
 
 
 def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
@@ -107,14 +165,14 @@ def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
     aggregate_update = aggregate_result.stdout + aggregate_result.stderr
     cargo_upgrade = "cargo upgrade --incompatible allow --exclude num-bigint --exclude num-rational"
     assert aggregate_update.index("command -v cargo-install-update") < aggregate_update.index(cargo_upgrade)
-    assert aggregate_update.index("must report a stable X.Y.Z version") < aggregate_update.index(cargo_upgrade)
+    assert aggregate_update.index("--check-uv-version") < aggregate_update.index(cargo_upgrade)
 
     dependency_result = run_just("--dry-run", "update-dependencies")
     dependency_update = dependency_result.stdout + dependency_result.stderr
     dependency_preflights = [dependency["recipe"] for dependency in recipes["update-dependencies"]["dependencies"]]
-    assert dependency_preflights[:2] == ["_ensure-cargo-edit", "_ensure-uv-available"]
+    assert dependency_preflights[:2] == ["_ensure-cargo-edit", "_ensure-stable-uv-version"]
     assert dependency_update.index("cargo upgrade --version") < dependency_update.index(cargo_upgrade)
-    assert dependency_update.index("uv --version") < dependency_update.index(cargo_upgrade)
+    assert dependency_update.index("--check-uv-version") < dependency_update.index(cargo_upgrade)
     assert cargo_upgrade in dependency_update
     assert "cargo update" in dependency_update
     assert "uv run --locked update-python-dev-pins" in dependency_update
@@ -128,7 +186,7 @@ def test_update_workflow_composes_scoped_dependency_and_tool_updates() -> None:
     tool_update = tool_result.stdout + tool_result.stderr
     assert "command -v cargo-install-update" in tool_update
     assert "cargo install-update --locked" in tool_update
-    assert tool_update.index("must report a stable X.Y.Z version") < tool_update.index("cargo install-update --locked")
+    assert tool_update.index("--check-uv-version") < tool_update.index("cargo install-update --locked")
     assert "update-cargo-tool-pins" in tool_update
     assert "cargo install-update --all" not in tool_update
     assert "uv tool upgrade" not in tool_update
@@ -152,3 +210,14 @@ def test_managed_tool_pins_exist_once_in_root_justfile() -> None:
 
     for pin in update_cargo_tool_pins.PIN_TO_TOOL:
         assert len(re.findall(rf'(?m)^{re.escape(pin)}\s*:=\s*"[^"]+"\s*$', justfile_text)) == 1
+
+
+def test_ci_enforces_full_python_fixture_lint_policy() -> None:
+    """Canonical CI should lint fixtures without narrowing the Ruff configuration."""
+    recipes = just_recipes()
+    ci_dependencies = {dependency["recipe"] for dependency in recipes["ci"]["dependencies"]}
+    fixture_lint_body = json.dumps(recipes["python-fixture-lint"]["body"])
+
+    assert "python-fixture-lint" in ci_dependencies
+    assert "ruff check tests/semgrep/scripts/" in fixture_lint_body
+    assert "--select" not in fixture_lint_body

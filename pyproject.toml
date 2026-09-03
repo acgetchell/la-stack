@@ -55,7 +55,7 @@ line-length = 160
 src = [ "scripts" ]
 
 [tool.ruff.lint]
-select = [ "E", "F", "W", "ANN201", "ANN202", "ANN204", "C90", "I", "N", "UP", "YTT", "ASYNC", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "FA", "T10", "EM", "EXE", "FIX", "FLY", "FURB", "ISC", "ICN", "LOG", "G", "INP", "PERF", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "SLOT", "TC", "TID", "TD", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "RUF", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107" ]
+select = [ "E", "F", "W", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "C90", "I", "N", "UP", "YTT", "ASYNC", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "FA", "T10", "EM", "EXE", "FIX", "FLY", "FURB", "ISC", "ICN", "LOG", "G", "INP", "PERF", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "SLOT", "TC", "TID", "TD", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "RUF", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107" ]
 fixable = [ "ALL" ]
 unfixable = [  ]
 ignore = [
@@ -83,6 +83,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/test_*.py" = [ "S101", "SLF001", "D101", "D102", "D103" ]
+# Static-analysis fixtures intentionally contain the patterns these rules reject.
+"tests/semgrep/scripts/python_portability.py" = [ "D103", "INP001", "N813", "PLW1510", "S603", "S607", "SIM115", "UP020", "UP021" ]
+"tests/semgrep/scripts/tests/python_exceptions.py" = [ "BLE001", "D100", "D103", "EM101", "INP001", "S110", "S607", "SIM105", "TRY002" ]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
@@ -152,7 +155,7 @@ dev = [
     "actionlint-py==1.7.12.24",
     "pytest==9.1.1",
     "ruff==0.16.5",
-    "semgrep==1.175.0",
+    "semgrep==1.176.0",
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.1.0",
     "ty==0.0.77",
