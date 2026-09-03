@@ -716,7 +716,7 @@ python-lint: python-sync
     uv run --locked ruff check scripts/
 
 python-fixture-lint: python-sync
-    uv run --locked ruff check --select ANN001,ANN002,ANN003,ANN201,ANN202,ANN204,ANN205,ANN206 tests/semgrep/scripts/
+    uv run --locked ruff check --select ANN001,ANN002,ANN003,ANN201,ANN202,ANN204,ANN205,ANN206,TC tests/semgrep/scripts/
 
 python-sync: _ensure-uv
     uv sync --locked --group dev
