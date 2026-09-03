@@ -81,6 +81,8 @@ _BENCHMARK_HARNESS_FILES = (
 _BENCHMARK_HARNESS_METADATA = ".la-stack-benchmark-harness.json"
 _BENCHMARK_INPUT_GATE = ("just", "test-bench-inputs")
 _COMPARISON_LINT_CAP = "--cap-lints=warn"
+_PRE_RATIONAL_INPUT_API_CFG = "la_stack_pre_rational_input_api"
+_PRE_RATIONAL_INPUT_API_TAGS = frozenset({"v0.4.4", "v0.4.5"})
 _V0_4_3_API_CFG = "la_stack_v0_4_3_api"
 _V0_4_3_TAG = "v0.4.3"
 type BaselineSource = Literal["local", "github-assets"]
@@ -929,7 +931,12 @@ def _append_rustflag(env: dict[str, str], flag: str) -> None:
 
 def _baseline_api_compatibility(baseline_tag: str) -> str | None:
     """Return the shared-harness API adapter required by one baseline tag."""
-    return _V0_4_3_API_CFG if normalize_tag(baseline_tag) == _V0_4_3_TAG else None
+    normalized = normalize_tag(baseline_tag)
+    if normalized == _V0_4_3_TAG:
+        return _V0_4_3_API_CFG
+    if normalized in _PRE_RATIONAL_INPUT_API_TAGS:
+        return _PRE_RATIONAL_INPUT_API_CFG
+    return None
 
 
 def _comparison_benchmark_env(checkout: Path, *, baseline_tag: str | None = None) -> dict[str, str]:
@@ -1006,7 +1013,7 @@ def _selected_criterion_groups(criterion_dir: Path, *, suite: str) -> list[Path]
     for child in criterion_dir.iterdir():
         if not child.is_dir():
             continue
-        is_exact = child.name.startswith("exact_")
+        is_exact = child.name.startswith("exact_") or re.fullmatch(r"rational_input_d[0-9]+", child.name) is not None
         is_vs_linalg = re.fullmatch(r"d[0-9]+", child.name) is not None
         if (suite in {"all", "exact"} and is_exact) or (suite in {"all", "vs_linalg"} and is_vs_linalg):
             groups.append(child)

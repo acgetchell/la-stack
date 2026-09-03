@@ -161,6 +161,10 @@ def _build_criterion_tree(criterion_dir: Path, stat: str = "median") -> None:
     _write_estimates(random_group / "solve_exact_f64_result" / "new" / "estimates.json", stat, 54000.0)
     _write_estimates(random_group / "solve_exact_rounded_f64" / "new" / "estimates.json", stat, 55000.0)
 
+    rational_group = criterion_dir / "rational_input_d8"
+    for index, bench in enumerate(bench_compare._RATIONAL_INPUT_BENCHES, start=1):
+        _write_estimates(rational_group / bench / "new" / "estimates.json", stat, 100000.0 * index)
+
 
 def _build_vs_linalg_tree(criterion_dir: Path, stat: str = "median") -> None:
     """Create fake Criterion vs_linalg data with latest la-stack and baseline peer rows."""
@@ -223,6 +227,9 @@ class TestGroupHeading:
     def test_random_corpus(self) -> None:
         assert bench_compare._group_heading("exact_random_corpus_d4") == "Random corpus D=4"
 
+    def test_rational_input(self) -> None:
+        assert bench_compare._group_heading("rational_input_d8") == "Rational input D=8"
+
     def test_large_entries(self) -> None:
         assert bench_compare._group_heading("exact_large_entries_3x3") == "Large entries 3x3"
 
@@ -243,6 +250,14 @@ def test_exact_registry_only_tracks_supported_direct_determinant_filters() -> No
         start = benches.index("det_direct")
         assert benches[start : start + len(filter_benches)] == filter_benches
     assert not set(filter_benches) & set(bench_compare.EXACT_GROUPS["exact_d5"])
+
+
+def test_exact_registry_tracks_every_rational_input_release_dimension() -> None:
+    expected = bench_compare._RATIONAL_INPUT_BENCHES
+    assert [group for group in bench_compare.EXACT_GROUPS if group.startswith("rational_input_d")] == [
+        f"rational_input_d{dimension}" for dimension in range(2, 9)
+    ]
+    assert all(bench_compare.EXACT_GROUPS[f"rational_input_d{dimension}"] == expected for dimension in range(2, 9))
 
 
 # ---------------------------------------------------------------------------
@@ -375,12 +390,13 @@ def test_criterion_estimate_rejects_partial_interval_even_when_constructed_direc
 def test_collect_results(tmp_path: Path) -> None:
     _build_criterion_tree(tmp_path)
     results = bench_compare._collect_results(tmp_path, "new", "median")
-    assert len(results) == 18  # 6 benches x 2 dims + 3 near-singular + 3 random corpus
+    assert len(results) == 23  # Existing fixtures plus five rational-input rows.
     groups = {r.group for r in results}
     assert "exact_d2" in groups
     assert "exact_d3" in groups
     assert "exact_random_corpus_d3" in groups
     assert "exact_near_singular_3x3" in groups
+    assert "rational_input_d8" in groups
 
 
 def test_collect_results_empty_dir(tmp_path: Path) -> None:
@@ -507,6 +523,33 @@ def test_v043_adapter_reports_missing_current_for_unavailable_paired_row(tmp_pat
     assert gap.bench == target[1]
     assert gap.missing_current
     assert not gap.missing_baseline
+
+
+def test_pre_rational_adapter_retains_current_rational_rows_without_baselines(tmp_path: Path) -> None:
+    for group, bench in bench_compare._RATIONAL_INPUT_ROWS:
+        _write_estimates(tmp_path / group / bench / "new" / "estimates.json", "median", 10.0)
+
+    policy = bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_pre_rational_input_api")
+    collection = bench_compare._collect_comparisons(
+        tmp_path,
+        "v0.4.5",
+        "median",
+        suite="exact",
+        policy=policy,
+    )
+    rows = bench_compare._unavailable_artifact_rows(
+        tmp_path,
+        baseline_name="v0.4.5",
+        stat="median",
+        suite="exact",
+        scope="release-signal",
+        policy=policy,
+    )
+
+    assert not [gap for gap in collection.gaps if gap.group.startswith("rational_input_d")]
+    assert len(rows) == len(bench_compare._RATIONAL_INPUT_ROWS)
+    assert all(row.coverage_status == "current-only" for row in rows)
+    assert all(row.baseline is None and row.current is not None for row in rows)
 
 
 def test_collect_comparisons_reports_wholly_absent_selected_suite(tmp_path: Path) -> None:
@@ -712,6 +755,7 @@ def test_snapshot_uses_one_table_per_suite_with_case_column(tmp_path: Path) -> N
     assert "| D=3 |" in tables
     assert "| Random corpus D=3 |" in tables
     assert "| Near-singular 3x3 |" in tables
+    assert "| Rational input D=8 |" in tables
 
 
 def test_snapshot_tables_uses_stat_label(tmp_path: Path) -> None:
@@ -821,6 +865,7 @@ def test_read_schema2_provenance_records_versions_dirty_source_and_both_gates(tm
     assert "exact_d2/det_direct_with_errbound" in rendered
     assert "exact_d3/det_direct_with_errbound" in rendered
     assert "exact_d4/det_direct_with_errbound" in rendered
+    assert "rational_input_d{2..8}/*" in rendered
     assert "**Publication and validation environment**:" in rendered
     assert all(len(line) <= 160 for line in markdown)
     assert "the comparable `det_errbound` baselines remain required" in rendered
@@ -907,8 +952,29 @@ def test_read_schema2_provenance_rejects_v043_adapter_for_other_baseline(tmp_pat
     data["baseline"] = "v0.4.4"
     (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=r"must be 'none' for baseline 'v0\.4\.4'"):
+    with pytest.raises(
+        ValueError,
+        match=r"must be 'la_stack_pre_rational_input_api' for baseline 'v0\.4\.4'",
+    ):
         _read_harness_provenance(tmp_path, baseline="v0.4.4")
+
+
+def test_read_schema2_provenance_accepts_pre_rational_adapter_for_v045(tmp_path: Path) -> None:
+    data = _schema2_provenance_data()
+    data["baseline"] = "v0.4.5"
+    measurement = data["measurement"]
+    validation = data["validation"]
+    assert isinstance(measurement, dict)
+    assert isinstance(validation, dict)
+    cast("dict[str, object]", measurement)["baseline_api_compatibility"] = "la_stack_pre_rational_input_api"
+    cast("dict[str, object]", validation)["baseline_api_compatibility"] = "la_stack_pre_rational_input_api"
+    (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
+
+    provenance = _read_harness_provenance(tmp_path, baseline="v0.4.5")
+
+    assert provenance is not None
+    assert provenance.validation is not None
+    assert provenance.validation["baseline_api_compatibility"] == "la_stack_pre_rational_input_api"
 
 
 def test_read_schema2_provenance_rejects_mode_status_contradiction(tmp_path: Path) -> None:
@@ -1364,6 +1430,78 @@ def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(
     assert "d8/la_stack_det_from_lu_balanced_range" in rendered
     assert "d8/la_stack_det_from_ldlt_balanced_range" in rendered
     assert "current-only" in rendered
+    assert "no correctness-compatible benchmark row" in rendered
+
+
+def test_main_v045_comparison_publishes_current_only_rational_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    criterion_dir = tmp_path / "criterion"
+    for group, benches in bench_compare.EXACT_GROUPS.items():
+        for bench in benches:
+            _write_estimates(
+                criterion_dir / group / bench / "new" / "estimates.json",
+                "median",
+                10.0,
+            )
+            if (group, bench) not in bench_compare._RATIONAL_INPUT_ROWS:
+                _write_estimates(
+                    criterion_dir / group / bench / "v0.4.5" / "estimates.json",
+                    "median",
+                    20.0,
+                )
+
+    provenance = _schema2_provenance_data()
+    provenance["baseline"] = "v0.4.5"
+    criterion = provenance["criterion"]
+    measurement = provenance["measurement"]
+    validation = provenance["validation"]
+    assert isinstance(criterion, dict)
+    assert isinstance(measurement, dict)
+    assert isinstance(validation, dict)
+    cast("dict[str, object]", criterion)["suite"] = "exact"
+    cast("dict[str, object]", measurement)["baseline_api_compatibility"] = "la_stack_pre_rational_input_api"
+    cast("dict[str, object]", validation)["baseline_api_compatibility"] = "la_stack_pre_rational_input_api"
+    (criterion_dir / ".la-stack-benchmark-harness.json").write_text(json.dumps(provenance), encoding="utf-8")
+    output = tmp_path / "report.md"
+    artifact_paths = bench_compare.ArtifactPaths(
+        csv=tmp_path / "performance.csv",
+        provenance=tmp_path / "performance.provenance.json",
+    )
+    monkeypatch.setattr(
+        bench_compare,
+        "_report_source",
+        lambda _root: bench_compare.ReportSource(
+            version="0.4.6",
+            commit="current-commit",
+            ref="test",
+            revision_timestamp="2026-09-02 12:00:00 UTC",
+        ),
+    )
+
+    rc = bench_compare.main(
+        [
+            "v0.4.5",
+            "--suite",
+            "exact",
+            "--criterion-dir",
+            str(criterion_dir),
+            "--csv-output",
+            str(artifact_paths.csv),
+            "--provenance-output",
+            str(artifact_paths.provenance),
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert rc == 0
+    rendered = output.read_text(encoding="utf-8")
+    assert rendered == bench_compare.render_release_artifacts(artifact_paths)
+    assert "rational_input_d2/det_sign_row_cleared_bareiss" in rendered
+    assert "rational_input_d8/solve_big_rational_gaussian" in rendered
+    assert rendered.count("current-only") == len(bench_compare._RATIONAL_INPUT_ROWS)
     assert "no correctness-compatible benchmark row" in rendered
 
 

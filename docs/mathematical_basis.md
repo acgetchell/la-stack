@@ -170,6 +170,31 @@ finite output exists only after rounding; `NotFinite` means even the rounded
 result cannot be finite. The explicit rounded conversions use round-to-nearest,
 ties-to-even \[9-10\]. A nonzero exact value may consequently round to zero.
 
+## Exact arithmetic over rational inputs
+
+`RationalMatrix<D>` and `RationalVector<D>` are a separate input domain for
+coefficients assembled exactly before linear algebra begins. For each matrix
+row `i`, the implementation selects a positive least common multiple `sᵢ` of
+the rational denominators and forms the integer row `A_int[i, :] = sᵢ A[i, :]`.
+Therefore
+
+```text
+sign(det(A_int)) = sign(det(A))
+det(A) = det(A_int) / ∏ᵢ sᵢ.
+```
+
+The sign path reads the `BigInt` determinant sign directly and never constructs
+the rational determinant value. Solves include the corresponding right-hand
+side denominator in `sᵢ`, so each augmented row is multiplied by the same
+positive factor and the solution set is unchanged. The integer determinant and
+solve states use the same direct-expansion/Bareiss backend as exact operations
+over binary64 inputs, followed by rational back-substitution for solves \[7\].
+
+The rational types are const-generic and shape-safe after construction. The
+`try_with_rational_matrix!` helper provides explicit runtime dispatch through
+D=8 without unstable generic const expressions. Conversion to binary64 remains
+a separate strict or explicitly rounded `ExactF64Conversion` operation.
+
 ## Tolerances and typed errors
 
 `Tolerance::try_new` accepts finite values greater than or equal to zero.
@@ -205,6 +230,7 @@ required by `Matrix::ldlt`.
 | `D ≤ 4` error-bounded determinant/sign test | `det_direct_with_errbound` | Sign is certified when estimate magnitude exceeds bound; otherwise inconclusive |
 | Exact determinant sign | `det_sign_exact` | Exact for stored binary64 entries |
 | Exact determinant value or solve | `det_exact`, `solve_exact` | Exact for represented inputs |
+| Exact operations over preassembled rationals | `RationalMatrix::det_sign`, `det`, `solve` | No intermediate binary64 reconstruction |
 | Binary64 output from an exact result | Strict or rounded conversions | Strict conversion forbids rounding |
 
 ## Geometry relationship and scope

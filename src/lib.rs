@@ -149,6 +149,65 @@ mod readme_doctests {
     /// ```rust
     /// use la_stack::prelude::*;
     ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let epsilon = BigRational::new(1.into(), (1_u64 << 60).into());
+    /// let one = BigRational::from_integer(1.into());
+    /// let zero = BigRational::from_integer(0.into());
+    ///
+    /// let matrix = RationalMatrix::<5>::try_from_fn(|row, col| match (row, col) {
+    ///     (0, 0 | 1) | (1, 0) => one.clone(),
+    ///     (1, 1) => &one + &epsilon,
+    ///     _ if row == col => one.clone(),
+    ///     _ => zero.clone(),
+    /// })?;
+    /// assert_eq!(matrix.det_sign(), DeterminantSign::Positive);
+    /// assert_eq!(matrix.det(), epsilon);
+    ///
+    /// let rhs = RationalVector::try_new([
+    ///     zero,
+    ///     -&epsilon,
+    ///     BigRational::from_integer(2.into()),
+    ///     BigRational::from_integer(3.into()),
+    ///     BigRational::from_integer(4.into()),
+    /// ])?;
+    /// let exact_solution = matrix.solve(&rhs)?;
+    /// assert_eq!(
+    ///     exact_solution.as_array(),
+    ///     &[
+    ///         BigRational::from_integer(1.into()),
+    ///         BigRational::from_integer((-1).into()),
+    ///         BigRational::from_integer(2.into()),
+    ///         BigRational::from_integer(3.into()),
+    ///         BigRational::from_integer(4.into()),
+    ///     ]
+    /// );
+    ///
+    /// let epsilon_f64 = epsilon.try_to_f64()?;
+    /// assert_eq!(1.0 + epsilon_f64, 1.0);
+    /// let f64_matrix = Matrix::<5>::try_from_rows([
+    ///     [1.0, 1.0, 0.0, 0.0, 0.0],
+    ///     [1.0, 1.0 + epsilon_f64, 0.0, 0.0, 0.0],
+    ///     [0.0, 0.0, 1.0, 0.0, 0.0],
+    ///     [0.0, 0.0, 0.0, 1.0, 0.0],
+    ///     [0.0, 0.0, 0.0, 0.0, 1.0],
+    /// ])?;
+    /// let f64_rhs = Vector::<5>::try_new([0.0, -epsilon_f64, 2.0, 3.0, 4.0])?;
+    /// let f64_solve = f64_matrix
+    ///     .lu(DEFAULT_SINGULAR_TOL)
+    ///     .and_then(|lu| lu.solve(f64_rhs));
+    /// assert!(matches!(
+    ///     f64_solve,
+    ///     Err(LaError::Singular { .. })
+    /// ));
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn rational_input_example() {}
+
+    #[cfg(feature = "exact")]
+    /// ```rust
+    /// use la_stack::prelude::*;
+    ///
     /// fn adaptive_det_sign<const D: usize>(
     ///     matrix: &Matrix<D>,
     /// ) -> DeterminantSign {
@@ -201,6 +260,8 @@ mod exact;
 mod ldlt;
 mod lu;
 mod matrix;
+#[cfg(feature = "exact")]
+mod rational;
 mod scaled_product;
 mod tolerance;
 mod vector;
@@ -217,6 +278,9 @@ pub use num_rational::BigRational;
 #[cfg(feature = "exact")]
 #[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
 pub use num_traits::{FromPrimitive, Signed, ToPrimitive};
+#[cfg(feature = "exact")]
+#[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
+pub use rational::{RationalMatrix, RationalVector};
 
 // ---------------------------------------------------------------------------
 // Error-bound constants for `Matrix::det_direct_with_errbound()` and
@@ -366,6 +430,15 @@ pub const ERR_COEFF_4: f64 = 12.0 * EPS + 128.0 * EPS * EPS;
 /// dispatch surface explicit.
 pub const MAX_STACK_MATRIX_DISPATCH_DIM: usize = 7;
 
+/// Largest dimension supported by [`try_with_rational_matrix!`].
+///
+/// This bound covers exact downstream geometric systems through dimension 8
+/// while keeping runtime-to-const dispatch explicit and available on stable
+/// Rust.
+#[cfg(feature = "exact")]
+#[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
+pub const MAX_RATIONAL_MATRIX_DISPATCH_DIM: usize = 8;
+
 pub use error::{
     ArithmeticOperation, FactorizationKind, InvalidToleranceReason, LaError, NonFiniteLocation,
     NonFiniteOrigin, PositiveSemidefiniteViolation, SingularityReason, UnrepresentableReason,
@@ -457,6 +530,92 @@ macro_rules! try_with_stack_matrix {
     }};
 }
 
+/// Fallibly dispatch a runtime dimension to a concrete exact rational matrix.
+///
+/// The macro creates a zero [`RationalMatrix`] with the selected const-generic
+/// dimension, then evaluates the supplied closure body. Dimensions `0..=8` are
+/// supported on stable Rust. The closure may fill the matrix through
+/// [`RationalMatrix::set`] or replace it with a value built by
+/// [`RationalMatrix::try_from_fn`].
+///
+/// # Errors
+/// Returns [`LaError::UnsupportedDimension`] (converted through
+/// `From<LaError>`) when the requested dimension is greater than
+/// [`MAX_RATIONAL_MATRIX_DISPATCH_DIM`]. The closure body may return any other
+/// error representable by its declared `Result` type.
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+///
+/// # fn main() -> Result<(), LaError> {
+/// let requested = 3usize;
+/// let sign = try_with_rational_matrix!(requested, |mut matrix| -> Result<
+///     DeterminantSign,
+///     LaError,
+/// > {
+///     for index in 0..requested {
+///         matrix.set(index, index, BigRational::from_integer(1.into()))?;
+///     }
+///     Ok(matrix.det_sign())
+/// })?;
+/// assert_eq!(sign, DeterminantSign::Positive);
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "exact")]
+#[macro_export]
+macro_rules! try_with_rational_matrix {
+    ($dim:expr, |$matrix:ident| -> $ret:ty $body:block $(,)?) => {{
+        let __la_stack_requested_dim: usize = $dim;
+        match __la_stack_requested_dim {
+            0 => $crate::try_with_rational_matrix!(@arm 0, $matrix, $ret, $body),
+            1 => $crate::try_with_rational_matrix!(@arm 1, $matrix, $ret, $body),
+            2 => $crate::try_with_rational_matrix!(@arm 2, $matrix, $ret, $body),
+            3 => $crate::try_with_rational_matrix!(@arm 3, $matrix, $ret, $body),
+            4 => $crate::try_with_rational_matrix!(@arm 4, $matrix, $ret, $body),
+            5 => $crate::try_with_rational_matrix!(@arm 5, $matrix, $ret, $body),
+            6 => $crate::try_with_rational_matrix!(@arm 6, $matrix, $ret, $body),
+            7 => $crate::try_with_rational_matrix!(@arm 7, $matrix, $ret, $body),
+            8 => $crate::try_with_rational_matrix!(@arm 8, $matrix, $ret, $body),
+            requested => Err(::core::convert::From::from(
+                $crate::LaError::unsupported_dimension(
+                    requested,
+                    $crate::MAX_RATIONAL_MATRIX_DISPATCH_DIM,
+                ),
+            )),
+        }
+    }};
+    ($dim:expr, |mut $matrix:ident| -> $ret:ty $body:block $(,)?) => {{
+        let __la_stack_requested_dim: usize = $dim;
+        match __la_stack_requested_dim {
+            0 => $crate::try_with_rational_matrix!(@arm_mut 0, $matrix, $ret, $body),
+            1 => $crate::try_with_rational_matrix!(@arm_mut 1, $matrix, $ret, $body),
+            2 => $crate::try_with_rational_matrix!(@arm_mut 2, $matrix, $ret, $body),
+            3 => $crate::try_with_rational_matrix!(@arm_mut 3, $matrix, $ret, $body),
+            4 => $crate::try_with_rational_matrix!(@arm_mut 4, $matrix, $ret, $body),
+            5 => $crate::try_with_rational_matrix!(@arm_mut 5, $matrix, $ret, $body),
+            6 => $crate::try_with_rational_matrix!(@arm_mut 6, $matrix, $ret, $body),
+            7 => $crate::try_with_rational_matrix!(@arm_mut 7, $matrix, $ret, $body),
+            8 => $crate::try_with_rational_matrix!(@arm_mut 8, $matrix, $ret, $body),
+            requested => Err(::core::convert::From::from(
+                $crate::LaError::unsupported_dimension(
+                    requested,
+                    $crate::MAX_RATIONAL_MATRIX_DISPATCH_DIM,
+                ),
+            )),
+        }
+    }};
+    (@arm $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
+        let __la_stack_body = |$matrix: $crate::RationalMatrix<$d>| -> $ret { $body };
+        __la_stack_body($crate::RationalMatrix::<$d>::zero())
+    }};
+    (@arm_mut $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
+        let __la_stack_body = |mut $matrix: $crate::RationalMatrix<$d>| -> $ret { $body };
+        __la_stack_body($crate::RationalMatrix::<$d>::zero())
+    }};
+}
+
 /// Common imports for ergonomic usage.
 ///
 /// This prelude re-exports the primary types and common constants: [`Matrix`],
@@ -471,8 +630,9 @@ macro_rules! try_with_stack_matrix {
 /// [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`] explicitly from the
 /// crate root; those raw coefficients intentionally stay out of the prelude.
 ///
-/// When the `exact` feature is enabled, `DeterminantSign`,
-/// `ExactF64Conversion`, `BigInt`, and `BigRational` are also re-exported.
+/// When the `exact` feature is enabled, `RationalMatrix`, `RationalVector`,
+/// `DeterminantSign`, `ExactF64Conversion`, `BigInt`, and `BigRational` are also
+/// re-exported.
 /// `ExactF64Conversion` converts an already-computed exact determinant or
 /// solution under either the strict or explicitly rounded binary64 contract,
 /// without repeating exact elimination. The number types let callers construct
@@ -492,8 +652,9 @@ pub mod prelude {
     #[cfg(feature = "exact")]
     #[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
     pub use crate::{
-        BigInt, BigRational, DeterminantSign, ExactF64Conversion, FromPrimitive, Signed,
-        ToPrimitive,
+        BigInt, BigRational, DeterminantSign, ExactF64Conversion, FromPrimitive,
+        MAX_RATIONAL_MATRIX_DISPATCH_DIM, RationalMatrix, RationalVector, Signed, ToPrimitive,
+        try_with_rational_matrix,
     };
 }
 
@@ -535,6 +696,62 @@ mod tests {
     gen_stack_matrix_dispatch_tests!(5);
     gen_stack_matrix_dispatch_tests!(6);
     gen_stack_matrix_dispatch_tests!(7);
+
+    #[cfg(feature = "exact")]
+    macro_rules! gen_rational_matrix_dispatch_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<try_with_rational_matrix_dispatches_ $d d>]() {
+                    let requested = $d;
+                    let got = try_with_rational_matrix!(
+                        requested,
+                        |mut matrix| -> Result<DeterminantSign, LaError> {
+                            let mut index = 0;
+                            while index < $d {
+                                matrix.set(
+                                    index,
+                                    index,
+                                    BigRational::from_integer(BigInt::from(1)),
+                                )?;
+                                index += 1;
+                            }
+                            Ok(matrix.det_sign())
+                        },
+                    );
+
+                    assert_eq!(got, Ok(DeterminantSign::Positive));
+                }
+            }
+        };
+    }
+
+    #[cfg(feature = "exact")]
+    gen_rational_matrix_dispatch_tests!(1);
+    #[cfg(feature = "exact")]
+    gen_rational_matrix_dispatch_tests!(2);
+    #[cfg(feature = "exact")]
+    gen_rational_matrix_dispatch_tests!(3);
+    #[cfg(feature = "exact")]
+    gen_rational_matrix_dispatch_tests!(4);
+    #[cfg(feature = "exact")]
+    gen_rational_matrix_dispatch_tests!(5);
+    #[cfg(feature = "exact")]
+    gen_rational_matrix_dispatch_tests!(6);
+    #[cfg(feature = "exact")]
+    gen_rational_matrix_dispatch_tests!(7);
+    #[cfg(feature = "exact")]
+    gen_rational_matrix_dispatch_tests!(8);
+
+    #[cfg(feature = "exact")]
+    #[test]
+    fn try_with_rational_matrix_dispatches_zero_dimension() {
+        let got = try_with_rational_matrix!(0usize, |matrix| -> Result<DeterminantSign, LaError> {
+            Ok(matrix.det_sign())
+        });
+
+        assert_eq!(got, Ok(DeterminantSign::Positive));
+    }
 
     #[test]
     fn try_with_stack_matrix_supports_zero_dimension() {
@@ -595,6 +812,22 @@ mod tests {
                 requested: 9,
                 max: MAX_STACK_MATRIX_DISPATCH_DIM,
             }))
+        );
+    }
+
+    #[cfg(feature = "exact")]
+    #[test]
+    fn try_with_rational_matrix_reports_unsupported_dimension() {
+        let got = try_with_rational_matrix!(9usize, |matrix| -> Result<BigRational, LaError> {
+            Ok(matrix.det())
+        });
+
+        assert_eq!(
+            got,
+            Err(LaError::UnsupportedDimension {
+                requested: 9,
+                max: MAX_RATIONAL_MATRIX_DISPATCH_DIM,
+            })
         );
     }
 }

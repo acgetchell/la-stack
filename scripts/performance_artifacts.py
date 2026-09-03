@@ -409,7 +409,21 @@ def _validate_measurement_provenance(measurement: Mapping[str, object], *, mode:
     return measurement_status
 
 
-def _validate_validation_provenance(validation: Mapping[str, object], *, baseline: str) -> str:
+def _expected_baseline_api_compatibility(*, current: str, baseline: str) -> str:
+    """Return the compatibility adapter required by one release pair."""
+    if baseline == "v0.4.3":
+        return "la_stack_v0_4_3_api"
+    if baseline in {"v0.4.4", "v0.4.5"} and current not in {"v0.4.4", "v0.4.5"}:
+        return "la_stack_pre_rational_input_api"
+    return "none"
+
+
+def _validate_validation_provenance(
+    validation: Mapping[str, object],
+    *,
+    current: str,
+    baseline: str,
+) -> str:
     """Validate fixture-gate evidence for both compared revisions."""
     if validation.get("command") != ["just", "test-bench-inputs"]:
         msg = "benchmark provenance validation.command must be ['just', 'test-bench-inputs']"
@@ -426,7 +440,10 @@ def _validate_validation_provenance(validation: Mapping[str, object], *, baselin
     for field in ("current_git_clean", "baseline_git_clean"):
         _required_provenance_bool(validation, field, context="validation")
     compatibility = _required_provenance_string(validation, "baseline_api_compatibility", context="validation")
-    expected_compatibility = "la_stack_v0_4_3_api" if baseline == "v0.4.3" else "none"
+    expected_compatibility = _expected_baseline_api_compatibility(
+        current=current,
+        baseline=baseline,
+    )
     if compatibility != expected_compatibility:
         msg = f"benchmark provenance validation.baseline_api_compatibility must be {expected_compatibility!r} for baseline {baseline!r}, got {compatibility!r}"
         raise ValueError(msg)
@@ -530,7 +547,11 @@ def _validate_benchmark_provenance(data: Mapping[str, object], *, context: Artif
     if measurement_status != expected_status:
         msg = f"benchmark provenance mode {mode!r} requires measurement.status {expected_status!r}, got {measurement_status!r}"
         raise ValueError(msg)
-    compatibility = _validate_validation_provenance(validation, baseline=context.release.baseline)
+    compatibility = _validate_validation_provenance(
+        validation,
+        current=context.release.current,
+        baseline=context.release.baseline,
+    )
     _validate_current_revision_consistency(publication, validation)
     if measurement_status == "recorded":
         _validate_recorded_measurement_consistency(

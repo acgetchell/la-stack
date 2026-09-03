@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
 from typing import cast
@@ -36,7 +37,12 @@ def _timing(value: float) -> TimingEstimate:
 
 
 def _context(*, current: str = "v0.4.4", baseline: str = "v0.4.3") -> ArtifactContext:
-    compatibility = "la_stack_v0_4_3_api" if baseline == "v0.4.3" else "none"
+    if baseline == "v0.4.3":
+        compatibility = "la_stack_v0_4_3_api"
+    elif baseline in {"v0.4.4", "v0.4.5"} and current not in {"v0.4.4", "v0.4.5"}:
+        compatibility = "la_stack_pre_rational_input_api"
+    else:
+        compatibility = "none"
     return ArtifactContext(
         release=ReleasePair(current=current, baseline=baseline),
         statistic="median",
@@ -371,6 +377,22 @@ def test_artifact_loader_rejects_arbitrary_compatibility_adapter() -> None:
 
     with pytest.raises(ValueError, match="baseline_api_compatibility must be"):
         load_bundle_bytes(csv_payload, (json.dumps(provenance) + "\n").encode(), source="invalid compatibility fixture")
+
+
+def test_artifact_loader_accepts_pre_rational_adapter_for_v045() -> None:
+    bundle = _bundle()
+    context = _context(current="v0.4.6", baseline="v0.4.5")
+    csv_payload, provenance_payload = serialize_bundle(PerformanceBundle(context=context, rows=bundle.rows))
+
+    loaded = load_bundle_bytes(
+        csv_payload,
+        provenance_payload,
+        source="pre-rational compatibility fixture",
+    )
+
+    validation = loaded.context.benchmark_provenance["validation"]
+    assert isinstance(validation, Mapping)
+    assert validation["baseline_api_compatibility"] == "la_stack_pre_rational_input_api"
 
 
 def test_artifact_loader_requires_recorded_measurement_compatibility() -> None:

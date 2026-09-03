@@ -23,6 +23,8 @@ while keeping the API intentionally small and explicit.
 
 - `Vector<const D: usize>` for fixed-length `f64` vectors backed by `[f64; D]`
 - `Matrix<const D: usize>` for fixed-size square `f64` matrices backed by `[[f64; D]; D]`
+- `RationalVector<const D: usize>` and `RationalMatrix<const D: usize>` for
+  exact rational inputs behind the optional `"exact"` feature
 - `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
 - `Ldlt<const D: usize>` for no-pivot factorization intended for exactly
   symmetric positive-definite matrices (solve + det; typed pivot diagnostics)
@@ -38,10 +40,11 @@ factorization tolerances are rejection thresholds, not accuracy guarantees. For
 D≤4, direct determinants can be paired with a conservative absolute roundoff
 bound when its range preconditions hold.
 
-With `features = ["exact"]`, stored binary64 inputs are lifted losslessly to
-rationals for exact determinant signs, determinant values, and solves. Exactness
-starts at the stored values and cannot recover information rounded away before
-construction. See the
+With `features = ["exact"]`, callers can either lift stored binary64 inputs
+losslessly or supply already-exact rational inputs for exact determinant signs,
+determinant values, and solves. Exactness over binary64 input starts at the
+stored values and cannot recover information rounded away before construction.
+See the
 [mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md)
 for the algorithms, validity boundaries, and supporting references.
 
@@ -73,7 +76,9 @@ for current release planning.
 
 ## 🚫 Anti-goals
 
-- Alternate floating-point scalar families: `la-stack` supports `f64` and optional exact arithmetic, not `f32` / `f16` APIs
+- Alternate scalar families: `la-stack` deliberately supports finite `f64` and
+  optional exact `BigRational` input domains, not `f32`, `f16`, complex, or
+  generic scalar APIs
 - Bare-metal performance: use [`blas`](https://crates.io/crates/blas) or
   [`lapack`](https://crates.io/crates/lapack) with a native backend selected
   through [`blas-src`](https://crates.io/crates/blas-src),
@@ -94,12 +99,17 @@ for current release planning.
 
 ## 🔢 Scalar types
 
-The scalar model is intentionally limited to `f64` for floating-point work and
-exact rationals behind the optional `"exact"` feature. This matches the crate's
-focus on small, robustness-sensitive numerical and computational geometry
-workloads. When `f64` precision is insufficient (e.g. near-degenerate geometric
-configurations), the optional `"exact"` feature provides arbitrary-precision
-arithmetic via `BigRational` (see below).
+The public scalar model deliberately has exactly two input domains:
+
+- finite `f64` through `Matrix<D>` and `Vector<D>` for floating-point work;
+- arbitrary-precision `BigRational` through `RationalMatrix<D>` and
+  `RationalVector<D>` behind the optional `"exact"` feature.
+
+This is not a generic scalar-parameterized API. Exact support intentionally
+covers the robustness-sensitive operations that require it: determinant sign,
+determinant value, and linear solve, followed by explicit strict or rounded
+conversion when an `f64` result is required. It does not promise a
+`BigRational` counterpart for every floating-point helper or factorization.
 
 Lower-precision `f32` / `f16` throughput-oriented workloads are outside the
 crate's scope; they usually indicate large-matrix or accelerator-oriented use
@@ -119,7 +129,8 @@ la-stack = "0.4.5"
 ### Feature flags
 
 - `default`: no runtime dependencies
-- `exact`: `BigRational` exact determinant and solve APIs
+- `exact`: exact determinant signs, determinant values, and solves over stored
+  `f64` values or caller-supplied `BigRational` inputs
 - `bench`: repository-development gate used only by benchmark targets and
   benchmark-input tests; application crates should not enable it
 
@@ -270,11 +281,16 @@ rationals (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
 la-stack = { version = "0.4.5", features = ["exact"] }
 ```
 
-These routines are exact with respect to the finite binary64 values stored in
-`Matrix` and `Vector`. They treat each stored value as the exact rational number
-represented by its bits, so the exact determinant or solve stage introduces no
-further roundoff. They cannot recover information already lost when source
-values were rounded to `f64` before construction.
+The feature exposes two deliberate input domains:
+
+- `Matrix<D>` / `Vector<D>` store finite binary64 inputs. Their exact methods
+  treat each stored bit pattern as its exact rational value, so the determinant
+  or solve stage introduces no further roundoff. They cannot recover information
+  already lost before construction.
+- `RationalMatrix<D>` / `RationalVector<D>` accept coefficients already
+  assembled as `BigRational`. They preserve derived differences, squared norms,
+  affine coefficients, and other rational expressions without an intermediate
+  `f64` conversion.
 
 **Determinants:**
 
@@ -297,6 +313,16 @@ values were rounded to `f64` before construction.
 - **`ExactF64Conversion`** — converts an existing exact determinant or solution
   under the strict or rounded contract without repeating exact elimination
 
+**Already-exact rational input:**
+
+- **`RationalMatrix::det_sign()`** — returns the exact sign without constructing
+  a rational determinant
+- **`RationalMatrix::det()`** — returns the exact `BigRational` determinant
+- **`RationalMatrix::solve(&rhs)`** — returns a `RationalVector<D>` exact
+  solution
+- **`try_with_rational_matrix!`** — dispatches a runtime-selected dimension
+  through D=8 to a const-generic rational matrix on stable Rust
+
 Exact determinant value and conversion methods return
 `LaError::DeterminantScaleOverflow` if the aggregate power-of-two scaling
 exceeds the internal exponent representation. Exact solve methods return
@@ -308,6 +334,73 @@ For exact-to-f64 output, strict conversions use
 finite value and `UnrepresentableReason::NotFinite` otherwise. Rounded
 conversions opt into nearest-even rounding but still report `NotFinite` when no
 finite `f64` exists.
+
+The following 5×5 system has exact determinant 2^-60. Its exact rational inputs
+therefore produce a unique solution through the general Bareiss path. Supplying
+the same coefficients as `f64` inputs loses the `2^-60` perturbation at `1.0`,
+making the leading rows identical and the binary64 system singular.
+
+```rust,ignore
+use la_stack::prelude::*;
+
+fn main() -> Result<(), LaError> {
+    // This is far below one binary64 ULP at 1.0, so 1.0 + 2^-60 rounds to 1.0.
+    let epsilon = BigRational::new(1.into(), (1_u64 << 60).into());
+    let one = BigRational::from_integer(1.into());
+    let zero = BigRational::from_integer(0.into());
+
+    // The leading block is [[1, 1], [1, 1 + 2^-60]]. The remaining diagonal
+    // extends the example to D=5, where the general Bareiss path is used.
+    let matrix = RationalMatrix::<5>::try_from_fn(|row, col| match (row, col) {
+        (0, 0 | 1) | (1, 0) => one.clone(),
+        (1, 1) => &one + &epsilon,
+        _ if row == col => one.clone(),
+        _ => zero.clone(),
+    })?;
+    assert_eq!(matrix.det_sign(), DeterminantSign::Positive);
+    assert_eq!(matrix.det(), epsilon);
+
+    let rhs = RationalVector::try_new([
+        zero,
+        -&epsilon,
+        BigRational::from_integer(2.into()),
+        BigRational::from_integer(3.into()),
+        BigRational::from_integer(4.into()),
+    ])?;
+    let exact_solution = matrix.solve(&rhs)?;
+    assert_eq!(
+        exact_solution.as_array(),
+        &[
+            BigRational::from_integer(1.into()),
+            BigRational::from_integer((-1).into()),
+            BigRational::from_integer(2.into()),
+            BigRational::from_integer(3.into()),
+            BigRational::from_integer(4.into()),
+        ]
+    );
+
+    // Supplying the same coefficients as f64 inputs destroys the perturbation
+    // and makes the matrix singular, even though the exact solution is integral.
+    let epsilon_f64 = epsilon.try_to_f64()?;
+    assert_eq!(1.0 + epsilon_f64, 1.0);
+    let f64_matrix = Matrix::<5>::try_from_rows([
+        [1.0, 1.0, 0.0, 0.0, 0.0],
+        [1.0, 1.0 + epsilon_f64, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 1.0],
+    ])?;
+    let f64_rhs = Vector::<5>::try_new([0.0, -epsilon_f64, 2.0, 3.0, 4.0])?;
+    let f64_solve = f64_matrix
+        .lu(DEFAULT_SINGULAR_TOL)
+        .and_then(|lu| lu.solve(f64_rhs));
+    assert!(matches!(
+        f64_solve,
+        Err(LaError::Singular { .. })
+    ));
+    Ok(())
+}
+```
 
 ```rust,ignore
 use la_stack::prelude::*;
@@ -369,8 +462,9 @@ fn main() -> Result<(), LaError> {
 }
 ```
 
-With the `exact` feature enabled, `DeterminantSign`, `ExactF64Conversion`,
-`BigInt`, and `BigRational` are re-exported from the crate root and prelude,
+With the `exact` feature enabled, `RationalMatrix`, `RationalVector`,
+`DeterminantSign`, `ExactF64Conversion`, `BigInt`, and `BigRational` are
+re-exported from the crate root and prelude,
 alongside the most commonly needed `num-traits` items (`FromPrimitive`,
 `ToPrimitive`, `Signed`). This lets consumers construct exact values
 (`BigRational::from_f64`, `from_i64`), query sign (`is_positive` /
@@ -468,14 +562,19 @@ out of the common prelude.
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Finite fixed-length vector for input and computation | `try_new`, `as_array`, `into_array`, `dot`, `norm2_sq` |
 | `Matrix<D>` | `[[f64; D]; D]` | Finite square matrix for input and computation | See below |
+| `RationalVector<D>`¹ | `[BigRational; D]` | Exact rational right-hand side and solution | `try_new`, `try_from_fn`, `as_array`, `into_array`, `get` |
+| `RationalMatrix<D>`¹ | `[[BigRational; D]; D]` | Exact rational matrix for determinant and solve operations | `try_from_rows`, `try_from_fn`, `as_rows`, `det_sign`, `det`, `solve` |
 | `DeterminantWithErrorBound` | Opaque validated pair | Paired direct determinant and certified absolute bound | `determinant`, `absolute_error_bound` |
 | `Lu<D>` | Inline factors + permutation | Factorization for solves/det | `solve`, `det` |
 | `Ldlt<D>` | Inline factors | No-pivot SPD factorization for solves/det | `solve`, `det` |
 | `Tolerance` | finite non-negative `f64` | Validated numerical threshold | `try_new`, `get` |
 | `LaError` | typed variants and reasons | Structured, actionable failure reporting | See error semantics below |
 | `DeterminantSign`¹ | enum | Exact determinant sign | `as_i8` |
+| `ExactF64Conversion`¹ | trait | Strict or explicitly rounded conversion of exact results to `f64` | `try_to_f64`, `to_rounded_f64` |
 
-Storage shown above reflects the intentional `f64` scalar model.
+`Matrix<D>` and `Vector<D>` use the intentional inline `f64` scalar model.
+The exact-feature rational types retain fixed-size outer arrays while their
+`BigRational` scalars use arbitrary-precision integer storage.
 
 For a runtime dimension from 0 through `MAX_STACK_MATRIX_DISPATCH_DIM` (7),
 `try_with_stack_matrix!` dispatches to a concrete `Matrix<N>` while preserving
@@ -483,6 +582,13 @@ inline stack storage. Larger dimensions produce
 `LaError::UnsupportedDimension`, converted through `From<LaError>` into the
 closure's declared `Result` error type; the macro does not introduce a
 dynamically sized matrix representation.
+
+With the exact feature, a runtime dimension from 0 through
+`MAX_RATIONAL_MATRIX_DISPATCH_DIM` (8) can similarly be dispatched with
+`try_with_rational_matrix!` to a concrete `RationalMatrix<N>`. Larger
+dimensions produce `LaError::UnsupportedDimension`; the rational macro also
+preserves the const-generic representation rather than introducing a
+dynamically sized matrix type.
 
 `Matrix<D>` key methods: `as_rows`, `into_rows`, `lu`, `ldlt`, `det`,
 `det_direct`, `det_direct_with_errbound`, `det_errbound`,
@@ -547,6 +653,11 @@ release-comparison workflow details, see
 [docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/BENCHMARKING.md).
 For the current release-to-release performance snapshot, see
 [docs/PERFORMANCE.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/PERFORMANCE.md).
+The exact release suite includes the already-exact rational-input groups for
+D=2 through D=8. Those rows report `RationalMatrix::det_sign`, `det`, and
+`solve` alongside straightforward `BigRational` Gaussian determinant and solve
+references, with Criterion point estimates and confidence intervals generated
+for every release.
 
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
 

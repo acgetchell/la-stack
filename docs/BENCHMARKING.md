@@ -480,6 +480,11 @@ random-corpus groups, and adversarial-input groups:
 - `exact_hilbert_4x4` / `exact_hilbert_5x5` — classically ill-conditioned
   matrices whose binary64 entries have varied mantissas and exponents, stressing
   the `decompose_f64 -> BigInt` scaling path.
+- `rational_input_d{2..8}` — already-exact, diagonally-dominant rational
+  systems. These compare public `RationalMatrix::det_sign`, `det`, and `solve`
+  calls using row-denominator clearing plus integer Bareiss elimination with
+  straightforward cubic `BigRational` Gaussian determinant and solve
+  references on identical matrices and right-hand sides.
 
 Each random-corpus and adversarial group runs the same exact-arithmetic
 benches (`det_sign_exact`, `det_exact`, `solve_exact`,
@@ -496,6 +501,12 @@ strict/rounded binary64 results are checked for their exact bits, typed reason,
 and first failing component. These checks run outside timed Criterion closures.
 Any disagreement or unexpected error fails setup instead of becoming an
 artificially fast measurement.
+
+The rational-input groups are part of the canonical exact release signal, so
+every release benchmark archive and generated performance report includes their
+Criterion point estimates and confidence intervals. When the comparison
+baseline predates the rational-input API, the report retains current-only rows
+with an explicit coverage note and does not calculate a cross-release ratio.
 
 The proof-bearing fixture is therefore a prerequisite correctness gate, not a
 claim that every timed sample is revalidated. Criterion closures remain free of

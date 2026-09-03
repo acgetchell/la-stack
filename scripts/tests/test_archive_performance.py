@@ -272,8 +272,9 @@ def test_purge_selected_new_samples_preserves_named_baselines_and_other_suites(t
     criterion_dir = tmp_path / "criterion"
     exact_new = criterion_dir / "exact_d2" / "det_exact" / "new"
     exact_baseline = criterion_dir / "exact_d2" / "det_exact" / "v0.4.2"
+    rational_new = criterion_dir / "rational_input_d8" / "det_row_cleared_bareiss" / "new"
     linalg_new = criterion_dir / "d2" / "la_stack_lu" / "new"
-    for directory in (exact_new, exact_baseline, linalg_new):
+    for directory in (exact_new, exact_baseline, rational_new, linalg_new):
         directory.mkdir(parents=True)
         (directory / "estimates.json").write_text("{}\n", encoding="utf-8")
 
@@ -282,8 +283,9 @@ def test_purge_selected_new_samples_preserves_named_baselines_and_other_suites(t
         suite="exact",
     )
 
-    assert removed == [exact_new]
+    assert removed == [exact_new, rational_new]
     assert not exact_new.exists()
+    assert not rational_new.exists()
     assert exact_baseline.is_dir()
     assert linalg_new.is_dir()
 
@@ -875,6 +877,27 @@ def test_comparison_benchmark_env_preserves_flags_and_selects_v043_adapter(
     assert current["RUSTFLAGS"] == "-C target-cpu=native --cap-lints=warn"
     assert baseline["RUSTFLAGS"] == ("-C target-cpu=native --cap-lints=warn --cfg=la_stack_v0_4_3_api")
     assert current["RUSTUP_TOOLCHAIN"] == "1.97.0"
+
+
+@pytest.mark.parametrize("baseline_tag", ["v0.4.4", "0.4.5"])
+def test_comparison_benchmark_env_selects_pre_rational_adapter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    baseline_tag: str,
+) -> None:
+    monkeypatch.delenv("CARGO_ENCODED_RUSTFLAGS", raising=False)
+    monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
+    (tmp_path / "rust-toolchain.toml").write_text(
+        '[toolchain]\nchannel = "1.98.0"\n',
+        encoding="utf-8",
+    )
+
+    baseline = archive_performance._comparison_benchmark_env(
+        tmp_path,
+        baseline_tag=baseline_tag,
+    )
+
+    assert baseline["RUSTFLAGS"] == ("--cap-lints=warn --cfg=la_stack_pre_rational_input_api")
 
 
 def test_comparison_benchmark_env_extends_encoded_rustflags(

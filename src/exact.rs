@@ -137,10 +137,11 @@ impl DeterminantSign {
 
 /// Convert an already-computed exact result to finite binary64 output.
 ///
-/// This extension trait is implemented for [`BigRational`] determinants and
-/// `[BigRational; D]` exact solutions. It lets callers retain the exact value,
-/// try the strict no-rounding contract, and recover with explicit rounding
-/// without repeating determinant evaluation or linear-system elimination.
+/// This extension trait is implemented for [`BigRational`] determinants,
+/// `[BigRational; D]` exact solutions, and [`crate::RationalVector`] solutions.
+/// It lets callers retain the exact value, try the strict no-rounding contract,
+/// and recover with explicit rounding without repeating determinant evaluation
+/// or linear-system elimination.
 /// [`BigRational::new_raw`] values are interpreted by their mathematical
 /// quotient: denominator signs and common factors do not change the result. A
 /// zero denominator is rejected as [`UnrepresentableReason::NotFinite`].
@@ -1077,6 +1078,33 @@ fn det4_big_int<const D: usize>(a: &[[BigInt; D]; D]) -> BigInt {
     det
 }
 
+/// Compute the determinant of an integer matrix with direct expansions for
+/// D≤4 and fraction-free Bareiss elimination otherwise.
+pub(crate) fn determinant_big_int<const D: usize>(mut a: [[BigInt; D]; D]) -> BigInt {
+    if D == 0 {
+        return BigInt::from(1);
+    }
+
+    match D {
+        1 => take(&mut a[0][0]),
+        2 => det2_big_int(&a),
+        3 => det3_big_int(&a),
+        4 => det4_big_int(&a),
+        _ => {
+            let odd_swaps = match bareiss_forward_eliminate(&mut a, None) {
+                BareissResult::Upper { odd_swaps } => odd_swaps,
+                BareissResult::Singular { .. } => {
+                    cold_path();
+                    return BigInt::from(0);
+                }
+            };
+
+            let determinant = take(&mut a[D - 1][D - 1]);
+            if odd_swaps { -determinant } else { determinant }
+        }
+    }
+}
+
 /// Outcome of a Bareiss forward-elimination pass.
 #[derive(Debug)]
 enum BareissResult {
@@ -1217,25 +1245,8 @@ fn scaled_det_int_decomposed<const D: usize>(
         return (BigInt::from(0), ScaleExponent::ZERO);
     }
     let scale = ScaleExponent::for_decomposed(decomposed);
-    let mut a = build_big_int_matrix(decomposed.components(), scale);
-    let det_int = match D {
-        1 => take(&mut a[0][0]),
-        2 => det2_big_int(&a),
-        3 => det3_big_int(&a),
-        4 => det4_big_int(&a),
-        _ => {
-            let odd_swaps = match bareiss_forward_eliminate(&mut a, None) {
-                BareissResult::Upper { odd_swaps } => odd_swaps,
-                BareissResult::Singular { .. } => {
-                    cold_path();
-                    return (BigInt::from(0), ScaleExponent::ZERO);
-                }
-            };
-
-            let det = take(&mut a[D - 1][D - 1]);
-            if odd_swaps { -det } else { det }
-        }
-    };
+    let a = build_big_int_matrix(decomposed.components(), scale);
+    let det_int = determinant_big_int(a);
 
     (det_int, scale)
 }
@@ -1311,9 +1322,30 @@ fn bareiss_solve_components<const D: usize>(
     } else {
         (independent_matrix_scale, independent_rhs_scale)
     };
-    let mut a = build_big_int_matrix(matrix.components(), matrix_scale);
-    let mut rhs = build_big_int_vec(rhs.components(), rhs_scale);
+    let a = build_big_int_matrix(matrix.components(), matrix_scale);
+    let rhs = build_big_int_vec(rhs.components(), rhs_scale);
+    let mut x = solve_big_int(a, rhs)?;
 
+    let solution_scale_exp = rhs_scale
+        .get()
+        .checked_sub(matrix_scale.get())
+        .unwrap_or_else(|| unreachable!("finite f64 scale difference cannot overflow i32"));
+    if solution_scale_exp != 0 {
+        let solution_scale = big_int_exp_to_big_rational(BigInt::from(1_u8), solution_scale_exp);
+        for component in &mut x {
+            *component *= &solution_scale;
+        }
+    }
+
+    Ok(x)
+}
+
+/// Solve an integer system with fraction-free forward elimination and rational
+/// back-substitution.
+pub(crate) fn solve_big_int<const D: usize>(
+    mut a: [[BigInt; D]; D],
+    mut rhs: [BigInt; D],
+) -> Result<[BigRational; D], LaError> {
     match bareiss_forward_eliminate(&mut a, Some(&mut rhs)) {
         BareissResult::Upper { .. } => {}
         BareissResult::Singular { pivot_col } => {
@@ -1331,17 +1363,6 @@ fn bareiss_solve_components<const D: usize>(
         }
         let a_ii = BigRational::from_integer(take(&mut a[i][i]));
         x[i] = sum / &a_ii;
-    }
-
-    let solution_scale_exp = rhs_scale
-        .get()
-        .checked_sub(matrix_scale.get())
-        .unwrap_or_else(|| unreachable!("finite f64 scale difference cannot overflow i32"));
-    if solution_scale_exp != 0 {
-        let solution_scale = big_int_exp_to_big_rational(BigInt::from(1_u8), solution_scale_exp);
-        for component in &mut x {
-            *component *= &solution_scale;
-        }
     }
 
     Ok(x)

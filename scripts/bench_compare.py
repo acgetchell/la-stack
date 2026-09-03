@@ -59,8 +59,9 @@ from subprocess_utils import ExecutableNotFoundError, find_project_root, format_
 # Groups and the benchmarks within each group that we track.
 #
 # Mirrors the structure of `benches/exact.rs`: general-case per-dimension
-# groups (`exact_d{2..5}`), fixed-seed full-corpus groups, plus
-# adversarial/extreme-input groups that share a fixed five-bench layout
+# groups (`exact_d{2..5}`), fixed-seed full-corpus groups, rational-input
+# comparisons (`rational_input_d{2..8}`), plus adversarial/extreme-input groups
+# that share a fixed five-bench layout
 # (`det_sign_exact`, `det_exact`, `solve_exact`, `solve_exact_f64_result`,
 # `solve_exact_rounded_f64`).
 _EXTREME_BENCHES: list[str] = [
@@ -90,6 +91,14 @@ _EXACT_DIMENSION_BENCHES_WITH_DIRECT: list[str] = [
     *_EXACT_DIMENSION_BENCHES[1:],
 ]
 
+_RATIONAL_INPUT_BENCHES: list[str] = [
+    "det_sign_row_cleared_bareiss",
+    "det_row_cleared_bareiss",
+    "det_big_rational_gaussian",
+    "solve_row_cleared_bareiss",
+    "solve_big_rational_gaussian",
+]
+
 EXACT_GROUPS: dict[str, list[str]] = {
     "exact_d2": _EXACT_DIMENSION_BENCHES_WITH_DIRECT,
     "exact_d3": _EXACT_DIMENSION_BENCHES_WITH_DIRECT,
@@ -99,6 +108,7 @@ EXACT_GROUPS: dict[str, list[str]] = {
     "exact_random_corpus_d3": _RANDOM_CORPUS_BENCHES,
     "exact_random_corpus_d4": _RANDOM_CORPUS_BENCHES,
     "exact_random_corpus_d5": _RANDOM_CORPUS_BENCHES,
+    **{f"rational_input_d{dimension}": _RATIONAL_INPUT_BENCHES for dimension in range(2, 9)},
     "exact_near_singular_3x3": _EXTREME_BENCHES,
     "exact_large_entries_3x3": _EXTREME_BENCHES,
     "exact_hilbert_4x4": _EXTREME_BENCHES,
@@ -155,17 +165,26 @@ VS_LINALG_D8_RELEASE_SIGNAL_BENCHES: list[str] = [
     "la_stack_det_from_ldlt_balanced_range",
 ]
 _V0_4_3_API_COMPATIBILITY = "la_stack_v0_4_3_api"
-_V0_4_3_UNAVAILABLE_BASELINE_ROWS: frozenset[tuple[str, str]] = frozenset(
-    {
-        ("exact_d2", "det_direct_with_errbound"),
-        ("exact_d3", "det_direct_with_errbound"),
-        ("exact_d4", "det_direct_with_errbound"),
-        ("d8", "la_stack_det_from_lu_balanced_range"),
-        ("d8", "la_stack_det_from_ldlt_balanced_range"),
-    }
+_PRE_RATIONAL_INPUT_API_COMPATIBILITY = "la_stack_pre_rational_input_api"
+_PRE_RATIONAL_INPUT_API_BASELINES = frozenset({"v0.4.4", "v0.4.5"})
+_RATIONAL_INPUT_ROWS: frozenset[tuple[str, str]] = frozenset(
+    (group, bench) for group, benches in EXACT_GROUPS.items() if group.startswith("rational_input_d") for bench in benches
+)
+_V0_4_3_UNAVAILABLE_BASELINE_ROWS: frozenset[tuple[str, str]] = (
+    frozenset(
+        {
+            ("exact_d2", "det_direct_with_errbound"),
+            ("exact_d3", "det_direct_with_errbound"),
+            ("exact_d4", "det_direct_with_errbound"),
+            ("d8", "la_stack_det_from_lu_balanced_range"),
+            ("d8", "la_stack_det_from_ldlt_balanced_range"),
+        }
+    )
+    | _RATIONAL_INPUT_ROWS
 )
 _UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY: dict[str, frozenset[tuple[str, str]]] = {
     _V0_4_3_API_COMPATIBILITY: _V0_4_3_UNAVAILABLE_BASELINE_ROWS,
+    _PRE_RATIONAL_INPUT_API_COMPATIBILITY: _RATIONAL_INPUT_ROWS,
 }
 VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM: dict[int, list[str]] = {
     8: VS_LINALG_D8_RELEASE_SIGNAL_BENCHES,
@@ -780,9 +799,14 @@ def _validate_validation_metadata(data: Mapping[str, object], *, path: Path) -> 
 
 
 def _validate_baseline_api_compatibility(data: Mapping[str, object], *, baseline: str, path: Path) -> None:
-    """Bind the only supported compatibility adapter to its baseline."""
+    """Bind each supported compatibility adapter to its baseline releases."""
     compatibility = data.get("baseline_api_compatibility")
-    expected = _V0_4_3_API_COMPATIBILITY if baseline == "v0.4.3" else "none"
+    if baseline == "v0.4.3":
+        expected = _V0_4_3_API_COMPATIBILITY
+    elif baseline in _PRE_RATIONAL_INPUT_API_BASELINES:
+        expected = _PRE_RATIONAL_INPUT_API_COMPATIBILITY
+    else:
+        expected = "none"
     if compatibility != expected:
         msg = f"validation.baseline_api_compatibility in {path} must be {expected!r} for baseline {baseline!r}, got {compatibility!r}"
         raise ValueError(msg)
@@ -1362,10 +1386,13 @@ def _group_heading(group: str) -> str:
     # exact_d3 -> "D=3", exact_random_corpus_d3 ->
     # "Random corpus D=3", exact_near_singular_3x3 ->
     # "Near-singular 3x3", exact_hilbert_4x4 -> "Hilbert 4x4", etc.
-    if group.startswith("exact_random_corpus_d"):
-        return f"Random corpus D={group.removeprefix('exact_random_corpus_d')}"
-    if group.startswith("exact_d"):
-        return f"D={group.removeprefix('exact_d')}"
+    for prefix, label in (
+        ("exact_random_corpus_d", "Random corpus D="),
+        ("rational_input_d", "Rational input D="),
+        ("exact_d", "D="),
+    ):
+        if group.startswith(prefix):
+            return f"{label}{group.removeprefix(prefix)}"
     if group == "exact_near_singular_3x3":
         return "Near-singular 3x3"
     if group == "exact_large_entries_3x3":
@@ -1877,6 +1904,17 @@ def _provenance_markdown(
                     "- Baseline-unavailable rows: `exact_d2/det_direct_with_errbound`,",
                     "  `exact_d3/det_direct_with_errbound`, and `exact_d4/det_direct_with_errbound` were not timed",
                     "  because v0.4.3 predates the paired API; the comparable `det_errbound` baselines remain required.",
+                ]
+            )
+        if (
+            include_compatibility_rows
+            and compatibility in {_V0_4_3_API_COMPATIBILITY, _PRE_RATIONAL_INPUT_API_COMPATIBILITY}
+            and criterion.suite in {"all", "exact"}
+        ):
+            lines.extend(
+                [
+                    "- Baseline-unavailable rows: `rational_input_d{2..8}/*` were not timed because the baseline",
+                    "  predates the exact rational-input API; current samples remain required, but no cross-release speedup is claimed.",
                 ]
             )
     return lines
