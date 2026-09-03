@@ -626,8 +626,9 @@ def _validate_benchmark_provenance(data: Mapping[str, object], *, context: Artif
     if data.get("baseline") != context.release.baseline:
         msg = f"benchmark provenance baseline {data.get('baseline')!r} does not match release baseline {context.release.baseline!r}"
         raise ValueError(msg)
-    if data.get("current") != context.release.current:
-        msg = f"benchmark provenance current {data.get('current')!r} does not match release current {context.release.current!r}"
+    current = _required_provenance_string(data, "current", context="root")
+    if current != context.release.current:
+        msg = f"benchmark provenance current {current!r} does not match release current {context.release.current!r}"
         raise ValueError(msg)
 
     criterion = _required_provenance_object(data, "criterion", context="root")
@@ -856,6 +857,10 @@ def _parse_provenance(payload: bytes, *, source: str) -> tuple[ArtifactContext, 
         current=_parse_required_string(release_data, "current", source=source),
         baseline=_parse_required_string(release_data, "baseline", source=source),
     )
+    benchmark_provenance.setdefault("current", release.current)
+    validation = benchmark_provenance.get("validation")
+    if isinstance(validation, dict):
+        validation.setdefault("shared_harness_rational_inputs", False)
     statistic = _parse_required_string(report_data, "statistic", source=source)
     if statistic != "median":
         msg = f"unsupported report statistic in {source}: {statistic!r}"

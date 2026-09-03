@@ -405,6 +405,54 @@ def test_artifact_loader_rejects_incomplete_nested_provenance() -> None:
         )
 
 
+def test_artifact_loader_defaults_fields_absent_from_legacy_schema1_artifacts() -> None:
+    csv_payload, provenance_payload = serialize_bundle(_bundle())
+    provenance = json.loads(provenance_payload)
+    benchmark_provenance = provenance["benchmark_provenance"]
+    del benchmark_provenance["current"]
+    del benchmark_provenance["validation"]["shared_harness_rational_inputs"]
+
+    loaded = load_bundle_bytes(
+        csv_payload,
+        (json.dumps(provenance) + "\n").encode(),
+        source="legacy schema-1 artifact fixture",
+    )
+
+    loaded_provenance = loaded.context.benchmark_provenance
+    assert loaded_provenance["current"] == loaded.context.release.current
+    validation = loaded_provenance["validation"]
+    assert isinstance(validation, Mapping)
+    assert validation["shared_harness_rational_inputs"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("current", False, r"root\.current"),
+        ("shared_harness_rational_inputs", "false", "must be a boolean"),
+    ],
+)
+def test_artifact_loader_rejects_invalid_present_legacy_default_fields(
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    csv_payload, provenance_payload = serialize_bundle(_bundle())
+    provenance = json.loads(provenance_payload)
+    benchmark_provenance = provenance["benchmark_provenance"]
+    if field == "current":
+        benchmark_provenance[field] = value
+    else:
+        benchmark_provenance["validation"][field] = value
+
+    with pytest.raises((TypeError, ValueError), match=message):
+        load_bundle_bytes(
+            csv_payload,
+            (json.dumps(provenance) + "\n").encode(),
+            source="invalid legacy-default field fixture",
+        )
+
+
 def test_artifact_loader_rejects_contradictory_current_revision() -> None:
     csv_payload, provenance_payload = serialize_bundle(_bundle())
     provenance = json.loads(provenance_payload)

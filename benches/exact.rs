@@ -33,6 +33,8 @@
 
 use std::hint::black_box;
 
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+use criterion::BatchSize;
 use criterion::{BenchmarkGroup, Criterion, Throughput, measurement::WallTime};
 
 #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
@@ -255,6 +257,9 @@ fn determinant_sign(value: &BigRational) -> DeterminantSign {
 
 /// Compare exact-input row clearing and Bareiss elimination with direct
 /// `BigRational` Gaussian elimination.
+///
+/// The consuming Gaussian references clone their inputs in Criterion's untimed
+/// setup phase, so both sides estimate computation over already-accepted input.
 #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
 fn bench_rational_input<const D: usize>(criterion: &mut Criterion) {
     let input = rational_input::<D>();
@@ -273,11 +278,14 @@ fn bench_rational_input<const D: usize>(criterion: &mut Criterion) {
         });
     });
     group.bench_function("det_big_rational_gaussian", |bencher| {
-        bencher.iter(|| {
-            let rows = black_box(input.matrix.as_rows()).clone();
-            let determinant = rational_determinant_gaussian(rows);
-            black_box(determinant);
-        });
+        bencher.iter_batched(
+            || black_box(input.matrix.as_rows()).clone(),
+            |rows| {
+                let determinant = rational_determinant_gaussian(rows);
+                black_box(determinant);
+            },
+            BatchSize::SmallInput,
+        );
     });
     group.bench_function("solve_row_cleared_bareiss", |bencher| {
         bencher.iter(|| {
@@ -288,13 +296,20 @@ fn bench_rational_input<const D: usize>(criterion: &mut Criterion) {
         });
     });
     group.bench_function("solve_big_rational_gaussian", |bencher| {
-        bencher.iter(|| {
-            let rows = black_box(input.matrix.as_rows()).clone();
-            let rhs = black_box(input.rhs.as_array()).clone();
-            let solution =
-                rational_solve_gaussian(rows, rhs).or_abort("BigRational Gaussian benchmark solve");
-            black_box(solution);
-        });
+        bencher.iter_batched(
+            || {
+                (
+                    black_box(input.matrix.as_rows()).clone(),
+                    black_box(input.rhs.as_array()).clone(),
+                )
+            },
+            |(rows, rhs)| {
+                let solution = rational_solve_gaussian(rows, rhs)
+                    .or_abort("BigRational Gaussian benchmark solve");
+                black_box(solution);
+            },
+            BatchSize::SmallInput,
+        );
     });
 
     group.finish();

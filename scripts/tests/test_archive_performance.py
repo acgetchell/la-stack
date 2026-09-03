@@ -886,6 +886,7 @@ def test_comparison_benchmark_env_selects_pre_rational_adapter(
     baseline_tag: str,
 ) -> None:
     monkeypatch.delenv("CARGO_ENCODED_RUSTFLAGS", raising=False)
+    monkeypatch.delenv("RUSTFLAGS", raising=False)
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
     (tmp_path / "rust-toolchain.toml").write_text(
         '[toolchain]\nchannel = "1.98.0"\n',

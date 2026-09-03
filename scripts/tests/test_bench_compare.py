@@ -859,6 +859,20 @@ def test_read_harness_provenance_validates_shared_harness_metadata(tmp_path: Pat
         sha256="a" * 64,
         baseline="v0.4.3",
     )
+    policy = bench_compare._comparison_policy("release-signal", provenance)
+    assert policy == bench_compare.ComparisonPolicy(
+        scope="release-signal",
+        shared_harness_rational_inputs=False,
+    )
+
+    collection = bench_compare._collect_comparisons(
+        tmp_path,
+        "v0.4.3",
+        "median",
+        suite="exact",
+        policy=policy,
+    )
+    assert not [gap for gap in collection.gaps if gap.group.startswith("rational_input_d")]
 
 
 def test_read_harness_provenance_is_optional(tmp_path: Path) -> None:

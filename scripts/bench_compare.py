@@ -2095,7 +2095,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def _comparison_policy(scope: str, provenance: HarnessProvenance | None) -> ComparisonPolicy:
     """Build comparison coverage policy from validated provenance."""
-    if provenance is None or provenance.validation is None:
+    if provenance is None:
+        return ComparisonPolicy(scope=scope)
+    if provenance.schema == 1:
+        return ComparisonPolicy(scope=scope, shared_harness_rational_inputs=False)
+    if provenance.validation is None:
         return ComparisonPolicy(scope=scope)
     compatibility = provenance.validation.get("baseline_api_compatibility")
     shared_harness_rational_inputs = provenance.validation.get("shared_harness_rational_inputs")
