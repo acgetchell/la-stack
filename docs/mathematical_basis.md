@@ -56,7 +56,7 @@ steps, but that does not make them exact.
 
 ## Scaled Euclidean vector norm
 
-`Vector::norm2` computes `sqrt(Σᵢ xᵢ²)` with a left-to-right scaled
+`Vector::norm` computes `sqrt(Σᵢ xᵢ²)` with a left-to-right scaled
 sum-of-squares recurrence. Its state represents the accumulated squared norm as
 `scale² × scaled_sum`. For each nonzero `|xᵢ|`, either `|xᵢ| / scale` is
 squared and accumulated, or a larger `|xᵢ|` becomes the new scale and the old
@@ -84,9 +84,9 @@ exact boundary calculation. Its fixed storage stays on the stack and requires
 no `exact` feature.
 
 A scalar `LaError::NonFinite` tagged with `ArithmeticOperation::VectorNorm`
-therefore means the exact norm rounds to infinity. `Vector::norm2_sq`
+therefore means the exact norm rounds to infinity. `Vector::norm_squared`
 intentionally remains the direct FMA sum `Σᵢ xᵢ²` and may therefore fail even
-when `norm2` succeeds.
+when `norm` succeeds.
 
 ## Outward-rounded interval expressions
 

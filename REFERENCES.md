@@ -133,7 +133,7 @@ algorithmic background.
 
 ### Scaled Euclidean vector norm
 
-`Vector::norm2` maintains a scale and a sum of squares relative to that scale,
+`Vector::norm` maintains a scale and a sum of squares relative to that scale,
 avoiding raw coordinate squares that would overflow or underflow. This follows
 the scaled safe-norm approach described by Blue [15]. The implementation retains
 a deterministic coordinate order and documents its binary64 rounding contract;

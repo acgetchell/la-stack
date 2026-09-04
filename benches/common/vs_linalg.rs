@@ -4,7 +4,7 @@
 
 use faer::linalg::solvers::{Ldlt as FaerLdlt, PartialPivLu};
 use faer::perm::PermRef;
-use la_stack::{LaError, Tolerance, Vector};
+use la_stack::{LaError, Matrix, Tolerance, Vector};
 use nalgebra::SMatrix;
 
 /// Evaluate la-stack's dot product through the ownership contract used by the
@@ -31,6 +31,54 @@ pub fn la_stack_dot<const D: usize>(left: &Vector<D>, right: &Vector<D>) -> Resu
 #[inline]
 pub fn la_stack_dot<const D: usize>(left: &Vector<D>, right: &Vector<D>) -> Result<f64, LaError> {
     (*left).dot(*right)
+}
+
+/// Evaluate the squared norm through the current public API.
+///
+/// # Errors
+///
+/// Returns the library's typed error if squared-norm accumulation overflows.
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[inline]
+pub const fn la_stack_norm_squared<const D: usize>(vector: &Vector<D>) -> Result<f64, LaError> {
+    vector.norm_squared()
+}
+
+/// Evaluate the same squared norm through the pre-v0.4.6 method name.
+///
+/// This adapter preserves historical comparisons without adding library aliases.
+///
+/// # Errors
+///
+/// Returns the selected revision's typed error if squared-norm accumulation overflows.
+#[cfg(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api))]
+#[inline]
+pub const fn la_stack_norm_squared<const D: usize>(vector: &Vector<D>) -> Result<f64, LaError> {
+    vector.norm2_sq()
+}
+
+/// Evaluate the matrix infinity norm through the current public API.
+///
+/// # Errors
+///
+/// Returns the library's typed error if an absolute row sum overflows.
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[inline]
+pub const fn la_stack_norm_inf<const D: usize>(matrix: &Matrix<D>) -> Result<f64, LaError> {
+    matrix.norm_inf()
+}
+
+/// Evaluate the same matrix infinity norm through the pre-v0.4.6 method name.
+///
+/// This adapter preserves historical comparisons without adding library aliases.
+///
+/// # Errors
+///
+/// Returns the selected revision's typed error if an absolute row sum overflows.
+#[cfg(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api))]
+#[inline]
+pub const fn la_stack_norm_inf<const D: usize>(matrix: &Matrix<D>) -> Result<f64, LaError> {
+    matrix.inf_norm()
 }
 
 /// Parse a tolerance through the constructor exposed by the selected library

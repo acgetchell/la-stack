@@ -53,7 +53,7 @@ fn assert_norm_boundary_regressions<const D: usize>() {
             #[cfg(feature = "exact")]
             assert_high_range_norm_rounding(&vector);
             assert_eq!(
-                vector.norm2().unwrap().to_bits(),
+                vector.norm().unwrap().to_bits(),
                 expected_bits,
                 "boundary pair ({left_bits:#x}, {right_bits:#x})"
             );
@@ -63,7 +63,7 @@ fn assert_norm_boundary_regressions<const D: usize>() {
     let two_997 = f64::from_bits(2020_u64 << 52);
     let two_998 = f64::from_bits(2021_u64 << 52);
     let finite = norm_boundary_vector::<D>(f64::MAX, two_997);
-    assert_eq!(finite.norm2(), Ok(f64::MAX));
+    assert_eq!(finite.norm(), Ok(f64::MAX));
     #[cfg(feature = "exact")]
     assert_high_range_norm_rounding(&finite);
 
@@ -71,7 +71,7 @@ fn assert_norm_boundary_regressions<const D: usize>() {
     for (left, right) in [(f64::MAX, two_998), (f64::MAX, f64::MAX)] {
         let vector = norm_boundary_vector::<D>(left, right);
         assert_eq!(
-            vector.norm2(),
+            vector.norm(),
             Err(LaError::non_finite_computation_scalar(
                 ArithmeticOperation::VectorNorm
             )),
@@ -93,7 +93,7 @@ fn assert_norm_guard_transition<const D: usize>() {
                 let mut values = [0.0; D];
                 values[index] = sign * magnitude;
                 let vector = Vector::try_new(values).unwrap();
-                assert_eq!(vector.norm2(), Ok(magnitude));
+                assert_eq!(vector.norm(), Ok(magnitude));
                 #[cfg(feature = "exact")]
                 assert_high_range_norm_rounding(&vector);
             }
@@ -105,22 +105,30 @@ fn assert_norm_guard_transition<const D: usize>() {
     let unit = boundary / 4.0;
     for (left, right) in [(3.0, 4.0), (4.0, 3.0), (-3.0, 4.0), (4.0, -3.0)] {
         let vector = norm_boundary_vector::<D>(left * unit, right * unit);
-        assert_eq!(vector.norm2(), Ok(5.0 * unit));
+        assert_eq!(vector.norm(), Ok(5.0 * unit));
         #[cfg(feature = "exact")]
         assert_high_range_norm_rounding(&vector);
     }
+}
+
+#[test]
+fn norm_returns_exact_high_range_pythagorean_result() {
+    let unit = f64::from_bits(2043_u64 << 52); // 2^1020
+    let vector = Vector::<2>::try_new([3.0 * unit, 4.0 * unit]).unwrap();
+
+    assert_eq!(vector.norm(), Ok(5.0 * unit));
 }
 
 macro_rules! gen_norm_boundary_regressions {
     ($d:literal) => {
         pastey::paste! {
             #[test]
-            fn [<norm2_preserves_finite_range_and_true_overflow_ $d d>]() {
+            fn [<norm_preserves_finite_range_and_true_overflow_ $d d>]() {
                 assert_norm_boundary_regressions::<$d>();
             }
 
             #[test]
-            fn [<norm2_guard_transition_preserves_known_values_ $d d>]() {
+            fn [<norm_guard_transition_preserves_known_values_ $d d>]() {
                 assert_norm_guard_transition::<$d>();
             }
 
@@ -129,7 +137,7 @@ macro_rules! gen_norm_boundary_regressions {
                 #![proptest_config(proptest_config::with_default_cases(64))]
 
                 #[test]
-                fn [<norm2_high_range_matches_exact_squared_midpoints_ $d d>](
+                fn [<norm_high_range_matches_exact_squared_midpoints_ $d d>](
                     bits in any::<[u64; $d]>(),
                 ) {
                     // Mix upper-range and arbitrary finite coordinates. The
@@ -173,7 +181,7 @@ fn assert_high_range_norm_rounding<const D: usize>(vector: &Vector<D>) {
         .map(|&value| exact(value).pow(2))
         .sum();
     let overflow_midpoint = exact(f64::MAX) + BigRational::from_integer(BigInt::from(1) << 970);
-    match vector.norm2() {
+    match vector.norm() {
         Ok(norm) => {
             assert!(square < overflow_midpoint.pow(2));
             let lower_midpoint = (exact(norm.next_down()) + exact(norm)) / exact(2.0);
@@ -207,7 +215,7 @@ fn assert_high_range_norm_rounding<const D: usize>(vector: &Vector<D>) {
 }
 
 #[test]
-fn norm2_upper_range_ties_and_subnormal_tail() {
+fn norm_upper_range_ties_and_subnormal_tail() {
     let unit = f64::from_bits(1993_u64 << 52); // 2^970
     for offset in [1.0, 3.0] {
         let k = 2.0_f64.powi(51) + offset;
@@ -216,7 +224,7 @@ fn norm2_upper_range_ties_and_subnormal_tail() {
         // exercise both directions of ties-to-even.
         let vector = norm_boundary_vector::<3>((3.0 * k) * unit, (4.0 * k) * unit);
         let expected = (5.0 * k) * unit;
-        assert_eq!(vector.norm2().unwrap().to_bits(), expected.to_bits());
+        assert_eq!(vector.norm().unwrap().to_bits(), expected.to_bits());
         #[cfg(feature = "exact")]
         assert_high_range_norm_rounding(&vector);
 
@@ -229,7 +237,7 @@ fn norm2_upper_range_ties_and_subnormal_tail() {
             expected
         };
         assert_eq!(
-            with_tail.norm2().unwrap().to_bits(),
+            with_tail.norm().unwrap().to_bits(),
             expected_with_tail.to_bits()
         );
         #[cfg(feature = "exact")]

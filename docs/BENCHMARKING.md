@@ -196,7 +196,7 @@ Use local saved baselines when tuning one kernel and comparing several edits
 against the same starting point. These baselines are local scratch data, not
 release artifacts.
 
-For example, before optimizing `Matrix::inf_norm`, save a named baseline:
+For example, before optimizing `Matrix::norm_inf`, save a named baseline:
 
 ```bash
 just bench-save-baseline inf-norm-before vs_linalg
@@ -400,9 +400,15 @@ adapter code computes the agreed mathematical kernel inside the timed closure:
 | `det_via_lu`, `det_from_lu` | Native `Lu::det` | Native `LU::determinant` | Harness adapter: product of the U diagonal and permutation sign |
 | `det_from_ldlt` / `det_from_cholesky` | Native `Ldlt::det` | Native `Cholesky::determinant` | Harness adapter: product of the D diagonal |
 | `dot` | Native `Vector::dot` | Native `dot` | Harness adapter: left-to-right fused multiply-add loop |
-| `norm2_sq` | Native `Vector::norm2_sq` | Native `norm_squared` | Native `squared_norm_l2` |
-| `norm2` | Native `Vector::norm2` | Native `norm` | Native `norm_l2` |
-| `inf_norm` | Native `Matrix::inf_norm` | Harness adapter: maximum absolute row sum | Harness adapter: maximum absolute row sum |
+| `norm2_sq` | Native `Vector::norm_squared` | Native `norm_squared` | Native `squared_norm_l2` |
+| `norm2` | Native `Vector::norm` | Native `norm` | Native `norm_l2` |
+| `inf_norm` | Native `Matrix::norm_inf` | Harness adapter: maximum absolute row sum | Harness adapter: maximum absolute row sum |
+
+The `norm2`, `norm2_sq`, and `inf_norm` benchmark IDs, including scenario suffixes, are
+retained for continuity with saved baselines. The current public methods are
+`Vector::norm()`, `Vector::norm_squared()`, and `Matrix::norm_inf()`; the historical
+benchmark adapters call `norm2_sq()` and `inf_norm()` only when building against
+older library releases.
 
 The `norm2` family also measures iterative `f64::hypot` and Delaunay's existing
 dimension-specialized scaled implementation as labeled reference kernels. These
@@ -439,7 +445,7 @@ All three crates receive equivalent deterministic inputs for a given dimension:
   closure, applying the same complete-operation protocol to la-stack and
   nalgebra
 - borrowed operations receive references through `black_box`; in particular,
-  `inf_norm` does not copy the matrix inside the measured closure
+  `Matrix::norm_inf()` does not copy the matrix inside the measured closure
 
 Use `iter_batched` only when fixture construction is explicitly outside the
 scientific quantity being measured. The exclusion must be symmetric across the

@@ -121,7 +121,7 @@ macro_rules! gen_matrix_proptests {
                 }
 
                 #[test]
-                fn [<matrix_inf_norm_matches_max_abs_row_sum_ $d d>](
+                fn [<matrix_norm_inf_matches_max_abs_row_sum_ $d d>](
                     rows in array::[<uniform $d>](
                         array::[<uniform $d>](small_f64()),
                     ),
@@ -133,7 +133,7 @@ macro_rules! gen_matrix_proptests {
                         .map(|row| row.iter().map(|&x| x.abs()).sum::<f64>())
                         .fold(0.0f64, f64::max);
 
-                    let actual = m.inf_norm().unwrap();
+                    let actual = m.norm_inf().unwrap();
                     assert_abs_diff_eq!(actual, expected, epsilon = 0.0);
                     prop_assert!(actual >= 0.0);
                 }
@@ -210,7 +210,7 @@ fn zero_dimension_matrix_obeys_empty_product_and_bounds_contracts() {
             ..
         })
     ));
-    assert_eq!(matrix.inf_norm(), Ok(0.0));
+    assert_eq!(matrix.norm_inf(), Ok(0.0));
     assert_eq!(matrix.det(), Ok(1.0));
     assert!(
         matrix

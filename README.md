@@ -75,7 +75,7 @@ for the algorithms, validity boundaries, and supporting references.
 - ✅ Error-bounded f64 dot, affine-difference, and determinant filtering plus
   optional exact signs (`dot_with_errbound`, `dot_difference_with_errbound`,
   `det_errbound`, `det_sign_exact`)
-- ✅ Overflow- and underflow-safe Euclidean vector norms (`norm2`)
+- ✅ Overflow- and underflow-safe Euclidean vector norms (`norm`)
 - ✅ Outward-rounded interval expressions and division-free determinant signs
   through D=7, with explicit inconclusive evidence
 - ✅ Exact determinant values and linear solves via optional arbitrary-precision
@@ -568,7 +568,7 @@ filter are inconclusive rather than errors and the exact fallback is total.
 
 ## 📏 Overflow-safe Euclidean norms
 
-`Vector::norm2()` computes the Euclidean norm with a deterministic scaled
+`Vector::norm()` computes the Euclidean norm with a deterministic scaled
 sum-of-squares recurrence, so large or subnormal finite coordinates do not fail
 merely because their raw squares overflow or underflow. It returns positive zero
 for empty and all-zero vectors and reports `LaError::NonFinite` with
@@ -578,10 +578,16 @@ compares squared rounding midpoints to prevent false or hidden overflow. This
 fallback needs no optional dependencies. The general binary64 result remains
 approximate and has no certified error bound.
 
-`Vector::norm2_sq()` remains the direct left-to-right FMA sum of squares for
+`Vector::norm_squared()` remains the direct left-to-right FMA sum of squares for
 callers that need the squared norm. Its distinct contract deliberately reports
-overflow when that square is not finite, even when `norm2()` can return a finite
+overflow when that square is not finite, even when `norm()` can return a finite
 norm.
+
+**v0.4.6 migration:** `Vector::norm2_sq()` is renamed to `Vector::norm_squared()`,
+the unreleased `Vector::norm2()` API is named `Vector::norm()`, and
+`Matrix::inf_norm()` is renamed to `Matrix::norm_inf()`. The old method names
+are removed; their numerical behavior and error contracts are unchanged by
+the renames. `Matrix::norm_inf()` remains the maximum absolute row sum.
 
 ## 🎯 Certified dot products and affine differences
 
@@ -716,7 +722,7 @@ out of the common prelude.
 
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
-| `Vector<D>` | `[f64; D]` | Finite fixed-length vector for input and computation | `try_new`, `as_array`, `into_array`, `dot`, `dot_with_errbound`, `dot_difference_with_errbound`, `norm2`, `norm2_sq` |
+| `Vector<D>` | `[f64; D]` | Finite fixed-length vector for input and computation | `try_new`, `as_array`, `into_array`, `dot`, `dot_with_errbound`, `dot_difference_with_errbound`, `norm`, `norm_squared` |
 | `Matrix<D>` | `[[f64; D]; D]` | Finite square matrix for input and computation | See below |
 | `Interval` | Two finite ordered `f64` bounds | Outward-rounded exact-real enclosure | `try_new`, `point`, `try_from_subtraction`, `try_add`, `try_mul`, `negate`, `try_square` |
 | `IntervalMatrix<D>` | `[[Interval; D]; D]` | Division-free determinant enclosure and sign proof through D=7 | `from_rows`, `try_from_point_rows`, `from_matrix`, `det`, `det_sign` |

@@ -103,3 +103,14 @@ pub(crate) const fn compare_product_with_rounded(left: f64, right: f64, rounded:
         magnitude_relation
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::compare_binary_magnitudes;
+
+    #[test]
+    fn binary_magnitude_comparison_orders_distinct_top_exponents() {
+        assert_eq!(compare_binary_magnitudes(1, 1, 1, 0), 1);
+        assert_eq!(compare_binary_magnitudes(1, 0, 1, 1), -1);
+    }
+}

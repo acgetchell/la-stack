@@ -163,8 +163,8 @@ fn big_rational_dot<const D: usize>(left: &[f64; D], right: &[f64; D]) -> BigRat
 /// the oracle. Two steps of latitude account for the exact norm lying on either
 /// side of its nearest binary64 value while still tightly constraining the
 /// production result in the subnormal and normal regimes.
-fn norm2_nearby_values_bracket_exact_square<const D: usize>(values: &[f64; D]) -> bool {
-    let Ok(norm) = Vector::<D>::try_new(*values).and_then(|vector| vector.norm2()) else {
+fn norm_nearby_values_bracket_exact_square<const D: usize>(values: &[f64; D]) -> bool {
+    let Ok(norm) = Vector::<D>::try_new(*values).and_then(|vector| vector.norm()) else {
         return false;
     };
     let exact_square = big_rational_dot(values, values);
@@ -184,10 +184,10 @@ fn norm2_nearby_values_bracket_exact_square<const D: usize>(values: &[f64; D]) -
 }
 
 #[test]
-fn norm2_exact_square_oracle_preserves_mixed_scale_rounding_regression() {
+fn norm_exact_square_oracle_preserves_mixed_scale_rounding_regression() {
     let values = [1.0, 0.0, 1.0, 1.0, 0.0, 3.5, 1.0, 1.0];
 
-    assert!(norm2_nearby_values_bracket_exact_square(&values));
+    assert!(norm_nearby_values_bracket_exact_square(&values));
 }
 
 /// Evaluate `axis · (left - right)` without rounding coordinate differences.
@@ -767,18 +767,18 @@ gen_dot_errbound_oracle_proptests!(5);
 /// exact-rational sum of squares. The generator spans signed zero, subnormals,
 /// ordinary values, and large finite magnitudes; its `f64::MAX / 4` ceiling
 /// keeps the norm finite through D=8.
-macro_rules! gen_norm2_exact_square_oracle_proptests {
+macro_rules! gen_norm_exact_square_oracle_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
                 #![proptest_config(with_default_cases(32))]
 
                 #[test]
-                fn [<norm2_tracks_exact_rational_square_ $d d>](
+                fn [<norm_tracks_exact_rational_square_ $d d>](
                     values in array::[<uniform $d>](mixed_scale_finite_f64()),
                 ) {
                     prop_assert!(
-                        norm2_nearby_values_bracket_exact_square(&values),
+                        norm_nearby_values_bracket_exact_square(&values),
                         "D={} norm did not bracket the exact rational squared norm for {values:?}",
                         $d,
                     );
@@ -788,18 +788,18 @@ macro_rules! gen_norm2_exact_square_oracle_proptests {
     };
 }
 
-gen_norm2_exact_square_oracle_proptests!(1);
-gen_norm2_exact_square_oracle_proptests!(2);
-gen_norm2_exact_square_oracle_proptests!(3);
-gen_norm2_exact_square_oracle_proptests!(4);
-gen_norm2_exact_square_oracle_proptests!(5);
-gen_norm2_exact_square_oracle_proptests!(6);
-gen_norm2_exact_square_oracle_proptests!(7);
-gen_norm2_exact_square_oracle_proptests!(8);
+gen_norm_exact_square_oracle_proptests!(1);
+gen_norm_exact_square_oracle_proptests!(2);
+gen_norm_exact_square_oracle_proptests!(3);
+gen_norm_exact_square_oracle_proptests!(4);
+gen_norm_exact_square_oracle_proptests!(5);
+gen_norm_exact_square_oracle_proptests!(6);
+gen_norm_exact_square_oracle_proptests!(7);
+gen_norm_exact_square_oracle_proptests!(8);
 
 #[test]
-fn norm2_exact_square_oracle_covers_zero_dimension() {
-    assert!(norm2_nearby_values_bracket_exact_square(&[]));
+fn norm_exact_square_oracle_covers_zero_dimension() {
+    assert!(norm_nearby_values_bracket_exact_square(&[]));
 }
 
 /// The affine-difference certificate is checked against the exact expression

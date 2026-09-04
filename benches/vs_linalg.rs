@@ -32,9 +32,9 @@ use bench_utils::OrAbort;
 use vs_linalg_common::norm_scenarios;
 use vs_linalg_common::{
     PreparedFaerLuDet, delaunay_scaled_norm, faer_det_from_ldlt, iterative_hypot, la_stack_dot,
-    la_stack_tolerance, make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows,
-    make_matrix_rows, make_pivoting_matrix_rows, make_vector_array, matrix_entry,
-    nalgebra_inf_norm, vector_entry,
+    la_stack_norm_inf, la_stack_norm_squared, la_stack_tolerance, make_balanced_dynamic_range_rows,
+    make_ill_conditioned_matrix_rows, make_matrix_rows, make_pivoting_matrix_rows,
+    make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
 };
 
 /// Build the deterministic la-stack matrix shared by a benchmark family.
@@ -447,7 +447,7 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
 
     group.bench_function("la_stack_norm2_sq", |bencher| {
         bencher.iter(|| {
-            let result = black_box(&v1).norm2_sq().or_abort("la_stack norm2_sq");
+            let result = la_stack_norm_squared(black_box(&v1)).or_abort("la_stack norm_squared");
             black_box(result);
         });
     });
@@ -471,7 +471,7 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
     {
         group.bench_function("la_stack_norm2", |bencher| {
             bencher.iter(|| {
-                let result = black_box(&v1).norm2().or_abort("la_stack norm2");
+                let result = black_box(&v1).norm().or_abort("la_stack norm");
                 black_box(result);
             });
         });
@@ -508,12 +508,10 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
 
 /// Validate and register safe Euclidean-norm kernels across branch and range profiles.
 #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-fn register_norm2_scenario_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, WallTime>) {
+fn register_norm_scenario_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, WallTime>) {
     for (scenario, values) in norm_scenarios::<D>() {
-        let vector = Vector::try_new(values).or_abort("norm2 scenario vector construction");
-        let la_stack = vector
-            .norm2()
-            .or_abort("la_stack norm2 scenario validation");
+        let vector = Vector::try_new(values).or_abort("norm scenario vector construction");
+        let la_stack = vector.norm().or_abort("la_stack norm scenario validation");
         let hypot = iterative_hypot(&values);
         let delaunay = delaunay_scaled_norm(&values);
         let scale = la_stack.abs().max(hypot.abs()).max(delaunay.abs()).max(1.0);
@@ -523,15 +521,13 @@ fn register_norm2_scenario_benchmarks<const D: usize>(group: &mut BenchmarkGroup
                 && delaunay.is_finite()
                 && (hypot - la_stack).abs() <= 1.0e-12 * scale
                 && (delaunay - la_stack).abs() <= 1.0e-12 * scale,
-            "norm2 benchmark scenario {scenario} failed setup validation: \
+            "norm benchmark scenario {scenario} failed setup validation: \
              la_stack={la_stack:?}, hypot={hypot:?}, delaunay={delaunay:?}",
         );
 
         group.bench_function(format!("la_stack_norm2_scenario_{scenario}"), |bencher| {
             bencher.iter(|| {
-                let result = black_box(&vector)
-                    .norm2()
-                    .or_abort("la_stack norm2 scenario");
+                let result = black_box(&vector).norm().or_abort("la_stack norm scenario");
                 black_box(result);
             });
         });
@@ -566,7 +562,7 @@ fn register_matrix_norm_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_
 
     group.bench_function("la_stack_inf_norm", |bencher| {
         bencher.iter(|| {
-            let result = black_box(&a).inf_norm().or_abort("la_stack inf_norm");
+            let result = la_stack_norm_inf(black_box(&a)).or_abort("la_stack norm_inf");
             black_box(result);
         });
     });
@@ -680,7 +676,7 @@ macro_rules! define_vs_linalg_benches_for_dim {
             register_precomputed_ldlt_determinant_benchmarks::<$d>(&mut group);
             register_vector_benchmarks::<$d>(&mut group);
             #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-            register_norm2_scenario_benchmarks::<$d>(&mut group);
+            register_norm_scenario_benchmarks::<$d>(&mut group);
             register_matrix_norm_benchmarks::<$d>(&mut group);
             $(
                 $register_stress(&mut group);
