@@ -1,13 +1,13 @@
 # Mathematical basis
 
 `la-stack` provides fixed-dimension numerical linear algebra over two deliberate
-input domains. `Matrix<D>` and `Vector<D>` store finite IEEE 754 binary64 values;
-their default algorithms operate in binary64 and are therefore approximate. The
-optional `exact` feature can either lift each of those stored values to the exact
-rational number it represents or accept caller-supplied `BigRational` values
-through `RationalMatrix<D>` and `RationalVector<D>`. For either domain,
-`Matrix<D>` and `RationalMatrix<D>` are dense `D × D` square matrices and the
-corresponding vector type has length `D`.
+point-value input domains plus one bounded layer. `Matrix<D>` and `Vector<D>`
+store finite IEEE 754 binary64 values; their default algorithms operate in
+binary64 and are therefore approximate. `Interval` and `IntervalMatrix<D>`
+enclose exact-real expression values between outward-rounded finite binary64
+bounds. The optional `exact` feature can either lift stored binary64 values to
+the exact rational numbers they represent or accept caller-supplied
+`BigRational` values through `RationalMatrix<D>` and `RationalVector<D>`.
 
 This document separates three questions that are easy to conflate:
 
@@ -39,7 +39,7 @@ computation was rounded to `f64`. Caller-supplied `RationalMatrix` and
 `RationalVector` values instead enter the exact domain directly and do not pass
 through binary64.
 
-`Matrix`, `Vector`, `Lu`, and `Ldlt` use inline fixed-size storage.
+`Matrix`, `Vector`, `IntervalMatrix`, `Lu`, and `Ldlt` use inline fixed-size storage.
 Arbitrary-precision `BigInt` and `BigRational` values allocate when the `exact` feature is
 used. Const-generic `D` is not itself a mathematical dimension limit; “small,
 fixed dimension” is the intended performance scope. `try_with_stack_matrix!` is
@@ -50,6 +50,50 @@ Except for the determinant filter described below, the floating-point APIs do
 not provide certified forward, backward, or absolute error bounds. This includes
 dot products, squared norms, matrix norms, factorizations, and solves. Some
 kernels use FMA to reduce rounding steps, but that does not make them exact.
+
+## Outward-rounded interval expressions
+
+`Interval` owns the invariant `-∞ < lower ≤ upper < +∞`. Its public constructor
+rejects non-finite or inverted bounds, its fields are private, and every
+arithmetic operation either returns another valid enclosure or a typed range
+failure. Both signed-zero inputs represent exact real zero and are canonicalized
+to `+0.0`; finite subnormal endpoints remain valid.
+
+Point construction introduces no width. Exact-real subtraction and interval
+addition use an error-free `TwoSum` residual to determine whether the rounded
+result is exact or which adjacent binary64 value is required for the outward
+endpoint [8]. Multiplication decomposes each nonzero binary64 operand into its exact
+integer significand and power of two, compares the exact 106-bit significand
+product with the rounded result, and widens only in the required direction.
+This comparison also handles products that underflow to zero: a positive result
+is enclosed by `[0, f64::from_bits(1)]`, and a negative result by the mirrored
+interval. Squaring uses multiplication bounds but gives every interval spanning
+zero the exact lower bound zero. These guarantees rely on IEEE-754 binary64
+round-to-nearest, ties-to-even, and gradual underflow \[9-11\]. IEEE 1788
+provides the broader standardized interval arithmetic model \[14\]; this crate's
+deliberately smaller, undecorated surface does not claim conformance.
+
+If the exact result lies outside `[-f64::MAX, f64::MAX]`, no interval with finite
+binary64 endpoints can contain it. The operation then returns
+`LaError::IntervalRangeExhausted` with the responsible interval
+`ArithmeticOperation`; it never stores infinity as an interval bound.
+
+For D≤7, `IntervalMatrix::det()` evaluates the Leibniz determinant with subset
+dynamic programming. A state for each column subset stores the determinant
+enclosure for the corresponding leading-row minor, requiring 128 inline states
+at D=7 and `D × 2^(D-1)` interval products. The expansion performs no division,
+so a pivot interval containing zero cannot make the algorithm unsound.
+`det_sign()` classifies a strictly positive or negative enclosure accordingly,
+returns `Zero` only for the singleton `[0, 0]`, and returns `Inconclusive` for
+every other overlap with zero. Inconclusive evidence is not a singularity
+classification.
+
+Lifting a completed `Matrix` creates point intervals for its stored values. It
+does not recover rounding from earlier subtraction, dot products, or lifted-norm
+construction. Robust callers instead assemble those derived coefficients with
+interval operations, use `IntervalMatrix::det_sign()` as a fast proof, and
+rebuild the expression in `RationalMatrix` or another exact representation when
+the filter is inconclusive or loses range.
 
 ## Floating-point factorizations
 
@@ -236,6 +280,7 @@ required by `Matrix::ldlt`.
 | Positive-definite floating solve | `ldlt(tol)` then `solve` | Exact symmetry; computed pivots must exceed tolerance; success is not a certificate |
 | Floating determinant, any `D` | `det` | No certified bound; zero is not exact singularity |
 | `D ≤ 4` error-bounded determinant/sign test | `det_direct_with_errbound` | Sign is certified when estimate magnitude exceeds bound; otherwise inconclusive |
+| Derived-expression determinant sign through `D ≤ 7` | `IntervalMatrix::det_sign` | Outward-rounded proof; overlap with zero is explicitly inconclusive |
 | Exact determinant sign | `det_sign_exact` | Exact for stored binary64 entries |
 | Exact determinant value or solve | `det_exact`, `solve_exact` | Exact for represented inputs |
 | Exact operations over preassembled rationals | `RationalMatrix::det_sign`, `det`, `solve` | No intermediate binary64 reconstruction |
@@ -245,9 +290,9 @@ required by `Matrix::ldlt`.
 
 Orientation, in-sphere, and related geometric predicates can be reduced to
 determinant signs, which is why an adaptive exact sign is useful near degeneracy
-\[8\]. `la-stack` supplies the determinant primitive; callers construct the
-problem-specific predicate matrix and remain responsible for any rounding that
-occurs during that construction. The crate originated to support
+\[8\]. `la-stack` supplies both point-matrix and bounded-expression determinant
+primitives; callers still own problem-specific matrix assembly and semantic
+classification. The crate originated to support
 [`delaunay`](https://crates.io/crates/delaunay), but its matrix, factorization,
 and exact-arithmetic APIs are general numerical infrastructure.
 

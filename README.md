@@ -23,6 +23,8 @@ while keeping the API intentionally small and explicit.
 
 - `Vector<const D: usize>` for fixed-length `f64` vectors backed by `[f64; D]`
 - `Matrix<const D: usize>` for fixed-size square `f64` matrices backed by `[[f64; D]; D]`
+- `Interval` and `IntervalMatrix<const D: usize>` for outward-rounded,
+  proof-bearing determinant filters through D=7
 - `RationalVector<const D: usize>` and `RationalMatrix<const D: usize>` for
   exact rational inputs behind the optional `"exact"` feature
 - `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
@@ -39,6 +41,13 @@ binary64 rounding;
 factorization tolerances are rejection thresholds, not accuracy guarantees. For
 D≤4, direct determinants can be paired with a conservative absolute roundoff
 bound when its range preconditions hold.
+
+Derived binary64 expressions can instead be assembled with `Interval`
+subtraction, addition, multiplication, negation, and square. The resulting
+`IntervalMatrix<D>` determinant sign is certified through D=7 when its enclosure
+separates zero; the singleton `[0, 0]` also certifies exact zero. Every other
+overlap with zero is explicitly inconclusive. This default-feature surface is
+distinct from arbitrary-precision exact arithmetic.
 
 With `features = ["exact"]`, callers can either lift stored binary64 inputs
 losslessly or supply already-exact rational inputs for exact determinant signs,
@@ -61,6 +70,8 @@ for the algorithms, validity boundaries, and supporting references.
   semantics
 - ✅ Error-bounded f64 determinant filtering plus optional exact signs
   (`det_errbound`, `det_sign_exact`)
+- ✅ Outward-rounded interval expressions and division-free determinant signs
+  through D=7, with explicit inconclusive evidence
 - ✅ Exact determinant values and linear solves via optional arbitrary-precision
   arithmetic (`det_exact`, `solve_exact`, strict/rounded f64 conversions)
 - ✅ Explicit algorithms (LU, solve, determinant)
@@ -94,16 +105,23 @@ for current release planning.
 - You want explicit LU / LDLT / determinant APIs rather than a broad algebra toolkit
 - You need exact determinants, exact determinant signs, or exact linear solves
   for fixed-size systems
+- You need a cheap, sound interval filter for determinant expressions assembled
+  from rounded binary64 operations
 - Robust predicates matter for geometry-style workloads near degeneracy
 - You prefer a default build with no runtime dependencies
 
-## 🔢 Scalar types
+## 🔢 Scalar and bounded-value types
 
-The public scalar model deliberately has exactly two input domains:
+The public point-value scalar model deliberately has two input domains:
 
 - finite `f64` through `Matrix<D>` and `Vector<D>` for floating-point work;
 - arbitrary-precision `BigRational` through `RationalMatrix<D>` and
   `RationalVector<D>` behind the optional `"exact"` feature.
+
+`Interval` is a separate bounded-value layer over finite `f64` endpoints. It
+encloses exact-real values during a small set of outward-rounded operations and
+feeds `IntervalMatrix<D>` determinant proofs; it does not make `Matrix` generic
+over alternate scalars or provide a general interval package.
 
 This is not a generic scalar-parameterized API. Exact support intentionally
 covers the robustness-sensitive operations that require it: determinant sign,
@@ -128,7 +146,8 @@ la-stack = "0.4.5"
 
 ### Feature flags
 
-- `default`: no runtime dependencies
+- `default`: no runtime dependencies; includes outward-rounded `Interval` and
+  `IntervalMatrix` APIs
 - `exact`: exact determinant signs, determinant values, and solves over stored
   `f64` values or caller-supplied `BigRational` inputs
 - `bench`: repository-development gate used only by benchmark targets and
@@ -268,6 +287,57 @@ returns `LaError::Singular` when floating-point elimination cannot produce a
 non-zero pivot; it does not misreport that numerical failure as an exact zero.
 Use `lu()` directly when you need a different tolerance policy, and use the
 exact determinant APIs when exact singularity classification matters.
+
+## 📦 Outward-rounded interval determinants
+
+`Interval` encloses expression construction that has not yet been reduced to a
+single stored `f64`. Point intervals preserve finite binary64 values exactly;
+`try_from_subtraction`, `try_add`, `try_mul`, `negate`, and `try_square` enclose
+the corresponding exact-real operations. `IntervalMatrix<D>::det_sign()` then
+uses a division-free subset expansion through D=7, returning positive,
+negative, zero, or inconclusive evidence.
+
+```rust
+use la_stack::prelude::*;
+
+fn main() -> Result<(), LaError> {
+    // Relative coordinates and the lifted norm retain their construction error.
+    let x = Interval::try_from_subtraction(0.1, 0.0)?;
+    let y = Interval::try_from_subtraction(0.1, 0.0)?;
+    let z = Interval::try_from_subtraction(0.1, 0.0)?;
+    let lifted = x
+        .try_square()?
+        .try_add(&y.try_square()?)?
+        .try_add(&z.try_square()?)?;
+
+    let matrix = IntervalMatrix::<4>::from_rows([
+        [Interval::ONE, Interval::ZERO, Interval::ZERO, Interval::ONE],
+        [Interval::ZERO, Interval::ONE, Interval::ZERO, Interval::ONE],
+        [Interval::ZERO, Interval::ZERO, Interval::ONE, Interval::ONE],
+        [x, y, z, lifted],
+    ]);
+    assert_eq!(
+        matrix.det_sign()?,
+        IntervalDeterminantSign::Negative,
+    );
+    Ok(())
+}
+```
+
+Every successful interval keeps finite ordered endpoints. Subnormal bounds are
+preserved, both signed zeros are treated as real zero and canonicalized to
+`+0.0`, and underflowed nonzero products widen toward the least subnormal value.
+If an exact result range cannot fit between finite binary64 endpoints, the
+operation returns `LaError::IntervalRangeExhausted` with its interval operation
+recorded in `ArithmeticOperation`.
+
+`Positive`, `Negative`, and `Zero` are proofs. `Inconclusive` only means that
+the determinant enclosure overlaps zero; it must not be converted to equality
+or singularity. A filtered-exact caller should rebuild the same derived
+expression with `RationalMatrix` and call `det_sign()` when the interval result
+is inconclusive or reports range failure. Lifting a finished `Matrix` with
+`IntervalMatrix::from_matrix` encloses its stored entries, but cannot recover
+rounding that occurred while those entries were assembled.
 
 ## 🔬 Exact arithmetic (`"exact"` feature)
 
@@ -567,6 +637,9 @@ out of the common prelude.
 |---|---|---|---|
 | `Vector<D>` | `[f64; D]` | Finite fixed-length vector for input and computation | `try_new`, `as_array`, `into_array`, `dot`, `norm2_sq` |
 | `Matrix<D>` | `[[f64; D]; D]` | Finite square matrix for input and computation | See below |
+| `Interval` | Two finite ordered `f64` bounds | Outward-rounded exact-real enclosure | `try_new`, `point`, `try_from_subtraction`, `try_add`, `try_mul`, `negate`, `try_square` |
+| `IntervalMatrix<D>` | `[[Interval; D]; D]` | Division-free determinant enclosure and sign proof through D=7 | `from_rows`, `try_from_point_rows`, `from_matrix`, `det`, `det_sign` |
+| `IntervalDeterminantSign` | enum | Positive, negative, zero, or inconclusive determinant evidence | — |
 | `RationalVector<D>`¹ | `[BigRational; D]` | Exact rational right-hand side and solution | `try_new`, `try_from_fn`, `as_array`, `into_array`, `get` |
 | `RationalMatrix<D>`¹ | `[[BigRational; D]; D]` | Exact rational matrix for determinant and solve operations | `try_from_rows`, `try_from_fn`, `as_rows`, `det_sign`, `det`, `solve` |
 | `DeterminantWithErrorBound` | Opaque validated pair | Paired direct determinant and certified absolute bound | `determinant`, `absolute_error_bound` |
@@ -578,8 +651,15 @@ out of the common prelude.
 | `ExactF64Conversion`¹ | trait | Strict or explicitly rounded conversion of exact results to `f64` | `try_to_f64`, `to_rounded_f64` |
 
 `Matrix<D>` and `Vector<D>` use the intentional inline `f64` scalar model.
-The exact-feature rational types retain fixed-size outer arrays while their
-`BigRational` scalars use arbitrary-precision integer storage.
+`IntervalMatrix<D>` retains inline fixed-size storage and uses a fixed 128-entry
+stack workspace for its supported determinant dimensions. The exact-feature
+rational types retain fixed-size outer arrays while their `BigRational` scalars
+use arbitrary-precision integer storage.
+
+For a runtime-selected interval dimension from 0 through
+`MAX_INTERVAL_MATRIX_DIM` (7), `try_with_interval_matrix!` dispatches to a
+concrete `IntervalMatrix<N>`. This is useful when stable Rust cannot express a
+derived const dimension such as `D + 1`.
 
 For a runtime dimension from 0 through `MAX_STACK_MATRIX_DISPATCH_DIM` (7),
 `try_with_stack_matrix!` dispatches to a concrete `Matrix<N>` while preserving
@@ -620,6 +700,9 @@ observed pivot magnitude, and tolerance, while exact-arithmetic singularity is
 identified separately. `LaError::NonFinite` retains the crate-wide non-finite
 contract but uses `NonFiniteOrigin`, `NonFiniteLocation`, and
 `ArithmeticOperation` to distinguish invalid inputs from computed overflow.
+`LaError::InvertedInterval` preserves rejected finite bounds when the lower
+endpoint exceeds the upper endpoint, and `LaError::IntervalRangeExhausted`
+distinguishes finite-input interval range loss from a non-finite value.
 `InvalidToleranceReason` distinguishes negative from non-finite tolerances, and
 `PositiveSemidefiniteViolation` distinguishes negative LDLT pivots from a zero
 pivot with nonzero coupling. Match these public enums with a wildcard and use
@@ -664,6 +747,11 @@ D=2 through D=8. Those rows report `RationalMatrix::det_sign`, `det`, and
 references. Releases produced with the rational-input harness include Criterion
 point estimates and confidence intervals for these rows; comparisons against a
 pre-API baseline retain them as explicit current-only measurements.
+
+The focused `interval` Criterion suite covers conclusive and inconclusive
+relative-coordinate lifted determinant signs at D=4 and the maximum supported
+D=7 workload. Run it with `just bench-interval`; fixture validation stays
+outside the timed closures.
 
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
 

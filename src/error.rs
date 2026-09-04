@@ -4,7 +4,11 @@
 
 use core::fmt;
 
-/// Floating-point operation that produced a non-finite intermediate or result.
+/// Arithmetic operation associated with a computation failure.
+///
+/// This identifies both non-finite intermediates/results through
+/// [`NonFiniteOrigin::Computation`] and finite-endpoint range exhaustion through
+/// [`LaError::IntervalRangeExhausted`].
 ///
 /// # Examples
 /// ```
@@ -31,6 +35,16 @@ pub enum ArithmeticOperation {
     Determinant,
     /// Determinant error-bound calculation.
     DeterminantErrorBound,
+    /// Outward-rounded interval addition.
+    IntervalAddition,
+    /// Exact-real subtraction enclosed by an outward-rounded interval.
+    IntervalSubtraction,
+    /// Outward-rounded interval multiplication.
+    IntervalMultiplication,
+    /// Outward-rounded interval square.
+    IntervalSquare,
+    /// Division-free interval determinant calculation.
+    IntervalDeterminant,
     /// Vector dot-product calculation.
     VectorDotProduct,
     /// Vector squared-norm calculation.
@@ -48,6 +62,11 @@ impl fmt::Display for ArithmeticOperation {
             Self::LdltSolve => "LDLT solve",
             Self::Determinant => "determinant",
             Self::DeterminantErrorBound => "determinant error bound",
+            Self::IntervalAddition => "interval addition",
+            Self::IntervalSubtraction => "interval subtraction",
+            Self::IntervalMultiplication => "interval multiplication",
+            Self::IntervalSquare => "interval square",
+            Self::IntervalDeterminant => "interval determinant",
             Self::VectorDotProduct => "vector dot product",
             Self::VectorSquaredNorm => "vector squared norm",
         })
@@ -103,6 +122,26 @@ pub enum InvalidToleranceReason {
     NotFinite,
 }
 
+/// Endpoint of an interval constructor input.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum IntervalBound {
+    /// Lower endpoint.
+    Lower,
+    /// Upper endpoint.
+    Upper,
+}
+
+/// Operand of a binary scalar operation used to construct an interval.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum IntervalOperand {
+    /// Left operand.
+    Left,
+    /// Right operand.
+    Right,
+}
+
 /// Location at which a non-finite value was observed.
 ///
 /// # Examples
@@ -139,6 +178,18 @@ pub enum NonFiniteLocation {
     Step {
         /// Step index.
         index: usize,
+    },
+    /// Endpoint supplied to an interval constructor.
+    #[non_exhaustive]
+    IntervalBound {
+        /// Bound at which the non-finite value was observed.
+        bound: IntervalBound,
+    },
+    /// Operand supplied to a binary scalar interval constructor.
+    #[non_exhaustive]
+    IntervalOperand {
+        /// Operand at which the non-finite value was observed.
+        operand: IntervalOperand,
     },
     /// Scalar value without a meaningful matrix or vector coordinate.
     Scalar,
@@ -297,13 +348,21 @@ pub enum LaError {
         /// Typed reason for the singularity classification.
         reason: SingularityReason,
     },
-    /// A caller input or arithmetic result is NaN or infinite.
+    /// A caller input or arithmetic intermediate/result is NaN or infinite.
     #[non_exhaustive]
     NonFinite {
         /// Typed location of the value.
         location: NonFiniteLocation,
         /// Whether the value came from input or a particular computation.
         origin: NonFiniteOrigin,
+    },
+    /// An exact-real interval intermediate or result cannot be enclosed by
+    /// finite binary64 endpoints.
+    #[non_exhaustive]
+    IntervalRangeExhausted {
+        /// Operation whose mathematical intermediate or result exceeded the
+        /// finite interval endpoint domain.
+        operation: ArithmeticOperation,
     },
     /// An exact result cannot satisfy the requested finite-`f64` conversion.
     #[non_exhaustive]
@@ -313,6 +372,14 @@ pub enum LaError {
         /// Reason the conversion contract cannot be satisfied.
         reason: UnrepresentableReason,
     },
+    /// A finite interval's lower bound is greater than its upper bound.
+    #[non_exhaustive]
+    InvertedInterval {
+        /// Rejected lower bound.
+        lower: f64,
+        /// Rejected upper bound.
+        upper: f64,
+    },
     /// Exact determinant scaling overflowed the internal exponent representation.
     #[non_exhaustive]
     DeterminantScaleOverflow {
@@ -321,7 +388,7 @@ pub enum LaError {
         /// Minimum decomposed binary64 exponent among non-zero entries.
         min_exponent: i32,
     },
-    /// A runtime matrix dimension has no stack-dispatch arm.
+    /// A matrix algorithm or runtime dispatch helper does not support a dimension.
     #[non_exhaustive]
     UnsupportedDimension {
         /// Runtime dimension requested by the caller.
@@ -443,6 +510,28 @@ impl LaError {
         }
     }
 
+    /// Construct a [`LaError::NonFinite`] input error for a specific interval
+    /// endpoint.
+    #[inline]
+    #[must_use]
+    pub const fn non_finite_input_interval_bound(bound: IntervalBound) -> Self {
+        Self::NonFinite {
+            location: NonFiniteLocation::IntervalBound { bound },
+            origin: NonFiniteOrigin::Input,
+        }
+    }
+
+    /// Construct a [`LaError::NonFinite`] input error for a specific binary
+    /// scalar operand.
+    #[inline]
+    #[must_use]
+    pub const fn non_finite_input_interval_operand(operand: IntervalOperand) -> Self {
+        Self::NonFinite {
+            location: NonFiniteLocation::IntervalOperand { operand },
+            origin: NonFiniteOrigin::Input,
+        }
+    }
+
     /// Construct a [`LaError::NonFinite`] computation error at matrix cell
     /// `(row, col)`, retaining the originating `operation`.
     #[inline]
@@ -480,12 +569,28 @@ impl LaError {
         }
     }
 
+    /// Construct an [`LaError::IntervalRangeExhausted`] failure retaining the
+    /// responsible interval operation.
+    #[inline]
+    #[must_use]
+    pub const fn interval_range_exhausted(operation: ArithmeticOperation) -> Self {
+        Self::IntervalRangeExhausted { operation }
+    }
+
     /// Construct a [`LaError::Unrepresentable`] conversion failure for a scalar
     /// (`index = None`) or vector component (`index = Some(_)`).
     #[inline]
     #[must_use]
     pub const fn unrepresentable(index: Option<usize>, reason: UnrepresentableReason) -> Self {
         Self::Unrepresentable { index, reason }
+    }
+
+    /// Construct a [`LaError::InvertedInterval`] error preserving both rejected
+    /// finite bounds.
+    #[inline]
+    #[must_use]
+    pub const fn inverted_interval(lower: f64, upper: f64) -> Self {
+        Self::InvertedInterval { lower, upper }
     }
 
     /// Return the typed exact-to-`f64` conversion reason, or `None` for every
@@ -619,6 +724,18 @@ fn write_non_finite_location(
         }
         NonFiniteLocation::VectorEntry { index } => write!(f, "vector entry {index}"),
         NonFiniteLocation::Step { index } => write!(f, "step {index}"),
+        NonFiniteLocation::IntervalBound {
+            bound: IntervalBound::Lower,
+        } => f.write_str("interval lower bound"),
+        NonFiniteLocation::IntervalBound {
+            bound: IntervalBound::Upper,
+        } => f.write_str("interval upper bound"),
+        NonFiniteLocation::IntervalOperand {
+            operand: IntervalOperand::Left,
+        } => f.write_str("left interval operand"),
+        NonFiniteLocation::IntervalOperand {
+            operand: IntervalOperand::Right,
+        } => f.write_str("right interval operand"),
         NonFiniteLocation::Scalar => f.write_str("scalar value"),
     }
 }
@@ -668,6 +785,10 @@ impl fmt::Display for LaError {
                 "matrix is numerically singular during {factorization} factorization at pivot column {pivot_col}: pivot magnitude {pivot_magnitude} <= tolerance {tolerance}"
             ),
             Self::NonFinite { location, origin } => write_non_finite(f, location, origin),
+            Self::IntervalRangeExhausted { operation } => write!(
+                f,
+                "exact-real intermediate or result of {operation} has no enclosure with finite binary64 endpoints"
+            ),
             Self::Unrepresentable {
                 index: Some(index),
                 reason: UnrepresentableReason::RequiresRounding,
@@ -690,13 +811,17 @@ impl fmt::Display for LaError {
                 index: None,
                 reason: UnrepresentableReason::NotFinite,
             } => f.write_str("exact result has no finite f64 representation after rounding"),
+            Self::InvertedInterval { lower, upper } => write!(
+                f,
+                "invalid interval bounds [{lower}, {upper}]; expected lower <= upper"
+            ),
             Self::DeterminantScaleOverflow { dim, min_exponent } => write!(
                 f,
                 "exact determinant scale exponent overflows for dimension {dim} with minimum entry exponent {min_exponent}"
             ),
             Self::UnsupportedDimension { requested, max } => write!(
                 f,
-                "unsupported matrix dimension {requested}; maximum stack-dispatch dimension is {max}"
+                "unsupported matrix dimension {requested}; maximum supported dimension is {max}"
             ),
             Self::IndexOutOfBounds { row, col, dim } => write!(
                 f,
@@ -783,6 +908,26 @@ mod tests {
             ArithmeticOperation::VectorSquaredNorm.to_string(),
             "vector squared norm"
         );
+        assert_eq!(
+            ArithmeticOperation::IntervalAddition.to_string(),
+            "interval addition"
+        );
+        assert_eq!(
+            ArithmeticOperation::IntervalSubtraction.to_string(),
+            "interval subtraction"
+        );
+        assert_eq!(
+            ArithmeticOperation::IntervalMultiplication.to_string(),
+            "interval multiplication"
+        );
+        assert_eq!(
+            ArithmeticOperation::IntervalSquare.to_string(),
+            "interval square"
+        );
+        assert_eq!(
+            ArithmeticOperation::IntervalDeterminant.to_string(),
+            "interval determinant"
+        );
     }
 
     #[test]
@@ -834,6 +979,14 @@ mod tests {
         assert_eq!(
             LaError::non_finite_input_scalar().to_string(),
             "non-finite scalar input"
+        );
+        assert_eq!(
+            LaError::non_finite_input_interval_bound(IntervalBound::Upper).to_string(),
+            "non-finite input value at interval upper bound"
+        );
+        assert_eq!(
+            LaError::non_finite_input_interval_operand(IntervalOperand::Left).to_string(),
+            "non-finite input value at left interval operand"
         );
         assert_eq!(
             LaError::non_finite_computation_matrix(ArithmeticOperation::LuFactorization, 2, 1)
@@ -910,6 +1063,37 @@ mod tests {
     }
 
     #[test]
+    fn inverted_interval_error_preserves_both_bounds() {
+        let error = LaError::inverted_interval(2.0, 1.0);
+        assert_eq!(
+            error,
+            LaError::InvertedInterval {
+                lower: 2.0,
+                upper: 1.0,
+            }
+        );
+        assert_eq!(
+            error.to_string(),
+            "invalid interval bounds [2, 1]; expected lower <= upper"
+        );
+    }
+
+    #[test]
+    fn interval_range_error_preserves_operation() {
+        let error = LaError::interval_range_exhausted(ArithmeticOperation::IntervalSquare);
+        assert_eq!(
+            error,
+            LaError::IntervalRangeExhausted {
+                operation: ArithmeticOperation::IntervalSquare,
+            }
+        );
+        assert_eq!(
+            error.to_string(),
+            "exact-real intermediate or result of interval square has no enclosure with finite binary64 endpoints"
+        );
+    }
+
+    #[test]
     fn asymmetric_error_retains_observed_values_and_bound() {
         let err = LaError::asymmetric(0, 2, 3, 1.0, 1.5, 1e-12);
         assert_eq!(
@@ -949,7 +1133,7 @@ mod tests {
         );
         assert_eq!(
             LaError::unsupported_dimension(8, MAX_STACK_MATRIX_DISPATCH_DIM).to_string(),
-            "unsupported matrix dimension 8; maximum stack-dispatch dimension is 7"
+            "unsupported matrix dimension 8; maximum supported dimension is 7"
         );
         assert_eq!(
             LaError::index_out_of_bounds(3, 0, 3).to_string(),

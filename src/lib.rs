@@ -84,6 +84,33 @@ mod readme_doctests {
     /// ```
     fn det_direct_4x4_const_example() {}
 
+    /// ```rust
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let x = Interval::try_from_subtraction(0.1, 0.0)?;
+    /// let y = Interval::try_from_subtraction(0.1, 0.0)?;
+    /// let z = Interval::try_from_subtraction(0.1, 0.0)?;
+    /// let lifted = x
+    ///     .try_square()?
+    ///     .try_add(&y.try_square()?)?
+    ///     .try_add(&z.try_square()?)?;
+    ///
+    /// let matrix = IntervalMatrix::<4>::from_rows([
+    ///     [Interval::ONE, Interval::ZERO, Interval::ZERO, Interval::ONE],
+    ///     [Interval::ZERO, Interval::ONE, Interval::ZERO, Interval::ONE],
+    ///     [Interval::ZERO, Interval::ZERO, Interval::ONE, Interval::ONE],
+    ///     [x, y, z, lifted],
+    /// ]);
+    /// assert_eq!(
+    ///     matrix.det_sign()?,
+    ///     IntervalDeterminantSign::Negative,
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn interval_determinant_example() {}
+
     #[cfg(feature = "exact")]
     /// ```rust
     /// use la_stack::prelude::*;
@@ -259,6 +286,7 @@ mod readme_doctests {
 mod error;
 #[cfg(feature = "exact")]
 mod exact;
+mod interval;
 mod ldlt;
 mod lu;
 mod matrix;
@@ -442,9 +470,11 @@ pub const MAX_STACK_MATRIX_DISPATCH_DIM: usize = 7;
 pub const MAX_RATIONAL_MATRIX_DISPATCH_DIM: usize = 8;
 
 pub use error::{
-    ArithmeticOperation, FactorizationKind, InvalidToleranceReason, LaError, NonFiniteLocation,
-    NonFiniteOrigin, PositiveSemidefiniteViolation, SingularityReason, UnrepresentableReason,
+    ArithmeticOperation, FactorizationKind, IntervalBound, IntervalOperand, InvalidToleranceReason,
+    LaError, NonFiniteLocation, NonFiniteOrigin, PositiveSemidefiniteViolation, SingularityReason,
+    UnrepresentableReason,
 };
+pub use interval::{Interval, IntervalDeterminantSign, IntervalMatrix, MAX_INTERVAL_MATRIX_DIM};
 pub use ldlt::Ldlt;
 pub use lu::Lu;
 pub use matrix::{DeterminantWithErrorBound, Matrix};
@@ -529,6 +559,88 @@ macro_rules! try_with_stack_matrix {
     (@arm_mut $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
         let __la_stack_body = |mut $matrix: $crate::Matrix<$d>| -> $ret { $body };
         __la_stack_body($crate::Matrix::<$d>::zero())
+    }};
+}
+
+/// Fallibly dispatch a runtime dimension to a concrete interval matrix.
+///
+/// The macro creates a zero [`IntervalMatrix`] with the selected const-generic
+/// dimension, then evaluates the closure body. Supported dimensions run from
+/// `0` through [`MAX_INTERVAL_MATRIX_DIM`]. Unsupported dimensions return
+/// [`LaError::UnsupportedDimension`] converted through `From<LaError>`.
+///
+/// # Errors
+/// Returns [`LaError::UnsupportedDimension`] (converted through
+/// `From<LaError>`) when the requested dimension is greater than
+/// [`MAX_INTERVAL_MATRIX_DIM`]. The closure body may return any other error
+/// representable by its declared `Result` type.
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+///
+/// # fn main() -> Result<(), LaError> {
+/// let requested = 3usize;
+/// let sign = try_with_interval_matrix!(requested, |mut matrix| -> Result<
+///     IntervalDeterminantSign,
+///     LaError,
+/// > {
+///     for index in 0..requested {
+///         matrix.set(index, index, Interval::ONE)?;
+///     }
+///     matrix.det_sign()
+/// })?;
+/// assert_eq!(sign, IntervalDeterminantSign::Positive);
+/// # Ok(())
+/// # }
+/// ```
+#[macro_export]
+macro_rules! try_with_interval_matrix {
+    ($dim:expr, |$matrix:ident| -> $ret:ty $body:block $(,)?) => {{
+        let __la_stack_requested_dim: usize = $dim;
+        match __la_stack_requested_dim {
+            0 => $crate::try_with_interval_matrix!(@arm 0, $matrix, $ret, $body),
+            1 => $crate::try_with_interval_matrix!(@arm 1, $matrix, $ret, $body),
+            2 => $crate::try_with_interval_matrix!(@arm 2, $matrix, $ret, $body),
+            3 => $crate::try_with_interval_matrix!(@arm 3, $matrix, $ret, $body),
+            4 => $crate::try_with_interval_matrix!(@arm 4, $matrix, $ret, $body),
+            5 => $crate::try_with_interval_matrix!(@arm 5, $matrix, $ret, $body),
+            6 => $crate::try_with_interval_matrix!(@arm 6, $matrix, $ret, $body),
+            7 => $crate::try_with_interval_matrix!(@arm 7, $matrix, $ret, $body),
+            requested => Err(::core::convert::From::from(
+                $crate::LaError::unsupported_dimension(
+                    requested,
+                    $crate::MAX_INTERVAL_MATRIX_DIM,
+                ),
+            )),
+        }
+    }};
+    ($dim:expr, |mut $matrix:ident| -> $ret:ty $body:block $(,)?) => {{
+        let __la_stack_requested_dim: usize = $dim;
+        match __la_stack_requested_dim {
+            0 => $crate::try_with_interval_matrix!(@arm_mut 0, $matrix, $ret, $body),
+            1 => $crate::try_with_interval_matrix!(@arm_mut 1, $matrix, $ret, $body),
+            2 => $crate::try_with_interval_matrix!(@arm_mut 2, $matrix, $ret, $body),
+            3 => $crate::try_with_interval_matrix!(@arm_mut 3, $matrix, $ret, $body),
+            4 => $crate::try_with_interval_matrix!(@arm_mut 4, $matrix, $ret, $body),
+            5 => $crate::try_with_interval_matrix!(@arm_mut 5, $matrix, $ret, $body),
+            6 => $crate::try_with_interval_matrix!(@arm_mut 6, $matrix, $ret, $body),
+            7 => $crate::try_with_interval_matrix!(@arm_mut 7, $matrix, $ret, $body),
+            requested => Err(::core::convert::From::from(
+                $crate::LaError::unsupported_dimension(
+                    requested,
+                    $crate::MAX_INTERVAL_MATRIX_DIM,
+                ),
+            )),
+        }
+    }};
+    (@arm $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
+        let __la_stack_body = |$matrix: $crate::IntervalMatrix<$d>| -> $ret { $body };
+        __la_stack_body($crate::IntervalMatrix::<$d>::zero())
+    }};
+    (@arm_mut $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
+        let __la_stack_body = |mut $matrix: $crate::IntervalMatrix<$d>| -> $ret { $body };
+        __la_stack_body($crate::IntervalMatrix::<$d>::zero())
     }};
 }
 
@@ -622,13 +734,16 @@ macro_rules! try_with_rational_matrix {
 /// Common imports for ergonomic usage.
 ///
 /// This prelude re-exports the primary types and common constants: [`Matrix`],
-/// [`DeterminantWithErrorBound`], [`Vector`], [`Lu`], [`Ldlt`], [`Tolerance`],
+/// [`DeterminantWithErrorBound`], [`Interval`], [`IntervalMatrix`],
+/// [`IntervalDeterminantSign`], [`Vector`], [`Lu`], [`Ldlt`], [`Tolerance`],
 /// and [`LaError`]. Its typed
 /// error categories include [`ArithmeticOperation`], [`FactorizationKind`],
-/// [`InvalidToleranceReason`], [`NonFiniteLocation`], [`NonFiniteOrigin`],
-/// [`PositiveSemidefiniteViolation`], [`SingularityReason`], and
-/// [`UnrepresentableReason`]. It also re-exports [`DEFAULT_SINGULAR_TOL`],
-/// [`MAX_STACK_MATRIX_DISPATCH_DIM`], and [`try_with_stack_matrix!`] for
+/// [`IntervalBound`], [`IntervalOperand`], [`InvalidToleranceReason`],
+/// [`NonFiniteLocation`], [`NonFiniteOrigin`], [`PositiveSemidefiniteViolation`],
+/// [`SingularityReason`], and [`UnrepresentableReason`]. It also re-exports
+/// [`DEFAULT_SINGULAR_TOL`],
+/// [`MAX_STACK_MATRIX_DISPATCH_DIM`], [`MAX_INTERVAL_MATRIX_DIM`],
+/// [`try_with_stack_matrix!`], and [`try_with_interval_matrix!`] for
 /// runtime-to-const matrix dispatch. Advanced custom-filter code should import
 /// [`ERR_COEFF_2`], [`ERR_COEFF_3`], and [`ERR_COEFF_4`] explicitly from the
 /// crate root; those raw coefficients intentionally stay out of the prelude.
@@ -681,9 +796,11 @@ macro_rules! try_with_rational_matrix {
 pub mod prelude {
     pub use crate::{
         ArithmeticOperation, DEFAULT_SINGULAR_TOL, DeterminantWithErrorBound, FactorizationKind,
-        InvalidToleranceReason, LaError, Ldlt, Lu, MAX_STACK_MATRIX_DISPATCH_DIM, Matrix,
-        NonFiniteLocation, NonFiniteOrigin, PositiveSemidefiniteViolation, SingularityReason,
-        Tolerance, UnrepresentableReason, Vector, try_with_stack_matrix,
+        Interval, IntervalBound, IntervalDeterminantSign, IntervalMatrix, IntervalOperand,
+        InvalidToleranceReason, LaError, Ldlt, Lu, MAX_INTERVAL_MATRIX_DIM,
+        MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, NonFiniteLocation, NonFiniteOrigin,
+        PositiveSemidefiniteViolation, SingularityReason, Tolerance, UnrepresentableReason, Vector,
+        try_with_interval_matrix, try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]
@@ -733,6 +850,38 @@ mod tests {
     gen_stack_matrix_dispatch_tests!(5);
     gen_stack_matrix_dispatch_tests!(6);
     gen_stack_matrix_dispatch_tests!(7);
+
+    macro_rules! gen_interval_matrix_dispatch_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<try_with_interval_matrix_dispatches_ $d d>]() {
+                    let requested = $d;
+                    let got = try_with_interval_matrix!(
+                        requested,
+                        |mut matrix| -> Result<IntervalDeterminantSign, LaError> {
+                            let mut index = 0;
+                            while index < $d {
+                                matrix.set(index, index, Interval::ONE)?;
+                                index += 1;
+                            }
+                            matrix.det_sign()
+                        },
+                    );
+
+                    assert_eq!(got, Ok(IntervalDeterminantSign::Positive));
+                }
+            }
+        };
+    }
+
+    gen_interval_matrix_dispatch_tests!(1);
+    gen_interval_matrix_dispatch_tests!(2);
+    gen_interval_matrix_dispatch_tests!(3);
+    gen_interval_matrix_dispatch_tests!(4);
+    gen_interval_matrix_dispatch_tests!(5);
+    gen_interval_matrix_dispatch_tests!(6);
+    gen_interval_matrix_dispatch_tests!(7);
 
     #[cfg(feature = "exact")]
     macro_rules! gen_rational_matrix_dispatch_tests {
@@ -800,6 +949,16 @@ mod tests {
     }
 
     #[test]
+    fn try_with_interval_matrix_supports_zero_dimension() {
+        let got = try_with_interval_matrix!(0usize, |matrix| -> Result<
+            IntervalDeterminantSign,
+            LaError,
+        > { matrix.det_sign() },);
+
+        assert_eq!(got, Ok(IntervalDeterminantSign::Positive));
+    }
+
+    #[test]
     fn try_with_stack_matrix_evaluates_dimension_once() {
         let mut evaluations = 0;
         let got = try_with_stack_matrix!(
@@ -815,6 +974,21 @@ mod tests {
     }
 
     #[test]
+    fn try_with_interval_matrix_evaluates_dimension_once() {
+        let mut evaluations = 0;
+        let got = try_with_interval_matrix!(
+            {
+                evaluations += 1;
+                2usize
+            },
+            |matrix| -> Result<Interval, LaError> { matrix.try_get(1, 1) },
+        );
+
+        assert_eq!(evaluations, 1);
+        assert_eq!(got, Ok(Interval::ZERO));
+    }
+
+    #[test]
     fn try_with_stack_matrix_reports_unsupported_dimension() {
         let got = try_with_stack_matrix!(8usize, |m| -> Result<f64, LaError> { m.det() });
 
@@ -823,6 +997,22 @@ mod tests {
             Err(LaError::UnsupportedDimension {
                 requested: 8,
                 max: MAX_STACK_MATRIX_DISPATCH_DIM,
+            })
+        );
+    }
+
+    #[test]
+    fn try_with_interval_matrix_reports_unsupported_dimension() {
+        let got = try_with_interval_matrix!(8usize, |matrix| -> Result<
+            IntervalDeterminantSign,
+            LaError,
+        > { matrix.det_sign() },);
+
+        assert_eq!(
+            got,
+            Err(LaError::UnsupportedDimension {
+                requested: 8,
+                max: MAX_INTERVAL_MATRIX_DIM,
             })
         );
     }
@@ -848,6 +1038,22 @@ mod tests {
             Err(DownstreamError(LaError::UnsupportedDimension {
                 requested: 9,
                 max: MAX_STACK_MATRIX_DISPATCH_DIM,
+            }))
+        );
+    }
+
+    #[test]
+    fn try_with_interval_matrix_converts_unsupported_dimension_error() {
+        let got = try_with_interval_matrix!(8usize, |matrix| -> Result<
+            IntervalDeterminantSign,
+            DownstreamError,
+        > { Ok(matrix.det_sign()?) },);
+
+        assert_eq!(
+            got,
+            Err(DownstreamError(LaError::UnsupportedDimension {
+                requested: 8,
+                max: MAX_INTERVAL_MATRIX_DIM,
             }))
         );
     }

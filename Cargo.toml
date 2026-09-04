@@ -81,6 +81,11 @@ name = "exact"
 harness = false
 required-features = [ "bench", "exact" ]
 
+[[bench]]
+name = "interval"
+harness = false
+required-features = [ "bench" ]
+
 [profile.release]
 lto = "fat"
 codegen-units = 1
