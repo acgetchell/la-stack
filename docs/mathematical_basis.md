@@ -48,10 +48,11 @@ fixed dimension” is the intended performance scope. `try_with_stack_matrix!` i
 separately limited to `D = 0..=MAX_STACK_MATRIX_DISPATCH_DIM` (currently 7)
 because it enumerates concrete stack types.
 
-Except for the determinant filter described below, the floating-point APIs do
-not provide certified forward, backward, or absolute error bounds. This includes
-dot products, squared norms, matrix norms, factorizations, and solves. Some
-kernels use FMA to reduce rounding steps, but that does not make them exact.
+Except for the fixed-vector reduction and determinant filters described below,
+the floating-point APIs do not provide certified forward, backward, or absolute
+error bounds. This includes plain `Vector::dot`, squared norms, matrix norms,
+factorizations, and solves. Some kernels use FMA to reduce rounding steps, but
+that does not make them exact.
 
 ## Outward-rounded interval expressions
 
@@ -96,6 +97,51 @@ construction. Robust callers instead assemble those derived coefficients with
 interval operations, use `IntervalMatrix::det_sign()` as a fast proof, and
 rebuild the expression in `RationalMatrix` or another exact representation when
 the filter is inconclusive or loses range.
+
+## Certified fixed-vector reductions
+
+`Vector::dot_with_errbound()` binds the ordinary left-to-right FMA estimate to
+a certified absolute error bound for the exact-real dot product of the stored
+binary64 inputs. Starting from `s₀ = 0`, its arithmetic tree is
+
+```text
+sᵢ₊₁ = fma(leftᵢ, rightᵢ, sᵢ).
+```
+
+`Vector::dot_difference_with_errbound()` targets the exact-real expression
+
+```text
+Σᵢ axisᵢ(leftᵢ - rightᵢ)
+```
+
+without rounding coordinate differences first. For each coordinate it applies
+`fma(axisᵢ, leftᵢ, s)` followed by `fma(-axisᵢ, rightᵢ, s)`, giving a specified
+`2D`-event tree.
+
+Let `u = 2^-53` be binary64 unit roundoff and
+`γₙ = nu / (1 - nu)`. When every estimate FMA result is normal or an exact
+zero, standard floating-point reduction analysis gives [9-11]
+
+```text
+|estimate - exact value| ≤ γₙ Σⱼ |aⱼbⱼ|,
+```
+
+with `n = D` for a dot product and `n = 2D` for the affine difference. The
+implementation constructs an upper bound on the magnitude sum: exact
+integer-significand comparison determines whether each rounded product must move
+to its next representable value, and every positive accumulation is rounded
+upward. The division forming `γₙ` and its final multiplication are also rounded
+upward. `TwoSum` then selects finite outward endpoints for `estimate ± bound`.
+
+The relative-error argument is not used across gradual underflow. A nonzero
+product or estimate FMA in the subnormal range, an invalid `γₙ`, or finite-range
+exhaustion in proof-only arithmetic returns `Ok(None)`. This is inconclusive
+evidence, not equality. A non-finite estimate FMA returns `LaError::NonFinite`
+with the failing reduction index and operation. A returned
+`ScalarWithErrorBound` can certify a sign or threshold comparison from its
+lower/upper endpoints; overlap requires an exact fallback that reconstructs the
+same expression over the original inputs. The certificate is a roundoff bound
+for this arithmetic tree, not a numerical tolerance chosen by the caller.
 
 ## Floating-point factorizations
 

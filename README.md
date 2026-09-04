@@ -25,6 +25,8 @@ while keeping the API intentionally small and explicit.
 - `Matrix<const D: usize>` for fixed-size square `f64` matrices backed by `[[f64; D]; D]`
 - `Interval` and `IntervalMatrix<const D: usize>` for outward-rounded,
   proof-bearing determinant filters through D=7
+- `ScalarWithErrorBound` for proof-bearing fixed-vector dot products and
+  affine differences over finite `f64` inputs
 - `RationalVector<const D: usize>` and `RationalMatrix<const D: usize>` for
   exact rational inputs behind the optional `"exact"` feature
 - `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
@@ -40,7 +42,9 @@ determinants through D=4. These results remain subject to conditioning and
 binary64 rounding;
 factorization tolerances are rejection thresholds, not accuracy guarantees. For
 D≤4, direct determinants can be paired with a conservative absolute roundoff
-bound when its range preconditions hold.
+bound when its range preconditions hold. Fixed-vector dot products and direct
+affine differences can likewise return a paired estimate and certified absolute
+roundoff bound without enabling arbitrary-precision dependencies.
 
 Derived binary64 expressions can instead be assembled with `Interval`
 subtraction, addition, multiplication, negation, and square. The resulting
@@ -68,8 +72,9 @@ for the algorithms, validity boundaries, and supporting references.
   non-finite classification, exact fallbacks, and reproducibility contract;
   deliberate `f64::mul_add` remains allowed for its defined single-rounding
   semantics
-- ✅ Error-bounded f64 determinant filtering plus optional exact signs
-  (`det_errbound`, `det_sign_exact`)
+- ✅ Error-bounded f64 dot, affine-difference, and determinant filtering plus
+  optional exact signs (`dot_with_errbound`, `dot_difference_with_errbound`,
+  `det_errbound`, `det_sign_exact`)
 - ✅ Outward-rounded interval expressions and division-free determinant signs
   through D=7, with explicit inconclusive evidence
 - ✅ Exact determinant values and linear solves via optional arbitrary-precision
@@ -107,6 +112,8 @@ for current release planning.
   for fixed-size systems
 - You need a cheap, sound interval filter for determinant expressions assembled
   from rounded binary64 operations
+- You need a certified sign or threshold comparison for a fixed-vector dot
+  product or `axis · (left - right)` expression
 - Robust predicates matter for geometry-style workloads near degeneracy
 - You prefer a default build with no runtime dependencies
 
@@ -558,6 +565,62 @@ filter and uses fraction-free Bareiss elimination in `BigInt`.
 Because `Matrix` stores only finite entries, arithmetic range failures in the
 filter are inconclusive rather than errors and the exact fallback is total.
 
+## 🎯 Certified dot products and affine differences
+
+`Vector::dot_with_errbound()` evaluates the same left-to-right FMA tree as
+`Vector::dot()` and returns its estimate together with a certified absolute
+roundoff bound. `Vector::dot_difference_with_errbound()` directly evaluates
+
+```text
+Σᵢ axis[i] × (left[i] - right[i])
+```
+
+as two FMAs per coordinate. It does not first round `left - right` into a new
+`Vector`, so the certificate covers the intended expression over the original
+stored binary64 coordinates.
+
+The opaque `ScalarWithErrorBound` exposes the estimate, absolute error bound,
+and finite outward-rounded lower and upper bounds. Those endpoints support
+positive, negative, and caller-selected threshold proofs:
+
+```rust
+use la_stack::prelude::*;
+
+fn is_separated<const D: usize>(
+    axis: &Vector<D>,
+    left: &Vector<D>,
+    right: &Vector<D>,
+    threshold: f64,
+) -> Result<Option<bool>, LaError> {
+    let Some(value) = axis.dot_difference_with_errbound(left, right)? else {
+        return Ok(None);
+    };
+    if value.lower_bound() > threshold {
+        Ok(Some(true))
+    } else if value.upper_bound() <= threshold {
+        Ok(Some(false))
+    } else {
+        Ok(None)
+    }
+}
+
+# fn main() -> Result<(), LaError> {
+let axis = Vector::<2>::try_new([2.0, -1.0])?;
+let left = Vector::<2>::try_new([4.0, 1.0])?;
+let right = Vector::<2>::try_new([1.0, 3.0])?;
+assert_eq!(is_separated(&axis, &left, &right, 1.0)?, Some(true));
+# Ok(())
+# }
+```
+
+An interval that overlaps the threshold is inconclusive, not equal. Likewise,
+`Ok(None)` means gradual underflow or proof-only range exhaustion prevented a
+certificate. A filtered-exact caller should rebuild the same dot or affine
+expression in `BigRational` (available through the `exact` feature) or another
+exact backend. A `LaError::NonFinite` instead reports that the specified FMA
+estimate itself overflowed. These certified bounds describe roundoff in a fixed
+arithmetic tree; they are distinct from user-selected numerical tolerances.
+
 ## 🛡️ Adaptive determinant filtering (D ≤ 4)
 
 `det_direct_with_errbound()` returns a closed-form determinant together with
@@ -635,7 +698,7 @@ out of the common prelude.
 
 | Type | Storage | Purpose | Key methods |
 |---|---|---|---|
-| `Vector<D>` | `[f64; D]` | Finite fixed-length vector for input and computation | `try_new`, `as_array`, `into_array`, `dot`, `norm2_sq` |
+| `Vector<D>` | `[f64; D]` | Finite fixed-length vector for input and computation | `try_new`, `as_array`, `into_array`, `dot`, `dot_with_errbound`, `dot_difference_with_errbound`, `norm2_sq` |
 | `Matrix<D>` | `[[f64; D]; D]` | Finite square matrix for input and computation | See below |
 | `Interval` | Two finite ordered `f64` bounds | Outward-rounded exact-real enclosure | `try_new`, `point`, `try_from_subtraction`, `try_add`, `try_mul`, `negate`, `try_square` |
 | `IntervalMatrix<D>` | `[[Interval; D]; D]` | Division-free determinant enclosure and sign proof through D=7 | `from_rows`, `try_from_point_rows`, `from_matrix`, `det`, `det_sign` |
@@ -643,6 +706,7 @@ out of the common prelude.
 | `RationalVector<D>`¹ | `[BigRational; D]` | Exact rational right-hand side and solution | `try_new`, `try_from_fn`, `as_array`, `into_array`, `get` |
 | `RationalMatrix<D>`¹ | `[[BigRational; D]; D]` | Exact rational matrix for determinant and solve operations | `try_from_rows`, `try_from_fn`, `as_rows`, `det_sign`, `det`, `solve` |
 | `DeterminantWithErrorBound` | Opaque validated pair | Paired direct determinant and certified absolute bound | `determinant`, `absolute_error_bound` |
+| `ScalarWithErrorBound` | Opaque validated certificate | Paired scalar estimate, absolute bound, and outward endpoints | `estimate`, `absolute_error_bound`, `lower_bound`, `upper_bound` |
 | `Lu<D>` | Inline factors + permutation | Factorization for solves/det | `solve`, `det` |
 | `Ldlt<D>` | Inline factors | No-pivot SPD factorization for solves/det | `solve`, `det` |
 | `Tolerance` | finite non-negative `f64` | Validated numerical threshold | `try_new`, `get` |
@@ -752,6 +816,11 @@ The focused `interval` Criterion suite covers conclusive and inconclusive
 relative-coordinate lifted determinant signs at D=4 and the maximum supported
 D=7 workload. Run it with `just bench-interval`; fixture validation stays
 outside the timed closures.
+
+The focused `linear_form` Criterion suite compares plain and certified dot
+products and covers both well-separated and inconclusive dot/affine-difference
+filters at D=4. Run it with `just bench-linear-form`; exact small-integer fixture
+expectations are validated outside the timed closures.
 
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
 

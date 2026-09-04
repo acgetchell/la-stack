@@ -22,6 +22,12 @@ fn common_prelude_supports_downstream_composition() -> Result<(), LaError> {
     };
     assert_abs_diff_eq!(estimate.determinant(), 1.0, epsilon = 0.0);
     assert!(estimate.absolute_error_bound() >= 0.0);
+    let dot_estimate: ScalarWithErrorBound = vector
+        .dot_with_errbound(&vector)?
+        .expect("ordinary vector inputs must have a certified dot bound");
+    assert_abs_diff_eq!(dot_estimate.estimate(), 5.0, epsilon = 0.0);
+    assert!(dot_estimate.lower_bound() <= 5.0);
+    assert!(dot_estimate.upper_bound() >= 5.0);
 
     let lu: Lu<2> = matrix.lu(tolerance)?;
     let ldlt: Ldlt<2> = matrix.ldlt(tolerance)?;

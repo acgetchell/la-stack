@@ -274,6 +274,10 @@ bench-exact:
 bench-interval:
     cargo bench --locked --features bench --bench interval
 
+# Run the certified dot-product and affine-difference benchmark suite.
+bench-linear-form:
+    cargo bench --locked --features bench --bench linear_form
+
 # Run the cheaper latest measurements used for latest-vs-last reports.
 bench-latest: bench-vs-linalg-la-stack bench-exact
 
@@ -506,6 +510,7 @@ help-workflows:
     @echo "  just bench-latest-vs-last   # Run latest and compare against last"
     @echo "  just bench-exact            # Run exact-arithmetic benchmarks"
     @echo "  just bench-interval         # Run interval determinant benchmarks"
+    @echo "  just bench-linear-form      # Run certified linear-form benchmarks"
     @echo "  just bench-save-last        # Save full baseline as 'last'"
     @echo "  just bench-vs-linalg        # Run vs_linalg bench (optional filter)"
     @echo "  just bench-vs-linalg-la-stack # Run la-stack rows from vs_linalg"

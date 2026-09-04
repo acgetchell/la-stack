@@ -170,7 +170,7 @@ const fn compare_binary_magnitudes(
 
 /// Compare the exact-real product `left × right` with its rounded result.
 #[inline]
-const fn compare_product_with_rounded(left: f64, right: f64, rounded: f64) -> i8 {
+pub(crate) const fn compare_product_with_rounded(left: f64, right: f64, rounded: f64) -> i8 {
     let negative = left.is_sign_negative() != right.is_sign_negative();
     if rounded == 0.0 {
         return if negative { -1 } else { 1 };
