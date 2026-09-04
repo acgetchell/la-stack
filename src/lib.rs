@@ -321,8 +321,10 @@ mod interval;
 mod ldlt;
 mod lu;
 mod matrix;
+mod norm;
 #[cfg(feature = "exact")]
 mod rational;
+mod rounding;
 mod scaled_product;
 mod tolerance;
 mod vector;
@@ -1061,7 +1063,7 @@ mod tests {
     #[test]
     fn try_with_stack_matrix_converts_unsupported_dimension_error() {
         let got = try_with_stack_matrix!(9usize, |m| -> Result<usize, DownstreamError> {
-            assert_abs_diff_eq!(m.inf_norm()?, 0.0, epsilon = 0.0);
+            assert_abs_diff_eq!(m.norm_inf()?, 0.0, epsilon = 0.0);
             Ok(0)
         });
 

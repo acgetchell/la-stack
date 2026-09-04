@@ -486,9 +486,11 @@ impl<const D: usize> Matrix<D> {
 
     /// Infinity norm (maximum absolute row sum).
     ///
+    /// This is the induced matrix L∞ norm: `‖A‖∞ = maxᵢ Σⱼ |Aᵢⱼ|`, not
+    /// the largest absolute entry. Each row contributes its L₁ norm.
+    ///
     /// # Non-finite handling
-    /// Public constructors and setters reject raw non-finite entries, but
-    /// `Matrix` values are finite by construction. `inf_norm` returns
+    /// `Matrix` values are finite by construction. [`Self::norm_inf`] returns
     /// [`LaError::NonFinite`] with the matrix cell whose addition first makes a
     /// row sum non-finite.
     ///
@@ -503,7 +505,7 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # fn main() -> Result<(), LaError> {
     /// let m = Matrix::<2>::try_from_rows([[1.0, -2.0], [3.0, 4.0]])?;
-    /// assert!((m.inf_norm()? - 7.0).abs() <= 1e-12);
+    /// assert!((m.norm_inf()? - 7.0).abs() <= 1e-12);
     ///
     /// // Raw NaN entries are rejected with coordinates.
     /// assert_matches!(
@@ -522,7 +524,7 @@ impl<const D: usize> Matrix<D> {
     /// Returns [`LaError::NonFinite`] with matrix coordinates when a row sum
     /// overflows to NaN or infinity.
     #[inline]
-    pub const fn inf_norm(&self) -> Result<f64, LaError> {
+    pub const fn norm_inf(&self) -> Result<f64, LaError> {
         let mut max_row_sum: f64 = 0.0;
 
         let mut r = 0;
@@ -536,7 +538,7 @@ impl<const D: usize> Matrix<D> {
             }
             if !row_sum.is_finite() {
                 cold_path();
-                return Err(Self::inf_norm_overflow_error(row, r));
+                return Err(Self::norm_inf_overflow_error(row, r));
             }
             if row_sum > max_row_sum {
                 max_row_sum = row_sum;
@@ -555,7 +557,7 @@ impl<const D: usize> Matrix<D> {
     /// first column whose addition overflowed; if every earlier prefix is
     /// finite, the final column is that first failure.
     #[cold]
-    const fn inf_norm_overflow_error(row: &[f64; D], row_index: usize) -> LaError {
+    const fn norm_inf_overflow_error(row: &[f64; D], row_index: usize) -> LaError {
         let mut row_sum = 0.0;
         let mut col = 0;
         let last_col = D.saturating_sub(1);
@@ -582,7 +584,7 @@ impl<const D: usize> Matrix<D> {
     ///
     /// Two entries `self[r][c]` and `self[c][r]` are considered equal (for the
     /// purposes of symmetry) when
-    /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, inf_norm(self))`.
+    /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, norm_inf(self))`.
     /// This is a diagnostic predicate for applications that have an
     /// approximation-specific symmetry threshold. It is not the precondition
     /// used by [`ldlt`](Self::ldlt), which requires exact mirrored-entry
@@ -633,7 +635,7 @@ impl<const D: usize> Matrix<D> {
     /// Iteration order is row-major over the strict upper triangle, so the
     /// returned indices are the lexicographically smallest such pair.  The
     /// predicate is the same as [`is_symmetric`](Self::is_symmetric):
-    /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, inf_norm(self))`.
+    /// `|self[r][c] - self[c][r]| <= rel_tol * max(1.0, norm_inf(self))`.
     /// It is intentionally distinct from the exact equality required by
     /// [`ldlt`](Self::ldlt).
     ///
@@ -855,7 +857,7 @@ impl<const D: usize> Matrix<D> {
             return Ok(rel_tol);
         }
 
-        if let Ok(norm) = self.inf_norm() {
+        if let Ok(norm) = self.norm_inf() {
             let scale = if norm > 1.0 { norm } else { 1.0 };
             let eps = rel_tol * scale;
             if eps.is_finite() {
@@ -1804,14 +1806,14 @@ mod tests {
                 #[test]
                 fn [<matrix_zero_and_default_are_zero_ $d d>]() {
                     let z = Matrix::<$d>::zero();
-                    assert_abs_diff_eq!(z.inf_norm().unwrap(), 0.0, epsilon = 0.0);
+                    assert_abs_diff_eq!(z.norm_inf().unwrap(), 0.0, epsilon = 0.0);
 
                     let d = Matrix::<$d>::default();
-                    assert_abs_diff_eq!(d.inf_norm().unwrap(), 0.0, epsilon = 0.0);
+                    assert_abs_diff_eq!(d.norm_inf().unwrap(), 0.0, epsilon = 0.0);
                 }
 
                 #[test]
-                fn [<matrix_inf_norm_max_row_sum_ $d d>]() {
+                fn [<matrix_norm_inf_max_row_sum_ $d d>]() {
                     let mut rows = [[0.0f64; $d]; $d];
 
                     // Row 0 has a smaller absolute row sum.
@@ -1825,18 +1827,18 @@ mod tests {
                     }
 
                     let m = Matrix::<$d>::try_from_rows(rows).unwrap();
-                    assert_abs_diff_eq!(m.inf_norm().unwrap(), f64::from($d), epsilon = 0.0);
+                    assert_abs_diff_eq!(m.norm_inf().unwrap(), f64::from($d), epsilon = 0.0);
                 }
 
                 #[test]
-                fn [<matrix_inf_norm_reports_first_overflowing_column_ $d d>]() {
+                fn [<matrix_norm_inf_reports_first_overflowing_column_ $d d>]() {
                     let mut rows = [[0.0f64; $d]; $d];
                     rows[$d - 1][0] = f64::MAX;
                     rows[$d - 1][1] = f64::MAX;
 
                     let m = Matrix::<$d>::try_from_rows(rows).unwrap();
                     assert_eq!(
-                        m.inf_norm(),
+                        m.norm_inf(),
                         Err(LaError::non_finite_computation_matrix(
                             ArithmeticOperation::MatrixInfinityNorm,
                             $d - 1,
@@ -1846,7 +1848,7 @@ mod tests {
                 }
 
                 #[test]
-                fn [<matrix_inf_norm_reports_first_overflowing_row_ $d d>]() {
+                fn [<matrix_norm_inf_reports_first_overflowing_row_ $d d>]() {
                     let mut rows = [[0.0f64; $d]; $d];
                     rows[0][0] = f64::MAX;
                     rows[0][$d - 1] = f64::MAX;
@@ -1855,7 +1857,7 @@ mod tests {
 
                     let m = Matrix::<$d>::try_from_rows(rows).unwrap();
                     assert_eq!(
-                        m.inf_norm(),
+                        m.norm_inf(),
                         Err(LaError::non_finite_computation_matrix(
                             ArithmeticOperation::MatrixInfinityNorm,
                             0,
@@ -1911,13 +1913,13 @@ mod tests {
     gen_matrix_tests!(5);
 
     #[test]
-    fn matrix_inf_norm_preserves_left_to_right_row_sum_order() {
+    fn matrix_norm_inf_preserves_left_to_right_row_sum_order() {
         let large = 9_007_199_254_740_992.0;
         let matrix =
             Matrix::<4>::try_from_rows([[large, 1.0, 1.0, 1.0], [0.0; 4], [0.0; 4], [0.0; 4]])
                 .unwrap();
 
-        assert_eq!(matrix.inf_norm(), Ok(large));
+        assert_eq!(matrix.norm_inf(), Ok(large));
     }
 
     // === det_direct tests ===
@@ -2552,27 +2554,27 @@ mod tests {
         assert_eq!(BOUND, Ok(None));
     }
 
-    // === inf_norm const-evaluability tests (D = 2..=5) ===
+    // === norm_inf const-evaluability tests (D = 2..=5) ===
 
-    macro_rules! gen_inf_norm_const_eval_tests {
+    macro_rules! gen_norm_inf_const_eval_tests {
         ($d:literal) => {
             paste! {
-                /// `Matrix::<D>::inf_norm()` on the identity must const-evaluate
+                /// `Matrix::<D>::norm_inf()` on the identity must const-evaluate
                 /// to `1.0` for every `D ≥ 1` — each row has a single `1.0`
                 /// entry, so the max absolute row sum is exactly `1.0`.
                 #[test]
-                fn [<inf_norm_const_eval_ $d d>]() {
-                    const NORM: Result<f64, LaError> = Matrix::<$d>::identity().inf_norm();
+                fn [<norm_inf_const_eval_ $d d>]() {
+                    const NORM: Result<f64, LaError> = Matrix::<$d>::identity().norm_inf();
                     assert!((NORM.unwrap() - 1.0).abs() <= 1e-12);
                 }
             }
         };
     }
 
-    gen_inf_norm_const_eval_tests!(2);
-    gen_inf_norm_const_eval_tests!(3);
-    gen_inf_norm_const_eval_tests!(4);
-    gen_inf_norm_const_eval_tests!(5);
+    gen_norm_inf_const_eval_tests!(2);
+    gen_norm_inf_const_eval_tests!(3);
+    gen_norm_inf_const_eval_tests!(4);
+    gen_norm_inf_const_eval_tests!(5);
 
     // === is_symmetric / first_asymmetry (public LDLT preconditions helpers) ===
 
@@ -2709,8 +2711,8 @@ mod tests {
     }
 
     #[test]
-    fn is_symmetric_tolerance_scales_with_inf_norm() {
-        // Off-diagonal entries differ by 1e-6.  With inf_norm ≈ 2e6, the
+    fn is_symmetric_tolerance_scales_with_norm_inf() {
+        // Off-diagonal entries differ by 1e-6.  With norm_inf ≈ 2e6, the
         // relative tolerance 1e-12 yields eps ≈ 2e-6, which accepts the gap;
         // a stricter tol of 1e-15 rejects it.
         let a = Matrix::<2>::try_from_rows([[1.0e6, 1.0e6 + 1.0e-6], [1.0e6, 1.0e6]]).unwrap();
@@ -2733,7 +2735,7 @@ mod tests {
 
         let matrix = Matrix::<5>::try_from_rows(rows).unwrap();
         let tolerance = Tolerance::try_new(min_subnormal).unwrap();
-        let expected_epsilon = tolerance.get() * matrix.inf_norm().unwrap().max(1.0);
+        let expected_epsilon = tolerance.get() * matrix.norm_inf().unwrap().max(1.0);
 
         assert_eq!(expected_epsilon.to_bits(), 2);
         assert_eq!(matrix.first_asymmetry(tolerance), Ok(None));
@@ -2746,7 +2748,7 @@ mod tests {
             Matrix::<2>::try_from_rows([[f64::MAX, f64::MAX], [f64::MAX / 2.0, f64::MAX]]).unwrap();
 
         assert_eq!(
-            matrix.inf_norm(),
+            matrix.norm_inf(),
             Err(LaError::non_finite_computation_matrix(
                 ArithmeticOperation::MatrixInfinityNorm,
                 0,
@@ -2785,7 +2787,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            a.inf_norm(),
+            a.norm_inf(),
             Err(LaError::non_finite_computation_matrix(
                 ArithmeticOperation::MatrixInfinityNorm,
                 1,

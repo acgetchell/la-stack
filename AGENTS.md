@@ -94,7 +94,7 @@ invariant over the convenient edit.
   `Option` instead of relying on `panic!`, `assert!`, `unwrap`, or `expect`.
 - Borrow by default (`&T`, `&[T]`); return borrowed views when possible.
 - Type and function names match textbook vocabulary (`Matrix`, `Vector`,
-  `Lu`, `Ldlt`, `solve`, `det`, `inf_norm`). Avoid Rust-ecosystem
+  `Lu`, `Ldlt`, `solve`, `det`, `norm_inf`). Avoid Rust-ecosystem
   abstractions that obscure the math.
 
 ### Scientific notation in docs
@@ -448,7 +448,7 @@ When creating or updating issues:
     exact-conversion categories
   - `src/tolerance.rs`: validated singular-tolerance policy
   - `src/vector.rs`: `Vector<const D: usize>` (`[f64; D]`)
-  - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `try_get`, `set`, `inf_norm`, `det`, `det_direct`)
+  - `src/matrix.rs`: `Matrix<const D: usize>` (`[[f64; D]; D]`) + helpers (`get`, `try_get`, `set`, `norm_inf`, `det`, `det_direct`)
   - `src/lu.rs`: `Lu<const D: usize>` factorization with partial pivoting (`solve`, `det`)
   - `src/ldlt.rs`: `Ldlt<const D: usize>` factorization without pivoting for exactly
     symmetric positive-definite matrices (`solve`, `det`)

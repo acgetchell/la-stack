@@ -1725,7 +1725,7 @@ impl<const D: usize> Matrix<D> {
     ///     [4.0, 5.0, 6.0],
     ///     [7.0, 8.0, 9.0],
     /// ])?;
-    /// // This matrix is singular (row 3 = row 1 + row 2 in exact arithmetic).
+    /// // This matrix is singular (row 3 = 2 × row 2 − row 1 in exact arithmetic).
     /// assert_eq!(m.det_sign_exact(), DeterminantSign::Zero);
     ///
     /// assert_eq!(Matrix::<3>::identity().det_sign_exact(), DeterminantSign::Positive);

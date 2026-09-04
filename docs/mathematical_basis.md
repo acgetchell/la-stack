@@ -50,9 +50,43 @@ because it enumerates concrete stack types.
 
 Except for the fixed-vector reduction and determinant filters described below,
 the floating-point APIs do not provide certified forward, backward, or absolute
-error bounds. This includes plain `Vector::dot`, squared norms, matrix norms,
-factorizations, and solves. Some kernels use FMA to reduce rounding steps, but
-that does not make them exact.
+error bounds. This includes plain `Vector::dot`, Euclidean and squared norms,
+matrix norms, factorizations, and solves. Some kernels use FMA to reduce rounding
+steps, but that does not make them exact.
+
+## Scaled Euclidean vector norm
+
+`Vector::norm` computes `sqrt(Σᵢ xᵢ²)` with a left-to-right scaled
+sum-of-squares recurrence. Its state represents the accumulated squared norm as
+`scale² × scaled_sum`. For each nonzero `|xᵢ|`, either `|xᵢ| / scale` is
+squared and accumulated, or a larger `|xᵢ|` becomes the new scale and the old
+sum is rescaled. Every squared ratio is therefore at most one, which avoids raw
+square overflow and scales all-subnormal vectors into a safe range \[15\].
+
+Division, FMA, square root, and final rescaling still round in binary64. The
+method is deterministic for a fixed coordinate order but does not generally
+claim correct rounding or publish a certified error bound.
+
+Near the upper range, a fixed-size integer accumulator avoids both false and
+hidden overflow from the rounded recurrence. Every coordinate square is an
+integer multiple of `2^-2148` and is below `2^2048`, so 4196 bits plus
+`usize::BITS` carry bits suffice for every representable vector length. The
+fallback sums these integer squares exactly, retaining even the smallest
+subnormal square. It compares against squared binary64 rounding midpoints to
+return the nearest norm, ties to even, without a floating square root. The
+overflow midpoint is `f64::MAX + 2^970`; equality rounds to infinity \[9-10\].
+
+The fallback is selected from the largest coordinate magnitude, independently
+of the rounded norm. With `b = bit_length(D)`, a largest magnitude at most
+`2^(1023-b)` gives the conservative L1 upper bound `D × scale < 2^1023`, so
+the ordinary recurrence has ample overflow margin. Larger magnitudes use the
+exact boundary calculation. Its fixed storage stays on the stack and requires
+no `exact` feature.
+
+A scalar `LaError::NonFinite` tagged with `ArithmeticOperation::VectorNorm`
+therefore means the exact norm rounds to infinity. `Vector::norm_squared`
+intentionally remains the direct FMA sum `Σᵢ xᵢ²` and may therefore fail even
+when `norm` succeeds.
 
 ## Outward-rounded interval expressions
 

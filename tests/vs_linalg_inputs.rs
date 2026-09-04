@@ -20,9 +20,15 @@ pub mod vs_linalg_common;
 #[cfg(not(la_stack_v0_4_3_api))]
 use vs_linalg_common::make_balanced_dynamic_range_rows;
 use vs_linalg_common::{
-    PreparedFaerLuDet, faer_det_from_ldlt, faer_perm_sign, la_stack_dot, la_stack_tolerance,
-    make_ill_conditioned_matrix_rows, make_matrix_rows, make_pivoting_matrix_rows,
-    make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
+    PreparedFaerLuDet, faer_det_from_ldlt, faer_perm_sign, la_stack_dot, la_stack_norm_inf,
+    la_stack_norm_squared, la_stack_tolerance, make_ill_conditioned_matrix_rows, make_matrix_rows,
+    make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
+};
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+use vs_linalg_common::{
+    delaunay_scaled_norm, iterative_hypot, make_norm_descending_array,
+    make_norm_repeated_scale_array, make_norm_sparse_array, make_norm_wide_dynamic_range_array,
+    norm_scenarios,
 };
 
 /// Assert scalar agreement with a tolerance that scales for larger magnitudes.
@@ -169,7 +175,7 @@ fn assert_ldlt_agreement<const D: usize>() {
     );
 }
 
-/// Check vector dot-product and squared-norm agreement for one benchmark dimension.
+/// Check vector dot-product and norm agreement for one benchmark dimension.
 fn assert_vector_operation_agreement<const D: usize>() {
     let v1 = Vector::<D>::try_new(make_vector_array::<D>(0.0))
         .unwrap_or_else(|err| panic!("la_stack vector construction failed: {err}"));
@@ -188,12 +194,67 @@ fn assert_vector_operation_agreement<const D: usize>() {
     }
     assert_close("faer_dot", fa_dot, la_dot);
 
-    let la_norm2_sq = v1
-        .norm2_sq()
-        .unwrap_or_else(|err| panic!("la_stack norm2_sq failed: {err}"));
-    assert_close("nalgebra_norm_squared", nv1.norm_squared(), la_norm2_sq);
-    let fa_norm2_sq = fv1.as_mat_ref().squared_norm_l2();
-    assert_close("faer_norm2_sq", fa_norm2_sq, la_norm2_sq);
+    let la_norm_squared = la_stack_norm_squared(&v1)
+        .unwrap_or_else(|err| panic!("la_stack norm_squared failed: {err}"));
+    assert_close("nalgebra_norm_squared", nv1.norm_squared(), la_norm_squared);
+    let fa_norm_squared = fv1.as_mat_ref().squared_norm_l2();
+    assert_close("faer_norm2_sq", fa_norm_squared, la_norm_squared);
+
+    #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+    {
+        let la_norm = v1
+            .norm()
+            .unwrap_or_else(|err| panic!("la_stack norm failed: {err}"));
+        assert_close(
+            "iterative_f64_hypot",
+            iterative_hypot(v1.as_array()),
+            la_norm,
+        );
+        assert_close(
+            "delaunay_scaled_norm",
+            delaunay_scaled_norm(v1.as_array()),
+            la_norm,
+        );
+        assert_close("nalgebra_norm", nv1.norm(), la_norm);
+        assert_close("faer_norm_l2", fv1.as_mat_ref().norm_l2(), la_norm);
+
+        for (scenario, values) in norm_scenarios::<D>() {
+            let vector = Vector::<D>::try_new(values).unwrap_or_else(|err| {
+                panic!("la_stack {scenario} norm scenario construction failed: {err}")
+            });
+            let expected = vector
+                .norm()
+                .unwrap_or_else(|err| panic!("la_stack {scenario} norm failed: {err}"));
+            assert_close(scenario, iterative_hypot(&values), expected);
+            assert_close(scenario, delaunay_scaled_norm(&values), expected);
+        }
+    }
+}
+
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[test]
+fn norm_scenario_inputs_cover_distinct_branch_and_range_profiles() {
+    let descending = make_norm_descending_array::<8>();
+    assert!(
+        descending
+            .windows(2)
+            .all(|pair| pair[0].abs() > pair[1].abs())
+    );
+
+    let repeated = make_norm_repeated_scale_array::<8>();
+    assert!(
+        repeated
+            .iter()
+            .all(|entry| entry.abs().to_bits() == 3.0f64.to_bits())
+    );
+
+    let sparse = make_norm_sparse_array::<8>();
+    assert_eq!(sparse.iter().filter(|entry| **entry != 0.0).count(), 1);
+
+    let wide = make_norm_wide_dynamic_range_array::<8>();
+    assert!(wide.iter().any(|entry| entry.abs() >= 1.0e200));
+    assert!(wide.iter().any(|entry| entry.is_subnormal()));
+    assert!(wide.contains(&0.0));
 }
 
 #[test]
@@ -340,15 +401,14 @@ fn stress_inputs_exercise_pivoting_conditioning_and_scaled_products() {
 }
 
 /// Check matrix infinity-norm agreement for one benchmark dimension.
-fn assert_matrix_inf_norm_agreement<const D: usize>() {
+fn assert_matrix_norm_inf_agreement<const D: usize>() {
     let a = Matrix::<D>::try_from_rows(make_matrix_rows::<D>())
         .unwrap_or_else(|err| panic!("la_stack matrix construction failed: {err}"));
     let na = SMatrix::<f64, D, D>::from_fn(matrix_entry::<D>);
     let fa = Mat::<f64>::from_fn(D, D, matrix_entry::<D>);
 
-    let la_norm = a
-        .inf_norm()
-        .unwrap_or_else(|err| panic!("la_stack inf_norm failed: {err}"));
+    let la_norm =
+        la_stack_norm_inf(&a).unwrap_or_else(|err| panic!("la_stack norm_inf failed: {err}"));
     assert_close("nalgebra_inf_norm", nalgebra_inf_norm(&na), la_norm);
     let mut fa_norm = 0.0;
     for r in 0..D {
@@ -383,7 +443,7 @@ macro_rules! gen_smoke_tests {
 
         #[test]
         fn $norm() {
-            assert_matrix_inf_norm_agreement::<$d>();
+            assert_matrix_norm_inf_agreement::<$d>();
         }
     };
 }
@@ -393,54 +453,54 @@ gen_smoke_tests!(
     vs_linalg_lu_agrees_2d,
     vs_linalg_ldlt_agrees_2d,
     vs_linalg_vector_operations_agree_2d,
-    vs_linalg_matrix_inf_norm_agrees_2d
+    vs_linalg_matrix_norm_inf_agrees_2d
 );
 gen_smoke_tests!(
     3,
     vs_linalg_lu_agrees_3d,
     vs_linalg_ldlt_agrees_3d,
     vs_linalg_vector_operations_agree_3d,
-    vs_linalg_matrix_inf_norm_agrees_3d
+    vs_linalg_matrix_norm_inf_agrees_3d
 );
 gen_smoke_tests!(
     4,
     vs_linalg_lu_agrees_4d,
     vs_linalg_ldlt_agrees_4d,
     vs_linalg_vector_operations_agree_4d,
-    vs_linalg_matrix_inf_norm_agrees_4d
+    vs_linalg_matrix_norm_inf_agrees_4d
 );
 gen_smoke_tests!(
     5,
     vs_linalg_lu_agrees_5d,
     vs_linalg_ldlt_agrees_5d,
     vs_linalg_vector_operations_agree_5d,
-    vs_linalg_matrix_inf_norm_agrees_5d
+    vs_linalg_matrix_norm_inf_agrees_5d
 );
 gen_smoke_tests!(
     8,
     vs_linalg_lu_agrees_8d,
     vs_linalg_ldlt_agrees_8d,
     vs_linalg_vector_operations_agree_8d,
-    vs_linalg_matrix_inf_norm_agrees_8d
+    vs_linalg_matrix_norm_inf_agrees_8d
 );
 gen_smoke_tests!(
     16,
     vs_linalg_lu_agrees_16d,
     vs_linalg_ldlt_agrees_16d,
     vs_linalg_vector_operations_agree_16d,
-    vs_linalg_matrix_inf_norm_agrees_16d
+    vs_linalg_matrix_norm_inf_agrees_16d
 );
 gen_smoke_tests!(
     32,
     vs_linalg_lu_agrees_32d,
     vs_linalg_ldlt_agrees_32d,
     vs_linalg_vector_operations_agree_32d,
-    vs_linalg_matrix_inf_norm_agrees_32d
+    vs_linalg_matrix_norm_inf_agrees_32d
 );
 gen_smoke_tests!(
     64,
     vs_linalg_lu_agrees_64d,
     vs_linalg_ldlt_agrees_64d,
     vs_linalg_vector_operations_agree_64d,
-    vs_linalg_matrix_inf_norm_agrees_64d
+    vs_linalg_matrix_norm_inf_agrees_64d
 );

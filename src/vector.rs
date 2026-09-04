@@ -4,7 +4,8 @@
 
 use core::hint::cold_path;
 
-use crate::interval::compare_product_with_rounded;
+use crate::norm::norm_near_overflow;
+use crate::rounding::{compare_product_with_rounded, two_sum_error};
 use crate::{ArithmeticOperation, LaError};
 
 /// A scalar estimate paired with a certified absolute error bound.
@@ -132,18 +133,6 @@ impl ScalarWithErrorBound {
             upper_bound,
         })
     }
-}
-
-/// Return the exact residual of a finite rounded binary64 addition.
-///
-/// This is Knuth's `TwoSum` transform. It is used only to round the published
-/// bound endpoints outward; it is independent of the reduction bound.
-const fn two_sum_error(left: f64, right: f64, rounded: f64) -> f64 {
-    let virtual_right = rounded - left;
-    let virtual_left = rounded - virtual_right;
-    let right_error = right - virtual_right;
-    let left_error = left - virtual_left;
-    left_error + right_error
 }
 
 /// State for one certified left-to-right FMA reduction.
@@ -684,7 +673,7 @@ impl<const D: usize> Vector<D> {
 
     /// Squared Euclidean norm.
     ///
-    /// This is computed as `dot(self, self)`, so `norm2_sq` has the same
+    /// This is computed as `dot(self, self)`, so `norm_squared` has the same
     /// `f64` [`mul_add`](f64::mul_add) accumulation behavior as [`dot`](Self::dot).
     /// Intermediate rounding occurs, and this method does not provide a
     /// certified absolute rounding bound for the returned squared norm.
@@ -697,7 +686,7 @@ impl<const D: usize> Vector<D> {
     ///
     /// # fn main() -> Result<(), LaError> {
     /// let v = Vector::<3>::try_new([1.0, 2.0, 3.0])?;
-    /// assert!((v.norm2_sq()? - 14.0).abs() <= 1e-12);
+    /// assert!((v.norm_squared()? - 14.0).abs() <= 1e-12);
     /// # Ok(())
     /// # }
     /// ```
@@ -706,8 +695,87 @@ impl<const D: usize> Vector<D> {
     /// Returns [`LaError::NonFinite`] when the accumulated norm overflows to NaN
     /// or infinity.
     #[inline]
-    pub const fn norm2_sq(&self) -> Result<f64, LaError> {
+    pub const fn norm_squared(&self) -> Result<f64, LaError> {
         self.dot_with_operation(self, ArithmeticOperation::VectorSquaredNorm)
+    }
+
+    /// Overflow- and underflow-safe Euclidean norm.
+    ///
+    /// This computes `sqrt(Σᵢ self[i]²)` with a deterministic left-to-right
+    /// scaled sum-of-squares recurrence. Each non-zero magnitude is divided by
+    /// the largest magnitude seen so far before it is squared, so intermediate
+    /// squares cannot overflow and an all-subnormal vector is scaled into the
+    /// normal range. See `REFERENCES.md` \[15\].
+    ///
+    /// The divisions, fused multiply-adds, square root, and final rescaling are
+    /// rounded in binary64. This method does not claim correct rounding or
+    /// provide a certified absolute error bound. Because [`Vector`] entries are
+    /// finite by construction, it returns a finite non-negative result unless
+    /// the exact Euclidean norm rounds outside the finite binary64 range.
+    /// Near that boundary, a fixed-size stack accumulator sums the coordinate
+    /// squares exactly and compares squared rounding midpoints. This fallback
+    /// prevents accumulated roundoff from causing or hiding overflow and does
+    /// not require the `exact` feature.
+    ///
+    /// Unlike [`norm_squared`](Self::norm_squared), this method does not require the
+    /// squared norm to be representable. For example, the norm of
+    /// `[1.0e200, 1.0e200]` is finite even though its squared norm is not.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let ordinary = Vector::<2>::try_new([3.0, 4.0])?;
+    /// assert_eq!(ordinary.norm()?, 5.0);
+    /// assert_eq!(ordinary.norm_squared()?, 25.0);
+    ///
+    /// let large = Vector::<2>::try_new([1.0e200, 1.0e200])?;
+    /// assert!(large.norm()?.is_finite());
+    /// assert!(large.norm_squared().is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] with
+    /// [`ArithmeticOperation::VectorNorm`] when the exact Euclidean norm rounds
+    /// to infinity under round-to-nearest, ties-to-even.
+    #[inline]
+    pub fn norm(&self) -> Result<f64, LaError> {
+        let mut entries = self.as_array().iter();
+        // The first coordinate establishes the scale without a division or FMA.
+        // A zero (or absent) first coordinate preserves the empty-prefix state.
+        let mut scale = entries.next().copied().unwrap_or(0.0).abs();
+        let mut scaled_sum = 1.0;
+
+        for &entry in entries {
+            let magnitude = entry.abs();
+            if magnitude == 0.0 {
+                continue;
+            }
+
+            if scale < magnitude {
+                let ratio = scale / magnitude;
+                scaled_sum = (scaled_sum * ratio).mul_add(ratio, 1.0);
+                scale = magnitude;
+            } else {
+                let ratio = magnitude / scale;
+                scaled_sum = ratio.mul_add(ratio, scaled_sum);
+            }
+        }
+
+        // With b = bit_length(D), D < 2^b. If scale <= 2^(1023-b),
+        // even the L1 upper bound D*scale is below 2^1023. Both the exact
+        // norm and the rounded recurrence therefore have ample range margin.
+        // Checking scale, rather than only the computed norm, also catches
+        // true overflow that rounding in the recurrence could hide.
+        let dimension_bits = usize::BITS - D.leading_zeros();
+        let safe_scale = f64::from_bits(u64::from(2046 - dimension_bits) << 52);
+        if scale > safe_scale {
+            return norm_near_overflow(self.as_array(), scale);
+        }
+        Ok(scale * scaled_sum.sqrt())
     }
 }
 
@@ -770,7 +838,7 @@ mod tests {
                 }
 
                 #[test]
-                fn [<vector_dot_and_norm2_sq_ $d d>]() {
+                fn [<vector_dot_and_norm_squared_ $d d>]() {
                     // Use black_box to avoid constant-folding/inlining eliminating the actual dot loop,
                     // which can make coverage tools report the mul_add line as uncovered.
 
@@ -800,7 +868,7 @@ mod tests {
                         }
                         acc
                     };
-                    let expected_norm2_sq = {
+                    let expected_norm_squared = {
                         let mut acc = 0.0;
                         let mut i = 0;
                         while i < $d {
@@ -817,8 +885,8 @@ mod tests {
                     // attribution for the loop body.
                     let dot_fn: fn(&Vector<$d>, &Vector<$d>) -> Result<f64, LaError> =
                         black_box(Vector::<$d>::dot);
-                    let norm2_sq_fn: fn(&Vector<$d>) -> Result<f64, LaError> =
-                        black_box(Vector::<$d>::norm2_sq);
+                    let norm_squared_fn: fn(&Vector<$d>) -> Result<f64, LaError> =
+                        black_box(Vector::<$d>::norm_squared);
 
                     assert_abs_diff_eq!(
                         dot_fn(black_box(&a), black_box(&b)).unwrap(),
@@ -826,8 +894,8 @@ mod tests {
                         epsilon = 1e-14
                     );
                     assert_abs_diff_eq!(
-                        norm2_sq_fn(black_box(&a)).unwrap(),
-                        expected_norm2_sq,
+                        norm_squared_fn(black_box(&a)).unwrap(),
+                        expected_norm_squared,
                         epsilon = 1e-14
                     );
                 }
@@ -902,7 +970,7 @@ mod tests {
                 }
 
                 #[test]
-                fn [<vector_dot_and_norm2_sq_reject_overflow_ $d d>]() {
+                fn [<vector_dot_and_norm_squared_reject_overflow_ $d d>]() {
                     let mut a_arr = [1.0f64; $d];
                     a_arr[0] = f64::MAX;
                     let a = Vector::<$d>::new(a_arr);
@@ -933,7 +1001,7 @@ mod tests {
                         ))
                     );
                     assert_eq!(
-                        a.norm2_sq(),
+                        a.norm_squared(),
                         Err(LaError::non_finite_computation_step(
                             ArithmeticOperation::VectorSquaredNorm,
                             0,
@@ -951,12 +1019,50 @@ mod tests {
     gen_vector_tests!(3);
     gen_vector_tests!(4);
     gen_vector_tests!(5);
+    gen_vector_tests!(6);
+    gen_vector_tests!(7);
+    gen_vector_tests!(8);
+
+    fn known_norm_input<const D: usize>() -> ([f64; D], f64) {
+        let mut data = [0.0; D];
+        if D == 1 {
+            data[0] = -5.0;
+        } else if D >= 2 {
+            data[0] = -3.0;
+            data[1] = 4.0;
+        }
+        (data, if D == 0 { 0.0 } else { 5.0 })
+    }
+
+    macro_rules! gen_vector_norm_known_answer_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<vector_norm_known_answer_ $d d>]() {
+                    let (data, expected) = known_norm_input::<$d>();
+                    let vector = Vector::<$d>::new(data);
+
+                    assert_eq!(vector.norm(), Ok(expected));
+                }
+            }
+        };
+    }
+
+    gen_vector_norm_known_answer_tests!(0);
+    gen_vector_norm_known_answer_tests!(1);
+    gen_vector_norm_known_answer_tests!(2);
+    gen_vector_norm_known_answer_tests!(3);
+    gen_vector_norm_known_answer_tests!(4);
+    gen_vector_norm_known_answer_tests!(5);
+    gen_vector_norm_known_answer_tests!(6);
+    gen_vector_norm_known_answer_tests!(7);
+    gen_vector_norm_known_answer_tests!(8);
 
     macro_rules! gen_vector_replay_tests {
         ($d:literal) => {
             paste! {
                 #[test]
-                fn [<vector_dot_and_norm2_sq_report_last_overflowing_step_ $d d>]() {
+                fn [<vector_dot_and_norm_squared_report_last_overflowing_step_ $d d>]() {
                     let mut dot_lhs = [1.0f64; $d];
                     dot_lhs[$d - 1] = f64::MAX;
                     let mut dot_rhs = [1.0f64; $d];
@@ -977,7 +1083,7 @@ mod tests {
                     let vector = Vector::<$d>::new(norm_data);
 
                     assert_eq!(
-                        vector.norm2_sq(),
+                        vector.norm_squared(),
                         Err(LaError::non_finite_computation_step(
                             ArithmeticOperation::VectorSquaredNorm,
                             $d - 1,
@@ -994,17 +1100,17 @@ mod tests {
     gen_vector_replay_tests!(5);
 
     macro_rules! gen_vector_const_eval_tests {
-        ($d:literal, $dot:literal, $norm2_sq:literal) => {
+        ($d:literal, $dot:literal, $norm_squared:literal) => {
             paste! {
                 #[test]
-                fn [<vector_dot_and_norm2_sq_const_eval_ $d d>]() {
+                fn [<vector_dot_and_norm_squared_const_eval_ $d d>]() {
                     const DOT: Result<f64, LaError> = Vector::<$d>::new([1.0; $d])
                         .dot(&Vector::<$d>::new([2.0; $d]));
-                    const NORM2_SQ: Result<f64, LaError> =
-                        Vector::<$d>::new([1.0; $d]).norm2_sq();
+                    const NORM_SQUARED: Result<f64, LaError> =
+                        Vector::<$d>::new([1.0; $d]).norm_squared();
 
                     assert_eq!(DOT, Ok($dot));
-                    assert_eq!(NORM2_SQ, Ok($norm2_sq));
+                    assert_eq!(NORM_SQUARED, Ok($norm_squared));
                 }
             }
         };
@@ -1016,10 +1122,10 @@ mod tests {
     gen_vector_const_eval_tests!(5, 10.0, 5.0);
 
     #[test]
-    fn vector_dot_and_norm2_sq_overflow_const_eval() {
+    fn vector_dot_and_norm_squared_overflow_const_eval() {
         const DOT: Result<f64, LaError> =
             Vector::<2>::new([f64::MAX; 2]).dot(&Vector::<2>::new([1.0; 2]));
-        const NORM2_SQ: Result<f64, LaError> = Vector::<2>::new([f64::MAX; 2]).norm2_sq();
+        const NORM_SQUARED: Result<f64, LaError> = Vector::<2>::new([f64::MAX; 2]).norm_squared();
 
         assert_eq!(
             DOT,
@@ -1029,7 +1135,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            NORM2_SQ,
+            NORM_SQUARED,
             Err(LaError::non_finite_computation_step(
                 ArithmeticOperation::VectorSquaredNorm,
                 0,
@@ -1038,7 +1144,7 @@ mod tests {
     }
 
     #[test]
-    fn vector_dot_and_norm2_sq_preserve_fma_and_left_to_right_order() {
+    fn vector_dot_and_norm_squared_preserve_fma_and_left_to_right_order() {
         let dot_large = 9_007_199_254_740_992.0;
         let dot_lhs = Vector::<4>::new([dot_large, 1.0, 1.0, 1.0]);
         let dot_rhs = Vector::<4>::new([1.0; 4]);
@@ -1050,7 +1156,46 @@ mod tests {
 
         let norm_large = 134_217_728.0;
         let vector = Vector::<4>::new([norm_large, 1.0, 1.0, 1.0]);
-        assert_eq!(vector.norm2_sq(), Ok(norm_large * norm_large));
+        assert_eq!(vector.norm_squared(), Ok(norm_large * norm_large));
+    }
+
+    #[test]
+    fn vector_norm_preserves_zero_sign_and_subnormal_magnitudes() {
+        let signed_zero = Vector::<4>::new([-0.0, 0.0, -0.0, 0.0]);
+        assert_eq!(signed_zero.norm().unwrap().to_bits(), 0.0f64.to_bits());
+
+        let least_subnormal = f64::from_bits(1);
+        let subnormal = Vector::<2>::new([3.0 * least_subnormal, -4.0 * least_subnormal]);
+        assert_eq!(
+            subnormal.norm().unwrap().to_bits(),
+            (5.0 * least_subnormal).to_bits()
+        );
+    }
+
+    #[test]
+    fn vector_norm_handles_mixed_and_overflowing_magnitudes() {
+        let large = Vector::<2>::new([1.0e200, -1.0e200]);
+        let expected = 2.0f64.sqrt() * 1.0e200;
+        assert_abs_diff_eq!(large.norm().unwrap(), expected, epsilon = 2.0e184);
+        assert!(large.norm_squared().is_err());
+
+        let mixed = Vector::<4>::new([1.0e200, 1.0e-200, -f64::from_bits(1), 0.0]);
+        assert_eq!(mixed.norm(), Ok(1.0e200));
+
+        let unrepresentable = Vector::<2>::new([f64::MAX, f64::MAX]);
+        assert_eq!(
+            unrepresentable.norm(),
+            Err(LaError::non_finite_computation_scalar(
+                ArithmeticOperation::VectorNorm,
+            ))
+        );
+    }
+
+    #[test]
+    fn vector_norm_accepts_largest_finite_norm() {
+        let maximum = Vector::<2>::new([f64::MAX, 0.0]);
+
+        assert_eq!(maximum.norm(), Ok(f64::MAX));
     }
 
     #[test]
@@ -1212,7 +1357,7 @@ mod tests {
     }
 
     #[test]
-    fn vector_dot_and_norm2_sq_report_first_middle_overflowing_step() {
+    fn vector_dot_and_norm_squared_report_first_middle_overflowing_step() {
         let dot_lhs = Vector::<3>::new([f64::MAX, f64::MAX, 1.0]);
         let dot_rhs = Vector::<3>::new([1.0; 3]);
         assert_eq!(
@@ -1226,7 +1371,7 @@ mod tests {
         let norm_large = 1.0e154;
         let vector = Vector::<3>::new([norm_large, norm_large, 1.0]);
         assert_eq!(
-            vector.norm2_sq(),
+            vector.norm_squared(),
             Err(LaError::non_finite_computation_step(
                 ArithmeticOperation::VectorSquaredNorm,
                 1,
@@ -1248,7 +1393,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_abs_diff_eq!(difference_bound.absolute_error_bound(), 0.0, epsilon = 0.0);
-        assert_eq!(vector.norm2_sq(), Ok(0.0));
+        assert_eq!(vector.norm_squared(), Ok(0.0));
     }
 
     #[test]
