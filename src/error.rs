@@ -47,6 +47,8 @@ pub enum ArithmeticOperation {
     IntervalDeterminant,
     /// Vector dot-product calculation.
     VectorDotProduct,
+    /// `axis · (left - right)` without first rounding the vector difference.
+    VectorDotDifference,
     /// Vector squared-norm calculation.
     VectorSquaredNorm,
 }
@@ -68,6 +70,7 @@ impl fmt::Display for ArithmeticOperation {
             Self::IntervalSquare => "interval square",
             Self::IntervalDeterminant => "interval determinant",
             Self::VectorDotProduct => "vector dot product",
+            Self::VectorDotDifference => "vector dot difference",
             Self::VectorSquaredNorm => "vector squared norm",
         })
     }
@@ -903,6 +906,10 @@ mod tests {
         assert_eq!(
             ArithmeticOperation::VectorDotProduct.to_string(),
             "vector dot product"
+        );
+        assert_eq!(
+            ArithmeticOperation::VectorDotDifference.to_string(),
+            "vector dot difference"
         );
         assert_eq!(
             ArithmeticOperation::VectorSquaredNorm.to_string(),

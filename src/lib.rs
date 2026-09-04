@@ -111,6 +111,37 @@ mod readme_doctests {
     /// ```
     fn interval_determinant_example() {}
 
+    /// ```rust
+    /// use la_stack::prelude::*;
+    ///
+    /// fn is_separated<const D: usize>(
+    ///     axis: &Vector<D>,
+    ///     left: &Vector<D>,
+    ///     right: &Vector<D>,
+    ///     threshold: f64,
+    /// ) -> Result<Option<bool>, LaError> {
+    ///     let Some(value) = axis.dot_difference_with_errbound(left, right)? else {
+    ///         return Ok(None);
+    ///     };
+    ///     if value.lower_bound() > threshold {
+    ///         Ok(Some(true))
+    ///     } else if value.upper_bound() <= threshold {
+    ///         Ok(Some(false))
+    ///     } else {
+    ///         Ok(None)
+    ///     }
+    /// }
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let axis = Vector::<2>::try_new([2.0, -1.0])?;
+    /// let left = Vector::<2>::try_new([4.0, 1.0])?;
+    /// let right = Vector::<2>::try_new([1.0, 3.0])?;
+    /// assert_eq!(is_separated(&axis, &left, &right, 1.0)?, Some(true));
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn certified_linear_form_example() {}
+
     #[cfg(feature = "exact")]
     /// ```rust
     /// use la_stack::prelude::*;
@@ -479,7 +510,7 @@ pub use ldlt::Ldlt;
 pub use lu::Lu;
 pub use matrix::{DeterminantWithErrorBound, Matrix};
 pub use tolerance::{DEFAULT_SINGULAR_TOL, Tolerance};
-pub use vector::Vector;
+pub use vector::{ScalarWithErrorBound, Vector};
 
 /// Fallibly dispatch a runtime dimension to a concrete stack-allocated matrix.
 ///
@@ -735,7 +766,8 @@ macro_rules! try_with_rational_matrix {
 ///
 /// This prelude re-exports the primary types and common constants: [`Matrix`],
 /// [`DeterminantWithErrorBound`], [`Interval`], [`IntervalMatrix`],
-/// [`IntervalDeterminantSign`], [`Vector`], [`Lu`], [`Ldlt`], [`Tolerance`],
+/// [`IntervalDeterminantSign`], [`ScalarWithErrorBound`], [`Vector`], [`Lu`],
+/// [`Ldlt`], [`Tolerance`],
 /// and [`LaError`]. Its typed
 /// error categories include [`ArithmeticOperation`], [`FactorizationKind`],
 /// [`IntervalBound`], [`IntervalOperand`], [`InvalidToleranceReason`],
@@ -799,8 +831,8 @@ pub mod prelude {
         Interval, IntervalBound, IntervalDeterminantSign, IntervalMatrix, IntervalOperand,
         InvalidToleranceReason, LaError, Ldlt, Lu, MAX_INTERVAL_MATRIX_DIM,
         MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, NonFiniteLocation, NonFiniteOrigin,
-        PositiveSemidefiniteViolation, SingularityReason, Tolerance, UnrepresentableReason, Vector,
-        try_with_interval_matrix, try_with_stack_matrix,
+        PositiveSemidefiniteViolation, ScalarWithErrorBound, SingularityReason, Tolerance,
+        UnrepresentableReason, Vector, try_with_interval_matrix, try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]

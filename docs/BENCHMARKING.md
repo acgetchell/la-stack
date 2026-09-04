@@ -29,6 +29,7 @@ the commands measure and where their outputs go.
 | Fast saved-baseline loop | `just bench-save-baseline <name> <suite>` then `just bench-compare <name> <suite> all-benches` |
 | Full crate comparison | `just bench-vs-linalg` |
 | Interval determinant filter | `just bench-interval` |
+| Certified dot/linear-form filter | `just bench-linear-form` |
 | README table and plot | `just performance-release` then `just performance-readme` |
 | Release report | `just performance-release v0.4.5 v0.4.4` |
 | Build docs from retained release inputs | `just performance-doc` |
@@ -64,7 +65,7 @@ promotion in one command.
 
 ## Benchmark Suites
 
-`la-stack` has three Criterion benchmark suites.
+`la-stack` has four Criterion benchmark suites.
 
 Newly rendered reports use one table per selected suite. Dimension and
 adversarial-input group appear in a `Case` column instead of creating a separate
@@ -96,6 +97,14 @@ boundary regime, and a conclusive 7×7 lifted workload at the supported dimensio
 limit. Fixture construction and expected-sign validation occur outside the
 timed closures. This suite is a focused kernel signal; it is not part of the
 release-to-release `vs_linalg` or `exact` report schema.
+
+**`linear_form`** (`benches/linear_form.rs`) measures the default-feature
+certified dot-product and affine-difference filters at D=4. It compares the
+well-separated bounded dot product with the same plain `Vector::dot` input and
+also covers dot and affine-difference cases whose certified intervals overlap
+zero. Fixture construction and exact small-integer expectations are validated
+outside the timed closures. This focused kernel signal is not part of the
+release-to-release report schema.
 
 ## Common Workflows
 

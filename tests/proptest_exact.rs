@@ -146,6 +146,50 @@ fn big_rational_matvec<const D: usize>(
     })
 }
 
+/// Evaluate a dot product over the exact rational values of binary64 inputs.
+fn big_rational_dot<const D: usize>(left: &[f64; D], right: &[f64; D]) -> BigRational {
+    let mut sum = BigRational::from_integer(BigInt::from(0));
+    for (&left, &right) in left.iter().zip(right) {
+        let left = BigRational::from_f64(left).expect("finite f64 converts exactly");
+        let right = BigRational::from_f64(right).expect("finite f64 converts exactly");
+        sum += left * right;
+    }
+    sum
+}
+
+/// Evaluate `axis · (left - right)` without rounding coordinate differences.
+fn big_rational_dot_difference<const D: usize>(
+    axis: &[f64; D],
+    left: &[f64; D],
+    right: &[f64; D],
+) -> BigRational {
+    let mut sum = BigRational::from_integer(BigInt::from(0));
+    for ((&axis, &left), &right) in axis.iter().zip(left).zip(right) {
+        let axis = BigRational::from_f64(axis).expect("finite f64 converts exactly");
+        let left = BigRational::from_f64(left).expect("finite f64 converts exactly");
+        let right = BigRational::from_f64(right).expect("finite f64 converts exactly");
+        sum += axis * (left - right);
+    }
+    sum
+}
+
+/// Check both published forms of a scalar certificate against an exact oracle.
+fn scalar_certificate_contains_exact(
+    certificate: ScalarWithErrorBound,
+    exact: &BigRational,
+) -> bool {
+    let estimate = BigRational::from_f64(certificate.estimate())
+        .expect("a scalar certificate has a finite estimate");
+    let error_bound = BigRational::from_f64(certificate.absolute_error_bound())
+        .expect("a scalar certificate has a finite error bound");
+    let lower = BigRational::from_f64(certificate.lower_bound())
+        .expect("a scalar certificate has a finite lower bound");
+    let upper = BigRational::from_f64(certificate.upper_bound())
+        .expect("a scalar certificate has a finite upper bound");
+
+    (estimate - exact).abs() <= error_bound && lower <= *exact && *exact <= upper
+}
+
 /// Compute an exact determinant via the Leibniz permutation expansion.
 ///
 /// This is intentionally independent from the production Bareiss core. It is
@@ -644,6 +688,92 @@ macro_rules! gen_det_errbound_leibniz_oracle_proptests {
 gen_det_errbound_leibniz_oracle_proptests!(2);
 gen_det_errbound_leibniz_oracle_proptests!(3);
 gen_det_errbound_leibniz_oracle_proptests!(4);
+
+/// Certified dot products must enclose an independent exact-rational sum of
+/// products over the stored binary64 values.
+macro_rules! gen_dot_errbound_oracle_proptests {
+    ($d:literal) => {
+        paste! {
+            proptest! {
+                #![proptest_config(with_default_cases(64))]
+
+                #[test]
+                fn [<dot_errbound_contains_exact_binary64_dot_ $d d>](
+                    left in array::[<uniform $d>](
+                        (-50i16..=50i16).prop_map(|value| f64::from(value) / 10.0)
+                    ),
+                    right in array::[<uniform $d>](
+                        (-50i16..=50i16).prop_map(|value| f64::from(value) / 10.0)
+                    ),
+                ) {
+                    let left_vector = Vector::<$d>::try_new(left).unwrap();
+                    let right_vector = Vector::<$d>::try_new(right).unwrap();
+                    let certificate = left_vector
+                        .dot_with_errbound(&right_vector)
+                        .unwrap()
+                        .expect("moderate inputs stay in the certified range");
+                    let exact = big_rational_dot(&left, &right);
+
+                    prop_assert!(
+                        scalar_certificate_contains_exact(certificate, &exact),
+                        "D={} dot certificate {certificate:?} did not contain {exact}",
+                        $d,
+                    );
+                }
+            }
+        }
+    };
+}
+
+gen_dot_errbound_oracle_proptests!(2);
+gen_dot_errbound_oracle_proptests!(3);
+gen_dot_errbound_oracle_proptests!(4);
+gen_dot_errbound_oracle_proptests!(5);
+
+/// The affine-difference certificate is checked against the exact expression
+/// over the original coordinates, never an already-rounded `left - right`.
+macro_rules! gen_dot_difference_errbound_oracle_proptests {
+    ($d:literal) => {
+        paste! {
+            proptest! {
+                #![proptest_config(with_default_cases(64))]
+
+                #[test]
+                fn [<dot_difference_errbound_contains_exact_expression_ $d d>](
+                    axis in array::[<uniform $d>](
+                        (-20i16..=20i16).prop_map(|value| f64::from(value) / 10.0)
+                    ),
+                    left in array::[<uniform $d>](
+                        (-50i16..=50i16).prop_map(|value| f64::from(value) / 10.0)
+                    ),
+                    right in array::[<uniform $d>](
+                        (-50i16..=50i16).prop_map(|value| f64::from(value) / 10.0)
+                    ),
+                ) {
+                    let axis_vector = Vector::<$d>::try_new(axis).unwrap();
+                    let left_vector = Vector::<$d>::try_new(left).unwrap();
+                    let right_vector = Vector::<$d>::try_new(right).unwrap();
+                    let certificate = axis_vector
+                        .dot_difference_with_errbound(&left_vector, &right_vector)
+                        .unwrap()
+                        .expect("moderate inputs stay in the certified range");
+                    let exact = big_rational_dot_difference(&axis, &left, &right);
+
+                    prop_assert!(
+                        scalar_certificate_contains_exact(certificate, &exact),
+                        "D={} affine certificate {certificate:?} did not contain {exact}",
+                        $d,
+                    );
+                }
+            }
+        }
+    };
+}
+
+gen_dot_difference_errbound_oracle_proptests!(2);
+gen_dot_difference_errbound_oracle_proptests!(3);
+gen_dot_difference_errbound_oracle_proptests!(4);
+gen_dot_difference_errbound_oracle_proptests!(5);
 
 /// Exercise the determinant certificate with independently mixed per-entry
 /// exponents spanning zero, subnormal, tiny normal, ordinary, and large finite
