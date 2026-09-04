@@ -47,7 +47,7 @@ pub enum ArithmeticOperation {
     IntervalDeterminant,
     /// Vector dot-product calculation.
     VectorDotProduct,
-    /// Dot product with an unrounded vector difference.
+    /// `axis · (left - right)` without first rounding the vector difference.
     VectorDotDifference,
     /// Vector squared-norm calculation.
     VectorSquaredNorm,
