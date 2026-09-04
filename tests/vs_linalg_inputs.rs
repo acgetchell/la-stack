@@ -24,6 +24,12 @@ use vs_linalg_common::{
     make_ill_conditioned_matrix_rows, make_matrix_rows, make_pivoting_matrix_rows,
     make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
 };
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+use vs_linalg_common::{
+    delaunay_scaled_norm, iterative_hypot, make_norm_descending_array,
+    make_norm_repeated_scale_array, make_norm_sparse_array, make_norm_wide_dynamic_range_array,
+    norm_scenarios,
+};
 
 /// Assert scalar agreement with a tolerance that scales for larger magnitudes.
 fn assert_close(label: &str, actual: f64, expected: f64) {
@@ -169,7 +175,7 @@ fn assert_ldlt_agreement<const D: usize>() {
     );
 }
 
-/// Check vector dot-product and squared-norm agreement for one benchmark dimension.
+/// Check vector dot-product and norm agreement for one benchmark dimension.
 fn assert_vector_operation_agreement<const D: usize>() {
     let v1 = Vector::<D>::try_new(make_vector_array::<D>(0.0))
         .unwrap_or_else(|err| panic!("la_stack vector construction failed: {err}"));
@@ -194,6 +200,62 @@ fn assert_vector_operation_agreement<const D: usize>() {
     assert_close("nalgebra_norm_squared", nv1.norm_squared(), la_norm2_sq);
     let fa_norm2_sq = fv1.as_mat_ref().squared_norm_l2();
     assert_close("faer_norm2_sq", fa_norm2_sq, la_norm2_sq);
+
+    #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+    {
+        let la_norm2 = v1
+            .norm2()
+            .unwrap_or_else(|err| panic!("la_stack norm2 failed: {err}"));
+        assert_close(
+            "iterative_f64_hypot",
+            iterative_hypot(v1.as_array()),
+            la_norm2,
+        );
+        assert_close(
+            "delaunay_scaled_norm",
+            delaunay_scaled_norm(v1.as_array()),
+            la_norm2,
+        );
+        assert_close("nalgebra_norm", nv1.norm(), la_norm2);
+        assert_close("faer_norm_l2", fv1.as_mat_ref().norm_l2(), la_norm2);
+
+        for (scenario, values) in norm_scenarios::<D>() {
+            let vector = Vector::<D>::try_new(values).unwrap_or_else(|err| {
+                panic!("la_stack {scenario} norm scenario construction failed: {err}")
+            });
+            let expected = vector
+                .norm2()
+                .unwrap_or_else(|err| panic!("la_stack {scenario} norm2 failed: {err}"));
+            assert_close(scenario, iterative_hypot(&values), expected);
+            assert_close(scenario, delaunay_scaled_norm(&values), expected);
+        }
+    }
+}
+
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[test]
+fn norm_scenario_inputs_cover_distinct_branch_and_range_profiles() {
+    let descending = make_norm_descending_array::<8>();
+    assert!(
+        descending
+            .windows(2)
+            .all(|pair| pair[0].abs() > pair[1].abs())
+    );
+
+    let repeated = make_norm_repeated_scale_array::<8>();
+    assert!(
+        repeated
+            .iter()
+            .all(|entry| entry.abs().to_bits() == 3.0f64.to_bits())
+    );
+
+    let sparse = make_norm_sparse_array::<8>();
+    assert_eq!(sparse.iter().filter(|entry| **entry != 0.0).count(), 1);
+
+    let wide = make_norm_wide_dynamic_range_array::<8>();
+    assert!(wide.iter().any(|entry| entry.abs() >= 1.0e200));
+    assert!(wide.iter().any(|entry| entry.is_subnormal()));
+    assert!(wide.contains(&0.0));
 }
 
 #[test]

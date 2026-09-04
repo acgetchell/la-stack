@@ -401,12 +401,25 @@ adapter code computes the agreed mathematical kernel inside the timed closure:
 | `det_from_ldlt` / `det_from_cholesky` | Native `Ldlt::det` | Native `Cholesky::determinant` | Harness adapter: product of the D diagonal |
 | `dot` | Native `Vector::dot` | Native `dot` | Harness adapter: left-to-right fused multiply-add loop |
 | `norm2_sq` | Native `Vector::norm2_sq` | Native `norm_squared` | Native `squared_norm_l2` |
+| `norm2` | Native `Vector::norm2` | Native `norm` | Native `norm_l2` |
 | `inf_norm` | Native `Matrix::inf_norm` | Harness adapter: maximum absolute row sum | Harness adapter: maximum absolute row sum |
 
-These adapter timings are benchmark-kernel comparisons, not claims about the
-speed of an identically named public convenience method in every crate. The
-adapter implementation is versioned with the benchmark harness, included in the
+The `norm2` family also measures iterative `f64::hypot` and Delaunay's existing
+dimension-specialized scaled implementation as labeled reference kernels. These
+adapter timings are benchmark-kernel comparisons, not claims about the speed of
+an identically named public convenience method in every crate. Adapter
+implementations are versioned with the benchmark harness, included in the
 benchmark-contract digest, and covered by the cross-crate input smoke tests.
+
+The ordinary cross-crate norm row uses positive magnitudes in increasing order,
+which changes the running scale at every entry in la-stack's one-pass recurrence.
+Additional `norm2` rows cover decreasing magnitudes, repeated scales, sparse
+vectors, and finite values spanning normal, subnormal, and zero magnitudes. Those
+scenario rows compare only la-stack with the two overflow- and underflow-safe
+reference kernels; peer methods whose behavior is not contract-equivalent on the
+wide-range input are deliberately excluded. Fixture construction and agreement
+checks occur before Criterion's measured closures. Run the focused corpus with
+`just bench-vs-linalg-quick norm2_scenario`.
 
 All three crates receive equivalent deterministic inputs for a given dimension:
 
@@ -436,7 +449,7 @@ the reported kernel time or cross-crate ratio.
 
 The integration smoke test `tests/vs_linalg_inputs.rs` reuses the benchmark
 input helpers and verifies that la-stack, nalgebra, and faer agree on the
-determinant, solve, dot, squared-norm, and infinity-norm results for every
+determinant, solve, dot, Euclidean-norm, squared-norm, and infinity-norm results for every
 measured dimension: D=2, 3, 4, 5, 8, 16, 32, and 64. The same focused recipe
 also tests exact-benchmark range and deterministic-generator configuration:
 
@@ -462,6 +475,7 @@ The main comparable metrics are:
 - `solve_from_lu` — solve one right-hand side using a precomputed LU factor
 - `det_from_lu` — compute determinant using a precomputed LU factor
 - `dot` — vector dot product
+- `norm2` — overflow- and underflow-safe Euclidean vector norm
 - `norm2_sq` — squared Euclidean vector norm
 - `inf_norm` — matrix infinity norm, implemented as maximum absolute row sum
 

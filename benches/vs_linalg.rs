@@ -9,6 +9,7 @@
 //! - Determinant groups distinguish factorization-inclusive LU, `Matrix::det`,
 //!   precomputed LU determinant queries, and precomputed LDLT/Cholesky queries.
 //! - Matrix infinity norm is the maximum absolute row sum on all sides.
+//! - Euclidean-norm rows include safe reference kernels as well as peer crates.
 
 use std::hint::black_box;
 
@@ -27,10 +28,13 @@ mod bench_utils;
 pub mod vs_linalg_common;
 
 use bench_utils::OrAbort;
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+use vs_linalg_common::norm_scenarios;
 use vs_linalg_common::{
-    PreparedFaerLuDet, faer_det_from_ldlt, la_stack_dot, la_stack_tolerance,
-    make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows, make_matrix_rows,
-    make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
+    PreparedFaerLuDet, delaunay_scaled_norm, faer_det_from_ldlt, iterative_hypot, la_stack_dot,
+    la_stack_tolerance, make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows,
+    make_matrix_rows, make_pivoting_matrix_rows, make_vector_array, matrix_entry,
+    nalgebra_inf_norm, vector_entry,
 };
 
 /// Build the deterministic la-stack matrix shared by a benchmark family.
@@ -406,7 +410,7 @@ fn register_precomputed_ldlt_determinant_benchmarks<const D: usize>(
     });
 }
 
-/// Register vector dot-product and squared-norm benchmarks.
+/// Register vector dot-product, squared-norm, and Euclidean-norm benchmarks.
 fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, WallTime>) {
     let v1 = la_vector::<D>(0.0, "la_stack vector construction");
     let v2 = la_vector::<D>(1.0, "la_stack vector construction");
@@ -462,6 +466,96 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
             black_box(result);
         });
     });
+
+    #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+    {
+        group.bench_function("la_stack_norm2", |bencher| {
+            bencher.iter(|| {
+                let result = black_box(&v1).norm2().or_abort("la_stack norm2");
+                black_box(result);
+            });
+        });
+    }
+
+    group.bench_function("iterative_f64_hypot", |bencher| {
+        bencher.iter(|| {
+            let result = iterative_hypot(black_box(v1.as_array()));
+            black_box(result);
+        });
+    });
+
+    group.bench_function("delaunay_scaled_norm", |bencher| {
+        bencher.iter(|| {
+            let result = delaunay_scaled_norm(black_box(v1.as_array()));
+            black_box(result);
+        });
+    });
+
+    group.bench_function("nalgebra_norm", |bencher| {
+        bencher.iter(|| {
+            let result = black_box(&nv1).norm();
+            black_box(result);
+        });
+    });
+
+    group.bench_function("faer_norm_l2", |bencher| {
+        bencher.iter(|| {
+            let result = black_box(&fv1).as_mat_ref().norm_l2();
+            black_box(result);
+        });
+    });
+}
+
+/// Validate and register safe Euclidean-norm kernels across branch and range profiles.
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+fn register_norm2_scenario_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, WallTime>) {
+    for (scenario, values) in norm_scenarios::<D>() {
+        let vector = Vector::try_new(values).or_abort("norm2 scenario vector construction");
+        let la_stack = vector
+            .norm2()
+            .or_abort("la_stack norm2 scenario validation");
+        let hypot = iterative_hypot(&values);
+        let delaunay = delaunay_scaled_norm(&values);
+        let scale = la_stack.abs().max(hypot.abs()).max(delaunay.abs()).max(1.0);
+        assert!(
+            la_stack.is_finite()
+                && hypot.is_finite()
+                && delaunay.is_finite()
+                && (hypot - la_stack).abs() <= 1.0e-12 * scale
+                && (delaunay - la_stack).abs() <= 1.0e-12 * scale,
+            "norm2 benchmark scenario {scenario} failed setup validation: \
+             la_stack={la_stack:?}, hypot={hypot:?}, delaunay={delaunay:?}",
+        );
+
+        group.bench_function(format!("la_stack_norm2_scenario_{scenario}"), |bencher| {
+            bencher.iter(|| {
+                let result = black_box(&vector)
+                    .norm2()
+                    .or_abort("la_stack norm2 scenario");
+                black_box(result);
+            });
+        });
+
+        group.bench_function(
+            format!("iterative_f64_hypot_norm2_scenario_{scenario}"),
+            |bencher| {
+                bencher.iter(|| {
+                    let result = iterative_hypot(black_box(&values));
+                    black_box(result);
+                });
+            },
+        );
+
+        group.bench_function(
+            format!("delaunay_scaled_norm_norm2_scenario_{scenario}"),
+            |bencher| {
+                bencher.iter(|| {
+                    let result = delaunay_scaled_norm(black_box(&values));
+                    black_box(result);
+                });
+            },
+        );
+    }
 }
 
 /// Register matrix infinity-norm benchmarks.
@@ -585,6 +679,8 @@ macro_rules! define_vs_linalg_benches_for_dim {
             register_precomputed_lu_determinant_benchmarks::<$d>(&mut group);
             register_precomputed_ldlt_determinant_benchmarks::<$d>(&mut group);
             register_vector_benchmarks::<$d>(&mut group);
+            #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+            register_norm2_scenario_benchmarks::<$d>(&mut group);
             register_matrix_norm_benchmarks::<$d>(&mut group);
             $(
                 $register_stress(&mut group);

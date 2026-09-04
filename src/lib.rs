@@ -321,8 +321,10 @@ mod interval;
 mod ldlt;
 mod lu;
 mod matrix;
+mod norm;
 #[cfg(feature = "exact")]
 mod rational;
+mod rounding;
 mod scaled_product;
 mod tolerance;
 mod vector;

@@ -57,6 +57,18 @@ macro_rules! gen_vector_proptests {
                     // Squared norm is always non-negative for finite inputs.
                     prop_assert!(norm2_sq >= 0.0);
 
+                    // The safe norm agrees with an independently ordered chain
+                    // of binary64 hypot operations on this moderate domain.
+                    let hypot_norm = a_arr
+                        .iter()
+                        .fold(0.0f64, |accumulator, &value| accumulator.hypot(value));
+                    let norm2 = a.norm2().unwrap();
+                    assert_abs_diff_eq!(norm2, hypot_norm, epsilon = 1e-12);
+                    prop_assert!(norm2 >= 0.0 && norm2.is_finite());
+
+                    let negated = Vector::<$d>::try_new(a_arr.map(|value| -value)).unwrap();
+                    prop_assert_eq!(norm2.to_bits(), negated.norm2().unwrap().to_bits());
+
                     // Dot with zero vector is zero.
                     let z = Vector::<$d>::zero();
                     assert_abs_diff_eq!(a.dot(&z).unwrap(), 0.0, epsilon = 1e-14);
@@ -72,3 +84,12 @@ gen_vector_proptests!(2);
 gen_vector_proptests!(3);
 gen_vector_proptests!(4);
 gen_vector_proptests!(5);
+gen_vector_proptests!(6);
+gen_vector_proptests!(7);
+gen_vector_proptests!(8);
+
+#[test]
+fn vector_norm2_zero_dimension_is_always_positive_zero() {
+    let norm = Vector::<0>::zero().norm2().unwrap();
+    assert_eq!(norm.to_bits(), 0.0f64.to_bits());
+}

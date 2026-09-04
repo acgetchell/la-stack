@@ -51,6 +51,8 @@ pub enum ArithmeticOperation {
     VectorDotDifference,
     /// Vector squared-norm calculation.
     VectorSquaredNorm,
+    /// Overflow- and underflow-safe vector Euclidean-norm calculation.
+    VectorNorm,
 }
 
 impl fmt::Display for ArithmeticOperation {
@@ -72,6 +74,7 @@ impl fmt::Display for ArithmeticOperation {
             Self::VectorDotProduct => "vector dot product",
             Self::VectorDotDifference => "vector dot difference",
             Self::VectorSquaredNorm => "vector squared norm",
+            Self::VectorNorm => "vector Euclidean norm",
         })
     }
 }
@@ -914,6 +917,10 @@ mod tests {
         assert_eq!(
             ArithmeticOperation::VectorSquaredNorm.to_string(),
             "vector squared norm"
+        );
+        assert_eq!(
+            ArithmeticOperation::VectorNorm.to_string(),
+            "vector Euclidean norm"
         );
         assert_eq!(
             ArithmeticOperation::IntervalAddition.to_string(),

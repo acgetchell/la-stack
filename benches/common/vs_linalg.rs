@@ -256,6 +256,111 @@ pub fn make_vector_array<const D: usize>(offset: f64) -> [f64; D] {
     data
 }
 
+/// Build a norm input whose non-zero magnitudes decrease after the first entry.
+#[inline]
+#[must_use]
+pub fn make_norm_descending_array<const D: usize>() -> [f64; D] {
+    std::array::from_fn(|index| {
+        let magnitude = vector_entry(D - index - 1, 0.0);
+        if index % 2 == 0 {
+            magnitude
+        } else {
+            -magnitude
+        }
+    })
+}
+
+/// Build a norm input whose entries repeatedly have the same non-zero magnitude.
+#[inline]
+#[must_use]
+pub fn make_norm_repeated_scale_array<const D: usize>() -> [f64; D] {
+    std::array::from_fn(|index| if index % 2 == 0 { 3.0 } else { -3.0 })
+}
+
+/// Build a norm input with one non-zero entry and otherwise skipped zeros.
+#[inline]
+#[must_use]
+pub fn make_norm_sparse_array<const D: usize>() -> [f64; D] {
+    let mut data = [0.0; D];
+    if D > 0 {
+        data[D / 2] = -3.0;
+    }
+    data
+}
+
+/// Build a finite norm input spanning normal, subnormal, and zero magnitudes.
+#[inline]
+#[must_use]
+pub fn make_norm_wide_dynamic_range_array<const D: usize>() -> [f64; D] {
+    const VALUES: [f64; 8] = [
+        1.0e200,
+        -1.0e-200,
+        f64::from_bits(1),
+        0.0,
+        -1.0e100,
+        1.0e-100,
+        1.0,
+        -1.0e200,
+    ];
+
+    std::array::from_fn(|index| VALUES[index % VALUES.len()])
+}
+
+/// Build the named Euclidean-norm scenario corpus in stable benchmark order.
+#[inline]
+#[must_use]
+pub fn norm_scenarios<const D: usize>() -> [(&'static str, [f64; D]); 4] {
+    [
+        ("descending", make_norm_descending_array()),
+        ("repeated_scale", make_norm_repeated_scale_array()),
+        ("sparse", make_norm_sparse_array()),
+        ("wide_dynamic_range", make_norm_wide_dynamic_range_array()),
+    ]
+}
+
+/// Compute a Euclidean norm by chaining the standard library's binary `hypot`.
+///
+/// This is an independent overflow- and underflow-safe reference kernel for the
+/// focused `norm2` benchmarks.
+#[inline]
+#[must_use]
+pub fn iterative_hypot<const D: usize>(values: &[f64; D]) -> f64 {
+    values.iter().fold(0.0, |norm, &value| norm.hypot(value))
+}
+
+/// Reproduce the generalized scaled norm currently owned by Delaunay.
+///
+/// D=2 delegates to binary `hypot`; larger dimensions make one pass for the
+/// maximum magnitude and a second pass for the scaled sum of squares.
+#[inline]
+#[must_use]
+pub fn delaunay_scaled_norm<const D: usize>(values: &[f64; D]) -> f64 {
+    match D {
+        0 => 0.0,
+        1 => values[0].abs(),
+        2 => values[0].hypot(values[1]),
+        _ => {
+            if values.iter().any(|value| value.is_nan()) {
+                return f64::NAN;
+            }
+            if values.iter().any(|value| value.is_infinite()) {
+                return f64::INFINITY;
+            }
+
+            let scale = values.iter().map(|value| value.abs()).fold(0.0, f64::max);
+            if scale == 0.0 {
+                return 0.0;
+            }
+
+            let scaled_sum = values.iter().fold(0.0, |sum, &value| {
+                let ratio = value / scale;
+                ratio.mul_add(ratio, sum)
+            });
+            scale * scaled_sum.sqrt()
+        }
+    }
+}
+
 /// Compute nalgebra's matrix infinity norm using la-stack's row-sum convention.
 #[inline]
 #[must_use]

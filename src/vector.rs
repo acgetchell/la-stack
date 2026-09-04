@@ -4,7 +4,8 @@
 
 use core::hint::cold_path;
 
-use crate::interval::compare_product_with_rounded;
+use crate::norm::norm_near_overflow;
+use crate::rounding::{compare_product_with_rounded, two_sum_error};
 use crate::{ArithmeticOperation, LaError};
 
 /// A scalar estimate paired with a certified absolute error bound.
@@ -132,18 +133,6 @@ impl ScalarWithErrorBound {
             upper_bound,
         })
     }
-}
-
-/// Return the exact residual of a finite rounded binary64 addition.
-///
-/// This is Knuth's `TwoSum` transform. It is used only to round the published
-/// bound endpoints outward; it is independent of the reduction bound.
-const fn two_sum_error(left: f64, right: f64, rounded: f64) -> f64 {
-    let virtual_right = rounded - left;
-    let virtual_left = rounded - virtual_right;
-    let right_error = right - virtual_right;
-    let left_error = left - virtual_left;
-    left_error + right_error
 }
 
 /// State for one certified left-to-right FMA reduction.
@@ -709,6 +698,84 @@ impl<const D: usize> Vector<D> {
     pub const fn norm2_sq(&self) -> Result<f64, LaError> {
         self.dot_with_operation(self, ArithmeticOperation::VectorSquaredNorm)
     }
+
+    /// Overflow- and underflow-safe Euclidean norm.
+    ///
+    /// This computes `sqrt(Σᵢ self[i]²)` with a deterministic left-to-right
+    /// scaled sum-of-squares recurrence. Each non-zero magnitude is divided by
+    /// the largest magnitude seen so far before it is squared, so intermediate
+    /// squares cannot overflow and an all-subnormal vector is scaled into the
+    /// normal range. See `REFERENCES.md` \[15\].
+    ///
+    /// The divisions, fused multiply-adds, square root, and final rescaling are
+    /// rounded in binary64. This method does not claim correct rounding or
+    /// provide a certified absolute error bound. Because [`Vector`] entries are
+    /// finite by construction, it returns a finite non-negative result unless
+    /// the exact Euclidean norm rounds outside the finite binary64 range.
+    /// Near that boundary, a fixed-size stack accumulator sums the coordinate
+    /// squares exactly and compares squared rounding midpoints. This fallback
+    /// prevents accumulated roundoff from causing or hiding overflow and does
+    /// not require the `exact` feature.
+    ///
+    /// Unlike [`norm2_sq`](Self::norm2_sq), this method does not require the
+    /// squared norm to be representable. For example, the norm of
+    /// `[1.0e200, 1.0e200]` is finite even though its squared norm is not.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let ordinary = Vector::<2>::try_new([3.0, 4.0])?;
+    /// assert_eq!(ordinary.norm2()?, 5.0);
+    ///
+    /// let large = Vector::<2>::try_new([1.0e200, 1.0e200])?;
+    /// assert!(large.norm2()?.is_finite());
+    /// assert!(large.norm2_sq().is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::NonFinite`] with
+    /// [`ArithmeticOperation::VectorNorm`] when the exact Euclidean norm rounds
+    /// to infinity under round-to-nearest, ties-to-even.
+    #[inline]
+    pub fn norm2(&self) -> Result<f64, LaError> {
+        let mut entries = self.as_array().iter();
+        // The first coordinate establishes the scale without a division or FMA.
+        // A zero (or absent) first coordinate preserves the empty-prefix state.
+        let mut scale = entries.next().copied().unwrap_or(0.0).abs();
+        let mut scaled_sum = 1.0;
+
+        for &entry in entries {
+            let magnitude = entry.abs();
+            if magnitude == 0.0 {
+                continue;
+            }
+
+            if scale < magnitude {
+                let ratio = scale / magnitude;
+                scaled_sum = (scaled_sum * ratio).mul_add(ratio, 1.0);
+                scale = magnitude;
+            } else {
+                let ratio = magnitude / scale;
+                scaled_sum = ratio.mul_add(ratio, scaled_sum);
+            }
+        }
+
+        // With b = bit_length(D), D < 2^b. If scale <= 2^(1023-b),
+        // even the L1 upper bound D*scale is below 2^1023. Both the exact
+        // norm and the rounded recurrence therefore have ample range margin.
+        // Checking scale, rather than only the computed norm, also catches
+        // true overflow that rounding in the recurrence could hide.
+        let dimension_bits = usize::BITS - D.leading_zeros();
+        let safe_scale = f64::from_bits(u64::from(2046 - dimension_bits) << 52);
+        if scale > safe_scale {
+            return norm_near_overflow(self.as_array(), scale);
+        }
+        Ok(scale * scaled_sum.sqrt())
+    }
 }
 
 impl<const D: usize> Default for Vector<D> {
@@ -951,6 +1018,44 @@ mod tests {
     gen_vector_tests!(3);
     gen_vector_tests!(4);
     gen_vector_tests!(5);
+    gen_vector_tests!(6);
+    gen_vector_tests!(7);
+    gen_vector_tests!(8);
+
+    fn known_norm_input<const D: usize>() -> ([f64; D], f64) {
+        let mut data = [0.0; D];
+        if D == 1 {
+            data[0] = -5.0;
+        } else if D >= 2 {
+            data[0] = -3.0;
+            data[1] = 4.0;
+        }
+        (data, if D == 0 { 0.0 } else { 5.0 })
+    }
+
+    macro_rules! gen_vector_norm2_known_answer_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<vector_norm2_known_answer_ $d d>]() {
+                    let (data, expected) = known_norm_input::<$d>();
+                    let vector = Vector::<$d>::new(data);
+
+                    assert_eq!(vector.norm2(), Ok(expected));
+                }
+            }
+        };
+    }
+
+    gen_vector_norm2_known_answer_tests!(0);
+    gen_vector_norm2_known_answer_tests!(1);
+    gen_vector_norm2_known_answer_tests!(2);
+    gen_vector_norm2_known_answer_tests!(3);
+    gen_vector_norm2_known_answer_tests!(4);
+    gen_vector_norm2_known_answer_tests!(5);
+    gen_vector_norm2_known_answer_tests!(6);
+    gen_vector_norm2_known_answer_tests!(7);
+    gen_vector_norm2_known_answer_tests!(8);
 
     macro_rules! gen_vector_replay_tests {
         ($d:literal) => {
@@ -1051,6 +1156,45 @@ mod tests {
         let norm_large = 134_217_728.0;
         let vector = Vector::<4>::new([norm_large, 1.0, 1.0, 1.0]);
         assert_eq!(vector.norm2_sq(), Ok(norm_large * norm_large));
+    }
+
+    #[test]
+    fn vector_norm2_preserves_zero_sign_and_subnormal_magnitudes() {
+        let signed_zero = Vector::<4>::new([-0.0, 0.0, -0.0, 0.0]);
+        assert_eq!(signed_zero.norm2().unwrap().to_bits(), 0.0f64.to_bits());
+
+        let least_subnormal = f64::from_bits(1);
+        let subnormal = Vector::<2>::new([3.0 * least_subnormal, -4.0 * least_subnormal]);
+        assert_eq!(
+            subnormal.norm2().unwrap().to_bits(),
+            (5.0 * least_subnormal).to_bits()
+        );
+    }
+
+    #[test]
+    fn vector_norm2_handles_mixed_and_overflowing_magnitudes() {
+        let large = Vector::<2>::new([1.0e200, -1.0e200]);
+        let expected = 2.0f64.sqrt() * 1.0e200;
+        assert_abs_diff_eq!(large.norm2().unwrap(), expected, epsilon = 2.0e184);
+        assert!(large.norm2_sq().is_err());
+
+        let mixed = Vector::<4>::new([1.0e200, 1.0e-200, -f64::from_bits(1), 0.0]);
+        assert_eq!(mixed.norm2(), Ok(1.0e200));
+
+        let unrepresentable = Vector::<2>::new([f64::MAX, f64::MAX]);
+        assert_eq!(
+            unrepresentable.norm2(),
+            Err(LaError::non_finite_computation_scalar(
+                ArithmeticOperation::VectorNorm,
+            ))
+        );
+    }
+
+    #[test]
+    fn vector_norm2_accepts_largest_finite_norm() {
+        let maximum = Vector::<2>::new([f64::MAX, 0.0]);
+
+        assert_eq!(maximum.norm2(), Ok(f64::MAX));
     }
 
     #[test]

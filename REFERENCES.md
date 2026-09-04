@@ -131,6 +131,17 @@ guarantee; worst-case growth and average-case behavior are distinct concerns.
 See [1-3, 11-12] for stability analysis, finite-precision behavior, and standard
 algorithmic background.
 
+### Scaled Euclidean vector norm
+
+`Vector::norm2` maintains a scale and a sum of squares relative to that scale,
+avoiding raw coordinate squares that would overflow or underflow. This follows
+the scaled safe-norm approach described by Blue [15]. The implementation retains
+a deterministic coordinate order and documents its binary64 rounding contract;
+it does not generally claim a certified error bound or correct rounding. A
+fixed-size integer sum of exact binary64 squares handles the upper range, using
+the representation and nearest-even rounding model in [9-10] to distinguish
+finite results from overflow.
+
 ## References
 
 1. Trefethen, Lloyd N., and Robert S. Schreiber. "Average-case stability of Gaussian elimination."
@@ -188,3 +199,6 @@ algorithmic background.
     *IEEE Std 1788-2015*, 2015: 1–97.
     [DOI](https://doi.org/10.1109/IEEESTD.2015.7140721) ·
     [IEEE record](https://standards.ieee.org/ieee/1788/4431/)
+15. Blue, James L. "A Portable Fortran Program to Find the Euclidean Norm of a Vector."
+    *ACM Transactions on Mathematical Software* 4.1 (1978): 15–23.
+    [DOI](https://doi.org/10.1145/355769.355771)
