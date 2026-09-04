@@ -93,6 +93,7 @@ use num_rational::BigRational;
 use num_traits::ToPrimitive;
 
 use crate::matrix::Matrix;
+use crate::rational::RationalVector;
 use crate::vector::Vector;
 use crate::{LaError, UnrepresentableReason};
 
@@ -137,10 +138,11 @@ impl DeterminantSign {
 
 /// Convert an already-computed exact result to finite binary64 output.
 ///
-/// This extension trait is implemented for [`BigRational`] determinants and
-/// `[BigRational; D]` exact solutions. It lets callers retain the exact value,
-/// try the strict no-rounding contract, and recover with explicit rounding
-/// without repeating determinant evaluation or linear-system elimination.
+/// This extension trait is implemented for [`BigRational`] determinants,
+/// `[BigRational; D]` exact arrays, and [`crate::RationalVector`] solutions.
+/// It lets callers retain the exact value, try the strict no-rounding contract,
+/// and recover with explicit rounding without repeating determinant evaluation
+/// or linear-system elimination.
 /// [`BigRational::new_raw`] values are interpreted by their mathematical
 /// quotient: denominator signs and common factors do not change the result. A
 /// zero denominator is rejected as [`UnrepresentableReason::NotFinite`].
@@ -1077,6 +1079,33 @@ fn det4_big_int<const D: usize>(a: &[[BigInt; D]; D]) -> BigInt {
     det
 }
 
+/// Compute the determinant of an integer matrix with direct expansions for
+/// D≤4 and fraction-free Bareiss elimination otherwise.
+pub(crate) fn det_big_int<const D: usize>(mut a: [[BigInt; D]; D]) -> BigInt {
+    if D == 0 {
+        return BigInt::from(1);
+    }
+
+    match D {
+        1 => take(&mut a[0][0]),
+        2 => det2_big_int(&a),
+        3 => det3_big_int(&a),
+        4 => det4_big_int(&a),
+        _ => {
+            let odd_swaps = match bareiss_forward_eliminate(&mut a, None) {
+                BareissResult::Upper { odd_swaps } => odd_swaps,
+                BareissResult::Singular { .. } => {
+                    cold_path();
+                    return BigInt::from(0);
+                }
+            };
+
+            let determinant = take(&mut a[D - 1][D - 1]);
+            if odd_swaps { -determinant } else { determinant }
+        }
+    }
+}
+
 /// Outcome of a Bareiss forward-elimination pass.
 #[derive(Debug)]
 enum BareissResult {
@@ -1217,25 +1246,8 @@ fn scaled_det_int_decomposed<const D: usize>(
         return (BigInt::from(0), ScaleExponent::ZERO);
     }
     let scale = ScaleExponent::for_decomposed(decomposed);
-    let mut a = build_big_int_matrix(decomposed.components(), scale);
-    let det_int = match D {
-        1 => take(&mut a[0][0]),
-        2 => det2_big_int(&a),
-        3 => det3_big_int(&a),
-        4 => det4_big_int(&a),
-        _ => {
-            let odd_swaps = match bareiss_forward_eliminate(&mut a, None) {
-                BareissResult::Upper { odd_swaps } => odd_swaps,
-                BareissResult::Singular { .. } => {
-                    cold_path();
-                    return (BigInt::from(0), ScaleExponent::ZERO);
-                }
-            };
-
-            let det = take(&mut a[D - 1][D - 1]);
-            if odd_swaps { -det } else { det }
-        }
-    };
+    let a = build_big_int_matrix(decomposed.components(), scale);
+    let det_int = det_big_int(a);
 
     (det_int, scale)
 }
@@ -1311,9 +1323,34 @@ fn bareiss_solve_components<const D: usize>(
     } else {
         (independent_matrix_scale, independent_rhs_scale)
     };
-    let mut a = build_big_int_matrix(matrix.components(), matrix_scale);
-    let mut rhs = build_big_int_vec(rhs.components(), rhs_scale);
+    let a = build_big_int_matrix(matrix.components(), matrix_scale);
+    let rhs = build_big_int_vec(rhs.components(), rhs_scale);
+    let mut x = solve_big_int(a, rhs)?;
 
+    let solution_scale_exp = rhs_scale
+        .get()
+        .checked_sub(matrix_scale.get())
+        .unwrap_or_else(|| unreachable!("finite f64 scale difference cannot overflow i32"));
+    if solution_scale_exp != 0 {
+        let solution_scale = big_int_exp_to_big_rational(BigInt::from(1_u8), solution_scale_exp);
+        for component in &mut x {
+            *component *= &solution_scale;
+        }
+    }
+
+    Ok(x)
+}
+
+/// Solve an integer system with fraction-free forward elimination and rational
+/// back-substitution.
+///
+/// # Errors
+/// Returns [`LaError::Singular`] with exact-singularity metadata and the first
+/// pivot column that contains no non-zero entry.
+pub(crate) fn solve_big_int<const D: usize>(
+    mut a: [[BigInt; D]; D],
+    mut rhs: [BigInt; D],
+) -> Result<[BigRational; D], LaError> {
     match bareiss_forward_eliminate(&mut a, Some(&mut rhs)) {
         BareissResult::Upper { .. } => {}
         BareissResult::Singular { pivot_col } => {
@@ -1331,17 +1368,6 @@ fn bareiss_solve_components<const D: usize>(
         }
         let a_ii = BigRational::from_integer(take(&mut a[i][i]));
         x[i] = sum / &a_ii;
-    }
-
-    let solution_scale_exp = rhs_scale
-        .get()
-        .checked_sub(matrix_scale.get())
-        .unwrap_or_else(|| unreachable!("finite f64 scale difference cannot overflow i32"));
-    if solution_scale_exp != 0 {
-        let solution_scale = big_int_exp_to_big_rational(BigInt::from(1_u8), solution_scale_exp);
-        for component in &mut x {
-            *component *= &solution_scale;
-        }
     }
 
     Ok(x)
@@ -1539,10 +1565,10 @@ impl<const D: usize> Matrix<D> {
     /// Requires the `exact` Cargo feature.
     ///
     /// Solves `A x = b` where `A` is `self` and `b` is the given vector.
-    /// Returns the exact solution as `[BigRational; D]`. Every finite `f64` is
-    /// exactly representable as a rational, so the conversion is lossless and
-    /// the result is exact for the stored binary64 entries. It cannot recover
-    /// precision lost before matrix or vector construction.
+    /// Returns the exact solution as [`RationalVector<D>`]. Every finite `f64`
+    /// is exactly representable as a rational, so the conversion is lossless
+    /// and the result is exact for the stored binary64 entries. It cannot
+    /// recover precision lost before matrix or vector construction.
     ///
     /// # When to use
     ///
@@ -1575,8 +1601,8 @@ impl<const D: usize> Matrix<D> {
     /// let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
     /// let b = Vector::<2>::try_new([5.0, 11.0])?;
     /// let x = a.solve_exact(b)?;
-    /// assert_eq!(x[0], BigRational::from_integer(1.into()));
-    /// assert_eq!(x[1], BigRational::from_integer(2.into()));
+    /// assert_eq!(x.as_array()[0], BigRational::from_integer(1.into()));
+    /// assert_eq!(x.as_array()[1], BigRational::from_integer(2.into()));
     /// # Ok(())
     /// # }
     /// ```
@@ -1584,8 +1610,8 @@ impl<const D: usize> Matrix<D> {
     /// # Errors
     /// Returns [`LaError::Singular`] if the matrix is exactly singular.
     #[inline]
-    pub fn solve_exact(&self, b: Vector<D>) -> Result<[BigRational; D], LaError> {
-        bareiss_solve_finite(self, &b)
+    pub fn solve_exact(&self, b: Vector<D>) -> Result<RationalVector<D>, LaError> {
+        bareiss_solve_finite(self, &b).map(RationalVector::from_canonical_array)
     }
 
     /// Exact linear system solve converted to `f64`.
@@ -1600,7 +1626,7 @@ impl<const D: usize> Matrix<D> {
     ///
     /// When callers also need the exact solution or may recover with explicit
     /// rounding, compute [`solve_exact`](Self::solve_exact) once and use
-    /// [`ExactF64Conversion`] on the returned array.
+    /// [`ExactF64Conversion`] on the returned [`RationalVector`].
     ///
     /// # Examples
     /// ```
@@ -1738,7 +1764,7 @@ mod tests {
     /// decompose entries into scaled `BigInt` collections, which avoids
     /// per-entry GCD work in the elimination loops — so this helper
     /// is not used by them and lives here to keep test assertions concise
-    /// (e.g. `assert_eq!(x[0], f64_to_big_rational(3.0))`).
+    /// (e.g. `assert_eq!(x.as_array()[0], f64_to_big_rational(3.0))`).
     ///
     /// See `REFERENCES.md` \[9-10\] for the IEEE 754 standard and Goldberg's
     /// survey of floating-point representation.
@@ -2724,7 +2750,7 @@ mod tests {
                     let strict_f64 = a.solve_exact_f64(b).unwrap().into_array();
 
                     for i in 0..$d {
-                        assert_eq!(exact[i], f64_to_big_rational(b.as_array()[i]));
+                        assert_eq!(exact.as_array()[i], f64_to_big_rational(b.as_array()[i]));
                         assert_eq!(strict_f64[i].to_bits(), b.as_array()[i].to_bits());
                     }
                 }
@@ -2855,7 +2881,7 @@ mod tests {
 
                     let x = a.solve_exact(b).unwrap();
                     for i in 0..$d {
-                        assert_eq!(x[i], f64_to_big_rational(x0[i]));
+                        assert_eq!(x.as_array()[i], f64_to_big_rational(x0[i]));
                     }
                 }
             }
@@ -2876,7 +2902,7 @@ mod tests {
         let a = Matrix::<0>::zero();
         let b = Vector::<0>::zero();
         let x = a.solve_exact(b).unwrap();
-        assert!(x.is_empty());
+        assert!(x.as_array().is_empty());
     }
 
     #[test]
@@ -2885,8 +2911,8 @@ mod tests {
         let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]]).unwrap();
         let b = Vector::<2>::new([5.0, 11.0]);
         let x = a.solve_exact(b).unwrap();
-        assert_eq!(x[0], BigRational::from_integer(BigInt::from(1)));
-        assert_eq!(x[1], BigRational::from_integer(BigInt::from(2)));
+        assert_eq!(x.as_array()[0], BigRational::from_integer(BigInt::from(1)));
+        assert_eq!(x.as_array()[1], BigRational::from_integer(BigInt::from(2)));
     }
 
     #[test]
@@ -2897,9 +2923,9 @@ mod tests {
         let b = Vector::<3>::new([2.0, 3.0, 4.0]);
         let x = a.solve_exact(b).unwrap();
         // x = [3, 2, 4]
-        assert_eq!(x[0], f64_to_big_rational(3.0));
-        assert_eq!(x[1], f64_to_big_rational(2.0));
-        assert_eq!(x[2], f64_to_big_rational(4.0));
+        assert_eq!(x.as_array()[0], f64_to_big_rational(3.0));
+        assert_eq!(x.as_array()[1], f64_to_big_rational(2.0));
+        assert_eq!(x.as_array()[2], f64_to_big_rational(4.0));
     }
 
     #[test]
@@ -2908,8 +2934,14 @@ mod tests {
         let a = Matrix::<2>::try_from_rows([[2.0, 1.0], [1.0, 3.0]]).unwrap();
         let b = Vector::<2>::new([1.0, 1.0]);
         let x = a.solve_exact(b).unwrap();
-        assert_eq!(x[0], BigRational::new(BigInt::from(2), BigInt::from(5)));
-        assert_eq!(x[1], BigRational::new(BigInt::from(1), BigInt::from(5)));
+        assert_eq!(
+            x.as_array()[0],
+            BigRational::new(BigInt::from(2), BigInt::from(5))
+        );
+        assert_eq!(
+            x.as_array()[1],
+            BigRational::new(BigInt::from(1), BigInt::from(5))
+        );
     }
 
     #[test]
@@ -2939,11 +2971,11 @@ mod tests {
         .unwrap();
         let b = Vector::<5>::new([10.0, 20.0, 30.0, 40.0, 50.0]);
         let x = a.solve_exact(b).unwrap();
-        assert_eq!(x[0], f64_to_big_rational(20.0));
-        assert_eq!(x[1], f64_to_big_rational(10.0));
-        assert_eq!(x[2], f64_to_big_rational(30.0));
-        assert_eq!(x[3], f64_to_big_rational(40.0));
-        assert_eq!(x[4], f64_to_big_rational(50.0));
+        assert_eq!(x.as_array()[0], f64_to_big_rational(20.0));
+        assert_eq!(x.as_array()[1], f64_to_big_rational(10.0));
+        assert_eq!(x.as_array()[2], f64_to_big_rational(30.0));
+        assert_eq!(x.as_array()[3], f64_to_big_rational(40.0));
+        assert_eq!(x.as_array()[4], f64_to_big_rational(50.0));
     }
 
     /// Entries near `f64::MAX / 2` are finite but their product would
@@ -2970,9 +3002,9 @@ mod tests {
                     let b = Vector::<$d>::new(b_arr);
                     let x = a.solve_exact(b).unwrap();
                     for i in 0..($d - 1) {
-                        assert_eq!(x[i], BigRational::from_integer(BigInt::from(1)));
+                        assert_eq!(x.as_array()[i], BigRational::from_integer(BigInt::from(1)));
                     }
-                    assert_eq!(x[$d - 1], BigRational::from_integer(BigInt::from(0)));
+                    assert_eq!(x.as_array()[$d - 1], BigRational::from_integer(BigInt::from(0)));
                 }
             }
         };
@@ -3008,7 +3040,7 @@ mod tests {
                     let b = Vector::<$d>::new(b_arr);
                     let x = a.solve_exact(b).unwrap();
                     for i in 0..$d {
-                        assert_eq!(x[i], BigRational::from_integer(BigInt::from(1)));
+                        assert_eq!(x.as_array()[i], BigRational::from_integer(BigInt::from(1)));
                     }
                 }
             }
@@ -3029,11 +3061,11 @@ mod tests {
         let tiny_rhs = Vector::<2>::new([tiny, -2.0 * tiny]);
         let small_solution = large_matrix.solve_exact(tiny_rhs).unwrap();
         assert_eq!(
-            small_solution[0],
+            small_solution.as_array()[0],
             BigRational::new(BigInt::from(1_u8), BigInt::from(1_u8) << 1500_u32)
         );
         assert_eq!(
-            small_solution[1],
+            small_solution.as_array()[1],
             BigRational::new(BigInt::from(-1_i8), BigInt::from(1_u8) << 1499_u32)
         );
 
@@ -3041,7 +3073,7 @@ mod tests {
         let large_rhs = Vector::<1>::new([large]);
         let large_solution = tiny_matrix.solve_exact(large_rhs).unwrap();
         assert_eq!(
-            large_solution[0],
+            large_solution.as_array()[0],
             BigRational::from_integer(BigInt::from(1_u8) << 1500_u32)
         );
     }
@@ -3072,7 +3104,7 @@ mod tests {
                     let b = Vector::<$d>::new(b_arr);
                     let x = a.solve_exact(b).unwrap();
                     for i in 0..$d {
-                        assert_eq!(x[i], f64_to_big_rational((i + 1) as f64 * tiny));
+                        assert_eq!(x.as_array()[i], f64_to_big_rational((i + 1) as f64 * tiny));
                     }
                 }
             }
@@ -3123,9 +3155,9 @@ mod tests {
                     }
                     let b = Vector::<$d>::new(b_arr);
                     let x = a.solve_exact(b).unwrap();
-                    assert_eq!(x[0], BigRational::new(BigInt::from(1), BigInt::from(2)));
-                    assert_eq!(x[1], BigRational::from_integer(BigInt::from(3)));
-                    for (i, value) in x.iter().enumerate().skip(2) {
+                    assert_eq!(x.as_array()[0], BigRational::new(BigInt::from(1), BigInt::from(2)));
+                    assert_eq!(x.as_array()[1], BigRational::from_integer(BigInt::from(3)));
+                    for (i, value) in x.as_array().iter().enumerate().skip(2) {
                         assert_eq!(value, &f64_to_big_rational((i + 10) as f64));
                     }
                 }
@@ -3175,10 +3207,10 @@ mod tests {
                     let b = Vector::<$d>::new(b_arr);
                     let x = a.solve_exact(b).unwrap();
                     // x[0..3] = [7/4, -1/2, 7/4].
-                    assert_eq!(x[0], BigRational::new(BigInt::from(7), BigInt::from(4)));
-                    assert_eq!(x[1], BigRational::new(BigInt::from(-1), BigInt::from(2)));
-                    assert_eq!(x[2], BigRational::new(BigInt::from(7), BigInt::from(4)));
-                    for (i, value) in x.iter().enumerate().skip(3) {
+                    assert_eq!(x.as_array()[0], BigRational::new(BigInt::from(7), BigInt::from(4)));
+                    assert_eq!(x.as_array()[1], BigRational::new(BigInt::from(-1), BigInt::from(2)));
+                    assert_eq!(x.as_array()[2], BigRational::new(BigInt::from(7), BigInt::from(4)));
+                    for (i, value) in x.as_array().iter().enumerate().skip(3) {
                         assert_eq!(value, &f64_to_big_rational((i + 10) as f64));
                     }
                 }
@@ -3246,7 +3278,7 @@ mod tests {
                     let a = Matrix::<$d>::try_from_rows(rows).unwrap();
                     let b = Vector::<$d>::zero();
                     let x = a.solve_exact(b).unwrap();
-                    for xi in &x {
+                    for xi in x.as_array() {
                         assert_eq!(*xi, BigRational::from_integer(BigInt::from(0)));
                     }
                 }
@@ -3308,9 +3340,9 @@ mod tests {
         let b = Vector::<3>::new([6.0 + perturbation, 15.0, 24.0]);
         let x = a.solve_exact(b).unwrap();
         let one = BigRational::from_integer(BigInt::from(1));
-        assert_eq!(x[0], one);
-        assert_eq!(x[1], one);
-        assert_eq!(x[2], one);
+        assert_eq!(x.as_array()[0], one);
+        assert_eq!(x.as_array()[1], one);
+        assert_eq!(x.as_array()[2], one);
     }
 
     /// Large-entry 3×3 solve (matches the `exact_large_entries_3x3`
@@ -3329,9 +3361,9 @@ mod tests {
         let x = a.solve_exact(b).unwrap();
         let zero = BigRational::from_integer(BigInt::from(0));
         let one = BigRational::from_integer(BigInt::from(1));
-        assert_eq!(x[0], one);
-        assert_eq!(x[1], zero);
-        assert_eq!(x[2], zero);
+        assert_eq!(x.as_array()[0], one);
+        assert_eq!(x.as_array()[1], zero);
+        assert_eq!(x.as_array()[2], zero);
     }
 
     /// Determinant of the large-entry 3×3 is roughly `big^3`, which
@@ -3411,7 +3443,7 @@ mod tests {
                     }
                     let b = Vector::<$d>::new(b_arr);
                     let x = h.solve_exact(b).unwrap();
-                    let ax = big_rational_matvec(&h, &x);
+                    let ax = big_rational_matvec(&h, x.as_array());
                     for i in 0..$d {
                         assert_eq!(ax[i], f64_to_big_rational(b_arr[i]));
                     }
@@ -3511,7 +3543,7 @@ mod tests {
         let a = Matrix::<1>::try_from_rows([[2.0]]).unwrap();
         let b = Vector::<1>::new([6.0]);
         let x = a.solve_exact(b).unwrap();
-        assert_eq!(x[0], f64_to_big_rational(3.0));
+        assert_eq!(x.as_array()[0], f64_to_big_rational(3.0));
     }
 
     #[test]

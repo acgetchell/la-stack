@@ -36,7 +36,14 @@ from typing import Any, Literal, cast
 
 from bench_compare import HOW_TO_UPDATE_SECTION, render_release_artifacts
 from benchmark_contract import benchmark_contract_digest
-from performance_artifacts import ArtifactPaths, ensure_distinct_paths, load_bundle, publish_bundle
+from performance_artifacts import (
+    NO_API_COMPATIBILITY,
+    ArtifactPaths,
+    ensure_distinct_paths,
+    load_bundle,
+    publish_bundle,
+    resolve_shared_harness_compatibility,
+)
 from subprocess_utils import (
     ExecutableNotFoundError,
     cpu_description,
@@ -81,8 +88,6 @@ _BENCHMARK_HARNESS_FILES = (
 _BENCHMARK_HARNESS_METADATA = ".la-stack-benchmark-harness.json"
 _BENCHMARK_INPUT_GATE = ("just", "test-bench-inputs")
 _COMPARISON_LINT_CAP = "--cap-lints=warn"
-_V0_4_3_API_CFG = "la_stack_v0_4_3_api"
-_V0_4_3_TAG = "v0.4.3"
 type BaselineSource = Literal["local", "github-assets"]
 type BenchmarkSuite = Literal["all", "exact", "vs_linalg"]
 type ComparisonScope = Literal["release-signal", "all-benches"]
@@ -212,6 +217,7 @@ class BaselineRun:
     git_clean: bool
     source_state_sha256: str
     api_compatibility: str | None
+    shared_harness_rational_inputs: bool = False
 
 
 def normalize_tag(tag: str) -> str:
@@ -820,6 +826,7 @@ def _write_local_run_provenance(
     }
     metadata = {
         "baseline": config.baseline_tag,
+        "current": config.current_tag,
         "criterion": _criterion_metadata(
             worktree=worktree,
             config=config,
@@ -842,6 +849,7 @@ def _write_local_run_provenance(
             "current_revision": "passed",
             "current_source_state_sha256": publication["source_state_sha256"],
             "harness": "shared-current",
+            "shared_harness_rational_inputs": baseline_run.shared_harness_rational_inputs,
         },
     }
     _write_text(
@@ -860,6 +868,7 @@ def _write_historical_asset_provenance(
     publication = _environment_metadata(worktree, harness_sha256=baseline_run.harness_sha256)
     metadata = {
         "baseline": config.baseline_tag,
+        "current": config.current_tag,
         "criterion": _criterion_metadata(
             worktree=worktree,
             config=config,
@@ -885,6 +894,7 @@ def _write_historical_asset_provenance(
             "current_revision": "passed",
             "current_source_state_sha256": publication["source_state_sha256"],
             "harness": "shared-current",
+            "shared_harness_rational_inputs": baseline_run.shared_harness_rational_inputs,
         },
     }
     _write_text(
@@ -927,12 +937,33 @@ def _append_rustflag(env: dict[str, str], flag: str) -> None:
     env["RUSTFLAGS"] = f"{rustflags} {flag}".strip()
 
 
-def _baseline_api_compatibility(baseline_tag: str) -> str | None:
-    """Return the shared-harness API adapter required by one baseline tag."""
-    return _V0_4_3_API_CFG if normalize_tag(baseline_tag) == _V0_4_3_TAG else None
+def _shared_harness_rational_inputs(checkout: Path) -> bool:
+    """Return whether the installed exact benchmark harness emits rational-input groups."""
+    exact_bench = checkout / "benches" / "exact.rs"
+    if not exact_bench.is_file():
+        return False
+    source = _read_text(exact_bench)
+    return "fn bench_rational_input<" in source and "rational_input_d{D}" in source
 
 
-def _comparison_benchmark_env(checkout: Path, *, baseline_tag: str | None = None) -> dict[str, str]:
+def _baseline_api_compatibility(
+    *,
+    current_tag: str,
+    baseline_tag: str,
+    shared_harness_rational_inputs: bool,
+) -> str | None:
+    """Return the baseline adapter selected by the shared compatibility resolver."""
+    resolved = resolve_shared_harness_compatibility(
+        current=normalize_tag(current_tag),
+        baseline=normalize_tag(baseline_tag),
+        shared_harness_rational_inputs=shared_harness_rational_inputs,
+    )
+    if resolved.baseline_api_compatibility == NO_API_COMPATIBILITY:
+        return None
+    return resolved.baseline_api_compatibility
+
+
+def _comparison_benchmark_env(checkout: Path, *, api_compatibility: str | None = None) -> dict[str, str]:
     """Build a comparable benchmark environment for current or historical code."""
     env = _benchmark_env(checkout)
     if env is None:
@@ -943,10 +974,8 @@ def _comparison_benchmark_env(checkout: Path, *, baseline_tag: str | None = None
     # performance comparison; the cap changes diagnostics, not code generation.
     _append_rustflag(env, _COMPARISON_LINT_CAP)
 
-    if baseline_tag is not None:
-        compatibility = _baseline_api_compatibility(baseline_tag)
-        if compatibility is not None:
-            _append_rustflag(env, f"--cfg={compatibility}")
+    if api_compatibility is not None:
+        _append_rustflag(env, f"--cfg={api_compatibility}")
     return env
 
 
@@ -1006,7 +1035,7 @@ def _selected_criterion_groups(criterion_dir: Path, *, suite: str) -> list[Path]
     for child in criterion_dir.iterdir():
         if not child.is_dir():
             continue
-        is_exact = child.name.startswith("exact_")
+        is_exact = child.name.startswith("exact_") or re.fullmatch(r"rational_input_d[0-9]+", child.name) is not None
         is_vs_linalg = re.fullmatch(r"d[0-9]+", child.name) is not None
         if (suite in {"all", "exact"} and is_exact) or (suite in {"all", "vs_linalg"} and is_vs_linalg):
             groups.append(child)
@@ -1127,7 +1156,15 @@ def _fallback_current_command(*, suite: str) -> tuple[str, ...]:
             raise ValueError(msg)
 
 
-def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> BaselineRun:
+def _generate_release_baseline(  # noqa: PLR0913
+    *,
+    current_tag: str,
+    baseline_tag: str,
+    suite: str,
+    repo_root: Path,
+    target_worktree: Path,
+    tmp_dir: Path,
+) -> BaselineRun:
     baseline_worktree = tmp_dir / "baseline-worktree"
     with _temporary_detached_worktree(
         repo_root=repo_root,
@@ -1144,8 +1181,13 @@ def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path
             suite=suite,
             baseline_worktree=baseline_worktree,
         )
-        api_compatibility = _baseline_api_compatibility(baseline_tag)
-        benchmark_env = _comparison_benchmark_env(repo_root, baseline_tag=baseline_tag)
+        shared_harness_rational_inputs = _shared_harness_rational_inputs(target_worktree)
+        api_compatibility = _baseline_api_compatibility(
+            current_tag=current_tag,
+            baseline_tag=baseline_tag,
+            shared_harness_rational_inputs=shared_harness_rational_inputs,
+        )
+        benchmark_env = _comparison_benchmark_env(repo_root, api_compatibility=api_compatibility)
         _run_benchmark_input_gate(baseline_worktree, env=benchmark_env)
         _progress(f"running {suite} baseline benchmarks for {baseline_tag}")
         _run_tool(
@@ -1173,11 +1215,21 @@ def _generate_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path
             git_clean=_git_clean(baseline_worktree),
             source_state_sha256=_source_state_digest(baseline_worktree),
             api_compatibility=api_compatibility,
+            shared_harness_rational_inputs=shared_harness_rational_inputs,
         )
 
 
-def _prepare_local_release_baseline(*, baseline_tag: str, suite: str, repo_root: Path, target_worktree: Path, tmp_dir: Path) -> BaselineRun:
+def _prepare_local_release_baseline(  # noqa: PLR0913
+    *,
+    current_tag: str,
+    baseline_tag: str,
+    suite: str,
+    repo_root: Path,
+    target_worktree: Path,
+    tmp_dir: Path,
+) -> BaselineRun:
     return _generate_release_baseline(
+        current_tag=current_tag,
         baseline_tag=baseline_tag,
         suite=suite,
         repo_root=repo_root,
@@ -1188,6 +1240,7 @@ def _prepare_local_release_baseline(*, baseline_tag: str, suite: str, repo_root:
 
 def _validate_release_revision(
     *,
+    current_tag: str,
     revision: str,
     repo_root: Path,
     harness_source: Path,
@@ -1205,10 +1258,15 @@ def _validate_release_revision(
             source=harness_source,
             destination=validation_worktree,
         )
-        api_compatibility = _baseline_api_compatibility(revision)
+        shared_harness_rational_inputs = _shared_harness_rational_inputs(harness_source)
+        api_compatibility = _baseline_api_compatibility(
+            current_tag=current_tag,
+            baseline_tag=revision,
+            shared_harness_rational_inputs=shared_harness_rational_inputs,
+        )
         _run_benchmark_input_gate(
             validation_worktree,
-            env=_comparison_benchmark_env(repo_root, baseline_tag=revision),
+            env=_comparison_benchmark_env(repo_root, api_compatibility=api_compatibility),
         )
         return BaselineRun(
             commit=_checkout_commit(validation_worktree),
@@ -1217,6 +1275,7 @@ def _validate_release_revision(
             git_clean=_git_clean(validation_worktree),
             source_state_sha256=_source_state_digest(validation_worktree),
             api_compatibility=api_compatibility,
+            shared_harness_rational_inputs=shared_harness_rational_inputs,
         )
 
 
@@ -1401,6 +1460,7 @@ def _generated_report_in_temp_worktree(
                     tmp_dir=tmp_dir,
                 )
                 baseline_run = _validate_release_revision(
+                    current_tag=config.current_tag,
                     revision=config.baseline_tag,
                     repo_root=config.repo_root,
                     harness_source=worktree,
@@ -1423,6 +1483,7 @@ def _generated_report_in_temp_worktree(
                 )
             else:
                 baseline_run = _prepare_local_release_baseline(
+                    current_tag=config.current_tag,
                     baseline_tag=config.baseline_tag,
                     suite=config.suite,
                     repo_root=config.repo_root,

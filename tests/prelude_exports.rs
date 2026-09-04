@@ -93,4 +93,20 @@ fn exact_prelude_supports_downstream_composition() {
     assert_eq!(half.to_f64(), Some(0.5));
     assert_eq!(two.to_i64(), Some(2));
     assert_eq!(DeterminantSign::Positive.as_i8(), 1);
+
+    let rational_matrix = RationalMatrix::<1>::try_from_rows([[half]]).unwrap();
+    let rational_rhs = RationalVector::<1>::try_new([two]).unwrap();
+    assert_eq!(
+        rational_matrix.solve(&rational_rhs).unwrap().into_array(),
+        [BigRational::from_integer(BigInt::from(4))]
+    );
+    let dispatched =
+        try_with_rational_matrix!(MAX_RATIONAL_MATRIX_DISPATCH_DIM, |matrix| -> Result<
+            DeterminantSign,
+            LaError,
+        > {
+            Ok(matrix.det_sign())
+        },)
+        .unwrap();
+    assert_eq!(dispatched, DeterminantSign::Zero);
 }

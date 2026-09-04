@@ -307,9 +307,9 @@ fn solve_exact_handles_bit_exact_subnormal_row_scales() {
     let rhs = Vector::<2>::try_new([row_0_scale, row_1_scale]).unwrap();
     let solution = matrix.solve_exact(rhs).unwrap();
     let one = BigRational::from_integer(BigInt::from(1));
-    assert_eq!(solution, [one.clone(), one]);
+    assert_eq!(solution.as_array(), &[one.clone(), one]);
 
-    let residual = big_rational_matvec(&rows, &solution);
+    let residual = big_rational_matvec(&rows, solution.as_array());
     assert_eq!(
         residual,
         [
@@ -409,7 +409,7 @@ macro_rules! gen_solve_exact_roundtrip_proptests {
                         BigRational::from_f64(x0[i]).expect("small int fits in BigRational")
                     });
                     for i in 0..$d {
-                        prop_assert_eq!(&x[i], &expected[i]);
+                        prop_assert_eq!(&x.as_array()[i], &expected[i]);
                     }
                 }
             }
@@ -447,7 +447,7 @@ macro_rules! gen_solve_exact_residual_proptests {
                     let b = Vector::<$d>::try_new(b_arr).unwrap();
                     let x = a.solve_exact(b).expect("diagonally-dominant A is non-singular");
 
-                    let ax = big_rational_matvec::<$d>(&rows, &x);
+                    let ax = big_rational_matvec::<$d>(&rows, x.as_array());
                     for i in 0..$d {
                         let b_rat = BigRational::from_f64(b_arr[i])
                             .expect("small int fits in BigRational");
@@ -492,7 +492,7 @@ macro_rules! gen_solve_exact_mixed_exponent_residual_proptests {
                         .solve_exact(b)
                         .expect("strict diagonal dominance guarantees invertibility");
 
-                    let ax = big_rational_matvec::<$d>(&rows, &x);
+                    let ax = big_rational_matvec::<$d>(&rows, x.as_array());
                     for i in 0..$d {
                         let b_rat = BigRational::from_f64(b_arr[i])
                             .expect("finite f64 converts exactly");

@@ -67,6 +67,10 @@ required-features = [ "exact" ]
 name = "exact_solve_3x3"
 required-features = [ "exact" ]
 
+[[example]]
+name = "rational_input_5x5"
+required-features = [ "exact" ]
+
 [[bench]]
 name = "vs_linalg"
 harness = false
@@ -91,7 +95,7 @@ unsafe_code = "forbid"
 missing_docs = { level = "deny", priority = 0 }
 dead_code = { level = "deny", priority = 0 }
 unreachable_pub = { level = "deny", priority = 0 }
-unexpected_cfgs = { level = "deny", priority = 0, check-cfg = [ 'cfg(docsrs)', 'cfg(la_stack_v0_4_3_api)' ] }
+unexpected_cfgs = { level = "deny", priority = 0, check-cfg = [ 'cfg(docsrs)', 'cfg(la_stack_pre_rational_input_api)', 'cfg(la_stack_v0_4_3_api)' ] }
 
 [lints.rustdoc]
 bare_urls = "deny"

@@ -6,6 +6,7 @@ import io
 import json
 import math
 import os
+import re
 import tempfile
 from collections.abc import Mapping
 from contextlib import contextmanager
@@ -23,6 +24,72 @@ SCOPES = ("release-signal", "all-benches")
 COVERAGE_STATES = ("comparable", "current-only", "baseline-only")
 
 type CoverageState = Literal["comparable", "current-only", "baseline-only"]
+type ReleaseApiCapability = Literal["legacy-v0.4.3", "pre-rational-input", "rational-input", "unknown"]
+type RationalInputCoverage = Literal["excluded", "current-only", "comparable"]
+
+V0_4_3_API_COMPATIBILITY = "la_stack_v0_4_3_api"
+PRE_RATIONAL_INPUT_API_COMPATIBILITY = "la_stack_pre_rational_input_api"
+NO_API_COMPATIBILITY = "none"
+
+_SEMVER_CORE_RE = re.compile(
+    r"^v?(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)"
+    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SharedHarnessCompatibility:
+    """API capabilities and row coverage for one shared-harness comparison."""
+
+    current: ReleaseApiCapability
+    baseline: ReleaseApiCapability
+    shared_harness_rational_inputs: bool
+    baseline_api_compatibility: str
+    rational_input_coverage: RationalInputCoverage
+
+
+def _release_api_capability(release: str) -> ReleaseApiCapability:
+    """Classify a release by the public APIs used by the current harness."""
+    match = _SEMVER_CORE_RE.fullmatch(release.strip())
+    if match is None:
+        return "unknown"
+    version = tuple(int(match.group(part)) for part in ("major", "minor", "patch"))
+    if version <= (0, 4, 3):
+        return "legacy-v0.4.3"
+    if version <= (0, 4, 5):
+        return "pre-rational-input"
+    return "rational-input"
+
+
+def resolve_shared_harness_compatibility(
+    *,
+    current: str,
+    baseline: str,
+    shared_harness_rational_inputs: bool,
+) -> SharedHarnessCompatibility:
+    """Resolve adapters and rational-row coverage from both releases and the installed harness."""
+    current_capability = _release_api_capability(current)
+    baseline_capability = _release_api_capability(baseline)
+    baseline_adapter = {
+        "legacy-v0.4.3": V0_4_3_API_COMPATIBILITY,
+        "pre-rational-input": PRE_RATIONAL_INPUT_API_COMPATIBILITY,
+        "rational-input": NO_API_COMPATIBILITY,
+        "unknown": NO_API_COMPATIBILITY,
+    }[baseline_capability]
+    if not shared_harness_rational_inputs:
+        rational_coverage: RationalInputCoverage = "excluded"
+    elif baseline_capability in {"legacy-v0.4.3", "pre-rational-input"}:
+        rational_coverage = "current-only"
+    else:
+        rational_coverage = "comparable"
+    return SharedHarnessCompatibility(
+        current=current_capability,
+        baseline=baseline_capability,
+        shared_harness_rational_inputs=shared_harness_rational_inputs,
+        baseline_api_compatibility=baseline_adapter,
+        rational_input_coverage=rational_coverage,
+    )
+
 
 CSV_COLUMNS = (
     "schema_version",
@@ -224,6 +291,7 @@ class PerformanceBundle:
                 msg = f"duplicate benchmark key: {key!r}"
                 raise ValueError(msg)
             keys.add(key)
+        _validate_rational_row_coverage(self.context, self.rows)
 
     @property
     def sorted_rows(self) -> tuple[PerformanceRow, ...]:
@@ -248,6 +316,34 @@ class ArtifactPaths:
 
 def _selected_suites(suite: str) -> frozenset[str]:
     return frozenset({"exact", "vs_linalg"} if suite == "all" else {suite})
+
+
+def _validate_rational_row_coverage(context: ArtifactContext, rows: tuple[PerformanceRow, ...]) -> None:
+    """Bind retained rational rows to the explicitly recorded harness capability."""
+    validation = context.benchmark_provenance.get("validation")
+    if not isinstance(validation, Mapping):
+        msg = "validated benchmark provenance lost its validation object"
+        raise TypeError(msg)
+    shared_harness_rational_inputs = validation.get("shared_harness_rational_inputs")
+    if not isinstance(shared_harness_rational_inputs, bool):
+        msg = "validated benchmark provenance lost its shared-harness capability"
+        raise TypeError(msg)
+    compatibility = resolve_shared_harness_compatibility(
+        current=context.release.current,
+        baseline=context.release.baseline,
+        shared_harness_rational_inputs=shared_harness_rational_inputs,
+    )
+    rational_rows = tuple(row for row in rows if row.group.startswith("rational_input_d"))
+    expected = compatibility.rational_input_coverage
+    if expected == "excluded" and rational_rows:
+        msg = "rational-input rows must be excluded when the shared harness does not emit them"
+        raise ValueError(msg)
+    if expected == "current-only" and any(row.coverage_status != "current-only" for row in rational_rows):
+        msg = "pre-rational baselines require retained rational-input rows to be current-only"
+        raise ValueError(msg)
+    if expected == "comparable" and any(row.coverage_status != "comparable" for row in rational_rows):
+        msg = "rational-capable baselines require retained rational-input rows to be comparable"
+        raise ValueError(msg)
 
 
 def _paths_alias(first: Path, second: Path) -> bool:
@@ -409,7 +505,12 @@ def _validate_measurement_provenance(measurement: Mapping[str, object], *, mode:
     return measurement_status
 
 
-def _validate_validation_provenance(validation: Mapping[str, object], *, baseline: str) -> str:
+def _validate_validation_provenance(
+    validation: Mapping[str, object],
+    *,
+    current: str,
+    baseline: str,
+) -> str:
     """Validate fixture-gate evidence for both compared revisions."""
     if validation.get("command") != ["just", "test-bench-inputs"]:
         msg = "benchmark provenance validation.command must be ['just', 'test-bench-inputs']"
@@ -426,9 +527,20 @@ def _validate_validation_provenance(validation: Mapping[str, object], *, baselin
     for field in ("current_git_clean", "baseline_git_clean"):
         _required_provenance_bool(validation, field, context="validation")
     compatibility = _required_provenance_string(validation, "baseline_api_compatibility", context="validation")
-    expected_compatibility = "la_stack_v0_4_3_api" if baseline == "v0.4.3" else "none"
-    if compatibility != expected_compatibility:
-        msg = f"benchmark provenance validation.baseline_api_compatibility must be {expected_compatibility!r} for baseline {baseline!r}, got {compatibility!r}"
+    shared_harness_rational_inputs = validation.get("shared_harness_rational_inputs")
+    if not isinstance(shared_harness_rational_inputs, bool):
+        msg = "benchmark provenance validation.shared_harness_rational_inputs must be a boolean"
+        raise TypeError(msg)
+    resolved = resolve_shared_harness_compatibility(
+        current=current,
+        baseline=baseline,
+        shared_harness_rational_inputs=shared_harness_rational_inputs,
+    )
+    if compatibility != resolved.baseline_api_compatibility:
+        msg = (
+            "benchmark provenance validation.baseline_api_compatibility must be "
+            f"{resolved.baseline_api_compatibility!r} for baseline {baseline!r}, got {compatibility!r}"
+        )
         raise ValueError(msg)
     harness = _required_provenance_string(validation, "harness", context="validation")
     if harness != "shared-current":
@@ -514,6 +626,10 @@ def _validate_benchmark_provenance(data: Mapping[str, object], *, context: Artif
     if data.get("baseline") != context.release.baseline:
         msg = f"benchmark provenance baseline {data.get('baseline')!r} does not match release baseline {context.release.baseline!r}"
         raise ValueError(msg)
+    current = _required_provenance_string(data, "current", context="root")
+    if current != context.release.current:
+        msg = f"benchmark provenance current {current!r} does not match release current {context.release.current!r}"
+        raise ValueError(msg)
 
     criterion = _required_provenance_object(data, "criterion", context="root")
     measurement = _required_provenance_object(data, "measurement", context="root")
@@ -530,7 +646,11 @@ def _validate_benchmark_provenance(data: Mapping[str, object], *, context: Artif
     if measurement_status != expected_status:
         msg = f"benchmark provenance mode {mode!r} requires measurement.status {expected_status!r}, got {measurement_status!r}"
         raise ValueError(msg)
-    compatibility = _validate_validation_provenance(validation, baseline=context.release.baseline)
+    compatibility = _validate_validation_provenance(
+        validation,
+        current=context.release.current,
+        baseline=context.release.baseline,
+    )
     _validate_current_revision_consistency(publication, validation)
     if measurement_status == "recorded":
         _validate_recorded_measurement_consistency(
@@ -737,6 +857,10 @@ def _parse_provenance(payload: bytes, *, source: str) -> tuple[ArtifactContext, 
         current=_parse_required_string(release_data, "current", source=source),
         baseline=_parse_required_string(release_data, "baseline", source=source),
     )
+    benchmark_provenance.setdefault("current", release.current)
+    validation = benchmark_provenance.get("validation")
+    if isinstance(validation, dict):
+        validation.setdefault("shared_harness_rational_inputs", False)
     statistic = _parse_required_string(report_data, "statistic", source=source)
     if statistic != "median":
         msg = f"unsupported report statistic in {source}: {statistic!r}"

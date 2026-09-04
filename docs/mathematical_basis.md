@@ -1,11 +1,13 @@
 # Mathematical basis
 
-`la-stack` provides fixed-dimension numerical linear algebra over finite IEEE
-754 binary64 values. For a compile-time dimension `D`, `Matrix<D>` is a dense
-`D × D` square matrix and `Vector<D>` is a length-`D` vector over the finite
-binary64 set `F`. The default algorithms operate in binary64 and are therefore
-approximate. The optional `exact` feature instead lifts each stored binary64
-value to the exact rational number it represents.
+`la-stack` provides fixed-dimension numerical linear algebra over two deliberate
+input domains. `Matrix<D>` and `Vector<D>` store finite IEEE 754 binary64 values;
+their default algorithms operate in binary64 and are therefore approximate. The
+optional `exact` feature can either lift each of those stored values to the exact
+rational number it represents or accept caller-supplied `BigRational` values
+through `RationalMatrix<D>` and `RationalVector<D>`. For either domain,
+`Matrix<D>` and `RationalMatrix<D>` are dense `D × D` square matrices and the
+corresponding vector type has length `D`.
 
 This document separates three questions that are easy to conflate:
 
@@ -30,9 +32,12 @@ x = (-1)^s m × 2^e,
 ```
 
 for integer `m` and exponent `e` \[9-11\]. Both signed-zero bit patterns
-represent rational zero. Exact APIs exploit this representation, but exactness
-begins only after construction: they cannot recover information lost when a
-decimal value or an earlier computation was rounded to `f64`.
+represent rational zero. Exact methods on `Matrix` and `Vector` exploit this
+representation, but their exactness begins only after binary64 construction:
+they cannot recover information lost when a decimal value or an earlier
+computation was rounded to `f64`. Caller-supplied `RationalMatrix` and
+`RationalVector` values instead enter the exact domain directly and do not pass
+through binary64.
 
 `Matrix`, `Vector`, `Lu`, and `Ldlt` use inline fixed-size storage.
 Arbitrary-precision `BigInt` and `BigRational` values allocate when the `exact` feature is
@@ -170,6 +175,34 @@ finite output exists only after rounding; `NotFinite` means even the rounded
 result cannot be finite. The explicit rounded conversions use round-to-nearest,
 ties-to-even \[9-10\]. A nonzero exact value may consequently round to zero.
 
+## Exact arithmetic over rational inputs
+
+`RationalMatrix<D>` and `RationalVector<D>` are a separate input domain for
+coefficients assembled exactly before linear algebra begins. Their constructors
+reject zero denominators and store each accepted quotient in lowest terms with
+a positive denominator, so equivalent raw representations have identical
+storage and denominator-clearing cost. For each matrix row `i`, the
+implementation selects a positive least common multiple `sᵢ` of
+the rational denominators and forms the integer row `A_int[i, :] = sᵢ A[i, :]`.
+Therefore
+
+```text
+sign(det(A_int)) = sign(det(A))
+det(A) = det(A_int) / ∏ᵢ sᵢ.
+```
+
+The sign path reads the `BigInt` determinant sign directly and never constructs
+the rational determinant value. Solves include the corresponding right-hand
+side denominator in `sᵢ`, so each augmented row is multiplied by the same
+positive factor and the solution set is unchanged. The integer determinant and
+solve states use the same direct-expansion/Bareiss backend as exact operations
+over binary64 inputs, followed by rational back-substitution for solves \[7\].
+
+The rational types are const-generic and shape-safe after construction. The
+`try_with_rational_matrix!` helper provides explicit runtime dispatch through
+D=8 without unstable generic const expressions. Conversion to binary64 remains
+a separate strict or explicitly rounded `ExactF64Conversion` operation.
+
 ## Tolerances and typed errors
 
 `Tolerance::try_new` accepts finite values greater than or equal to zero.
@@ -205,6 +238,7 @@ required by `Matrix::ldlt`.
 | `D ≤ 4` error-bounded determinant/sign test | `det_direct_with_errbound` | Sign is certified when estimate magnitude exceeds bound; otherwise inconclusive |
 | Exact determinant sign | `det_sign_exact` | Exact for stored binary64 entries |
 | Exact determinant value or solve | `det_exact`, `solve_exact` | Exact for represented inputs |
+| Exact operations over preassembled rationals | `RationalMatrix::det_sign`, `det`, `solve` | No intermediate binary64 reconstruction |
 | Binary64 output from an exact result | Strict or rounded conversions | Strict conversion forbids rounding |
 
 ## Geometry relationship and scope

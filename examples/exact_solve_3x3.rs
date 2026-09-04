@@ -58,7 +58,9 @@ fn main() -> Result<(), LaError> {
     );
     println!(
         "solve_exact():      x = [{}, {}, {}]",
-        exact_x[0], exact_x[1], exact_x[2]
+        exact_x.as_array()[0],
+        exact_x.as_array()[1],
+        exact_x.as_array()[2]
     );
     match exact_x.try_to_f64() {
         Ok(x) => {

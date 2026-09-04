@@ -79,12 +79,14 @@ The SPD rows compare la-stack LDLT, faer LDLT, and nalgebra Cholesky. They are
 labelled by algorithm because nalgebra does not expose a dense LDLT
 factorization in the dependency version used here.
 
-**`exact`** (`benches/exact.rs`) measures exact-arithmetic methods
-(`det_exact`, `solve_exact`, `det_sign_exact`, strict `*_result` conversions,
-and lossy `*_rounded_f64` conversions) alongside the f64 `det` baseline across
-D=2-5. Its supported D=2-4 range also includes `det_direct`, the paired
-`det_direct_with_errbound`, and the bound-only `det_errbound`. Use this suite
-to understand exact-arithmetic cost and track optimization progress.
+**`exact`** (`benches/exact.rs`) measures exact-arithmetic methods over lifted
+binary64 inputs (`det_exact`, `solve_exact`, `det_sign_exact`, strict `*_result`
+conversions, and lossy `*_rounded_f64` conversions) alongside the f64 `det`
+baseline across D=2-5. Its supported D=2-4 range also includes `det_direct`, the
+paired `det_direct_with_errbound`, and the bound-only `det_errbound`. The same
+suite compares row-cleared Bareiss operations with direct `BigRational` Gaussian
+operations over already-exact rational inputs across D=2-8. Use it to understand
+exact-arithmetic cost and track optimization progress.
 
 ## Common Workflows
 
@@ -480,6 +482,11 @@ random-corpus groups, and adversarial-input groups:
 - `exact_hilbert_4x4` / `exact_hilbert_5x5` — classically ill-conditioned
   matrices whose binary64 entries have varied mantissas and exponents, stressing
   the `decompose_f64 -> BigInt` scaling path.
+- `rational_input_d{2..8}` — already-exact, diagonally-dominant rational
+  systems. These compare public `RationalMatrix::det_sign`, `det`, and `solve`
+  calls using row-denominator clearing plus integer Bareiss elimination with
+  straightforward cubic `BigRational` Gaussian determinant and solve
+  references on identical matrices and right-hand sides \[7, 11-12\].
 
 Each random-corpus and adversarial group runs the same exact-arithmetic
 benches (`det_sign_exact`, `det_exact`, `solve_exact`,
@@ -496,6 +503,13 @@ strict/rounded binary64 results are checked for their exact bits, typed reason,
 and first failing component. These checks run outside timed Criterion closures.
 Any disagreement or unexpected error fails setup instead of becoming an
 artificially fast measurement.
+
+The rational-input groups are part of the canonical exact release signal.
+Releases produced with the rational-input harness include their Criterion point
+estimates and confidence intervals. When the comparison baseline predates the
+rational-input API, the report retains current-only rows with an explicit
+coverage note and does not calculate a cross-release ratio; historical reports
+whose shared harness predates these groups omit them on both sides.
 
 The proof-bearing fixture is therefore a prerequisite correctness gate, not a
 claim that every timed sample is revalidated. Criterion closures remain free of

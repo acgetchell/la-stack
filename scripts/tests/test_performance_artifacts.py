@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
 from typing import cast
@@ -35,8 +36,93 @@ def _timing(value: float) -> TimingEstimate:
     )
 
 
-def _context(*, current: str = "v0.4.4", baseline: str = "v0.4.3") -> ArtifactContext:
-    compatibility = "la_stack_v0_4_3_api" if baseline == "v0.4.3" else "none"
+@pytest.mark.parametrize(
+    "case",
+    [
+        (
+            "v0.4.5",
+            "v0.4.4",
+            False,
+            "pre-rational-input",
+            "pre-rational-input",
+            "la_stack_pre_rational_input_api",
+            "excluded",
+        ),
+        (
+            "v0.4.4",
+            "v0.4.3",
+            False,
+            "pre-rational-input",
+            "legacy-v0.4.3",
+            "la_stack_v0_4_3_api",
+            "excluded",
+        ),
+        (
+            "v0.4.5",
+            "v0.4.5",
+            True,
+            "pre-rational-input",
+            "pre-rational-input",
+            "la_stack_pre_rational_input_api",
+            "current-only",
+        ),
+        (
+            "v0.4.6-rc.1",
+            "v0.4.2",
+            True,
+            "rational-input",
+            "legacy-v0.4.3",
+            "la_stack_v0_4_3_api",
+            "current-only",
+        ),
+        (
+            "v1.0.0-alpha.1",
+            "v0.3.9-beta.2",
+            True,
+            "rational-input",
+            "legacy-v0.4.3",
+            "la_stack_v0_4_3_api",
+            "current-only",
+        ),
+        (
+            "v0.4.6",
+            "v0.4.6-rc.1",
+            True,
+            "rational-input",
+            "rational-input",
+            "none",
+            "comparable",
+        ),
+    ],
+)
+def test_shared_harness_compatibility_uses_literal_release_capability_oracle(
+    case: tuple[str, str, bool, str, str, str, str],
+) -> None:
+    current, baseline, harness_rational, expected_current, expected_baseline, adapter, coverage = case
+    resolved = performance_artifacts.resolve_shared_harness_compatibility(
+        current=current,
+        baseline=baseline,
+        shared_harness_rational_inputs=harness_rational,
+    )
+
+    assert resolved.current == expected_current
+    assert resolved.baseline == expected_baseline
+    assert resolved.baseline_api_compatibility == adapter
+    assert resolved.rational_input_coverage == coverage
+
+
+def _context(
+    *,
+    current: str = "v0.4.4",
+    baseline: str = "v0.4.3",
+    shared_harness_rational_inputs: bool = True,
+) -> ArtifactContext:
+    if baseline in {"v0.4.2", "v0.4.3"}:
+        compatibility = "la_stack_v0_4_3_api"
+    elif baseline in {"v0.4.4", "v0.4.5"}:
+        compatibility = "la_stack_pre_rational_input_api"
+    else:
+        compatibility = "none"
     return ArtifactContext(
         release=ReleasePair(current=current, baseline=baseline),
         statistic="median",
@@ -50,6 +136,7 @@ def _context(*, current: str = "v0.4.4", baseline: str = "v0.4.3") -> ArtifactCo
         ),
         benchmark_provenance={
             "baseline": baseline,
+            "current": current,
             "criterion": {
                 "baseline_command": ["just", "bench-save-baseline", baseline],
                 "criterion_version": "0.7.0",
@@ -99,6 +186,7 @@ def _context(*, current: str = "v0.4.4", baseline: str = "v0.4.3") -> ArtifactCo
                 "current_revision": "passed",
                 "current_source_state_sha256": "c" * 64,
                 "harness": "shared-current",
+                "shared_harness_rational_inputs": shared_harness_rational_inputs,
             },
         },
     )
@@ -168,6 +256,29 @@ def test_artifact_round_trip_preserves_comparable_and_one_sided_rows() -> None:
     assert [row.coverage_status for row in parsed.rows] == ["comparable", "current-only", "baseline-only"]
     assert csv_payload.endswith(b"\n")
     assert provenance_payload.endswith(b"\n")
+
+
+def test_bundle_rejects_rational_rows_when_historical_harness_did_not_emit_them() -> None:
+    rational_row = PerformanceRow(
+        suite="exact",
+        scope="release-signal",
+        benchmark_id="rational_input_d2/det_row_cleared_bareiss",
+        group="rational_input_d2",
+        benchmark="det_row_cleared_bareiss",
+        baseline_benchmark="det_row_cleared_bareiss",
+        coverage_status="current-only",
+        coverage_note="Baseline predates rational inputs.",
+        baseline=None,
+        current=_timing(12.0),
+    )
+    context = _context(
+        current="v0.4.5",
+        baseline="v0.4.4",
+        shared_harness_rational_inputs=False,
+    )
+
+    with pytest.raises(ValueError, match="must be excluded"):
+        PerformanceBundle(context=context, rows=(rational_row,))
 
 
 def test_artifact_round_trip_allows_same_version_local_comparison() -> None:
@@ -294,6 +405,55 @@ def test_artifact_loader_rejects_incomplete_nested_provenance() -> None:
         )
 
 
+def test_artifact_loader_defaults_fields_absent_from_legacy_schema2_artifacts() -> None:
+    csv_payload, provenance_payload = serialize_bundle(_bundle())
+    provenance = json.loads(provenance_payload)
+    benchmark_provenance = provenance["benchmark_provenance"]
+    assert benchmark_provenance["schema"] == 2
+    del benchmark_provenance["current"]
+    del benchmark_provenance["validation"]["shared_harness_rational_inputs"]
+
+    loaded = load_bundle_bytes(
+        csv_payload,
+        (json.dumps(provenance) + "\n").encode(),
+        source="legacy schema-2 artifact fixture",
+    )
+
+    loaded_provenance = loaded.context.benchmark_provenance
+    assert loaded_provenance["current"] == loaded.context.release.current
+    validation = loaded_provenance["validation"]
+    assert isinstance(validation, Mapping)
+    assert validation["shared_harness_rational_inputs"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("current", False, r"root\.current"),
+        ("shared_harness_rational_inputs", "false", "must be a boolean"),
+    ],
+)
+def test_artifact_loader_rejects_invalid_present_legacy_default_fields(
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    csv_payload, provenance_payload = serialize_bundle(_bundle())
+    provenance = json.loads(provenance_payload)
+    benchmark_provenance = provenance["benchmark_provenance"]
+    if field == "current":
+        benchmark_provenance[field] = value
+    else:
+        benchmark_provenance["validation"][field] = value
+
+    with pytest.raises((TypeError, ValueError), match=message):
+        load_bundle_bytes(
+            csv_payload,
+            (json.dumps(provenance) + "\n").encode(),
+            source="invalid legacy-default field fixture",
+        )
+
+
 def test_artifact_loader_rejects_contradictory_current_revision() -> None:
     csv_payload, provenance_payload = serialize_bundle(_bundle())
     provenance = json.loads(provenance_payload)
@@ -371,6 +531,22 @@ def test_artifact_loader_rejects_arbitrary_compatibility_adapter() -> None:
 
     with pytest.raises(ValueError, match="baseline_api_compatibility must be"):
         load_bundle_bytes(csv_payload, (json.dumps(provenance) + "\n").encode(), source="invalid compatibility fixture")
+
+
+def test_artifact_loader_accepts_pre_rational_adapter_for_v045() -> None:
+    bundle = _bundle()
+    context = _context(current="v0.4.6", baseline="v0.4.5")
+    csv_payload, provenance_payload = serialize_bundle(PerformanceBundle(context=context, rows=bundle.rows))
+
+    loaded = load_bundle_bytes(
+        csv_payload,
+        provenance_payload,
+        source="pre-rational compatibility fixture",
+    )
+
+    validation = loaded.context.benchmark_provenance["validation"]
+    assert isinstance(validation, Mapping)
+    assert validation["baseline_api_compatibility"] == "la_stack_pre_rational_input_api"
 
 
 def test_artifact_loader_requires_recorded_measurement_compatibility() -> None:

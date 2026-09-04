@@ -38,6 +38,8 @@ from typing import Literal, Protocol, cast
 
 from criterion_dim_plot import METRICS
 from performance_artifacts import (
+    PRE_RATIONAL_INPUT_API_COMPATIBILITY,
+    V0_4_3_API_COMPATIBILITY,
     ArtifactContext,
     ArtifactPaths,
     PerformanceBundle,
@@ -49,6 +51,7 @@ from performance_artifacts import (
     freeze_mapping,
     load_bundle,
     publish_bundle,
+    resolve_shared_harness_compatibility,
 )
 from subprocess_utils import ExecutableNotFoundError, find_project_root, format_exception_diagnostics, run_git_command
 
@@ -59,8 +62,9 @@ from subprocess_utils import ExecutableNotFoundError, find_project_root, format_
 # Groups and the benchmarks within each group that we track.
 #
 # Mirrors the structure of `benches/exact.rs`: general-case per-dimension
-# groups (`exact_d{2..5}`), fixed-seed full-corpus groups, plus
-# adversarial/extreme-input groups that share a fixed five-bench layout
+# groups (`exact_d{2..5}`), fixed-seed full-corpus groups, rational-input
+# comparisons (`rational_input_d{2..8}`), plus adversarial/extreme-input groups
+# that share a fixed five-bench layout
 # (`det_sign_exact`, `det_exact`, `solve_exact`, `solve_exact_f64_result`,
 # `solve_exact_rounded_f64`).
 _EXTREME_BENCHES: list[str] = [
@@ -90,6 +94,14 @@ _EXACT_DIMENSION_BENCHES_WITH_DIRECT: list[str] = [
     *_EXACT_DIMENSION_BENCHES[1:],
 ]
 
+_RATIONAL_INPUT_BENCHES: list[str] = [
+    "det_sign_row_cleared_bareiss",
+    "det_row_cleared_bareiss",
+    "det_big_rational_gaussian",
+    "solve_row_cleared_bareiss",
+    "solve_big_rational_gaussian",
+]
+
 EXACT_GROUPS: dict[str, list[str]] = {
     "exact_d2": _EXACT_DIMENSION_BENCHES_WITH_DIRECT,
     "exact_d3": _EXACT_DIMENSION_BENCHES_WITH_DIRECT,
@@ -99,6 +111,7 @@ EXACT_GROUPS: dict[str, list[str]] = {
     "exact_random_corpus_d3": _RANDOM_CORPUS_BENCHES,
     "exact_random_corpus_d4": _RANDOM_CORPUS_BENCHES,
     "exact_random_corpus_d5": _RANDOM_CORPUS_BENCHES,
+    **{f"rational_input_d{dimension}": _RATIONAL_INPUT_BENCHES for dimension in range(2, 9)},
     "exact_near_singular_3x3": _EXTREME_BENCHES,
     "exact_large_entries_3x3": _EXTREME_BENCHES,
     "exact_hilbert_4x4": _EXTREME_BENCHES,
@@ -154,7 +167,11 @@ VS_LINALG_D8_RELEASE_SIGNAL_BENCHES: list[str] = [
     "la_stack_det_from_lu_balanced_range",
     "la_stack_det_from_ldlt_balanced_range",
 ]
-_V0_4_3_API_COMPATIBILITY = "la_stack_v0_4_3_api"
+_V0_4_3_API_COMPATIBILITY = V0_4_3_API_COMPATIBILITY
+_PRE_RATIONAL_INPUT_API_COMPATIBILITY = PRE_RATIONAL_INPUT_API_COMPATIBILITY
+_RATIONAL_INPUT_ROWS: frozenset[tuple[str, str]] = frozenset(
+    (group, bench) for group, benches in EXACT_GROUPS.items() if group.startswith("rational_input_d") for bench in benches
+)
 _V0_4_3_UNAVAILABLE_BASELINE_ROWS: frozenset[tuple[str, str]] = frozenset(
     {
         ("exact_d2", "det_direct_with_errbound"),
@@ -356,6 +373,7 @@ class ComparisonPolicy:
 
     scope: str = "release-signal"
     baseline_api_compatibility: str | None = None
+    shared_harness_rational_inputs: bool = True
 
 
 _DEFAULT_COMPARISON_POLICY = ComparisonPolicy()
@@ -379,6 +397,7 @@ class HarnessProvenance:
     mode: str
     sha256: str | None
     baseline: str
+    current: str | None = None
     measurement: Mapping[str, object] | None = None
     publication: Mapping[str, object] | None = None
     criterion: CriterionProvenance | None = None
@@ -589,6 +608,7 @@ def _parse_harness_provenance(
     if mode not in {"shared-current-harness", "historical-assets"}:
         msg = f"unsupported or missing mode in {path}: {mode!r}"
         raise ValueError(msg)
+    current = _required_metadata_string(data, "current", path)
 
     measurement = _required_metadata_object(data, "measurement", path)
     publication = _required_metadata_object(data, "publication", path)
@@ -602,7 +622,7 @@ def _parse_harness_provenance(
         expected=expected,
     )
     _validate_validation_metadata(validation, path=path)
-    _validate_baseline_api_compatibility(validation, baseline=baseline, path=path)
+    _validate_baseline_api_compatibility(validation, current=current, baseline=baseline, path=path)
     _validate_schema2_consistency(
         mode=mode,
         measurement=measurement,
@@ -619,6 +639,7 @@ def _parse_harness_provenance(
         mode=mode,
         sha256=sha256,
         baseline=baseline,
+        current=current,
         measurement=measurement,
         publication=publication,
         criterion=criterion,
@@ -777,12 +798,29 @@ def _validate_validation_metadata(data: Mapping[str, object], *, path: Path) -> 
             msg = f"invalid or missing validation.{field} in {path}"
             raise TypeError(msg)
     _required_metadata_string(data, "baseline_api_compatibility", path)
+    if not isinstance(data.get("shared_harness_rational_inputs"), bool):
+        msg = f"invalid or missing validation.shared_harness_rational_inputs in {path}"
+        raise TypeError(msg)
 
 
-def _validate_baseline_api_compatibility(data: Mapping[str, object], *, baseline: str, path: Path) -> None:
-    """Bind the only supported compatibility adapter to its baseline."""
+def _validate_baseline_api_compatibility(
+    data: Mapping[str, object],
+    *,
+    current: str,
+    baseline: str,
+    path: Path,
+) -> None:
+    """Bind each supported compatibility adapter to its baseline releases."""
     compatibility = data.get("baseline_api_compatibility")
-    expected = _V0_4_3_API_COMPATIBILITY if baseline == "v0.4.3" else "none"
+    shared_harness_rational_inputs = data.get("shared_harness_rational_inputs")
+    if not isinstance(shared_harness_rational_inputs, bool):
+        msg = f"invalid or missing validation.shared_harness_rational_inputs in {path}"
+        raise TypeError(msg)
+    expected = resolve_shared_harness_compatibility(
+        current=current,
+        baseline=baseline,
+        shared_harness_rational_inputs=shared_harness_rational_inputs,
+    ).baseline_api_compatibility
     if compatibility != expected:
         msg = f"validation.baseline_api_compatibility in {path} must be {expected!r} for baseline {baseline!r}, got {compatibility!r}"
         raise ValueError(msg)
@@ -955,6 +993,17 @@ def _collect_results(criterion_dir: Path, sample: str, stat: str, suite: str = "
     return results
 
 
+def _unavailable_baseline_rows(policy: ComparisonPolicy) -> frozenset[tuple[str, str]]:
+    """Return rows excluded by the baseline API under the installed shared harness."""
+    unavailable: frozenset[tuple[str, str]] = _UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY.get(
+        policy.baseline_api_compatibility or "",
+        frozenset[tuple[str, str]](),
+    )
+    if policy.shared_harness_rational_inputs and policy.baseline_api_compatibility in {_V0_4_3_API_COMPATIBILITY, _PRE_RATIONAL_INPUT_API_COMPATIBILITY}:
+        unavailable |= _RATIONAL_INPUT_ROWS
+    return unavailable
+
+
 def _collect_exact_comparisons(
     criterion_dir: Path,
     baseline_name: str,
@@ -965,13 +1014,12 @@ def _collect_exact_comparisons(
     """Compare exact results while retaining every missing expected row."""
     comparisons: list[Comparison] = []
     gaps: list[CoverageGap] = []
-    unavailable_baseline_rows = _UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY.get(
-        policy.baseline_api_compatibility or "",
-        frozenset(),
-    )
+    unavailable_baseline_rows = _unavailable_baseline_rows(policy)
 
     selected_groups: list[str] = []
     for group, benches in EXACT_GROUPS.items():
+        if group.startswith("rational_input_d") and not policy.shared_harness_rational_inputs:
+            continue
         selected_benches = [bench for bench in benches if _is_selected_comparison_row(group, bench, suite=suite, scope=policy.scope)]
         if not selected_benches:
             continue
@@ -1117,10 +1165,7 @@ def _collect_vs_linalg_comparisons(
     """Compare vs_linalg results while retaining one-sided rows."""
     comparisons: list[Comparison] = []
     gaps: list[CoverageGap] = []
-    unavailable_baseline_rows = _UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY.get(
-        policy.baseline_api_compatibility or "",
-        frozenset(),
-    )
+    unavailable_baseline_rows = _unavailable_baseline_rows(policy)
     dim_groups = _vs_linalg_dimension_groups(criterion_dir, policy.scope)
 
     for _dim, group_dir in sorted(dim_groups, key=lambda item: item[0]):
@@ -1362,10 +1407,13 @@ def _group_heading(group: str) -> str:
     # exact_d3 -> "D=3", exact_random_corpus_d3 ->
     # "Random corpus D=3", exact_near_singular_3x3 ->
     # "Near-singular 3x3", exact_hilbert_4x4 -> "Hilbert 4x4", etc.
-    if group.startswith("exact_random_corpus_d"):
-        return f"Random corpus D={group.removeprefix('exact_random_corpus_d')}"
-    if group.startswith("exact_d"):
-        return f"D={group.removeprefix('exact_d')}"
+    for prefix, label in (
+        ("exact_random_corpus_d", "Random corpus D="),
+        ("rational_input_d", "Rational input D="),
+        ("exact_d", "D="),
+    ):
+        if group.startswith(prefix):
+            return f"{label}{group.removeprefix(prefix)}"
     if group == "exact_near_singular_3x3":
         return "Near-singular 3x3"
     if group == "exact_large_entries_3x3":
@@ -1535,7 +1583,7 @@ def _unavailable_artifact_rows(  # noqa: PLR0913
 ) -> list[PerformanceRow]:
     """Retain correctness-excluded baseline rows as explicit current-only data."""
     compatibility = policy.baseline_api_compatibility
-    unavailable = _UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY.get(compatibility or "", frozenset())
+    unavailable = _unavailable_baseline_rows(policy)
     rows: list[PerformanceRow] = []
     for group, bench in sorted(unavailable):
         if not _is_selected_comparison_row(group, bench, suite=suite, scope=scope):
@@ -1879,6 +1927,18 @@ def _provenance_markdown(
                     "  because v0.4.3 predates the paired API; the comparable `det_errbound` baselines remain required.",
                 ]
             )
+        if (
+            include_compatibility_rows
+            and compatibility in {_V0_4_3_API_COMPATIBILITY, _PRE_RATIONAL_INPUT_API_COMPATIBILITY}
+            and criterion.suite in {"all", "exact"}
+            and validation.get("shared_harness_rational_inputs") is True
+        ):
+            lines.extend(
+                [
+                    "- Baseline-unavailable rows: `rational_input_d{2..8}/*` were not timed because the baseline",
+                    "  predates the exact rational-input API; current samples remain required, but no cross-release speedup is claimed.",
+                ]
+            )
     return lines
 
 
@@ -2035,12 +2095,18 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def _comparison_policy(scope: str, provenance: HarnessProvenance | None) -> ComparisonPolicy:
     """Build comparison coverage policy from validated provenance."""
-    if provenance is None or provenance.validation is None:
+    if provenance is None:
+        return ComparisonPolicy(scope=scope)
+    if provenance.schema == 1:
+        return ComparisonPolicy(scope=scope, shared_harness_rational_inputs=False)
+    if provenance.validation is None:
         return ComparisonPolicy(scope=scope)
     compatibility = provenance.validation.get("baseline_api_compatibility")
+    shared_harness_rational_inputs = provenance.validation.get("shared_harness_rational_inputs")
     return ComparisonPolicy(
         scope=scope,
         baseline_api_compatibility=compatibility if isinstance(compatibility, str) else None,
+        shared_harness_rational_inputs=(shared_harness_rational_inputs if isinstance(shared_harness_rational_inputs, bool) else True),
     )
 
 
