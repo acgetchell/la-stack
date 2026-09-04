@@ -985,8 +985,16 @@ mod tests {
             "non-finite input value at interval upper bound"
         );
         assert_eq!(
+            LaError::non_finite_input_interval_bound(IntervalBound::Lower).to_string(),
+            "non-finite input value at interval lower bound"
+        );
+        assert_eq!(
             LaError::non_finite_input_interval_operand(IntervalOperand::Left).to_string(),
             "non-finite input value at left interval operand"
+        );
+        assert_eq!(
+            LaError::non_finite_input_interval_operand(IntervalOperand::Right).to_string(),
+            "non-finite input value at right interval operand"
         );
         assert_eq!(
             LaError::non_finite_computation_matrix(ArithmeticOperation::LuFactorization, 2, 1)

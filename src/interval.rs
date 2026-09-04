@@ -964,6 +964,14 @@ mod tests {
         let product = Interval::point(0.1)?.try_mul(&Interval::point(0.2)?)?;
         assert!(product.contains(0.1 * 0.2));
         assert!(product.lower() < product.upper());
+
+        let below_one = 1.0 - f64::EPSILON;
+        let above_one = 1.0 + f64::EPSILON;
+        let binade_boundary = Interval::point(below_one)?.try_mul(&Interval::point(above_one)?)?;
+        assert_eq!(
+            binade_boundary,
+            Interval::try_new(1.0_f64.next_down(), 1.0)?
+        );
         Ok(())
     }
 
@@ -1002,7 +1010,20 @@ mod tests {
         let maximum = Interval::point(f64::MAX)?;
         let tiny = Interval::point(f64::MIN_POSITIVE)?;
         assert_eq!(
+            maximum.try_add(&maximum),
+            Err(LaError::IntervalRangeExhausted {
+                operation: ArithmeticOperation::IntervalAddition,
+            })
+        );
+        assert_eq!(
             maximum.try_add(&tiny),
+            Err(LaError::IntervalRangeExhausted {
+                operation: ArithmeticOperation::IntervalAddition,
+            })
+        );
+        let nonnegative = Interval::try_new(0.0, f64::MAX)?;
+        assert_eq!(
+            nonnegative.try_add(&nonnegative),
             Err(LaError::IntervalRangeExhausted {
                 operation: ArithmeticOperation::IntervalAddition,
             })
@@ -1028,6 +1049,12 @@ mod tests {
                 operation: ArithmeticOperation::IntervalSquare,
             })
         );
+        assert_eq!(
+            Interval::try_new(-1.0, f64::MAX)?.try_square(),
+            Err(LaError::IntervalRangeExhausted {
+                operation: ArithmeticOperation::IntervalSquare,
+            })
+        );
         Ok(())
     }
 
@@ -1036,6 +1063,21 @@ mod tests {
         let matrix = IntervalMatrix::<2>::try_from_point_rows([[f64::MAX, 0.0], [0.0, 2.0]])?;
         assert_eq!(
             matrix.det(),
+            Err(LaError::IntervalRangeExhausted {
+                operation: ArithmeticOperation::IntervalDeterminant,
+            })
+        );
+
+        let accumulating =
+            IntervalMatrix::<2>::try_from_point_rows([[f64::MAX, f64::MAX], [-1.0, 1.0]])?;
+        assert_eq!(
+            accumulating.det(),
+            Err(LaError::IntervalRangeExhausted {
+                operation: ArithmeticOperation::IntervalDeterminant,
+            })
+        );
+        assert_eq!(
+            accumulating.det_sign(),
             Err(LaError::IntervalRangeExhausted {
                 operation: ArithmeticOperation::IntervalDeterminant,
             })
@@ -1085,6 +1127,30 @@ mod tests {
             Interval::ZERO.try_mul(&Interval::try_new(-f64::MAX, f64::MAX)?)?,
             Interval::ZERO
         );
+        Ok(())
+    }
+
+    #[test]
+    fn multiplication_rejects_unrepresentable_selected_extrema() -> Result<(), LaError> {
+        let half_maximum = f64::MAX / 2.0;
+        for (left, right) in [
+            ((half_maximum, f64::MAX), (-2.0, -1.0)),
+            ((half_maximum, f64::MAX), (1.0, 2.0)),
+            ((-f64::MAX, 1.0), (-1.0, 2.0)),
+            ((-1.0, f64::MAX), (-2.0, 1.0)),
+            ((-f64::MAX, 1.0), (-2.0, 1.0)),
+            ((-1.0, f64::MAX), (-1.0, 2.0)),
+        ] {
+            let result =
+                Interval::try_new(left.0, left.1)?.try_mul(&Interval::try_new(right.0, right.1)?);
+            assert_eq!(
+                result,
+                Err(LaError::IntervalRangeExhausted {
+                    operation: ArithmeticOperation::IntervalMultiplication,
+                }),
+                "left={left:?}, right={right:?}"
+            );
+        }
         Ok(())
     }
 
@@ -1158,6 +1224,7 @@ mod tests {
         let value = Interval::try_new(2.0, 3.0)?;
         intervals.set(0, 1, value)?;
         assert_eq!(intervals.get(0, 1), Some(value));
+        assert_eq!(intervals.get(2, 0), None);
         assert_eq!(intervals.try_get(0, 1)?, value);
         assert_matches!(
             intervals.try_get(2, 0),

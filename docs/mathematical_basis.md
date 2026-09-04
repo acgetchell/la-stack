@@ -5,7 +5,9 @@ point-value input domains plus one bounded layer. `Matrix<D>` and `Vector<D>`
 store finite IEEE 754 binary64 values; their default algorithms operate in
 binary64 and are therefore approximate. `Interval` and `IntervalMatrix<D>`
 enclose exact-real expression values between outward-rounded finite binary64
-bounds. The optional `exact` feature can either lift stored binary64 values to
+bounds when interval operations are used throughout expression assembly.
+Lifting an already-rounded `Matrix` encloses only its stored values. The
+optional `exact` feature can either lift stored binary64 values to
 the exact rational numbers they represent or accept caller-supplied
 `BigRational` values through `RationalMatrix<D>` and `RationalVector<D>`.
 
