@@ -79,7 +79,60 @@ fn common_prelude_supports_downstream_composition() -> Result<(), LaError> {
     assert_abs_diff_eq!(dispatched, 1.0, epsilon = 0.0);
     assert_eq!(MAX_STACK_MATRIX_DISPATCH_DIM, 7);
 
+    let interval = Interval::try_from_subtraction(1.0, 0.1)?;
+    assert!(interval.lower() <= 1.0 - 0.1);
+    assert!(interval.upper() >= 1.0 - 0.1);
+    let interval_matrix = IntervalMatrix::<2>::identity();
+    assert_eq!(
+        interval_matrix.det_sign()?,
+        IntervalDeterminantSign::Positive
+    );
+    let interval_sign =
+        try_with_interval_matrix!(MAX_INTERVAL_MATRIX_DIM, |matrix| -> Result<
+            IntervalDeterminantSign,
+            LaError,
+        > { matrix.det_sign() },)?;
+    assert_eq!(interval_sign, IntervalDeterminantSign::Zero);
+    assert_matches!(
+        LaError::inverted_interval(2.0, 1.0),
+        LaError::InvertedInterval {
+            lower: 2.0,
+            upper: 1.0,
+            ..
+        }
+    );
     Ok(())
+}
+
+#[test]
+fn interval_error_categories_are_available_from_the_prelude() {
+    assert_matches!(
+        LaError::non_finite_input_interval_bound(IntervalBound::Lower),
+        LaError::NonFinite {
+            location: NonFiniteLocation::IntervalBound {
+                bound: IntervalBound::Lower,
+                ..
+            },
+            ..
+        }
+    );
+    assert_matches!(
+        LaError::non_finite_input_interval_operand(IntervalOperand::Right),
+        LaError::NonFinite {
+            location: NonFiniteLocation::IntervalOperand {
+                operand: IntervalOperand::Right,
+                ..
+            },
+            ..
+        }
+    );
+    assert_matches!(
+        LaError::interval_range_exhausted(ArithmeticOperation::IntervalAddition),
+        LaError::IntervalRangeExhausted {
+            operation: ArithmeticOperation::IntervalAddition,
+            ..
+        }
+    );
 }
 
 #[cfg(feature = "exact")]

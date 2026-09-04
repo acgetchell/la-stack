@@ -23,10 +23,10 @@ cargo_machete_version := "0.9.2"
 cargo_nextest_version := "0.9.143"
 cargo_update_version := "22.1.1"
 clippy_sarif_version := "0.8.0"
-dprint_version := "0.57.0"
+dprint_version := "0.57.1"
 git_cliff_version := "2.14.1"
 just_version := "1.58.0"
-rumdl_version := "0.2.63"
+rumdl_version := "0.2.64"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
 typos_version := "1.50.1"
@@ -270,6 +270,10 @@ bench-compile:
 bench-exact:
     cargo bench --locked --features bench,exact --bench exact
 
+# Run the outward-rounded interval determinant benchmark suite.
+bench-interval:
+    cargo bench --locked --features bench --bench interval
+
 # Run the cheaper latest measurements used for latest-vs-last reports.
 bench-latest: bench-vs-linalg-la-stack bench-exact
 
@@ -500,6 +504,8 @@ help-workflows:
     @echo "  just bench-compile          # Compile benches with warnings-as-errors"
     @echo "  just bench-latest           # Run cheap latest measurements"
     @echo "  just bench-latest-vs-last   # Run latest and compare against last"
+    @echo "  just bench-exact            # Run exact-arithmetic benchmarks"
+    @echo "  just bench-interval         # Run interval determinant benchmarks"
     @echo "  just bench-save-last        # Save full baseline as 'last'"
     @echo "  just bench-vs-linalg        # Run vs_linalg bench (optional filter)"
     @echo "  just bench-vs-linalg-la-stack # Run la-stack rows from vs_linalg"

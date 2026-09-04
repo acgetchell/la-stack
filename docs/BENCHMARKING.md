@@ -28,6 +28,7 @@ the commands measure and where their outputs go.
 | Non-exact release-signal check against tags | `just performance-local-non-exact v0.4.5 v0.4.4` |
 | Fast saved-baseline loop | `just bench-save-baseline <name> <suite>` then `just bench-compare <name> <suite> all-benches` |
 | Full crate comparison | `just bench-vs-linalg` |
+| Interval determinant filter | `just bench-interval` |
 | README table and plot | `just performance-release` then `just performance-readme` |
 | Release report | `just performance-release v0.4.5 v0.4.4` |
 | Build docs from retained release inputs | `just performance-doc` |
@@ -63,7 +64,7 @@ promotion in one command.
 
 ## Benchmark Suites
 
-`la-stack` has two Criterion benchmark suites.
+`la-stack` has three Criterion benchmark suites.
 
 Newly rendered reports use one table per selected suite. Dimension and
 adversarial-input group appear in a `Case` column instead of creating a separate
@@ -87,6 +88,14 @@ paired `det_direct_with_errbound`, and the bound-only `det_errbound`. The same
 suite compares row-cleared Bareiss operations with direct `BigRational` Gaussian
 operations over already-exact rational inputs across D=2-8. Use it to understand
 exact-arithmetic cost and track optimization progress.
+
+**`interval`** (`benches/interval.rs`) measures the default-feature,
+division-free interval determinant sign filter. Its fixtures cover a conclusive
+4×4 relative-coordinate lifted predicate, the corresponding inconclusive
+boundary regime, and a conclusive 7×7 lifted workload at the supported dimension
+limit. Fixture construction and expected-sign validation occur outside the
+timed closures. This suite is a focused kernel signal; it is not part of the
+release-to-release `vs_linalg` or `exact` report schema.
 
 ## Common Workflows
 

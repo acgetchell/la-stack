@@ -23,6 +23,27 @@ No generated content was used without human oversight.
 
 ## Linear algebra algorithms
 
+### Outward-rounded interval determinant sign
+
+`Interval` uses IEEE-754 round-to-nearest binary64 operations plus adjacent
+representable values to enclose exact-real addition, subtraction,
+multiplication, and square results (references 9–11). Addition and subtraction
+use an error-free `TwoSum` residual [8]; multiplication independently compares
+the exact integer-significand product with the rounded binary64 result,
+including gradual underflow to zero. Results whose exact range cannot fit
+between finite binary64 endpoints return a typed range failure rather than
+storing infinity. For the broader standardized interval arithmetic model, see
+[14]; this crate does not claim IEEE 1788 conformance.
+
+`IntervalMatrix::det()` evaluates the Leibniz expansion with a division-free
+column-subset dynamic program. It uses `2^D` inline interval states and
+`D × 2^(D-1)` coefficient products through D=7. A determinant interval strictly
+separated from zero certifies its sign; `[0, 0]` certifies zero; every other
+overlap is explicitly inconclusive. The determinant identity is standard
+linear algebra (reference 12); the interval evaluation and subset-DP
+organization are implemented specifically for this crate's small
+fixed-dimension scope.
+
 ### Absolute error bound for closed-form determinants
 
 `Matrix::det_errbound()` returns a conservative Shewchuk-style absolute error bound [8]
@@ -150,3 +171,7 @@ algorithmic background.
 13. Kalibera, Tomas, and Richard Jones. "Rigorous Benchmarking in Reasonable Time."
     *Proceedings of the 2013 International Symposium on Memory Management* (ISMM '13),
     2013: 63–74. [DOI](https://doi.org/10.1145/2464157.2464160)
+14. IEEE Computer Society. "IEEE Standard for Interval Arithmetic."
+    *IEEE Std 1788-2015*, 2015: 1–97.
+    [DOI](https://doi.org/10.1109/IEEESTD.2015.7140721) ·
+    [IEEE record](https://standards.ieee.org/ieee/1788/4431/)
