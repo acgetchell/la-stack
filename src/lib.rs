@@ -317,6 +317,7 @@ mod readme_doctests {
 mod error;
 #[cfg(feature = "exact")]
 mod exact;
+mod gram;
 mod interval;
 mod ldlt;
 mod lu;
@@ -507,6 +508,7 @@ pub use error::{
     LaError, NonFiniteLocation, NonFiniteOrigin, PositiveSemidefiniteViolation, SingularityReason,
     UnrepresentableReason,
 };
+pub use gram::gram_matrix;
 pub use interval::{Interval, IntervalDeterminantSign, IntervalMatrix, MAX_INTERVAL_MATRIX_DIM};
 pub use ldlt::Ldlt;
 pub use lu::Lu;
@@ -770,7 +772,8 @@ macro_rules! try_with_rational_matrix {
 /// [`DeterminantWithErrorBound`], [`Interval`], [`IntervalMatrix`],
 /// [`IntervalDeterminantSign`], [`ScalarWithErrorBound`], [`Vector`], [`Lu`],
 /// [`Ldlt`], [`Tolerance`],
-/// and [`LaError`]. Its typed
+/// and [`LaError`]. It also includes [`gram_matrix`] for constructing a symmetric
+/// matrix of pairwise vector inner products. Its typed
 /// error categories include [`ArithmeticOperation`], [`FactorizationKind`],
 /// [`IntervalBound`], [`IntervalOperand`], [`InvalidToleranceReason`],
 /// [`NonFiniteLocation`], [`NonFiniteOrigin`], [`PositiveSemidefiniteViolation`],
@@ -834,7 +837,8 @@ pub mod prelude {
         InvalidToleranceReason, LaError, Ldlt, Lu, MAX_INTERVAL_MATRIX_DIM,
         MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, NonFiniteLocation, NonFiniteOrigin,
         PositiveSemidefiniteViolation, ScalarWithErrorBound, SingularityReason, Tolerance,
-        UnrepresentableReason, Vector, try_with_interval_matrix, try_with_stack_matrix,
+        UnrepresentableReason, Vector, gram_matrix, try_with_interval_matrix,
+        try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]

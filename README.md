@@ -22,6 +22,15 @@ while keeping the API intentionally small and explicit.
 `la-stack` provides a handful of const-generic, stack-backed building blocks:
 
 - `Vector<const D: usize>` for fixed-length `f64` vectors backed by `[f64; D]`
+- `gram_matrix(&[Vector<N>; M])` for allocation-free `Matrix<M>` construction
+  from pairwise vector inner products, with bit-for-bit symmetry. Gram matrices
+  encode lengths and angles and support simplex/facet volume calculations; see
+  [Gram matrices and geometric measures](REFERENCES.md#gram-matrices-and-geometric-measures).
+  Each independent dot product is checked once;
+  rounding has no certified error bound, and positive definiteness or affine
+  independence must still be established by factorization or the caller.
+  Benchmark square simplex and rectangular facet inputs through dimension 8
+  with `cargo bench --locked --features bench --bench gram`.
 - `Matrix<const D: usize>` for fixed-size square `f64` matrices backed by `[[f64; D]; D]`
 - `Interval` and `IntervalMatrix<const D: usize>` for outward-rounded,
   proof-bearing determinant filters through D=7
