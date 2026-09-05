@@ -525,8 +525,13 @@ random-corpus groups, and adversarial-input groups:
   calls using row-denominator clearing plus integer Bareiss elimination with
   straightforward cubic `BigRational` Gaussian determinant and solve
   references on identical matrices and right-hand sides \[7, 11-12\].
+- `rational_input_wide{256,1024}_d{2..8}` — diagnostic rational groups with
+  large positive rational row factors. These retain exact solutions and strict
+  diagonal dominance while exercising heap-backed numerator and denominator
+  storage. See the [row-clearing study](performance/rational-row-clearing.md)
+  for fixtures, allocation evidence, focused timing commands, and limitations.
 
-Each random-corpus and adversarial group runs the same exact-arithmetic
+The f64-input random-corpus and adversarial groups run the same exact-arithmetic
 benches (`det_sign_exact`, `det_exact`, `solve_exact`,
 `solve_exact_f64_result`, `solve_exact_rounded_f64`) so tables are comparable
 across input classes.
@@ -542,7 +547,10 @@ and first failing component. These checks run outside timed Criterion closures.
 Any disagreement or unexpected error fails setup instead of becoming an
 artificially fast measurement.
 
-The rational-input groups are part of the canonical exact release signal.
+The original `rational_input_d{2..8}` groups are part of the canonical exact
+release signal. The wide-component
+diagnostics remain local Criterion evidence and are not included in the release
+report's group registry.
 Releases produced with the rational-input harness include their Criterion point
 estimates and confidence intervals. When the comparison baseline predates the
 rational-input API, the report retains current-only rows with an explicit
@@ -570,8 +578,8 @@ being compared to the historical lossy `*_exact_f64` benchmark. Rows such as
 `det_exact_f64_result (vs det_exact_f64)` intentionally show the overhead of the
 new strict conversion contract against that same historical baseline.
 
-The default `release-signal` scope includes all exact-arithmetic groups because
-their inputs and execution order are fixed across revisions. Historical
+The default `release-signal` scope includes the canonical exact-arithmetic
+groups because their inputs and execution order are fixed across revisions. Historical
 baselines created before the `exact_random_corpus_d*` names were introduced do
 not have comparable full-corpus rows, so those rows appear once both sides of a
 comparison provide the stable group.
