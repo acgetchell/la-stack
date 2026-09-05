@@ -37,14 +37,21 @@ use std::hint::black_box;
 use criterion::BatchSize;
 use criterion::{BenchmarkGroup, Criterion, Throughput, measurement::WallTime};
 
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-use la_stack::{BigInt, BigRational, DeterminantSign, RationalMatrix, RationalVector};
 use la_stack::{Matrix, Vector};
 
 #[path = "common/bench_utils.rs"]
 mod bench_utils;
 #[path = "common/exact.rs"]
 pub mod exact_bench;
+
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[path = "common/rational.rs"]
+pub mod rational_bench;
+
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+use rational_bench::{
+    RationalInputKind, rational_determinant_gaussian, rational_input, rational_solve_gaussian,
+};
 
 use bench_utils::OrAbort;
 use exact_bench::{
@@ -98,188 +105,35 @@ const CORPUS_AND_EXTREME_OPERATIONS: &[ExactOperation] = &[
     ExactOperation::SolveExactRoundedF64,
 ];
 
-/// Independently validated exact-input rational benchmark fixture.
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-#[must_use]
-struct ValidatedRationalInput<const D: usize> {
-    matrix: RationalMatrix<D>,
-    rhs: RationalVector<D>,
-}
-
-/// Deterministic, strictly diagonally-dominant exact-input rational fixture.
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-fn rational_input<const D: usize>() -> ValidatedRationalInput<D> {
-    let rows = std::array::from_fn(|row| {
-        std::array::from_fn(|col| {
-            if row == col {
-                let diagonal = 2 * D + row + 1;
-                BigRational::from_integer(BigInt::from(diagonal))
-            } else {
-                let raw_numerator = (row * 3 + col * 5) % 5;
-                let numerator = i64::try_from(raw_numerator).or_abort("rational numerator") - 2;
-                let denominator = (row + col) % 7 + 2;
-                BigRational::new(BigInt::from(numerator), BigInt::from(denominator))
-            }
-        })
-    });
-    let expected_solution = std::array::from_fn(|index| {
-        BigRational::new(BigInt::from(index + 1), BigInt::from(index + 2))
-    });
-    let rhs_data = rational_matvec(&rows, &expected_solution);
-    let matrix = RationalMatrix::try_from_rows(rows.clone())
-        .or_abort("rational benchmark matrix construction");
-    let rhs =
-        RationalVector::try_new(rhs_data.clone()).or_abort("rational benchmark RHS construction");
-
-    let reference_determinant = rational_determinant_gaussian(rows.clone());
-    assert_eq!(matrix.det(), reference_determinant);
-    assert_eq!(matrix.det_sign(), determinant_sign(&reference_determinant));
-    let reference_solution = rational_solve_gaussian(rows, rhs_data)
-        .or_abort("rational Gaussian benchmark validation solve");
-    assert_eq!(reference_solution, expected_solution);
-    assert_eq!(
-        matrix
-            .solve(&rhs)
-            .or_abort("row-cleared Bareiss benchmark validation solve")
-            .into_array(),
-        expected_solution
-    );
-
-    ValidatedRationalInput { matrix, rhs }
-}
-
-/// Exact rational matrix-vector multiplication used only to assemble and
-/// validate benchmark fixtures.
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-fn rational_matvec<const D: usize>(
-    rows: &[[BigRational; D]; D],
-    vector: &[BigRational; D],
-) -> [BigRational; D] {
-    std::array::from_fn(|row| {
-        rows[row]
-            .iter()
-            .zip(vector.iter())
-            .map(|(coefficient, component)| coefficient * component)
-            .sum()
-    })
-}
-
-/// Straightforward cubic rational Gaussian determinant reference.
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-fn rational_determinant_gaussian<const D: usize>(mut rows: [[BigRational; D]; D]) -> BigRational {
-    let zero = BigRational::from_integer(BigInt::from(0));
-    let mut determinant = BigRational::from_integer(BigInt::from(1));
-    let mut odd_swaps = false;
-
-    for pivot_col in 0..D {
-        let Some(pivot_row) = (pivot_col..D).find(|&row| rows[row][pivot_col] != zero) else {
-            return zero;
-        };
-        if pivot_row != pivot_col {
-            rows.swap(pivot_col, pivot_row);
-            odd_swaps = !odd_swaps;
-        }
-
-        let (pivot_rows, rows_below) = rows.split_at_mut(pivot_col + 1);
-        let pivot_entries = &pivot_rows[pivot_col];
-        let pivot = &pivot_entries[pivot_col];
-        determinant *= pivot;
-        for row_entries in rows_below {
-            let factor = &row_entries[pivot_col] / pivot;
-            for (entry, pivot_entry) in row_entries
-                .iter_mut()
-                .zip(pivot_entries.iter())
-                .skip(pivot_col + 1)
-            {
-                *entry -= &factor * pivot_entry;
-            }
-            row_entries[pivot_col] = zero.clone();
-        }
-    }
-
-    if odd_swaps { -determinant } else { determinant }
-}
-
-/// Straightforward cubic rational Gaussian solve reference.
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-fn rational_solve_gaussian<const D: usize>(
-    mut rows: [[BigRational; D]; D],
-    mut rhs: [BigRational; D],
-) -> Option<[BigRational; D]> {
-    let zero = BigRational::from_integer(BigInt::from(0));
-    for pivot_col in 0..D {
-        let pivot_row = (pivot_col..D).find(|&row| rows[row][pivot_col] != zero)?;
-        if pivot_row != pivot_col {
-            rows.swap(pivot_col, pivot_row);
-            rhs.swap(pivot_col, pivot_row);
-        }
-
-        let (pivot_rows, rows_below) = rows.split_at_mut(pivot_col + 1);
-        let pivot_entries = &pivot_rows[pivot_col];
-        let pivot = &pivot_entries[pivot_col];
-        let (pivot_rhs_entries, rhs_below) = rhs.split_at_mut(pivot_col + 1);
-        let pivot_rhs = &pivot_rhs_entries[pivot_col];
-        for (row_entries, rhs_entry) in rows_below.iter_mut().zip(rhs_below) {
-            let factor = &row_entries[pivot_col] / pivot;
-            for (entry, pivot_entry) in row_entries
-                .iter_mut()
-                .zip(pivot_entries.iter())
-                .skip(pivot_col + 1)
-            {
-                *entry -= &factor * pivot_entry;
-            }
-            let rhs_update = &factor * pivot_rhs;
-            *rhs_entry -= rhs_update;
-            row_entries[pivot_col] = zero.clone();
-        }
-    }
-
-    let mut solution = std::array::from_fn(|_| zero.clone());
-    for row in (0..D).rev() {
-        let mut value = rhs[row].clone();
-        for (coefficient, component) in rows[row].iter().zip(solution.iter()).skip(row + 1) {
-            value -= coefficient * component;
-        }
-        solution[row] = value / &rows[row][row];
-    }
-    Some(solution)
-}
-
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-fn determinant_sign(value: &BigRational) -> DeterminantSign {
-    let zero = BigRational::from_integer(BigInt::from(0));
-    match value.cmp(&zero) {
-        std::cmp::Ordering::Less => DeterminantSign::Negative,
-        std::cmp::Ordering::Equal => DeterminantSign::Zero,
-        std::cmp::Ordering::Greater => DeterminantSign::Positive,
-    }
-}
-
 /// Compare exact-input row clearing and Bareiss elimination with direct
 /// `BigRational` Gaussian elimination.
 ///
 /// The consuming Gaussian references clone their inputs in Criterion's untimed
 /// setup phase, so both sides estimate computation over already-accepted input.
 #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-fn bench_rational_input<const D: usize>(criterion: &mut Criterion) {
-    let input = rational_input::<D>();
-    let mut group = criterion.benchmark_group(format!("rational_input_d{D}"));
+fn bench_rational_input<const D: usize>(criterion: &mut Criterion, kind: RationalInputKind) {
+    let input = rational_input::<D>(kind);
+    let group_name = match kind {
+        RationalInputKind::Small => format!("rational_input_d{D}"),
+        _ => format!("rational_input_{}_d{D}", kind.name()),
+    };
+    let mut group = criterion.benchmark_group(group_name);
 
     group.bench_function("det_sign_row_cleared_bareiss", |bencher| {
         bencher.iter(|| {
-            let sign = black_box(&input.matrix).det_sign();
+            let sign = black_box(input.matrix()).det_sign();
             let _ = black_box(sign);
         });
     });
     group.bench_function("det_row_cleared_bareiss", |bencher| {
         bencher.iter(|| {
-            let determinant = black_box(&input.matrix).det();
+            let determinant = black_box(input.matrix()).det();
             black_box(determinant);
         });
     });
     group.bench_function("det_big_rational_gaussian", |bencher| {
         bencher.iter_batched(
-            || black_box(input.matrix.as_rows()).clone(),
+            || black_box(input.matrix().as_rows()).clone(),
             |rows| {
                 let determinant = rational_determinant_gaussian(rows);
                 black_box(determinant);
@@ -289,8 +143,8 @@ fn bench_rational_input<const D: usize>(criterion: &mut Criterion) {
     });
     group.bench_function("solve_row_cleared_bareiss", |bencher| {
         bencher.iter(|| {
-            let solution = black_box(&input.matrix)
-                .solve(black_box(&input.rhs))
+            let solution = black_box(input.matrix())
+                .solve(black_box(input.rhs()))
                 .or_abort("row-cleared Bareiss rational benchmark solve");
             let _ = black_box(solution);
         });
@@ -299,8 +153,8 @@ fn bench_rational_input<const D: usize>(criterion: &mut Criterion) {
         bencher.iter_batched(
             || {
                 (
-                    black_box(input.matrix.as_rows()).clone(),
-                    black_box(input.rhs.as_array()).clone(),
+                    black_box(input.matrix().as_rows()).clone(),
+                    black_box(input.rhs().as_array()).clone(),
                 )
             },
             |(rows, rhs)| {
@@ -557,13 +411,15 @@ fn main() {
         // These compare the production row-cleared integer Bareiss backend with
         // straightforward BigRational Gaussian elimination on dimensions needed
         // by downstream geometric predicates and runtime-selected basis systems.
-        bench_rational_input::<2>(&mut c);
-        bench_rational_input::<3>(&mut c);
-        bench_rational_input::<4>(&mut c);
-        bench_rational_input::<5>(&mut c);
-        bench_rational_input::<6>(&mut c);
-        bench_rational_input::<7>(&mut c);
-        bench_rational_input::<8>(&mut c);
+        for kind in RationalInputKind::ALL {
+            bench_rational_input::<2>(&mut c, kind);
+            bench_rational_input::<3>(&mut c, kind);
+            bench_rational_input::<4>(&mut c, kind);
+            bench_rational_input::<5>(&mut c, kind);
+            bench_rational_input::<6>(&mut c, kind);
+            bench_rational_input::<7>(&mut c, kind);
+            bench_rational_input::<8>(&mut c, kind);
+        }
     }
 
     // === Adversarial / extreme-input groups ===
