@@ -91,6 +91,11 @@ name = "linear_form"
 harness = false
 required-features = [ "bench" ]
 
+[[bench]]
+name = "gram"
+harness = false
+required-features = [ "bench" ]
+
 [profile.release]
 lto = "fat"
 codegen-units = 1

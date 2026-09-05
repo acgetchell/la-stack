@@ -23,6 +23,23 @@ No generated content was used without human oversight.
 
 ## Linear algebra algorithms
 
+### Gram matrices and geometric measures
+
+A Gram matrix collects pairwise inner products: `G[i,j] = v_i · v_j`.
+Writing the vectors as rows of `V` gives `G = V Vᵀ`. Its diagonal contains
+squared lengths; off-diagonal entries describe angles through
+`v_i · v_j = ||v_i|| ||v_j|| cos(θ)` for nonzero vectors.
+
+In exact real arithmetic, `G` is positive semidefinite and is positive definite
+exactly when the vectors are linearly independent. For `M ≤ N`, `det(G)` is
+the squared M-dimensional volume spanned by the vectors. For simplex edge
+vectors from a common vertex, the simplex volume is `sqrt(det(G)) / M!` [16].
+This applies to triangles embedded in 3D and to higher-dimensional facets.
+
+`gram_matrix` computes rounded binary64 entries with exact mirrored symmetry;
+it does not certify rank, positive definiteness, or volume accuracy. See [9-12]
+for floating-point and conditioning background.
+
 ### Certified fixed-vector reductions
 
 `Vector::dot_with_errbound()` and `Vector::dot_difference_with_errbound()` use
@@ -202,3 +219,6 @@ finite results from overflow.
 15. Blue, James L. "A Portable Fortran Program to Find the Euclidean Norm of a Vector."
     *ACM Transactions on Mathematical Software* 4.1 (1978): 15–23.
     [DOI](https://doi.org/10.1145/355769.355771)
+16. Kock, Anders. "Square-densities, and volume forms." Notes, December 10, 2020.
+    Introduction and §1.2 (Gram's formula).
+    [Author's PDF](https://math.au.dk/~kock/heron4.pdf)

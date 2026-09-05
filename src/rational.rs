@@ -342,36 +342,22 @@ fn canonicalize_rational(value: BigRational) -> BigRational {
     BigRational::new(numerator, denominator)
 }
 
-/// Return a positive least common multiple of all raw denominator magnitudes.
+/// Return the least common multiple of canonical positive denominators.
 fn common_denominator<'a>(values: impl Iterator<Item = &'a BigRational>) -> BigInt {
     values.fold(BigInt::from(1), |scale, value| {
-        least_common_multiple(scale, denominator_magnitude(value))
+        least_common_multiple(scale, value.denom())
     })
 }
 
-/// Return the positive magnitude of a validated non-zero denominator.
-fn denominator_magnitude(value: &BigRational) -> BigInt {
-    match value.denom().sign() {
-        Sign::Minus => -value.denom(),
-        Sign::Plus => value.denom().clone(),
-        Sign::NoSign => unreachable!("RationalMatrix and RationalVector validate denominators"),
-    }
-}
-
-/// Convert a rational to an integer using a positive divisible scale.
+/// Convert a canonical rational to an integer using a positive divisible scale.
+///
+/// Matrix and vector construction already prove that the denominator is positive.
 fn integer_at_scale(value: &BigRational, scale: &BigInt) -> BigInt {
-    let denominator = denominator_magnitude(value);
-    let multiplier = scale / denominator;
-    let numerator = match value.denom().sign() {
-        Sign::Minus => -value.numer(),
-        Sign::Plus => value.numer().clone(),
-        Sign::NoSign => unreachable!("RationalMatrix and RationalVector validate denominators"),
-    };
-    numerator * multiplier
+    value.numer() * (scale / value.denom())
 }
 
 /// Return the positive least common multiple of two positive integers.
-fn least_common_multiple(lhs: BigInt, rhs: BigInt) -> BigInt {
+fn least_common_multiple(lhs: BigInt, rhs: &BigInt) -> BigInt {
     let gcd = greatest_common_divisor(lhs.clone(), rhs.clone());
     (lhs / gcd) * rhs
 }
