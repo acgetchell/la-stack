@@ -6,7 +6,7 @@ clarity, and the fixed-dimension stack-allocation model.
 
 ## Getting Started
 
-Install Rust 1.98.0 through [rustup](https://rustup.rs/), Git, the
+Install Rust 1.98.1 through [rustup](https://rustup.rs/), Git, the
 [GitHub CLI](https://cli.github.com/), Python 3.14,
 [`uv` 0.12.5](https://docs.astral.sh/uv/), and `jq`. Authenticate the GitHub
 CLI for repository operations, then install the repository's pinned `just`

@@ -152,7 +152,7 @@ cases better served by broader linear-algebra libraries.
 
 ## 🚀 Quickstart
 
-The minimum supported Rust version (MSRV) is 1.98.0.
+The minimum supported Rust version (MSRV) is 1.98.1.
 
 Add this to your `Cargo.toml`:
 
@@ -900,7 +900,7 @@ cargo run --features exact --example rational_input_5x5
 
 A short contributor workflow:
 
-Install Rust 1.98.0 through [rustup](https://rustup.rs/), Git,
+Install Rust 1.98.1 through [rustup](https://rustup.rs/), Git,
 [GitHub CLI](https://cli.github.com/), Python 3.14,
 [`uv` 0.12.5](https://docs.astral.sh/uv/), and `jq`. Then install the pinned
 `just` release from its locked dependency graph:

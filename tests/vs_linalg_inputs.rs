@@ -14,11 +14,15 @@ use nalgebra::{Const, DimMin, SMatrix, SVector};
 use la_stack::ExactF64Conversion;
 use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
 
+#[path = "../benches/common/bench_utils.rs"]
+mod bench_utils;
 #[path = "../benches/common/vs_linalg.rs"]
 pub mod vs_linalg_common;
 
 #[cfg(not(la_stack_v0_4_3_api))]
-use vs_linalg_common::make_balanced_dynamic_range_rows;
+use vs_linalg_common::{
+    LuSolveScenario, make_balanced_dynamic_range_rows, validated_lu_solve_input,
+};
 use vs_linalg_common::{
     PreparedFaerLuDet, faer_det_from_ldlt, faer_perm_sign, la_stack_dot, la_stack_norm_inf,
     la_stack_norm_squared, la_stack_tolerance, make_ill_conditioned_matrix_rows, make_matrix_rows,
@@ -73,6 +77,24 @@ fn assert_lu_agreement<const D: usize>()
 where
     Const<D>: DimMin<Const<D>, Output = Const<D>>,
 {
+    #[cfg(not(la_stack_v0_4_3_api))]
+    for scenario in [
+        LuSolveScenario::Pivoting,
+        LuSolveScenario::DenseIllConditioned,
+    ] {
+        let input = validated_lu_solve_input::<D>(scenario);
+        let na = SMatrix::<f64, D, D>::from_fn(|i, j| input.matrix().as_rows()[i][j]);
+        let nrhs = SVector::<f64, D>::from_fn(|i, _| input.rhs().as_array()[i]);
+        let nx = na.lu().solve(&nrhs).unwrap_or_else(|| {
+            panic!("nalgebra diagnostic solve failed: scenario={scenario:?}, D={D}")
+        });
+        input.validate_solution(&nalgebra_vector_to_array(&nx));
+
+        let fa = Mat::from_fn(D, D, |i, j| input.matrix().as_rows()[i][j]);
+        let frhs = Mat::from_fn(D, 1, |i, _| input.rhs().as_array()[i]);
+        let fx = fa.partial_piv_lu().solve(&frhs);
+        input.validate_solution(&faer_column_to_array(&fx));
+    }
     let a = Matrix::<D>::try_from_rows(make_matrix_rows::<D>())
         .unwrap_or_else(|err| panic!("la_stack matrix construction failed: {err}"));
     let rhs = Vector::<D>::try_new(make_vector_array::<D>(0.0))

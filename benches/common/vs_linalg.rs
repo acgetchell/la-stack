@@ -7,6 +7,9 @@ use faer::perm::PermRef;
 use la_stack::{LaError, Matrix, Tolerance, Vector};
 use nalgebra::SMatrix;
 
+#[cfg(not(la_stack_v0_4_3_api))]
+use crate::bench_utils::OrAbort;
+
 /// Evaluate la-stack's dot product through the ownership contract used by the
 /// selected library revision.
 ///
@@ -241,6 +244,121 @@ pub fn make_pivoting_matrix_rows<const D: usize>() -> [[f64; D]; D] {
         rows.swap(0, 1);
     }
     rows
+}
+
+/// Diagnostic solve families, separate from the headline comparison matrix.
+#[derive(Clone, Copy, Debug)]
+#[cfg(not(la_stack_v0_4_3_api))]
+pub enum LuSolveScenario {
+    /// Rotate the well-conditioned rows, requiring repeated LU row swaps.
+    Pivoting,
+    /// Dense SPD matrix J + 2^-16 I, with condition number 1 + D * 2^16.
+    DenseIllConditioned,
+}
+
+#[cfg(not(la_stack_v0_4_3_api))]
+impl LuSolveScenario {
+    /// Stable diagnostic group label.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Pivoting => "pivoting",
+            Self::DenseIllConditioned => "dense_ill_conditioned",
+        }
+    }
+}
+
+/// A diagnostic system checked against a known solution and a scaled residual.
+#[must_use]
+#[cfg(not(la_stack_v0_4_3_api))]
+pub struct ValidatedLuSolveInput<const D: usize> {
+    matrix: Matrix<D>,
+    rhs: Vector<D>,
+    expected: [f64; D],
+}
+
+#[cfg(not(la_stack_v0_4_3_api))]
+impl<const D: usize> ValidatedLuSolveInput<D> {
+    /// Borrow the finite matrix.
+    pub const fn matrix(&self) -> &Matrix<D> {
+        &self.matrix
+    }
+
+    /// Return the finite right-hand side.
+    pub const fn rhs(&self) -> Vector<D> {
+        self.rhs
+    }
+
+    /// Validate another implementation before timing it on this system.
+    ///
+    /// # Panics
+    /// Panics if a non-finite value, excessive forward error, or excessive
+    /// scaled residual is observed.
+    pub fn validate_solution(&self, solution: &[f64; D]) {
+        let mut residual = 0.0_f64;
+        let mut matrix_norm = 0.0_f64;
+        let mut solution_norm = 0.0_f64;
+        let mut rhs_norm = 0.0_f64;
+        for (&actual, &expected) in solution.iter().zip(&self.expected) {
+            assert!(actual.is_finite());
+            assert!((actual - expected).abs() <= 1e-7 * expected.abs().max(1.0));
+            solution_norm = solution_norm.max(actual.abs());
+        }
+        for (row, &rhs) in self.matrix.as_rows().iter().zip(self.rhs.as_array()) {
+            // Deliberately use an ordinary product/sum residual, independently
+            // of the timed triangular FMA recurrence.
+            let observed: f64 = row.iter().zip(solution).map(|(&a, &x)| a * x).sum();
+            residual = residual.max((observed - rhs).abs());
+            matrix_norm = matrix_norm.max(row.iter().map(|value| value.abs()).sum());
+            rhs_norm = rhs_norm.max(rhs.abs());
+        }
+        assert!(residual <= 1e-12 * matrix_norm.mul_add(solution_norm, rhs_norm));
+    }
+}
+
+/// Construct a diagnostic system and validate its complete LU solve.
+///
+/// The dense family uses an exactly representable RHS for x[i] = i+1;
+/// it exercises cancellation without diagonal or sparse shortcuts.
+///
+/// # Panics
+/// Panics for dimensions outside the diagnostic domain or a failed oracle check.
+#[cfg(not(la_stack_v0_4_3_api))]
+pub fn validated_lu_solve_input<const D: usize>(
+    scenario: LuSolveScenario,
+) -> ValidatedLuSolveInput<D> {
+    use core::array::from_fn;
+
+    assert!((2..=64).contains(&D));
+    let expected = from_fn(|i| f64::from(u32::try_from(i + 1).or_abort("solution index")));
+    let (rows, rhs) = match scenario {
+        LuSolveScenario::Pivoting => {
+            let mut rows = make_matrix_rows::<D>();
+            rows.rotate_left(1);
+            let rhs = rows.map(|row| row.iter().zip(&expected).map(|(&a, &x)| a * x).sum());
+            (rows, rhs)
+        }
+        LuSolveScenario::DenseIllConditioned => {
+            const DELTA: f64 = 1.0 / 65_536.0;
+            let rows = from_fn(|i| from_fn(|j| if i == j { 1.0 + DELTA } else { 1.0 }));
+            let total = f64::from(u32::try_from(D * (D + 1) / 2).or_abort("solution sum"));
+            let rhs = expected.map(|value| DELTA.mul_add(value, total));
+            (rows, rhs)
+        }
+    };
+    let input = ValidatedLuSolveInput {
+        matrix: Matrix::try_from_rows(rows).or_abort("diagnostic matrix"),
+        rhs: Vector::try_new(rhs).or_abort("diagnostic RHS"),
+        expected,
+    };
+    let solution = input
+        .matrix
+        .lu(la_stack_tolerance(0.0).or_abort("diagnostic tolerance"))
+        .or_abort("diagnostic LU")
+        .solve(input.rhs)
+        .or_abort("diagnostic solve");
+    input.validate_solution(solution.as_array());
+    input
 }
 
 /// Build a positive-definite diagonal matrix spanning 112 binary exponents at D=8.

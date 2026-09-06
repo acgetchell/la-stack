@@ -8,16 +8,26 @@ mod bench_utils;
 #[path = "../benches/common/exact.rs"]
 pub mod exact_bench;
 
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[path = "../benches/common/exact_diagnostics.rs"]
+pub mod exact_diagnostics;
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[path = "../benches/common/rational.rs"]
+pub mod rational_bench;
+
 use core::array::from_fn;
 use std::error::Error;
+
+use la_stack::{Matrix, Vector};
+use pastey::paste;
 
 use exact_bench::{
     ExactBenchConfigError, ExactInput, I16Range, SplitMix64, ValidatedExactInput, hilbert_input,
     large_entries_3x3_input, make_matrix_rows, make_random_input_corpus, make_vector_array,
     near_singular_3x3_input, validate_exact_fixture, validate_f64_determinant_benchmarks,
 };
-use la_stack::{Matrix, Vector};
-use pastey::paste;
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+use exact_diagnostics::{ConversionKind, Det4Kind, canonical_conversion_input, exact_det4_input};
 
 fn baseline_input<const D: usize>() -> ExactInput<D> {
     let Ok(matrix) = Matrix::<D>::try_from_rows(make_matrix_rows::<D>()) else {
@@ -30,11 +40,42 @@ fn baseline_input<const D: usize>() -> ExactInput<D> {
 }
 
 fn validate_baseline_and_random_corpus<const D: usize>() {
+    #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+    for kind in ConversionKind::ALL {
+        let _ = canonical_conversion_input::<D>(kind);
+    }
     let baseline = validate_exact_fixture(baseline_input::<D>());
     validate_f64_determinant_benchmarks(&baseline);
     for input in make_random_input_corpus::<D>() {
         let _ = validate_exact_fixture(input);
     }
+}
+
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[test]
+fn determinant_diagnostic_fixtures_are_correct() {
+    for kind in Det4Kind::ALL {
+        let _ = exact_det4_input(kind);
+    }
+}
+
+/// Keep the filter-resolved control and typed non-finite fallback distinct.
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[test]
+fn determinant_extreme_diagnostic_filter_paths_are_stable() {
+    use la_stack::{ArithmeticOperation, LaError};
+
+    let mixed = exact_det4_input(Det4Kind::MixedExponents);
+    let estimate = mixed.det_direct_with_errbound().unwrap().unwrap();
+    assert!(estimate.determinant().abs() > estimate.absolute_error_bound());
+
+    let large = exact_det4_input(Det4Kind::LargeEntries);
+    assert_eq!(
+        large.det_direct_with_errbound(),
+        Err(LaError::non_finite_computation_scalar(
+            ArithmeticOperation::DeterminantErrorBound,
+        )),
+    );
 }
 
 /// Report whether `det_sign_exact` can certify this fixture through its direct filter.

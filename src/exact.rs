@@ -325,8 +325,11 @@ fn negative_exponent_from_magnitude(magnitude: u64) -> i32 {
 ///
 /// # Errors
 /// Returns [`LaError::Unrepresentable`] with
-/// [`UnrepresentableReason::RequiresRounding`] when the rational denominator is
-/// not a power of two and the rounded value would still be finite.
+/// [`UnrepresentableReason::RequiresRounding`] when the value needs rounding
+/// but the rounded result would be finite, including non-dyadic values and
+/// dyadic values outside binary64's exact precision or exponent range.
+/// Returns [`UnrepresentableReason::NotFinite`] for a raw zero denominator or
+/// when rounding cannot produce a finite result.
 fn exact_rational_to_finite_f64(exact: &BigRational, index: Option<usize>) -> Result<f64, LaError> {
     if exact.denom().sign() == Sign::NoSign {
         cold_path();
@@ -368,7 +371,19 @@ fn positive_power_of_two_exponent(value: &BigInt) -> Option<u64> {
     (value.bits().checked_sub(1) == Some(exponent)).then_some(exponent)
 }
 
-/// Strictly convert a reduced rational with a positive denominator.
+/// Convert a canonical rational to finite binary64 without rounding.
+///
+/// Callers must provide a reduced value with a positive denominator, as
+/// guaranteed by [`RationalVector`] storage or by normalization in
+/// [`exact_rational_to_finite_f64`]. This lets canonical vectors avoid another
+/// reduction while raw rational inputs still pass through normalization when
+/// needed. The optional `index` identifies the failing solution component.
+///
+/// # Errors
+/// Returns [`LaError::Unrepresentable`] with
+/// [`UnrepresentableReason::RequiresRounding`] if only a rounded finite result
+/// is available, or [`UnrepresentableReason::NotFinite`] if rounding cannot
+/// produce a finite result.
 fn reduced_rational_to_finite_f64(
     exact: &BigRational,
     index: Option<usize>,
@@ -473,6 +488,25 @@ impl<const D: usize> ExactF64Conversion for [BigRational; D] {
             result[index] = exact_rational_to_rounded_f64(value, Some(index))?;
         }
         Vector::try_new(result)
+    }
+}
+
+impl<const D: usize> ExactF64Conversion for RationalVector<D> {
+    type Output = Vector<D>;
+
+    #[inline]
+    fn try_to_f64(&self) -> Result<Self::Output, LaError> {
+        let mut result = [0.0; D];
+        for (index, value) in self.as_array().iter().enumerate() {
+            // Canonical storage already proves reduction and a positive denominator.
+            result[index] = reduced_rational_to_finite_f64(value, Some(index))?;
+        }
+        Vector::try_new(result)
+    }
+
+    #[inline]
+    fn to_rounded_f64(&self) -> Result<Self::Output, LaError> {
+        self.as_array().to_rounded_f64()
     }
 }
 
@@ -1039,8 +1073,33 @@ fn det3_big_int<const D: usize>(a: &[[BigInt; D]; D]) -> BigInt {
 }
 
 /// Compute a 4×4 determinant from a scaled integer matrix.
+///
+/// [`det_big_int`] dispatches here only for D=4. When every first-row entry is
+/// non-zero, sharing six lower-row minors avoids repeating their products;
+/// otherwise, separate cofactors skip work for zero entries. Both expansions
+/// use exact [`BigInt`] arithmetic, preserving the determinant value and sign
+/// required by the public exact APIs.
 #[inline]
 fn det4_big_int<const D: usize>(a: &[[BigInt; D]; D]) -> BigInt {
+    if a[0][..4].iter().all(|value| value.sign() != Sign::NoSign) {
+        // Six lower-row minors serve all four cofactors. Consume each
+        // temporary on its last use so BigInt can reuse its storage.
+        let m01 = &a[2][0] * &a[3][1] - &a[2][1] * &a[3][0];
+        let m02 = &a[2][0] * &a[3][2] - &a[2][2] * &a[3][0];
+        let m03 = &a[2][0] * &a[3][3] - &a[2][3] * &a[3][0];
+        let m12 = &a[2][1] * &a[3][2] - &a[2][2] * &a[3][1];
+        let m13 = &a[2][1] * &a[3][3] - &a[2][3] * &a[3][1];
+        let m23 = &a[2][2] * &a[3][3] - &a[2][3] * &a[3][2];
+        let c00 = &a[1][1] * &m23 - &a[1][2] * &m13 + &a[1][3] * &m12;
+        let mut det = &a[0][0] * c00;
+        let c01 = &a[1][0] * m23 - &a[1][2] * &m03 + &a[1][3] * &m02;
+        det -= &a[0][1] * c01;
+        let c02 = &a[1][0] * m13 - &a[1][1] * m03 + &a[1][3] * &m01;
+        det += &a[0][2] * c02;
+        let c03 = &a[1][0] * m12 - &a[1][1] * m02 + &a[1][2] * m01;
+        return det - &a[0][3] * c03;
+    }
+
     let mut det = BigInt::from(0);
 
     if a[0][0].sign() != Sign::NoSign {
@@ -1753,8 +1812,53 @@ mod tests {
     };
 
     // -----------------------------------------------------------------------
-    // Test helpers
+    // D=4 determinant regression
+    #[test]
+    fn det4_matches_bareiss_across_sparse_wide_and_singular_inputs() {
+        let coefficients = [
+            [11_i32, 2, -3, 4],
+            [2, 13, 5, -1],
+            [3, -2, 17, 6],
+            [-1, 4, 2, 19],
+        ];
+        for shift in [0_u32, 80, 256, 1024] {
+            for mask in 0..16_u8 {
+                let mut rows: [[BigInt; 4]; 4] = from_fn(|i| {
+                    from_fn(|j| {
+                        if i == 0 && mask & (1 << j) == 0 {
+                            BigInt::from(0)
+                        } else {
+                            (BigInt::from(coefficients[i][j]) << shift) + BigInt::from(i + j)
+                        }
+                    })
+                });
+                for variant in 0..3 {
+                    if variant == 1 {
+                        rows.swap(0, 2);
+                    } else if variant == 2 {
+                        rows[1] = rows[0].clone();
+                    }
+                    let mut eliminated = rows.clone();
+                    let expected = match bareiss_forward_eliminate(&mut eliminated, None) {
+                        BareissResult::Upper { odd_swaps } => {
+                            let det = take(&mut eliminated[3][3]);
+                            if odd_swaps { -det } else { det }
+                        }
+                        BareissResult::Singular { .. } => BigInt::from(0),
+                    };
+                    assert_eq!(
+                        det4_big_int(&rows),
+                        expected,
+                        "shift={shift}, mask={mask}, variant={variant}"
+                    );
+                }
+            }
+        }
+    }
+
     // -----------------------------------------------------------------------
+
+    // Test helpers
 
     /// Build an exact `BigRational` from an `f64` via IEEE 754 bit decomposition.
     ///
