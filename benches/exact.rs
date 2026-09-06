@@ -33,10 +33,10 @@
 
 use std::hint::black_box;
 
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-use criterion::BatchSize;
 use criterion::{BenchmarkGroup, Criterion, Throughput, measurement::WallTime};
 
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+use la_stack::ExactF64Conversion;
 use la_stack::{Matrix, Vector};
 
 #[path = "common/bench_utils.rs"]
@@ -49,15 +49,20 @@ pub mod exact_bench;
 pub mod rational_bench;
 
 #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-use rational_bench::{
-    RationalInputKind, rational_determinant_gaussian, rational_input, rational_solve_gaussian,
-};
+#[path = "common/exact_diagnostics.rs"]
+pub mod exact_diagnostics;
 
 use bench_utils::OrAbort;
 use exact_bench::{
     ExactInput, RANDOM_INPUT_ARRAY_LEN, ValidatedExactInput, hilbert_input,
     large_entries_3x3_input, make_matrix_rows, make_random_input_corpus, make_vector_array,
     near_singular_3x3_input, validate_exact_fixture, validate_f64_determinant_benchmarks,
+};
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+use exact_diagnostics::{ConversionKind, Det4Kind, canonical_conversion_input, exact_det4_input};
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+use rational_bench::{
+    RationalInputKind, rational_determinant_gaussian, rational_input, rational_solve_gaussian,
 };
 
 /// Exact operation measured by a benchmark group.
@@ -108,8 +113,9 @@ const CORPUS_AND_EXTREME_OPERATIONS: &[ExactOperation] = &[
 /// Compare exact-input row clearing and Bareiss elimination with direct
 /// `BigRational` Gaussian elimination.
 ///
-/// The consuming Gaussian references clone their inputs in Criterion's untimed
-/// setup phase, so both sides estimate computation over already-accepted input.
+/// Both algorithms measure a complete operation on borrowed, accepted input.
+/// The consuming Gaussian references therefore make their required working
+/// copies inside the timed closure, just as row clearing builds its workspace.
 #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
 fn bench_rational_input<const D: usize>(criterion: &mut Criterion, kind: RationalInputKind) {
     let input = rational_input::<D>(kind);
@@ -132,14 +138,11 @@ fn bench_rational_input<const D: usize>(criterion: &mut Criterion, kind: Rationa
         });
     });
     group.bench_function("det_big_rational_gaussian", |bencher| {
-        bencher.iter_batched(
-            || black_box(input.matrix().as_rows()).clone(),
-            |rows| {
-                let determinant = rational_determinant_gaussian(rows);
-                black_box(determinant);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let rows = black_box(input.matrix().as_rows()).clone();
+            let determinant = rational_determinant_gaussian(rows);
+            black_box(determinant);
+        });
     });
     group.bench_function("solve_row_cleared_bareiss", |bencher| {
         bencher.iter(|| {
@@ -150,20 +153,13 @@ fn bench_rational_input<const D: usize>(criterion: &mut Criterion, kind: Rationa
         });
     });
     group.bench_function("solve_big_rational_gaussian", |bencher| {
-        bencher.iter_batched(
-            || {
-                (
-                    black_box(input.matrix().as_rows()).clone(),
-                    black_box(input.rhs().as_array()).clone(),
-                )
-            },
-            |(rows, rhs)| {
-                let solution = rational_solve_gaussian(rows, rhs)
-                    .or_abort("BigRational Gaussian benchmark solve");
-                black_box(solution);
-            },
-            BatchSize::SmallInput,
-        );
+        bencher.iter(|| {
+            let rows = black_box(input.matrix().as_rows()).clone();
+            let rhs = black_box(input.rhs().as_array()).clone();
+            let solution =
+                rational_solve_gaussian(rows, rhs).or_abort("BigRational Gaussian benchmark solve");
+            black_box(solution);
+        });
     });
 
     group.finish();
@@ -382,6 +378,42 @@ macro_rules! gen_random_corpus_benches_for_dim {
     }};
 }
 
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+fn bench_canonical_conversion<const D: usize>(c: &mut Criterion) {
+    for kind in ConversionKind::ALL {
+        let input = canonical_conversion_input::<D>(kind);
+        let mut group = c.benchmark_group(format!("canonical_conversion_{}_d{D}", kind.name()));
+        group.bench_function("strict_result", |b| {
+            b.iter(|| black_box(black_box(&input).try_to_f64()));
+        });
+        group.bench_function("rounded_result", |b| {
+            b.iter(|| black_box(black_box(&input).to_rounded_f64()));
+        });
+        group.finish();
+    }
+}
+
+#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+fn bench_det4_diagnostics(c: &mut Criterion) {
+    for kind in Det4Kind::ALL {
+        let input = exact_det4_input(kind);
+        let mut group = c.benchmark_group(format!("det4_diagnostic_{}", kind.name()));
+        group.bench_function("det_exact", |b| {
+            b.iter(|| {
+                black_box(
+                    black_box(&input)
+                        .det_exact()
+                        .or_abort("determinant diagnostic"),
+                )
+            });
+        });
+        group.bench_function("det_sign_exact", |b| {
+            b.iter(|| black_box(black_box(&input).det_sign_exact()));
+        });
+        group.finish();
+    }
+}
+
 fn main() {
     let mut c = Criterion::default().configure_from_args();
 
@@ -406,6 +438,11 @@ fn main() {
 
     #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
     {
+        bench_canonical_conversion::<2>(&mut c);
+        bench_canonical_conversion::<3>(&mut c);
+        bench_canonical_conversion::<4>(&mut c);
+        bench_canonical_conversion::<5>(&mut c);
+        bench_det4_diagnostics(&mut c);
         // === Already-exact rational-input comparisons ===
         //
         // These compare the production row-cleared integer Bareiss backend with

@@ -30,6 +30,8 @@ pub mod vs_linalg_common;
 use bench_utils::OrAbort;
 #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
 use vs_linalg_common::norm_scenarios;
+#[cfg(not(la_stack_v0_4_3_api))]
+use vs_linalg_common::{LuSolveScenario, validated_lu_solve_input};
 use vs_linalg_common::{
     PreparedFaerLuDet, delaunay_scaled_norm, faer_det_from_ldlt, iterative_hypot, la_stack_dot,
     la_stack_norm_inf, la_stack_norm_squared, la_stack_tolerance, make_balanced_dynamic_range_rows,
@@ -662,26 +664,106 @@ fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
     });
 }
 
+/// Complete and reusable-factor solves on validated diagnostic systems.
+#[cfg(not(la_stack_v0_4_3_api))]
+fn register_lu_solve_diagnostics<const D: usize>(c: &mut Criterion)
+where
+    Const<D>: DimMin<Const<D>, Output = Const<D>>,
+{
+    for scenario in [
+        LuSolveScenario::Pivoting,
+        LuSolveScenario::DenseIllConditioned,
+    ] {
+        let input = validated_lu_solve_input::<D>(scenario);
+        let a = *input.matrix();
+        let rhs = input.rhs();
+        let zero = la_stack_tolerance(0.0).or_abort("diagnostic tolerance");
+        let lu = a.lu(zero).or_abort("diagnostic LU");
+        let na = SMatrix::<f64, D, D>::from_fn(|i, j| a.as_rows()[i][j]);
+        let nrhs = SVector::<f64, D>::from_fn(|i, _| rhs.as_array()[i]);
+        let nlu = na.lu();
+        let nx = nlu.solve(&nrhs).or_abort("diagnostic nalgebra solve");
+        input.validate_solution(&std::array::from_fn(|i| nx[i]));
+        let fa = Mat::from_fn(D, D, |i, j| a.as_rows()[i][j]);
+        let frhs = Mat::from_fn(D, 1, |i, _| rhs.as_array()[i]);
+        let flu = fa.partial_piv_lu();
+        let fx = flu.solve(&frhs);
+        input.validate_solution(&std::array::from_fn(|i| fx[(i, 0)]));
+
+        let mut group = c.benchmark_group(format!("lu_solve_{}_d{D}", scenario.name()));
+        group.bench_function("la_stack_lu_solve", |b| {
+            b.iter(|| {
+                black_box(
+                    black_box(a)
+                        .lu(zero)
+                        .or_abort("diagnostic LU")
+                        .solve(black_box(rhs))
+                        .or_abort("diagnostic solve"),
+                )
+            });
+        });
+        group.bench_function("la_stack_solve_from_lu", |b| {
+            b.iter(|| {
+                black_box(
+                    black_box(&lu)
+                        .solve(black_box(rhs))
+                        .or_abort("diagnostic solve"),
+                )
+            });
+        });
+        group.bench_function("nalgebra_lu_solve", |b| {
+            b.iter(|| {
+                black_box(
+                    black_box(na)
+                        .lu()
+                        .solve(black_box(&nrhs))
+                        .or_abort("diagnostic nalgebra solve"),
+                )
+            });
+        });
+        group.bench_function("nalgebra_solve_from_lu", |b| {
+            b.iter(|| {
+                black_box(
+                    black_box(&nlu)
+                        .solve(black_box(&nrhs))
+                        .or_abort("diagnostic nalgebra solve"),
+                )
+            });
+        });
+        group.bench_function("faer_lu_solve", |b| {
+            b.iter(|| black_box(black_box(&fa).partial_piv_lu().solve(black_box(&frhs))));
+        });
+        group.bench_function("faer_solve_from_lu", |b| {
+            b.iter(|| black_box(black_box(&flu).solve(black_box(&frhs))));
+        });
+        group.finish();
+    }
+}
+
 macro_rules! define_vs_linalg_benches_for_dim {
     ($fn_name:ident, $d:literal $(, $register_stress:ident)?) => {
         fn $fn_name(c: &mut Criterion) {
-            let mut group = c.benchmark_group(concat!("d", stringify!($d)));
-            register_determinant_benchmarks::<$d>(&mut group);
-            register_factorization_benchmarks::<$d>(&mut group);
-            register_lu_solve_benchmarks::<$d>(&mut group);
-            register_ldlt_solve_benchmarks::<$d>(&mut group);
-            register_precomputed_lu_solve_benchmarks::<$d>(&mut group);
-            register_precomputed_ldlt_solve_benchmarks::<$d>(&mut group);
-            register_precomputed_lu_determinant_benchmarks::<$d>(&mut group);
-            register_precomputed_ldlt_determinant_benchmarks::<$d>(&mut group);
-            register_vector_benchmarks::<$d>(&mut group);
-            #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
-            register_norm_scenario_benchmarks::<$d>(&mut group);
-            register_matrix_norm_benchmarks::<$d>(&mut group);
-            $(
-                $register_stress(&mut group);
-            )?
-            group.finish();
+            {
+                let mut group = c.benchmark_group(concat!("d", stringify!($d)));
+                register_determinant_benchmarks::<$d>(&mut group);
+                register_factorization_benchmarks::<$d>(&mut group);
+                register_lu_solve_benchmarks::<$d>(&mut group);
+                register_ldlt_solve_benchmarks::<$d>(&mut group);
+                register_precomputed_lu_solve_benchmarks::<$d>(&mut group);
+                register_precomputed_ldlt_solve_benchmarks::<$d>(&mut group);
+                register_precomputed_lu_determinant_benchmarks::<$d>(&mut group);
+                register_precomputed_ldlt_determinant_benchmarks::<$d>(&mut group);
+                register_vector_benchmarks::<$d>(&mut group);
+                #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+                register_norm_scenario_benchmarks::<$d>(&mut group);
+                register_matrix_norm_benchmarks::<$d>(&mut group);
+                $(
+                    $register_stress(&mut group);
+                )?
+                group.finish();
+            }
+            #[cfg(not(la_stack_v0_4_3_api))]
+            register_lu_solve_diagnostics::<$d>(c);
         }
     };
 }

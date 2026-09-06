@@ -210,7 +210,7 @@ When user requests commit message generation:
 
 ### Rust
 
-- The current MSRV and pinned contributor/CI toolchain are Rust 1.98.0. Keep
+- The current MSRV and pinned contributor/CI toolchain are Rust 1.98.1. Keep
   `Cargo.toml`, `rust-toolchain.toml`, and `clippy.toml` aligned when that
   baseline changes deliberately.
 - Rust's `f64::algebraic_*` operations are forbidden in all repository-owned

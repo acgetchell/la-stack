@@ -428,6 +428,109 @@ mod tests {
     use crate::DEFAULT_SINGULAR_TOL;
 
     const TWO_NEG_800: f64 = f64::from_bits(223_u64 << 52);
+
+    /// Check analytical solution bits after rotating equations to exercise pivoting.
+    fn assert_triangular_solution<const D: usize>(
+        rows: [[f64; D]; D],
+        rhs: [f64; D],
+        expected: [u64; D],
+        label: &str,
+    ) {
+        for rotation in [0, 1, D - 1] {
+            let mut rows = rows;
+            let mut rhs = rhs;
+            rows.rotate_left(rotation);
+            rhs.rotate_left(rotation);
+            let actual = Matrix::try_from_rows(rows)
+                .unwrap()
+                .lu(DEFAULT_SINGULAR_TOL)
+                .unwrap()
+                .solve(Vector::try_new(rhs).unwrap());
+            assert_eq!(
+                actual.map(|solution| solution.into_array().map(f64::to_bits)),
+                Ok(expected),
+                "{label}, D={D}, rotation={rotation}",
+            );
+        }
+    }
+
+    fn assert_solve_arithmetic_order<const D: usize>() {
+        // 1 - (1 - 2^-53)(1 + 2^-52) = -2^-53 + 2^-105 exactly.
+        // Separate multiplication/subtraction rounds the product to 1 instead.
+        // Scale the RHS by 2^-969, 1, and 2^970, covering subnormal solutions
+        // and large finite values. Expected bits come from the identity above;
+        // the subnormal result is -(2^-1022 - 2^-1074).
+        for (exponent, cancelled_bits) in [
+            (54_u64, 0x800f_ffff_ffff_ffff),
+            (1023, 0xbc9f_ffff_ffff_fffe),
+            (1993, 0xf93f_ffff_ffff_fffe),
+        ] {
+            let scale = f64::from_bits(exponent << 52);
+            let perturbed = f64::from_bits((exponent << 52) | 1);
+            for forward in [false, true] {
+                let (row, col) = if forward { (D - 1, 0) } else { (0, D - 1) };
+                let mut rows = Matrix::<D>::identity().into_rows();
+                rows[row][col] = f64::from_bits(0x3fef_ffff_ffff_ffff);
+                let mut rhs = [0.0; D];
+                rhs[row] = scale;
+                rhs[col] = perturbed;
+                let mut expected = [0; D];
+                expected[row] = cancelled_bits;
+                expected[col] = perturbed.to_bits();
+                assert_triangular_solution(
+                    rows,
+                    rhs,
+                    expected,
+                    &format!("fused cancellation, forward={forward}, exponent={exponent}"),
+                );
+            }
+        }
+
+        if D >= 3 {
+            // Ascending columns evaluate (1 - 2^53) + 2^53 = 1 exactly.
+            // Reversing them rounds 1 + 2^53 to 2^53 and yields 0 instead.
+            for forward in [false, true] {
+                let (row, first, second) = if forward {
+                    (D - 1, 0, 1)
+                } else {
+                    (0, 1, D - 1)
+                };
+                let mut rows = Matrix::<D>::identity().into_rows();
+                rows[row][first] = 0.5;
+                rows[row][second] = 0.5;
+                let mut rhs = [0.0; D];
+                rhs[row] = 1.0;
+                rhs[first] = f64::from_bits(1077_u64 << 52); // 2^54
+                rhs[second] = -rhs[first];
+                assert_triangular_solution(
+                    rows,
+                    rhs,
+                    rhs.map(f64::to_bits),
+                    &format!("ascending columns, forward={forward}"),
+                );
+            }
+        }
+    }
+
+    macro_rules! gen_solve_order_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<solve_preserves_row_arithmetic_ $d d>]() {
+                    assert_solve_arithmetic_order::<$d>();
+                }
+            }
+        };
+    }
+
+    gen_solve_order_tests!(2);
+    gen_solve_order_tests!(3);
+    gen_solve_order_tests!(4);
+    gen_solve_order_tests!(5);
+    gen_solve_order_tests!(8);
+    gen_solve_order_tests!(16);
+    gen_solve_order_tests!(32);
+    gen_solve_order_tests!(64);
     const TWO_POS_800: f64 = f64::from_bits(1823_u64 << 52);
 
     #[test]

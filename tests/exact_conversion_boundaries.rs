@@ -3,7 +3,10 @@
 #![forbid(unsafe_code)]
 #![cfg(feature = "exact")]
 
+use core::cmp::Ordering;
+
 use la_stack::prelude::*;
+use pastey::paste;
 
 const POSITIVE_ZERO_BITS: u64 = 0;
 const NEGATIVE_ZERO_BITS: u64 = 1_u64 << 63;
@@ -45,6 +48,106 @@ fn determinant_near_overflow(increment: f64, negative: bool) -> Matrix<2> {
 fn raw_rational(numerator: i32, denominator: i32) -> BigRational {
     BigRational::new_raw(BigInt::from(numerator), BigInt::from(denominator))
 }
+
+fn canonical_vector_conversions_preserve_raw_contract<const D: usize>() {
+    let success = [
+        (raw_rational(0, -7), 0.0_f64.to_bits()),
+        (raw_rational(3, -6), (-0.5_f64).to_bits()),
+        (
+            BigRational::new(1.into(), BigInt::from(1_u8) << 1074_u32),
+            1,
+        ),
+        (
+            BigRational::from_float(f64::MAX).unwrap(),
+            f64::MAX.to_bits(),
+        ),
+    ];
+    for (value, expected) in success {
+        let raw = std::array::from_fn::<_, D, _>(|_| value.clone());
+        let canonical = RationalVector::try_new(raw.clone()).unwrap();
+        for actual in [
+            canonical.try_to_f64(),
+            canonical.to_rounded_f64(),
+            raw.try_to_f64(),
+            raw.to_rounded_f64(),
+        ] {
+            assert_eq!(
+                actual.unwrap().into_array().map(f64::to_bits),
+                [expected; D]
+            );
+        }
+    }
+
+    let failures = [
+        (
+            raw_rational(2, 6),
+            UnrepresentableReason::RequiresRounding,
+            Ok(0x3fd5_5555_5555_5555), // nearest binary64 to 1/3
+        ),
+        (
+            BigRational::new((-1).into(), BigInt::from(1_u8) << 1075_u32),
+            UnrepresentableReason::RequiresRounding,
+            Ok(NEGATIVE_ZERO_BITS),
+        ),
+        (
+            BigRational::from_integer(BigInt::from(1_u8) << 1024_u32),
+            UnrepresentableReason::NotFinite,
+            Err(UnrepresentableReason::NotFinite),
+        ),
+    ];
+    for (value, reason, rounded) in failures {
+        for index in 0..D {
+            let raw = std::array::from_fn(|i| match i.cmp(&index) {
+                Ordering::Equal => value.clone(),
+                Ordering::Greater => BigRational::from_integer(BigInt::from(1_u8) << 1024_u32),
+                Ordering::Less => raw_rational(3, -6),
+            });
+            let canonical = RationalVector::<D>::try_new(raw.clone()).unwrap();
+            assert_unrepresentable(&canonical.try_to_f64(), Some(index), reason);
+            assert_unrepresentable(&raw.try_to_f64(), Some(index), reason);
+            // Rounding may recover this component, but must then report the
+            // first later overflow rather than retaining the strict error.
+            let expected_rounded = match rounded {
+                Err(reason) => Err(LaError::unrepresentable(Some(index), reason)),
+                Ok(_) if index + 1 < D => Err(LaError::unrepresentable(
+                    Some(index + 1),
+                    UnrepresentableReason::NotFinite,
+                )),
+                Ok(bits) => {
+                    let mut expected = [(-0.5_f64).to_bits(); D];
+                    expected[index] = bits;
+                    Ok(expected)
+                }
+            };
+            for (path, actual) in [
+                ("canonical", canonical.to_rounded_f64()),
+                ("raw", raw.to_rounded_f64()),
+            ] {
+                assert_eq!(
+                    actual.map(|v| v.into_array().map(f64::to_bits)),
+                    expected_rounded,
+                    "{path}, D={D}, index={index}, value={value}",
+                );
+            }
+        }
+    }
+}
+
+macro_rules! gen_canonical_conversion_tests {
+    ($d:literal) => {
+        paste! {
+            #[test]
+            fn [<canonical_vector_conversion_contract_ $d d>]() {
+                canonical_vector_conversions_preserve_raw_contract::<$d>();
+            }
+        }
+    };
+}
+
+gen_canonical_conversion_tests!(2);
+gen_canonical_conversion_tests!(3);
+gen_canonical_conversion_tests!(4);
+gen_canonical_conversion_tests!(5);
 
 #[test]
 fn raw_rational_conversion_uses_the_mathematical_quotient() {

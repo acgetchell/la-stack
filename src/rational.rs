@@ -15,7 +15,7 @@ use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
 
 use crate::exact::{det_big_int, solve_big_int};
-use crate::{DeterminantSign, ExactF64Conversion, LaError, Vector};
+use crate::{DeterminantSign, LaError};
 
 /// Exact rational square matrix with compile-time dimension `D`.
 ///
@@ -45,8 +45,12 @@ pub struct RationalMatrix<const D: usize> {
 /// Construction validates that every denominator is non-zero and canonicalizes
 /// every entry to lowest terms with a positive denominator. Solutions returned
 /// by [`RationalMatrix::solve`] and [`crate::Matrix::solve_exact`] also use this
-/// type, making any later conversion to [`Vector`] explicit through
-/// [`ExactF64Conversion`].
+/// type, making any later conversion to [`Vector`](crate::Vector) explicit through
+/// [`ExactF64Conversion`](crate::ExactF64Conversion).
+/// Use [`try_to_f64`](crate::ExactF64Conversion::try_to_f64) when every component
+/// must remain exact, or [`to_rounded_f64`](crate::ExactF64Conversion::to_rounded_f64)
+/// to opt into round-to-nearest, ties-to-even. Both conversions reject results
+/// that cannot be rounded to finite binary64 values.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[must_use]
 pub struct RationalVector<const D: usize> {
@@ -323,18 +327,6 @@ impl<const D: usize> RationalVector<D> {
     }
 }
 
-impl<const D: usize> ExactF64Conversion for RationalVector<D> {
-    type Output = Vector<D>;
-
-    fn try_to_f64(&self) -> Result<Self::Output, LaError> {
-        self.data.try_to_f64()
-    }
-
-    fn to_rounded_f64(&self) -> Result<Self::Output, LaError> {
-        self.data.to_rounded_f64()
-    }
-}
-
 /// Reduce one validated rational and make its denominator positive before
 /// publishing it through the exact-input storage types.
 fn canonicalize_rational(value: BigRational) -> BigRational {
@@ -378,7 +370,10 @@ mod tests {
     use pastey::paste;
 
     use super::*;
-    use crate::{NonFiniteLocation, NonFiniteOrigin, SingularityReason, UnrepresentableReason};
+    use crate::{
+        ExactF64Conversion, NonFiniteLocation, NonFiniteOrigin, SingularityReason,
+        UnrepresentableReason,
+    };
 
     fn ratio(numerator: i64, denominator: i64) -> BigRational {
         BigRational::new(BigInt::from(numerator), BigInt::from(denominator))

@@ -473,6 +473,23 @@ range even though the final result is one. These rows keep pivoting,
 ill-conditioning, and scaled-product cold paths visible alongside the shared
 well-conditioned peer fixture.
 
+Local `lu_solve_{pivoting,dense_ill_conditioned}_d{D}` groups cover the same
+eight README dimensions. They measure both complete LU solves and solves from
+precomputed factors for all three libraries. The pivoting input cyclically
+rotates the baseline matrix rows; the dense input is `J + 2^-16 I`, where `J`
+is the all-ones matrix, with 2-norm condition number `1 + D * 2^16`. Both use
+manufactured solution references and scaled-residual checks before timing.
+The pivoting RHS uses rounded dot products; the dense RHS is exactly
+representable. These diagnostic calculations provide no rigorous absolute
+rounding-error bound. The groups are
+separate from the release-signal registry and README plots.
+
+Run both diagnostic families across all eight dimensions with:
+
+```bash
+just bench-vs-linalg '^lu_solve_'
+```
+
 The main comparable metrics are:
 
 - `det_via_lu` — factor the matrix and compute determinant from the LU factor
@@ -495,6 +512,10 @@ Cholesky:
 
 Read these as SPD factorization/solve/determinant comparisons, not as identical
 algorithm comparisons across all three crates.
+
+The [solve finalization decision](performance/solve-finalization.md) records
+why #234 retained the existing result construction after testing all eight
+README dimensions. It links the regression tests and current benchmark command.
 
 Release-signal reports compare latest la-stack measurements against a saved
 la-stack baseline, and show saved nalgebra/faer baseline timings as context
@@ -530,6 +551,65 @@ random-corpus groups, and adversarial-input groups:
   diagonal dominance while exercising heap-backed numerator and denominator
   storage. See the [row-clearing study](performance/rational-row-clearing.md)
   for fixtures, allocation evidence, focused timing commands, and limitations.
+
+Rational Gaussian determinant and solve references use direct `bencher.iter`,
+including their required working copies inside the timed operation. Both
+implementations therefore start from borrowed, accepted input and include
+workspace preparation and result destruction. Earlier Gaussian measurements
+used `iter_batched` and excluded input cloning; do not compare those timings
+directly with the current complete-operation measurements. Remeasure both
+revisions using the same current harness.
+
+Two additional local diagnostic families are excluded from the release signal:
+
+- `canonical_conversion_*_d{2..5}` isolates strict and rounded conversion of
+  already-canonical vectors. The dyadic, non-dyadic, and wide-component inputs
+  are joined by the smallest subnormal, negative half-subnormal, and integers
+  immediately below and exactly at the overflow midpoint. Before timing, both
+  canonical and raw-array conversions must return the known output bits
+  (including negative zero) or the exact typed reason and component index.
+- `det4_diagnostic_*` checks determinant values and signs against rational
+  Gaussian elimination. Dense, sparse, and singular controls are joined by
+  positive/negative nonzero near-singular determinants, mixed row exponents,
+  and extreme diagonal entries. The singular and near-singular inputs must
+  leave the floating-point sign filter inconclusive. Near-singular determinants
+  are independently checked against ±2^-50. Mixed-exponent rows are scaled by
+  `2^[900, -1074, 700, -526]`; these exact scales preserve the dense determinant
+  while including subnormal entries. Large entries use `f64::MAX / 2` on the
+  diagonal and one elsewhere, producing an exact result beyond binary64 range.
+
+These complement the existing LU pivoting and dense ill-conditioned solve
+groups at D=2, 3, 4, 5, 8, 16, 32, and 64, plus the exact near-singular,
+large-entry, and Hilbert families described above. The local adversarial
+diagnostics can be smoke-tested without collecting timing estimates:
+
+```bash
+cargo bench --locked --features bench,exact --bench exact -- \
+  '^canonical_conversion_|^det4_diagnostic_' --test
+```
+
+Allocation evidence for canonical conversion uses a separate test executable:
+
+```bash
+cargo test --locked --release --features bench,exact \
+  --test canonical_conversion_allocations -- --nocapture --test-threads=1
+```
+
+The counting allocator is not linked into Criterion timing executables.
+
+The local performance audit on 2026-09-05 retained two exact-arithmetic
+optimizations: strict conversion uses the existing proof that rational vectors
+are canonical, and dense exact D=4 determinants share six lower-row minors.
+Matching before/after runs supported both changes. LU loop-expansion and
+combined-check prototypes were removed after failing performance acceptance
+across the required dimensions.
+
+Those experiments used Rust 1.98.0 on an Apple M4 Max / AArch64 with Criterion
+0.8.2, 50 samples, one-second warm-up, and three-second measurement. Correctness
+gates ran before timing. The benchmarks above remain runnable with the current
+toolchain; historical timing estimates, source fingerprints, and discarded
+prototypes are optional local analysis artifacts rather than prerequisites for
+building, testing, or benchmarking the crate.
 
 The f64-input random-corpus and adversarial groups run the same exact-arithmetic
 benches (`det_sign_exact`, `det_exact`, `solve_exact`,
