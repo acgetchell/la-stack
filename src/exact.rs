@@ -76,6 +76,16 @@
 //! and conversion. Reference numbers refer to
 //! `REFERENCES.md`.
 //!
+//! ## Exact-to-binary64 conversion
+//!
+//! Strict conversion checks dyadic representability, significand width, and
+//! exponent range. Integer-and-exponent rounding reads retained, guard, and
+//! sticky bits directly; rational-value rounding uses `num-rational`'s
+//! `ToPrimitive::to_f64`. Both implement the nearest-even output policy in
+//! `REFERENCES.md` \[9-10\]. See the
+//! [conversion criteria](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#exact-to-binary64-conversion)
+//! for subnormal, tie, and overflow cases.
+//!
 //! ## Validation
 //!
 //! Public `Matrix` / `Vector` values are finite by construction before exact
@@ -576,6 +586,10 @@ fn magnitude_has_lower_bits(value: &BigInt, exclusive_end: u64) -> bool {
 }
 
 /// Right-shift a magnitude and round the retained integer to nearest-even.
+///
+/// The guard bit rounds upward exactly when lower discarded bits are nonzero
+/// or the retained integer is odd. This is the IEEE 754 tie rule from
+/// `REFERENCES.md` \[9-10\], applied before binary64 exponent assembly.
 fn rounded_shifted_magnitude_to_u64(value: &BigInt, shift: u64) -> Option<u64> {
     if shift > value.bits() {
         return Some(0);
@@ -714,6 +728,9 @@ fn big_int_exp_ref_to_rounded_f64(
 /// successful strict conversion does not clone an already-computed exact
 /// result. `rounded_reason` is evaluated only when finite output would require
 /// rounding.
+/// After stripping trailing zeros, an odd magnitude with bit length `b` is
+/// representable exactly when `b ≤ 53`, `exp ≥ -1074`, and
+/// `exp + b - 1 ≤ 1023`; see `REFERENCES.md` \[9-10\].
 fn big_int_exp_ref_to_finite_f64(
     value: &BigInt,
     exp: i32,

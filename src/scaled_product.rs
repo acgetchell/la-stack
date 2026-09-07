@@ -1,6 +1,12 @@
 #![forbid(unsafe_code)]
 
 //! Allocation-free scaled products for floating-point factor diagonals.
+//!
+//! Binary64 decomposition and rounding follow `REFERENCES.md` \[9-10\].
+//! Mantissa normalization and a separate exponent preserve intermediate range;
+//! they do not remove rounding in earlier mantissa multiplications. See the
+//! [scaled determinant product description](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#scaled-determinant-products)
+//! for the replay policy and deferred final-factor rounding.
 
 const SIGN_MASK: u64 = 1_u64 << 63;
 const FRACTION_BITS: u32 = 52;
@@ -155,11 +161,13 @@ impl ScaledProduct {
         }
     }
 
-    /// Round the accumulated product to binary64.
+    /// Finalize the accumulated mantissa and pending factor as binary64.
     ///
     /// Returns `None` only when the accumulated result rounds outside the
     /// finite binary64 range. Magnitudes below that range round to a signed
     /// zero or subnormal value with round-to-nearest, ties-to-even semantics.
+    /// Earlier mantissa products have already rounded, so this does not
+    /// guarantee correct rounding of the exact product of all original factors.
     #[inline]
     #[expect(
         clippy::cast_possible_truncation,

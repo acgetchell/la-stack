@@ -1,4 +1,4 @@
-# Coverage
+# Measuring Coverage
 
 la-stack uses `cargo-llvm-cov` with `cargo-nextest` for local and CI coverage.
 Both coverage recipes use Rust's LLVM source-based instrumentation, run the

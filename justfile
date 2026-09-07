@@ -26,7 +26,7 @@ clippy_sarif_version := "0.8.0"
 dprint_version := "0.57.4"
 git_cliff_version := "2.14.1"
 just_version := "1.58.0"
-rumdl_version := "0.2.67"
+rumdl_version := "0.2.68"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
 typos_version := "1.50.1"
@@ -1202,4 +1202,4 @@ yaml-lint: _ensure-yamllint
 
 # GitHub Actions security analysis
 zizmor: _ensure-zizmor
-    zizmor .github
+    @bash scripts/run_zizmor.sh

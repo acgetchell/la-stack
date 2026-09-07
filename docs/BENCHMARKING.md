@@ -301,7 +301,7 @@ is unavailable, but those measurements cannot be promoted as reproducible
 release evidence.
 
 The pair is validated and published before the temporary worktree is removed.
-`docs/PERFORMANCE.md` is then rendered from a validated reload of that retained
+`docs/performance.md` is then rendered from a validated reload of that retained
 pair, and the previous committed report is archived under
 `docs/archive/performance/`. Archive filenames are release-pair names such as
 `v0.4.2-vs-v0.4.1.md`. Serialization, validation, rendering, coverage, or
@@ -317,7 +317,7 @@ just performance-doc
 This command fails closed on a missing, partial, malformed, mismatched, or
 unsupported artifact pair. It consumes the default CSV/JSON pair retained by a
 successful `performance-local` or `performance-release` run, rewrites the
-scratch Markdown, promotes it to `docs/PERFORMANCE.md`, and archives the previous
+scratch Markdown, promotes it to `docs/performance.md`, and archives the previous
 committed report when the release pair changes. Promotion requires distinct
 current and baseline package versions, so a same-version local comparison is
 retained and reproducible but cannot become release documentation. Use promotion
@@ -359,7 +359,7 @@ shared-harness workflow before attributing a difference solely to library code.
 | `target/bench-reports/github-assets-performance.md` | No | `performance-github-assets` | Local report from published release artifacts. |
 | `target/bench-reports/github-assets-performance.csv` | No | `performance-github-assets` | Tabular inputs derived from published native archives. |
 | `target/bench-reports/github-assets-performance.provenance.json` | No | `performance-github-assets` | Provenance for the published-asset report inputs. |
-| `docs/PERFORMANCE.md` | Yes | `performance-release`, `performance-doc` | Latest curated release-to-release comparison. |
+| `docs/performance.md` | Yes | `performance-release`, `performance-doc` | Latest curated release-to-release comparison. |
 | `docs/archive/performance/` | Yes | `performance-release`, `performance-doc` | Older curated release-to-release comparisons. |
 | `docs/assets/bench/` | Yes | `performance-readme` | README benchmark CSV/SVG assets and JSON provenance. |
 | GitHub Release | Remote | `.github/workflows/release-benchmarks.yml` | Criterion baseline archive. |
@@ -683,4 +683,4 @@ just bench-save-last
 The durable published baseline is the GitHub Release artifact created by
 `.github/workflows/release-benchmarks.yml`. That workflow runs the benchmark-input
 correctness gate before timing or packaging the artifact. The committed release
-comparison is `docs/PERFORMANCE.md`, created by `just performance-release`.
+comparison is `docs/performance.md`, created by `just performance-release`.

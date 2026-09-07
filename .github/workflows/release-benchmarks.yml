@@ -37,9 +37,12 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           cache: false
+          cache-bin: false
 
       - name: Set up just
         uses: ./.github/actions/setup-just # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
+        with:
+          cache: false
 
       - name: Resolve cargo-nextest version
         id: cargo_nextest_version
@@ -56,9 +59,9 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Install cargo-nextest
-        uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
-        with:
-          tool: cargo-nextest@${{ steps.cargo_nextest_version.outputs.version }}
+        env:
+          CARGO_NEXTEST_VERSION: ${{ steps.cargo_nextest_version.outputs.version }}
+        run: cargo install --locked cargo-nextest --version "$CARGO_NEXTEST_VERSION"
 
       - name: Validate benchmark inputs
         run: just test-bench-inputs

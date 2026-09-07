@@ -20,11 +20,11 @@ while keeping the API intentionally small and explicit.
 ## Contents
 
 - [Introduction](#-introduction)
+- [Use this crate when](#-use-this-crate-when)
 - [Quickstart](#-quickstart)
 - [Mathematical basis](#-mathematical-basis)
 - [Design goals](#-design-goals)
 - [Anti-goals](#-anti-goals)
-- [Use this crate when](#-use-this-crate-when)
 - [Scalar and bounded-value types](#-scalar-and-bounded-value-types)
 - [Features](#-features)
   - [Adaptive determinant filtering (D ≤ 4)](#adaptive-determinant-filtering-d--4)
@@ -49,26 +49,40 @@ while keeping the API intentionally small and explicit.
 
 `la-stack` provides a handful of const-generic, stack-backed building blocks:
 
-- `Vector<const D: usize>` for fixed-length `f64` vectors backed by `[f64; D]`
 - `gram_matrix(&[Vector<N>; M])` for allocation-free `Matrix<M>` construction
   from pairwise vector inner products, with bit-for-bit symmetry. Gram matrices
   encode lengths and angles and support simplex/facet volume calculations; see
-  [Gram matrices and geometric measures](REFERENCES.md#gram-matrices-and-geometric-measures).
+  [Gram matrices and geometric measures][refs-gram].
   Each independent dot product is checked once;
   rounding has no certified error bound, and positive definiteness or affine
   independence must still be established by factorization or the caller.
   Benchmark square simplex and rectangular facet inputs through dimension 8
   with `cargo bench --locked --features bench --bench gram`.
-- `Matrix<const D: usize>` for fixed-size square `f64` matrices backed by `[[f64; D]; D]`
 - `Interval` and `IntervalMatrix<const D: usize>` for outward-rounded,
   proof-bearing determinant filters through D=7
-- `ScalarWithErrorBound` for proof-bearing fixed-vector dot products and
-  affine differences over finite `f64` inputs
-- `RationalVector<const D: usize>` and `RationalMatrix<const D: usize>` for
-  exact rational inputs behind the optional `"exact"` feature
-- `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
 - `Ldlt<const D: usize>` for no-pivot factorization intended for exactly
   symmetric positive-definite matrices (solve + det; typed pivot diagnostics)
+- `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
+- `Matrix<const D: usize>` for fixed-size square `f64` matrices backed by `[[f64; D]; D]`
+- `RationalVector<const D: usize>` and `RationalMatrix<const D: usize>` for
+  exact rational inputs behind the optional `"exact"` feature
+- `ScalarWithErrorBound` for proof-bearing fixed-vector dot products and
+  affine differences over finite `f64` inputs
+- `Vector<const D: usize>` for fixed-length `f64` vectors backed by `[f64; D]`
+
+## ✅ Use this crate when
+
+- Robust predicates matter for geometry-style workloads near degeneracy
+- Stack allocation and `Copy` value semantics fit your data flow
+- You need a certified sign or threshold comparison for a fixed-vector dot
+  product or `axis · (left - right)` expression
+- You need a cheap, sound interval filter for determinant expressions assembled
+  from rounded binary64 operations
+- You need exact determinants, exact determinant signs, or exact linear solves
+  for fixed-size systems
+- You prefer a default build with no runtime dependencies
+- You want explicit LU / LDLT / determinant APIs rather than a broad algebra toolkit
+- Your matrices and vectors have small, fixed dimensions known at compile time
 
 ## 🚀 Quickstart
 
@@ -123,26 +137,28 @@ provide a certified solution error bound.
 ## 🧮 Mathematical basis
 
 `la-stack` operates on finite IEEE 754 binary64 values in small, fixed
-dimensions. Its floating-point paths use LU with partial pivoting, LDLT without
-pivoting for exactly symmetric positive-definite matrices, and closed-form
+dimensions. Its floating-point paths use [LU with partial pivoting][refs-lu],
+[LDLT without pivoting][refs-ldlt] for exactly symmetric positive-definite matrices, and closed-form
 determinants through D=4. These results remain subject to conditioning and
 binary64 rounding;
 factorization tolerances are rejection thresholds, not accuracy guarantees. For
-D≤4, direct determinants can be paired with a conservative absolute roundoff
-bound when its range preconditions hold. Fixed-vector dot products and direct
-affine differences can likewise return a paired estimate and certified absolute
+D≤4, direct determinants can be paired with a
+[conservative absolute roundoff bound][refs-det-bound] when its range
+preconditions hold. [Fixed-vector dot products and direct affine differences][refs-reductions]
+can likewise return a paired estimate and certified absolute
 roundoff bound without enabling arbitrary-precision dependencies.
 
 Derived binary64 expressions can instead be assembled with `Interval`
 subtraction, addition, multiplication, negation, and square. The resulting
-`IntervalMatrix<D>` determinant sign is certified through D=7 when its enclosure
+`IntervalMatrix<D>` [determinant sign][refs-interval] is certified through D=7 when its enclosure
 separates zero; the singleton `[0, 0]` also certifies exact zero. Every other
 overlap with zero is explicitly inconclusive. This default-feature surface is
 distinct from arbitrary-precision exact arithmetic.
 
 With `features = ["exact"]`, callers can either lift stored binary64 inputs
-losslessly or supply already-exact rational inputs for exact determinant signs,
-determinant values, and solves. Exactness over binary64 input starts at the
+losslessly or supply already-exact rational inputs for
+[exact determinant signs][refs-exact-sign], determinant values, and
+[solves][refs-exact-solve]. Exactness over binary64 input starts at the
 stored values and cannot recover information rounded away before construction.
 See the
 [mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md)
@@ -190,20 +206,6 @@ for current release planning.
   [`openblas-src`](https://crates.io/crates/openblas-src)
 - Broad general-purpose linear algebra: use [`nalgebra`](https://crates.io/crates/nalgebra)
 - Large matrices/dimensions with parallelism: use [`faer`](https://crates.io/crates/faer)
-
-## ✅ Use this crate when
-
-- Your matrices and vectors have small, fixed dimensions known at compile time
-- Stack allocation and `Copy` value semantics fit your data flow
-- You want explicit LU / LDLT / determinant APIs rather than a broad algebra toolkit
-- You need exact determinants, exact determinant signs, or exact linear solves
-  for fixed-size systems
-- You need a cheap, sound interval filter for determinant expressions assembled
-  from rounded binary64 operations
-- You need a certified sign or threshold comparison for a fixed-vector dot
-  product or `axis · (left - right)` expression
-- Robust predicates matter for geometry-style workloads near degeneracy
-- You prefer a default build with no runtime dependencies
 
 ## 🔢 Scalar and bounded-value types
 
@@ -361,8 +363,8 @@ for the full contracts.
 - [API guide][api-guide] — worked examples, API selection, storage, and error contracts.
 - [Mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md) — algorithms, numerical guarantees, and limitations.
 - [Benchmarking](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/BENCHMARKING.md) — benchmark suites, comparison workflows, and measurement methodology.
-- [Performance reports](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/PERFORMANCE.md) — release-to-release measurement results and provenance.
-- [Coverage](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/COVERAGE.md) — local and CI coverage commands and report locations.
+- [Performance reports](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md) — release-to-release measurement results and provenance.
+- [Coverage](https://github.com/acgetchell/la-stack/blob/main/docs/MEASURING_COVERAGE.md) — local and CI coverage commands and report locations.
 - [Roadmap](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/roadmap.md) — release planning, future directions, and non-goals.
 - [Releasing](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/RELEASING.md) — release preparation, validation, and publication.
 
@@ -395,7 +397,7 @@ For the full per-kernel comparison methodology, algorithm citations, input
 construction, and release-comparison workflow details, see
 [docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/BENCHMARKING.md).
 For the current release-to-release performance snapshot, see
-[docs/PERFORMANCE.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/PERFORMANCE.md).
+[docs/performance.md](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md).
 The exact release suite includes the already-exact rational-input groups for
 D=2 through D=8. Those rows report `RationalMatrix::det_sign`, `det`, and
 `solve` alongside straightforward `BigRational` Gaussian determinant and solve
@@ -482,7 +484,7 @@ CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
 aligned with the local comprehensive validation path.
 
 For coverage commands and report locations, see
-[`docs/COVERAGE.md`](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/COVERAGE.md).
+[`docs/MEASURING_COVERAGE.md`](https://github.com/acgetchell/la-stack/blob/main/docs/MEASURING_COVERAGE.md).
 For the full contributor workflow, see
 [CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/CONTRIBUTING.md).
 
@@ -517,3 +519,11 @@ BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/
 [clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg
 [clippy-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml
 [lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/v0.4.5/docs/assets/bench/vs_linalg_lu_solve_median.svg
+[refs-det-bound]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#absolute-error-bound-for-closed-form-determinants
+[refs-exact-sign]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-determinant-sign-adaptive-precision-integer-arithmetic
+[refs-exact-solve]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-linear-system-solve-hybrid-bareiss--bigrational
+[refs-gram]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#gram-matrices-and-geometric-measures
+[refs-interval]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#outward-rounded-interval-determinant-sign
+[refs-ldlt]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ldlᵀ-factorization-exactly-symmetric-positive-definite-inputs
+[refs-lu]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#lu-decomposition-gaussian-elimination-with-partial-pivoting
+[refs-reductions]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#certified-fixed-vector-reductions

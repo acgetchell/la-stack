@@ -8,6 +8,10 @@
 //! crate's fraction-free [`BigInt`] Bareiss backend. The positive row scales
 //! preserve determinant sign; determinant values divide by their product; and
 //! solves apply the same row scale to the matrix and right-hand side.
+//! See `REFERENCES.md` \[7\] for Bareiss elimination and \[12\] for determinant
+//! multilinearity. The
+//! [row-clearing construction](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#exact-arithmetic-over-rational-inputs)
+//! explains how these identities apply to canonical rational inputs.
 
 use std::array::from_fn;
 
@@ -349,6 +353,10 @@ fn integer_at_scale(value: &BigRational, scale: &BigInt) -> BigInt {
 }
 
 /// Return the positive least common multiple of two positive integers.
+///
+/// `lcm(a, b) = (a / gcd(a, b)) × b`; dividing before multiplying avoids
+/// forming the larger intermediate `a × b`. The resulting positive scale
+/// clears both denominators without changing determinant sign.
 fn least_common_multiple(lhs: BigInt, rhs: &BigInt) -> BigInt {
     let gcd = greatest_common_divisor(lhs.clone(), rhs.clone());
     (lhs / gcd) * rhs

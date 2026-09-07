@@ -1,6 +1,12 @@
 name: Set up just
 description: Resolve the pinned just version from justfile and install it.
 
+inputs:
+  cache:
+    description: Restore and save the installed just binary in the Actions cache.
+    required: false
+    default: "true"
+
 outputs:
   version:
     description: Resolved just version from justfile.
@@ -45,7 +51,15 @@ runs:
 
         echo "version=$version" >> "$GITHUB_OUTPUT"
 
-    - name: Install just
+    - name: Install just with caching
+      if: inputs.cache == 'true'
       uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
       with:
         tool: just@${{ steps.resolve.outputs.version }}
+
+    - name: Install just without caching
+      if: inputs.cache != 'true'
+      shell: bash
+      env:
+        JUST_VERSION: ${{ steps.resolve.outputs.version }}
+      run: cargo install --locked just --version "$JUST_VERSION"

@@ -17,7 +17,7 @@
 //!    ill-conditioning (wide range of `(mantissa, exponent)` pairs in
 //!    the `decompose_f64 → BigInt` path).  These measure tail behaviour
 //!    that fixed well-conditioned inputs miss and provide stronger
-//!    empirical evidence for `docs/PERFORMANCE.md`.
+//!    empirical evidence for `docs/performance.md`.
 //! 3. **Random corpus benches** (`exact_random_corpus_d{2..5}`) — a
 //!    fixed-seed corpus of diagonally-dominant random matrices per dimension.
 //!    Every measured iteration executes the full corpus in its stable order,

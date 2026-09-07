@@ -64,7 +64,7 @@ recipes require `gh` only when discovering published release tags.
 # Local development: compare the current tree with the latest release
 just performance-local
 
-# Release PR: update docs/PERFORMANCE.md and archive the previous report
+# Release PR: update docs/performance.md and archive the previous report
 just performance-release
 
 # Build release docs from retained CSV/JSON inputs
@@ -92,7 +92,7 @@ coverage. `performance-local` writes Markdown plus schema-versioned
 does the same measurement and retention work, requires distinct releases, and
 promotes the validated result. `performance-doc` consumes the retained pair
 from either workflow without Cargo or temporary worktrees, then promotes the
-result into `docs/PERFORMANCE.md` and the archive. Same-version local artifacts
+result into `docs/performance.md` and the archive. Same-version local artifacts
 remain valid comparison evidence but cannot be promoted as a release report.
 These files are reproducible scratch and may be removed with `target/`; native
 Criterion release archives remain the durable raw baselines. Direct comparisons
