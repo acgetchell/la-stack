@@ -1,0 +1,120 @@
+name: Zizmor scanner version fixtures
+on:
+  workflow_dispatch:
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve the canonical scanner version
+        # ok: la-stack.github-actions.zizmor-version-resolved-from-just
+        id: zizmor_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(just --evaluate zizmor_version)"
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not resolve zizmor_version from justfile"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Hard-coded resolver output
+        # ruleid: la-stack.github-actions.zizmor-version-resolved-from-just
+        id: zizmor_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="1.29.0"
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not resolve zizmor_version from justfile"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: A source read must not justify an unrelated output
+        # ruleid: la-stack.github-actions.zizmor-version-resolved-from-just
+        id: zizmor_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(just --evaluate zizmor_version)"
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not resolve zizmor_version from justfile"
+            exit 1
+          fi
+          echo "version=1.29.0" >> "$GITHUB_OUTPUT"
+
+      # ok: la-stack.github-actions.zizmor-version-resolved-from-just
+      - id: zizmor_version
+        run: |
+          set -euo pipefail
+          version="$(just --evaluate zizmor_version)"
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not resolve zizmor_version from justfile"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # ruleid: la-stack.github-actions.zizmor-version-resolved-from-just
+      - id: zizmor_version
+        run: |
+          set -euo pipefail
+          version="$(just --evaluate cargo_nextest_version)"
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not resolve zizmor_version from justfile"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: A resolved version must not be overwritten
+        # ruleid: la-stack.github-actions.zizmor-version-resolved-from-just
+        id: zizmor_version
+        run: |
+          set -euo pipefail
+          version="$(just --evaluate zizmor_version)"
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not resolve zizmor_version from justfile"
+            exit 1
+          fi
+          version="1.29.0"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Resolved scanner version
+        # ok: la-stack.github-actions.zizmor-tool-version-pinned
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          inputs: .github
+          version: ${{ steps.zizmor_version.outputs.version }}
+
+      - name: Floating scanner version
+        # ruleid: la-stack.github-actions.zizmor-tool-version-pinned
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          inputs: .github
+          version: latest
+
+      - name: Missing scanner version
+        # ruleid: la-stack.github-actions.zizmor-tool-version-pinned
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          inputs: .github
+
+      - name: Independent pin can drift from justfile
+        # ruleid: la-stack.github-actions.zizmor-tool-version-pinned
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          version: "1.30.0"
+
+      # ok: la-stack.github-actions.zizmor-tool-version-pinned
+      - uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          version: ${{ steps.zizmor_version.outputs.version }}
+
+      # ruleid: la-stack.github-actions.zizmor-tool-version-pinned
+      - uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+
+      # A later step's version must not satisfy the preceding step.
+      - uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          version: ${{ steps.zizmor_version.outputs.version }}

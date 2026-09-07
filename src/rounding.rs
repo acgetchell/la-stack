@@ -1,12 +1,17 @@
 #![forbid(unsafe_code)]
 
 //! Shared binary64 rounding primitives for certified arithmetic.
+//!
+//! Representation and rounding use the IEEE 754 model in `REFERENCES.md`
+//! \[9-10\]. The interval and reduction certificates share these primitives.
 
 /// Return the exact error in a rounded binary64 sum.
 ///
 /// This is Knuth's `TwoSum` transform. With IEEE-754 round-to-nearest and
 /// gradual underflow, `rounded + error` equals the exact-real sum whenever the
 /// rounded sum is finite.
+/// See `REFERENCES.md` \[8\] for the transform and its error-free arithmetic
+/// analysis. Callers supply finite operands and their rounded sum.
 #[inline]
 pub(crate) const fn two_sum_error(left: f64, right: f64, rounded: f64) -> f64 {
     let virtual_right = rounded - left;
@@ -78,6 +83,10 @@ const fn compare_binary_magnitudes(
 }
 
 /// Compare the exact-real product `left × right` with its rounded result.
+///
+/// Nonzero finite operands contribute at most 53 significand bits each, so the
+/// exact product fits in `u128`. Integer comparison selects the outward
+/// endpoint even when the rounded product is zero; see `REFERENCES.md` \[9-10\].
 #[inline]
 pub(crate) const fn compare_product_with_rounded(left: f64, right: f64, rounded: f64) -> i8 {
     let negative = left.is_sign_negative() != right.is_sign_negative();

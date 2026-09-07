@@ -7,11 +7,11 @@ Release performance docs have two different lifetimes:
     current machine and branch.
   - ``target/bench-reports/performance.csv`` and the adjacent provenance JSON
     are validated, reproducible performance-comparison inputs.
-  - ``docs/PERFORMANCE.md`` is the latest curated release-to-release comparison.
+  - ``docs/performance.md`` is the latest curated release-to-release comparison.
   - ``docs/archive/performance/*.md`` stores older curated comparisons.
 
 This script renders from a validated artifact reload, copies the result into
-``docs/PERFORMANCE.md``, and archives the previous committed report under a
+``docs/performance.md``, and archives the previous committed report under a
 filename derived from the report metadata, such as ``v0.4.2-vs-v0.4.1.md``.
 """
 
@@ -66,7 +66,7 @@ _SEMVER_PARTS_RE = re.compile(r"^v?(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0
 _DEFAULT_SOURCE = "target/bench-reports/performance.md"
 _DEFAULT_ARTIFACT_CSV = "target/bench-reports/performance.csv"
 _DEFAULT_ARTIFACT_PROVENANCE = "target/bench-reports/performance.provenance.json"
-_DEFAULT_CURRENT = "docs/PERFORMANCE.md"
+_DEFAULT_CURRENT = "docs/performance.md"
 _DEFAULT_ARCHIVE_DIR = "docs/archive/performance"
 _DEFAULT_SUITE = "all"
 _DEFAULT_SCOPE = "release-signal"
@@ -517,7 +517,7 @@ def _archive_readme(archive_dir: Path) -> str:
         "# Archived Performance Reports",
         "",
         "Older release-to-release benchmark comparisons are archived here.",
-        "`docs/PERFORMANCE.md` contains the latest curated comparison.",
+        "`docs/performance.md` contains the latest curated comparison.",
         "",
     ]
     if reports:
@@ -1937,7 +1937,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-only",
         action="store_true",
-        help="Write the generated report to --output without promoting docs/PERFORMANCE.md.",
+        help="Write the generated report to --output without promoting docs/performance.md.",
     )
     parser.add_argument(
         "--local-report",

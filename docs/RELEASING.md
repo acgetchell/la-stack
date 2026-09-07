@@ -104,7 +104,7 @@ just performance-release
 ```
 
 The no-argument form compares the current package version with the previous
-stable published release. Review `docs/PERFORMANCE.md`, any archived comparison
+stable published release. Review `docs/performance.md`, any archived comparison
 under `docs/archive/performance/`, and the retained CSV and provenance JSON under
 `target/bench-reports/`.
 
@@ -148,7 +148,7 @@ git --no-pager diff
 ```
 
 Expected release artifacts include package metadata and lockfiles,
-`CITATION.cff`, `CHANGELOG.md`, `README.md`, `docs/PERFORMANCE.md`, and generated
+`CITATION.cff`, `CHANGELOG.md`, `README.md`, `docs/performance.md`, and generated
 files under `docs/archive/` and `docs/assets/bench/`. Stage only the reviewed
 paths that were intentionally changed; do not stage the entire `docs/` tree.
 Then inspect the staged diff and commit it:
@@ -235,6 +235,12 @@ gh release view "$TAG" --json assets \
 
 The command must print `la-stack-$TAG-criterion-baseline.tar.gz`. A short-lived
 Actions artifact is not a substitute for this release asset.
+
+The benchmark producer has read-only repository permissions and restores no
+dependency caches, including tool binaries. It disables Rust toolchain and
+`setup-just` caching and installs the pinned just and cargo-nextest versions
+with `cargo install --locked`. Only the separate publisher job receives
+`contents: write` to attach the packaged baseline to the release.
 
 ### 7. Remove the merged release branch
 

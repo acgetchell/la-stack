@@ -1,6 +1,14 @@
 #![forbid(unsafe_code)]
 
 //! Outward-rounded intervals and fixed-size interval determinant signs.
+//!
+//! See `REFERENCES.md` \[8\] for `TwoSum`, \[9-11\] for the binary64 arithmetic
+//! model, and \[12\] for the Leibniz determinant identity. The column-subset
+//! evaluation is specialized to this crate's small dimensions. Reference
+//! \[14\] describes the broader interval standard; this module does not claim
+//! IEEE 1788 conformance. The
+//! [interval construction](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#outward-rounded-interval-expressions)
+//! explains outward endpoints and determinant enclosures.
 
 use crate::rounding::{compare_product_with_rounded, two_sum_error};
 use crate::{ArithmeticOperation, IntervalBound, IntervalOperand, LaError, Matrix};

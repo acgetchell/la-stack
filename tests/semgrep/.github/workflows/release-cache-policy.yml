@@ -1,0 +1,107 @@
+name: Release cache isolation fixtures
+on:
+  workflow_dispatch:
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache-free Rust toolchain
+        # ok: la-stack.github-actions.release-no-dependency-cache
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          cache: false
+          cache-bin: false
+
+      - name: Restored Rust dependencies
+        # ruleid: la-stack.github-actions.release-no-dependency-cache
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          cache: true
+          cache-bin: false
+
+      - name: Implicit Rust binary caching
+        # ruleid: la-stack.github-actions.release-no-dependency-cache
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          cache: false
+
+      # ok: la-stack.github-actions.release-no-dependency-cache
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          cache-bin: false
+          cache: false
+
+      # ruleid: la-stack.github-actions.release-no-dependency-cache
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          cache-bin: true
+          cache: false
+
+      - name: Cache-free just
+        # ok: la-stack.github-actions.release-no-dependency-cache
+        uses: ./.github/actions/setup-just
+        with:
+          cache: false
+
+      - name: Implicit just cache
+        # ruleid: la-stack.github-actions.release-no-dependency-cache
+        uses: ./.github/actions/setup-just
+
+      # ok: la-stack.github-actions.release-no-dependency-cache
+      - uses: ./.github/actions/setup-just
+        with:
+          cache: false
+
+      # ruleid: la-stack.github-actions.release-no-dependency-cache
+      - uses: ./.github/actions/setup-just
+        with:
+          cache: true
+
+      - name: Cache-free uv
+        # ok: la-stack.github-actions.release-no-dependency-cache
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+
+      - name: Implicit uv cache
+        # ruleid: la-stack.github-actions.release-no-dependency-cache
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      # ok: la-stack.github-actions.release-no-dependency-cache
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+
+      # ruleid: la-stack.github-actions.release-no-dependency-cache
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Cache-restoring installer
+        # ruleid: la-stack.github-actions.release-no-dependency-cache
+        uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
+        with:
+          tool: cargo-nextest@0.9.134
+
+      # ruleid: la-stack.github-actions.release-no-dependency-cache
+      - uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
+        with:
+          tool: cargo-nextest@0.9.134
+
+      - name: Source install without cache action
+        # ok: la-stack.github-actions.release-no-dependency-cache
+        run: cargo install --locked cargo-nextest --version "$CARGO_NEXTEST_VERSION"
+
+      - name: Direct cache action
+        # ruleid: la-stack.github-actions.release-no-dependency-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+
+      # ruleid: la-stack.github-actions.release-no-dependency-cache
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+
+      - name: Read-only Rust cache is still a restored cache
+        # ruleid: la-stack.github-actions.release-no-dependency-cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: false

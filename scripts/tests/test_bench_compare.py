@@ -1083,7 +1083,7 @@ def test_read_harness_provenance_rejects_malformed_fields(
 def test_main_snapshot_writes_output(tmp_path: Path) -> None:
     criterion_dir = tmp_path / "criterion"
     _build_criterion_tree(criterion_dir)
-    output = tmp_path / "PERFORMANCE.md"
+    output = tmp_path / "performance.md"
 
     rc = bench_compare.main(
         [

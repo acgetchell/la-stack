@@ -956,11 +956,13 @@ pub use rational::{RationalMatrix, RationalVector};
 // the computed `permanent` value used by the bound may itself be rounded even
 // though the mathematical quantity above is exact.
 //
-// Each constant has the shape `a · EPS + b · EPS²`: the linear term bounds
-// the first-order rounding and the quadratic term absorbs the interaction
-// of errors in nested FMAs.  The coefficients `a` and `b` are conservative
-// over-estimates derived from the longest dependency chain of `det_direct`
-// at that dimension.
+// The longest rounding paths in the determinant and permanent have lengths
+// k = 2, 5, and 9. With EPS = 2^-52, gamma_k = k*EPS / (1 - k*EPS) bounds
+// their accumulated relative perturbations. Each exactly representable
+// coefficient satisfies c >= gamma_k / ((1 - EPS)*(1 - gamma_k)), including
+// possible downward rounding of both the permanent and the final product.
+// See docs/mathematical_basis.md, "Derivation of the returned determinant
+// bound", for the full argument and the underflow assumptions.
 //
 // These constants are NOT feature-gated — they rely only on f64 arithmetic
 // and are useful for adaptive-precision logic even without the `exact`
@@ -990,10 +992,12 @@ const EPS: f64 = f64::EPSILON; // 2^-52
 /// ```
 ///
 /// `det_direct` evaluates `a·d - b·c` as one multiply followed by one FMA
-/// (2 rounding events); the linear `3·EPS` term bounds those roundings
-/// and the quadratic `16·EPS²` term is a conservative cushion for their
-/// interaction.  Derivation follows Shewchuk's framework; see
-/// `REFERENCES.md` \[8\].
+/// (2 rounding events on the longest path). The permanent also has a
+/// two-event path. The coefficient covers both trees and the final rounded
+/// multiplication; see the
+/// [returned-bound derivation](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#derivation-of-the-returned-determinant-bound).
+/// The analysis follows Shewchuk's framework and the binary64 arithmetic
+/// model; see `REFERENCES.md` \[8-11\].
 ///
 /// Prefer
 /// [`Matrix::det_direct_with_errbound`](crate::Matrix::det_direct_with_errbound)
@@ -1040,8 +1044,10 @@ pub const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
 /// where `p(|A|)` is the absolute Leibniz sum (the same cofactor
 /// expansion as `det_direct` but with `|·|` at every leaf).
 /// `det_direct` for D=3 uses three 2×2 FMA minors combined by a nested
-/// FMA, yielding the `8·EPS + 64·EPS²` bound.  See `REFERENCES.md`
-/// \[8\] for the Shewchuk framework these bounds follow.
+/// FMA. The determinant and permanent each have at most five rounding events
+/// per monomial; `8·EPS + 64·EPS²` also covers rounding the permanent and final
+/// bound product. See [`ERR_COEFF_2`] for the derivation link and
+/// `REFERENCES.md` \[8-11\] for the analysis framework.
 ///
 /// Prefer
 /// [`Matrix::det_direct_with_errbound`](crate::Matrix::det_direct_with_errbound)
@@ -1065,9 +1071,11 @@ pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
 /// where `p(|A|)` is the absolute Leibniz sum. `det_direct` for D=4
 /// evaluates four nested 3×3 cofactors, sharing their six 2×2 minors when
 /// every coefficient in the first two rows is non-zero, and reduces them with
-/// an FMA row combination, yielding the
-/// `12·EPS + 128·EPS²` bound.  See `REFERENCES.md` \[8\] for the
-/// Shewchuk framework these bounds follow.
+/// an FMA row combination. Dense and sparse trees each have at most nine
+/// rounding events per monomial, as does the permanent tree. The coefficient
+/// `12·EPS + 128·EPS²` also covers rounding the permanent and final bound
+/// product. See [`ERR_COEFF_2`] for the derivation link and `REFERENCES.md`
+/// \[8-11\] for the analysis framework.
 ///
 /// Prefer
 /// [`Matrix::det_direct_with_errbound`](crate::Matrix::det_direct_with_errbound)

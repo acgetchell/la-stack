@@ -431,6 +431,141 @@ rules:
     patterns:
       - pattern-regex: '(?m)^\s*uses:\s*(?!\./)(?!docker://)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?@[a-fA-F0-9]{40}\s*$'
 
+  - id: la-stack.github-actions.zizmor-tool-version-pinned
+    languages:
+      - yaml
+    severity: ERROR
+    message: "Set zizmor-action's version from steps.zizmor_version.outputs.version, resolved with just --evaluate zizmor_version."
+    metadata:
+      category: security
+      rationale: >-
+        Local and SARIF scans must use the same scanner version. Zizmor's online
+        audits own action SHA/tag resolution; this rule does not map remote tags.
+    paths:
+      include:
+        - "/.github/workflows/**/*.yml"
+        - "/.github/workflows/**/*.yaml"
+        - "/tests/semgrep/.github/workflows/**/*.yml"
+        - "/tests/semgrep/.github/workflows/**/*.yaml"
+    patterns:
+      - pattern: |
+          uses: $ACTION
+          ...
+      - metavariable-regex:
+          metavariable: $ACTION
+          regex: ^zizmorcore/zizmor-action@
+      - pattern-not: |
+          uses: $ACTION
+          with:
+            ...
+            version: ${{ steps.zizmor_version.outputs.version }}
+            ...
+          ...
+
+  - id: la-stack.github-actions.zizmor-version-resolved-from-just
+    languages:
+      - yaml
+    severity: ERROR
+    message: "Resolve the zizmor_version step's output with the canonical just --evaluate zizmor_version sequence in .github/workflows/zizmor.yml."
+    metadata:
+      category: security
+      rationale: >-
+        An output expression alone does not prove scanner parity. Require the
+        resolver to read justfile and publish that value without replacement.
+    paths:
+      include:
+        - "/.github/workflows/**/*.yml"
+        - "/.github/workflows/**/*.yaml"
+        - "/tests/semgrep/.github/workflows/**/*.yml"
+        - "/tests/semgrep/.github/workflows/**/*.yaml"
+    patterns:
+      - pattern: |
+          id: zizmor_version
+          ...
+          run: $SCRIPT
+      - metavariable-pattern:
+          metavariable: $SCRIPT
+          language: bash
+          patterns:
+            - pattern: ...
+            - pattern-not-inside: |
+                set -euo pipefail
+                version="$(just --evaluate zizmor_version)"
+                if [[ -z "$version" ]]; then
+                  echo "::error::Could not resolve zizmor_version from justfile"
+                  exit 1
+                fi
+                echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  - id: la-stack.github-actions.release-no-dependency-cache
+    languages:
+      - yaml
+    severity: ERROR
+    message: "Release artifact jobs must avoid cache actions and explicitly disable setup-rust-toolchain, setup-uv, and setup-just caches."
+    metadata:
+      category: security
+      rationale: >-
+        Durable release artifacts must not consume writable dependency caches,
+        including installed tool binaries. Read-only cache restoration is still
+        restoration and is forbidden in these workflows.
+    paths:
+      include:
+        - "/.github/workflows/release-*.yml"
+        - "/.github/workflows/release-*.yaml"
+        - "/tests/semgrep/.github/workflows/release-*.yml"
+        - "/tests/semgrep/.github/workflows/release-*.yaml"
+    pattern-either:
+      - patterns:
+          - pattern: |
+              uses: $ACTION
+              ...
+          - metavariable-regex:
+              metavariable: $ACTION
+              regex: "(?i)^(?:actions/cache(?:/[^@]+)?|swatinem/rust-cache|taiki-e/cache-cargo-install-action)@"
+      - patterns:
+          - pattern: |
+              uses: $ACTION
+              ...
+          - metavariable-regex:
+              metavariable: $ACTION
+              regex: ^actions-rust-lang/setup-rust-toolchain@
+          - pattern-not: |
+              uses: $ACTION
+              with:
+                ...
+                cache: false
+                cache-bin: false
+                ...
+              ...
+      - patterns:
+          - pattern: |
+              uses: $ACTION
+              ...
+          - metavariable-regex:
+              metavariable: $ACTION
+              regex: ^astral-sh/setup-uv@
+          - pattern-not: |
+              uses: $ACTION
+              with:
+                ...
+                enable-cache: false
+                ...
+              ...
+      - patterns:
+          - pattern: |
+              uses: $ACTION
+              ...
+          - metavariable-regex:
+              metavariable: $ACTION
+              regex: '^(?:\./|\$/)\.github/actions/setup-just/?$'
+          - pattern-not: |
+              uses: $ACTION
+              with:
+                ...
+                cache: false
+                ...
+              ...
+
   - id: la-stack.docs.check-before-fix-command-order
     languages:
       - regex

@@ -562,7 +562,7 @@ def test_main_preserves_exception_group_diagnostics(
         message = "publication and rollback failed"
         raise ExceptionGroup(
             message,
-            [OSError("could not publish docs/PERFORMANCE.md"), OSError("could not restore prior report")],
+            [OSError("could not publish docs/performance.md"), OSError("could not restore prior report")],
         )
 
     monkeypatch.setattr(archive_performance, "resolve_archive_request", fail_request)
@@ -570,7 +570,7 @@ def test_main_preserves_exception_group_diagnostics(
     assert main(["v0.4.3", "v0.4.2"]) == 1
     captured = capsys.readouterr()
     assert "publication and rollback failed (2 sub-exceptions)" in captured.err
-    assert "could not publish docs/PERFORMANCE.md" in captured.err
+    assert "could not publish docs/performance.md" in captured.err
     assert "could not restore prior report" in captured.err
 
 
@@ -957,7 +957,7 @@ def test_fallback_current_cargo_command_matches_suite(
 
 def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path: Path) -> None:
     source = tmp_path / "target" / "bench-reports" / "performance.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
 
     source.parent.mkdir(parents=True)
@@ -981,7 +981,7 @@ def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path: Pat
     assert (archive_dir / "README.md").read_text(encoding="utf-8") == (
         "# Archived Performance Reports\n\n"
         "Older release-to-release benchmark comparisons are archived here.\n"
-        "`docs/PERFORMANCE.md` contains the latest curated comparison.\n\n"
+        "`docs/performance.md` contains the latest curated comparison.\n\n"
         "- [v0.3.1-vs-v0.3.0](v0.3.1-vs-v0.3.0.md)\n"
         "- [v0.4.1-vs-v0.4.0](v0.4.1-vs-v0.4.0.md)\n"
     )
@@ -989,7 +989,7 @@ def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path: Pat
 
 def test_promote_report_is_idempotent_for_same_release_pair(tmp_path: Path) -> None:
     source = tmp_path / "performance-new.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
 
     source.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
@@ -1010,7 +1010,7 @@ def test_promote_report_is_idempotent_for_same_release_pair(tmp_path: Path) -> N
 
 def test_promote_report_does_not_overwrite_existing_archive(tmp_path: Path) -> None:
     source = tmp_path / "performance-new.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     archived = archive_dir / "v0.4.1-vs-v0.4.0.md"
 
@@ -1034,7 +1034,7 @@ def test_promote_report_does_not_overwrite_existing_archive(tmp_path: Path) -> N
 
 def test_promote_report_rejects_mismatched_existing_archive_without_mutation(tmp_path: Path) -> None:
     source = tmp_path / "performance-new.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     archived = archive_dir / "v0.4.1-vs-v0.4.0.md"
     index = archive_dir / "README.md"
@@ -1064,7 +1064,7 @@ def test_promote_report_rejects_mismatched_existing_archive_without_mutation(tmp
 @pytest.mark.parametrize("collision", ["directory", "symlink"])
 def test_promote_report_rejects_non_file_archive_collision_without_mutation(tmp_path: Path, collision: str) -> None:
     source = tmp_path / "performance-new.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     archived = archive_dir / "v0.4.1-vs-v0.4.0.md"
     original = _report("0.4.1", "v0.4.0")
@@ -1095,7 +1095,7 @@ def test_promote_report_rejects_non_file_archive_collision_without_mutation(tmp_
 
 def test_promote_report_rejects_unexpected_release_pair(tmp_path: Path) -> None:
     source = tmp_path / "performance-new.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     source.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
 
@@ -1111,7 +1111,7 @@ def test_promote_report_rejects_unexpected_release_pair(tmp_path: Path) -> None:
 
 def test_promote_report_rewrites_legacy_update_instructions(tmp_path: Path) -> None:
     source = tmp_path / "performance-new.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     source.write_text(_legacy_report("0.4.3", "v0.4.2"), encoding="utf-8")
     current.parent.mkdir(parents=True)
@@ -1143,7 +1143,7 @@ def test_main_promotes_generated_report_to_docs_performance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = tmp_path / "target" / "bench-reports" / "performance.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     generated = _report("0.4.3", "v0.4.2")
 
@@ -1185,7 +1185,7 @@ def test_main_reports_release_pair_mismatch_to_stderr(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = tmp_path / "target" / "bench-reports" / "performance.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     source.parent.mkdir(parents=True)
     source.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
@@ -1383,7 +1383,7 @@ def test_main_promote_artifacts_rejects_output_alias_without_mutation(
     artifacts.csv.parent.mkdir(parents=True)
     artifacts.csv.write_bytes(b"original csv\n")
     artifacts.provenance.write_bytes(b"original provenance\n")
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     current.parent.mkdir(parents=True)
     current.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
     archive_dir = tmp_path / "docs" / "archive" / "performance"
@@ -1439,7 +1439,7 @@ def test_main_reraises_unexpected_errors(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
 
@@ -1523,7 +1523,7 @@ def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pyt
 
 def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
 
@@ -1584,7 +1584,7 @@ def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path: Path, m
 
 
 def test_generate_report_rejects_unsafe_baseline_archive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
 
@@ -1646,7 +1646,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
     (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
     (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
 
@@ -1818,7 +1818,7 @@ def test_generate_local_non_exact_report_retains_same_version_comparison_artifac
     assert not any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
     assert not any(kind == "just" and args == ("bench-latest",) for kind, args, _ in calls)
 
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     with pytest.raises(ValueError, match="cannot promote a same-version local performance comparison"):
         archive_performance.render_and_promote_artifacts(
             artifacts=ArtifactPaths(
@@ -1881,7 +1881,7 @@ def test_generate_local_report_artifacts_can_be_rendered_and_promoted(tmp_path: 
     assert not any(kind == "cargo" for kind, _, _ in calls)
     assert not any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
 
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     promoted = archive_performance.render_and_promote_artifacts(
         artifacts=ArtifactPaths(
             csv=output.with_suffix(".csv"),
@@ -1896,7 +1896,7 @@ def test_generate_local_report_artifacts_can_be_rendered_and_promoted(tmp_path: 
 
 
 def test_main_generates_latest_published_report_from_github_releases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
 
@@ -1968,7 +1968,7 @@ def test_main_generates_latest_published_report_from_github_releases(tmp_path: P
 
 def test_main_normalizes_explicit_bare_tags_before_fetching_and_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output = tmp_path / "target" / "bench-reports" / "github-assets-performance.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
 
@@ -2040,7 +2040,7 @@ def test_main_normalizes_explicit_bare_tags_before_fetching_and_checkout(tmp_pat
 
 
 def test_main_published_latest_fetch_failure_stops_before_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
 
@@ -2098,7 +2098,7 @@ def test_main_published_latest_fetch_failure_stops_before_worktree(tmp_path: Pat
 
 def test_failed_atomic_replace_preserves_existing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source = tmp_path / "performance-new.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     original = _report("0.4.2", "v0.4.1")
 
@@ -2122,14 +2122,14 @@ def test_failed_atomic_replace_preserves_existing_report(tmp_path: Path, monkeyp
         )
 
     assert current.read_text(encoding="utf-8") == original
-    assert not list(current.parent.glob(".PERFORMANCE.md.*.tmp"))
+    assert not list(current.parent.glob(".performance.md.*.tmp"))
 
 
 def test_restore_file_removes_temp_when_fsync_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    target = tmp_path / "docs" / "PERFORMANCE.md"
+    target = tmp_path / "docs" / "performance.md"
     target.parent.mkdir()
     target.write_text("current\n", encoding="utf-8")
 
@@ -2143,7 +2143,7 @@ def test_restore_file_removes_temp_when_fsync_fails(
         archive_performance._restore_file(target, b"restored\n")
 
     assert target.read_text(encoding="utf-8") == "current\n"
-    assert not list(target.parent.glob(".PERFORMANCE.md.*.restore"))
+    assert not list(target.parent.glob(".performance.md.*.restore"))
 
 
 def test_failed_archive_index_update_rolls_back_report_and_new_archive(
@@ -2151,7 +2151,7 @@ def test_failed_archive_index_update_rolls_back_report_and_new_archive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = tmp_path / "performance-new.md"
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     original = _normalized_report("0.4.2", "v0.4.1")
     source.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
@@ -2182,7 +2182,7 @@ def test_failed_artifact_promotion_output_write_rolls_back_report_archive_and_in
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     index = archive_dir / "README.md"
     output = tmp_path / "target" / "bench-reports" / "performance.md"
@@ -2223,7 +2223,7 @@ def test_failed_artifact_promotion_output_write_rolls_back_report_archive_and_in
 
 
 def test_generate_and_promote_rejects_artifact_alias_before_worktree(tmp_path: Path) -> None:
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     current.parent.mkdir(parents=True)
     current.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
@@ -2279,7 +2279,7 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(
 ) -> None:
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
     (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     output = tmp_path / "target" / "bench-reports" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     current.parent.mkdir(parents=True)
@@ -2345,7 +2345,7 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(
 
 
 def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    current = tmp_path / "docs" / "PERFORMANCE.md"
+    current = tmp_path / "docs" / "performance.md"
     output = tmp_path / "target" / "bench-reports" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []

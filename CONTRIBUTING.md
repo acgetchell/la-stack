@@ -44,6 +44,15 @@ checks spelling. Python support tooling is locked with `uv` and checked by
 Ruff, Ty, and Semgrep. GitHub Actions references are SHA-pinned, restricted to
 an explicit allowlist, and kept with readable version comments for review.
 
+`just zizmor` uses the same pinned scanner and `regular` persona as the SARIF
+workflow. It runs online audits using `ZIZMOR_GITHUB_TOKEN`, `GH_TOKEN`,
+`GITHUB_TOKEN`, or an authenticated `gh auth token`, in that order, without
+printing the token. Without authentication it reports an offline fallback;
+SHA/version-comment resolution and other online findings are then unchecked.
+Use `ZIZMOR_OFFLINE=true just zizmor` to request offline audits explicitly.
+Zizmor owns remote action SHA/tag resolution; Semgrep guards explicit scanner
+version configuration and cache isolation in release workflows.
+
 CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
 aligned with the local comprehensive validation path.
 
@@ -128,6 +137,23 @@ For final validation of a non-core change, compose each affected surface once:
 - Benchmark inputs or harnesses: `just test-bench-inputs` or `just bench-compile`
 - Examples: `just examples`
 
+For individual edited file formats, use these focused checks and formatters:
+
+| Surface | Commands |
+|---------|----------|
+| JSON | `jq empty <file>.json` or `just validate-json` |
+| TOML | `just toml-lint`, `just toml-fmt-check`; format with `just toml-fmt` |
+| GitHub Actions | `just action-lint` |
+| Shell scripts | `just shell-fix`, then `just shell-check` |
+| YAML | `just yaml-fix`, then `just yaml-lint` |
+| Markdown | `just markdown-fix`, then `just markdown-ci` |
+
+Run `just spell-check` after editing; `markdown-ci` already includes it. Add
+legitimate technical terms to `typos.toml` under `[default.extend-words]`.
+Detailed test design, dimension coverage, and benchmark measurement rules live
+in [Testing guidance](docs/dev/testing.md). README and guide doctest requirements
+live in [Documentation guidance](docs/dev/docs.md).
+
 Run `just ci` for core Rust, public behavior, or GitHub-equivalent validation.
 It composes leaf validators directly and runs `clippy-all-targets` to match the
 GitHub Clippy SARIF workflow. Unit and integration tests still run together once
@@ -147,13 +173,17 @@ Use the existing canonical documents instead of duplicating their guidance:
 | Topic | Canonical reference |
 |-------|---------------------|
 | Agent rules and repository invariants | [`AGENTS.md`](AGENTS.md) |
+| GitHub and agent commit-message procedures | [`docs/dev/MANAGING_CHANGES.md`](docs/dev/MANAGING_CHANGES.md) |
+| Module, feature, and file ownership | [`docs/code_organization.md`](docs/code_organization.md) |
+| Test design and dimension coverage | [`docs/dev/testing.md`](docs/dev/testing.md) |
+| Documentation ownership and rustdoc maintenance | [`docs/dev/docs.md`](docs/dev/docs.md) |
 | User-facing API, examples, and project scope | [`README.md`](README.md) |
 | Mathematical basis and numerical validity | [`docs/mathematical_basis.md`](docs/mathematical_basis.md) |
 | Package metadata, features, and dependencies | [`Cargo.toml`](Cargo.toml) |
 | Commands and validation workflow | [`justfile`](justfile), `just --list` |
 | Python support tooling | [`scripts/README.md`](scripts/README.md) |
 | Benchmark methodology and baselines | [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md) |
-| Coverage workflow and reports | [`docs/COVERAGE.md`](docs/COVERAGE.md) |
+| Coverage workflow and reports | [`docs/MEASURING_COVERAGE.md`](docs/MEASURING_COVERAGE.md) |
 | Citations and bibliography | [`CITATION.cff`](CITATION.cff), [`REFERENCES.md`](REFERENCES.md) |
 | Security reporting and support | [`SECURITY.md`](SECURITY.md) |
 | Releases and changelog generation | [`docs/RELEASING.md`](docs/RELEASING.md), [`CHANGELOG.md`](CHANGELOG.md) |
@@ -212,7 +242,7 @@ benefit that justifies it.
 Core Rust, Cargo, or public-behavior changes must pass `just ci` before a pull
 request is ready. Documentation, configuration, Python, test-only,
 benchmark-only, and example-only changes use the matching focused validators
-documented in [`AGENTS.md`](AGENTS.md). Pull requests are reviewed for correctness,
+listed in [Validation Workflow](#validation-workflow). Pull requests are reviewed for correctness,
 mathematical accuracy, tests, documentation, style, dependency impact, and
 performance. Non-substantive whitespace or formatting churn may be declined
 unless it is part of an intentional tooling cleanup.
@@ -231,7 +261,8 @@ canonical rules and invariants for AI coding assistants and autonomous agents
 working on this codebase.
 
 AI tools, including ChatGPT, Claude, CodeRabbit, Codex, KiloCode, and WARP, are
-expected to read and follow `AGENTS.md` when proposing or applying changes.
+expected to read and follow `AGENTS.md` and its task-relevant linked guidance
+when proposing or applying changes.
 
 Portions of this library were developed with the assistance of these tools:
 

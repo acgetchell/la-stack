@@ -260,7 +260,7 @@ Local performance reports are generated in isolated temporary worktrees:
 # Local development: compare the current tree with the latest release
 just performance-local
 
-# Release PR: update docs/PERFORMANCE.md and archive the previous report
+# Release PR: update docs/performance.md and archive the previous report
 just performance-release
 
 # Build release docs from retained CSV/JSON inputs (no benchmarks)
