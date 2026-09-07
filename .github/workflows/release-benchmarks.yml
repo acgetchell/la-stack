@@ -11,9 +11,11 @@ on:
   release:
     types:
       - published
+  # Exercise the full producer on a selected ref without publishing a release.
+  workflow_dispatch:
 
 concurrency:
-  group: release-benchmarks-${{ github.event.release.tag_name }}
+  group: release-benchmarks-${{ github.event.release.tag_name || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -23,78 +25,103 @@ env:
 jobs:
   release-baseline:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 2 min checkout + 28 min shared setup + 150 min comparative + 90 min exact
+    # + 15 min for the tail and runner overhead.
+    timeout-minutes: 285
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || format('validation-{0}-{1}', github.run_id, github.run_attempt) }}
+      CRITERION_HOME: ${{ github.workspace }}/target/criterion
     outputs:
       release-asset: ${{ steps.package-baseline.outputs.asset }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || github.sha }}
           persist-credentials: false
+        timeout-minutes: 2
 
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-        with:
-          cache: false
-          cache-bin: false
+      - name: Prepare release benchmarks
+        # One parent timeout bounds all nested installs, validation, and inventory.
+        timeout-minutes: 28
+        uses: ./.github/actions/prepare-release-benchmarks # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
 
-      - name: Set up just
-        uses: ./.github/actions/setup-just # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
-        with:
-          cache: false
-
-      - name: Resolve cargo-nextest version
-        id: cargo_nextest_version
-        shell: bash
+      - name: Save comparative Criterion baseline
+        id: comparative
+        timeout-minutes: 150
         run: |
           set -euo pipefail
+          echo "[release-baseline] vs_linalg started $(date -u +%FT%TZ); budget 150 min"
+          date +%s > target/vs_linalg-started
+          just bench-save-baseline "$RELEASE_TAG" vs_linalg
+          date +%s > target/vs_linalg-finished
 
-          version="$(just --evaluate cargo_nextest_version)"
-          if [[ -z "$version" ]]; then
-            echo "::error::Could not resolve cargo_nextest_version from justfile"
-            exit 1
-          fi
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Install cargo-nextest
-        env:
-          CARGO_NEXTEST_VERSION: ${{ steps.cargo_nextest_version.outputs.version }}
-        run: cargo install --locked cargo-nextest --version "$CARGO_NEXTEST_VERSION"
-
-      - name: Validate benchmark inputs
-        run: just test-bench-inputs
-
-      - name: Save release Criterion baseline
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+      - name: Save exact Criterion baseline
+        id: exact
+        timeout-minutes: 90
         run: |
           set -euo pipefail
+          echo "[release-baseline] exact started $(date -u +%FT%TZ); budget 90 min"
+          date +%s > target/exact-started
+          just bench-save-baseline "$RELEASE_TAG" exact
+          date +%s > target/exact-finished
 
-          cargo bench --locked --features bench --bench vs_linalg -- --save-baseline "$RELEASE_TAG"
-          cargo bench --locked --features bench,exact --bench exact -- --save-baseline "$RELEASE_TAG"
+      - name: Validate complete release dataset
+        run: just bench-release-check "$RELEASE_TAG"
 
       - name: Package release Criterion baseline
         id: package-baseline
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
 
           asset="la-stack-${RELEASE_TAG}-criterion-baseline.tar.gz"
+          cp target/release-benchmark-inventory.json target/criterion/release-benchmark-inventory.json
           tar -C target -czf "$asset" criterion
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
 
       - name: Upload temporary baseline artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bench-baseline-${{ github.event.release.tag_name }}
+          name: bench-baseline-${{ env.RELEASE_TAG }}
           path: ${{ steps.package-baseline.outputs.asset }}
           retention-days: 30
           if-no-files-found: error
 
+      - name: Suite timing summary
+        if: ${{ always() }}
+        env:
+          COMPARATIVE_OUTCOME: ${{ steps.comparative.outcome }}
+          EXACT_OUTCOME: ${{ steps.exact.outcome }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Release benchmark timing"
+            echo ""
+            echo "| Suite | Outcome | Elapsed seconds | Budget minutes |"
+            echo "| --- | --- | --- | --- |"
+            for suite in vs_linalg exact; do
+              elapsed="not started"
+              if [[ -f "target/$suite-started" ]]; then
+                end="$(date +%s)"
+                if [[ -f "target/$suite-finished" ]]; then
+                  end="$(cat "target/$suite-finished")"
+                fi
+                elapsed="$((end - $(cat "target/$suite-started")))"
+              fi
+              outcome="$COMPARATIVE_OUTCOME"
+              budget=150
+              if [[ "$suite" == exact ]]; then
+                outcome="$EXACT_OUTCOME"
+                budget=90
+              fi
+              echo "| $suite | $outcome | $elapsed | $budget |"
+            done
+            echo ""
+            echo "An unfinished suite reports elapsed time through this summary."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   publish-baseline:
+    if: ${{ github.event_name == 'release' }}
     needs: release-baseline
     permissions:
       contents: write
@@ -110,6 +137,7 @@ jobs:
       - name: Attach baseline to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_ASSET: ${{ needs.release-baseline.outputs.release-asset }}
         run: |

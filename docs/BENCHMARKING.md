@@ -19,6 +19,8 @@ the commands measure and where their outputs go.
 - [`vs_linalg` Methodology](#vs_linalg-methodology)
 - [Exact-Arithmetic Notes](#exact-arithmetic-notes)
 - [Release Notes](#release-notes)
+  - [Hosted Release Runtime Budget](#hosted-release-runtime-budget)
+  - [Validate The Release Workflow](#validate-the-release-workflow)
 
 ## Start Here
 
@@ -684,3 +686,78 @@ The durable published baseline is the GitHub Release artifact created by
 `.github/workflows/release-benchmarks.yml`. That workflow runs the benchmark-input
 correctness gate before timing or packaging the artifact. The committed release
 comparison is `docs/performance.md`, created by `just performance-release`.
+
+### Hosted Release Runtime Budget
+
+The producer runs full `vs_linalg` and `exact` suites sequentially on one
+`ubuntu-latest` runner. Separate steps allow 150 and 90 minutes respectively;
+the outer job allows 285 minutes. Checkout has a 2-minute timeout, followed
+by a composite preparation step with one shared 28-minute timeout covering
+all tool installation, input validation, and inventory. These two limits bound
+setup execution to 30 minutes; exceeding either fails the producer before
+benchmarking or publication. The remaining 15 minutes provide headroom for
+dataset validation, packaging, upload, diagnostics, and runner overhead.
+Discovery compiles both suites before measurement and shares the preparation
+deadline with the preceding work. Dependency caches remain disabled.
+
+The [v0.4.5 run](https://github.com/acgetchell/la-stack/actions/runs/32444040827)
+measured 304 comparative benchmarks in about 55m 34s, plus 2m 9s compilation
+(57m 43s total). Its exact suite was cancelled during `exact_d2/det_exact`;
+that run provides no complete exact-suite runtime. The old 60-minute outer
+limit therefore could not accommodate even that smaller harness.
+
+Inventory on 2026-09-07 found the following current workloads. The planning
+estimate uses 12 seconds per benchmark, allowing analysis/report overhead
+above the configured 3-second warmup and 5-second measurement target. This is
+a capacity estimate, not a measured runtime or a guaranteed upper bound;
+Criterion can extend measurement for expensive iterations.
+
+| Suite | Benchmarks | Nominal warmup + measurement | Planning estimate | Step limit | Headroom above estimate |
+| --- | --- | --- | --- | --- | --- |
+| `vs_linalg` | 533 | 71.1 min | 106.6 min | 150 min | 43.4 min (41%) |
+| `exact` | 264 | 35.2 min | 52.8 min | 90 min | 37.2 min (70%) |
+
+Both commands retain Criterion's release defaults: 100 samples, 100,000
+resamples, 95% confidence, 3-second warmup, and 5-second measurement target.
+There are no quick-mode flags, sampling reductions, or benchmark filters.
+Diagnostic families and all peer rows remain included. The workflow logs
+the current inventory counts and planning estimates before timing; its final
+summary records each suite's outcome, elapsed seconds, and budget even after
+a step failure. A runner-level termination can still prevent that summary.
+
+`just bench-release-inventory` requires a fresh Criterion directory and obtains
+the complete IDs from each compiled binary's `--list` output. It also checks
+that the inventory includes the report registry and every canonical README
+peer row. `just bench-release-check <tag>` then requires every discovered ID,
+valid mean/median estimates with 95% intervals, and 100 finite positive samples.
+Each named baseline's four raw JSON files must match its `new` measurement.
+Missing diagnostics, failed Criterion writes, stale baselines, and malformed
+measurements all stop publication. Only successful validation permits packaging
+the single `criterion/` archive, including the inventory manifest, and uploading
+the temporary Actions artifact. The release-only publisher attaches that archive
+as `la-stack-$TAG-criterion-baseline.tar.gz`.
+
+### Validate The Release Workflow
+
+After pushing a branch containing the workflow change, dispatch the producer
+against that ref with the GitHub CLI:
+
+```bash
+gh workflow run release-benchmarks.yml --ref <branch>
+gh run list --workflow release-benchmarks.yml --event workflow_dispatch
+gh run watch <run-id> --exit-status
+gh run download <run-id> --name bench-baseline-validation-<run-id>-1
+```
+
+This existing workflow is already registered by its release runs, so the CLI
+can select a branch containing the manual trigger. The Actions page also offers
+manual dispatch once the trigger is available on the default branch; see
+[GitHub's dispatch documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch).
+
+A manual run uses the selected commit and a `validation-<run-id>-<attempt>`
+baseline name. It performs full input validation, measurement, dataset checks,
+packaging, and the 30-day temporary upload; its publisher is skipped. For a
+rerun, substitute the actual attempt number in the artifact name. Record the
+successful run URL and both elapsed suite times when validating a budget change.
+The estimates above still require this representative hosted run; local tests
+and archive fixtures do not establish GitHub-runner runtime or upload success.

@@ -22,10 +22,8 @@ while keeping the API intentionally small and explicit.
 - [Introduction](#-introduction)
 - [Use this crate when](#-use-this-crate-when)
 - [Quickstart](#-quickstart)
-- [Mathematical basis](#-mathematical-basis)
-- [Design goals](#-design-goals)
-- [Anti-goals](#-anti-goals)
 - [Scalar and bounded-value types](#-scalar-and-bounded-value-types)
+- [API at a glance](#-api-at-a-glance)
 - [Features](#-features)
   - [Adaptive determinant filtering (D ≤ 4)](#adaptive-determinant-filtering-d--4)
   - [Certified dot products and affine differences](#certified-dot-products-and-affine-differences)
@@ -35,10 +33,12 @@ while keeping the API intentionally small and explicit.
   - [LU solve](#lu-solve)
   - [Outward-rounded interval determinants](#outward-rounded-interval-determinants)
   - [Overflow-safe Euclidean norms](#overflow-safe-euclidean-norms)
-- [API at a glance](#-api-at-a-glance)
+- [Mathematical basis](#-mathematical-basis)
+- [Design goals](#-design-goals)
+- [Anti-goals](#-anti-goals)
 - [Documentation Map](#documentation-map)
-- [Benchmarks](#-benchmarks-vs-nalgebrafaer)
 - [Examples](#-examples)
+- [Benchmarks](#-benchmarks-vs-nalgebrafaer)
 - [Contributing](#-contributing)
 - [Citation](#-citation)
 - [References](#-references)
@@ -127,93 +127,20 @@ provide a certified solution error bound.
 
 ### Feature flags
 
+- `bench`: repository-development gate used only by benchmark targets and
+  benchmark-input tests; application crates should not enable it
 - `default`: no runtime dependencies; includes outward-rounded `Interval` and
   `IntervalMatrix` APIs
 - `exact`: exact determinant signs, determinant values, and solves over stored
   `f64` values or caller-supplied `BigRational` inputs
-- `bench`: repository-development gate used only by benchmark targets and
-  benchmark-input tests; application crates should not enable it
-
-## 🧮 Mathematical basis
-
-`la-stack` operates on finite IEEE 754 binary64 values in small, fixed
-dimensions. Its floating-point paths use [LU with partial pivoting][refs-lu],
-[LDLT without pivoting][refs-ldlt] for exactly symmetric positive-definite matrices, and closed-form
-determinants through D=4. These results remain subject to conditioning and
-binary64 rounding;
-factorization tolerances are rejection thresholds, not accuracy guarantees. For
-D≤4, direct determinants can be paired with a
-[conservative absolute roundoff bound][refs-det-bound] when its range
-preconditions hold. [Fixed-vector dot products and direct affine differences][refs-reductions]
-can likewise return a paired estimate and certified absolute
-roundoff bound without enabling arbitrary-precision dependencies.
-
-Derived binary64 expressions can instead be assembled with `Interval`
-subtraction, addition, multiplication, negation, and square. The resulting
-`IntervalMatrix<D>` [determinant sign][refs-interval] is certified through D=7 when its enclosure
-separates zero; the singleton `[0, 0]` also certifies exact zero. Every other
-overlap with zero is explicitly inconclusive. This default-feature surface is
-distinct from arbitrary-precision exact arithmetic.
-
-With `features = ["exact"]`, callers can either lift stored binary64 inputs
-losslessly or supply already-exact rational inputs for
-[exact determinant signs][refs-exact-sign], determinant values, and
-[solves][refs-exact-solve]. Exactness over binary64 input starts at the
-stored values and cannot recover information rounded away before construction.
-See the
-[mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md)
-for the algorithms, validity boundaries, and supporting references.
-
-## 🎯 Design goals
-
-- ✅ `const fn` where possible (compile-time evaluation of determinants, dot products, etc.)
-- ✅ Const-generic storage (no dynamically sized matrix or vector representation)
-- ✅ `Copy` types where possible
-- ✅ Defined binary64 arithmetic semantics: Rust's `f64::algebraic_*`
-  operations are forbidden because their unspecified reassociation, precision,
-  and special-value behavior is incompatible with the crate's error bounds,
-  non-finite classification, exact fallbacks, and reproducibility contract;
-  deliberate `f64::mul_add` remains allowed for its defined single-rounding
-  semantics
-- ✅ Error-bounded f64 dot, affine-difference, and determinant filtering plus
-  optional exact signs (`dot_with_errbound`, `dot_difference_with_errbound`,
-  `det_errbound`, `det_sign_exact`)
-- ✅ Overflow- and underflow-safe Euclidean vector norms (`norm`)
-- ✅ Outward-rounded interval expressions and division-free determinant signs
-  through D=7, with explicit inconclusive evidence
-- ✅ Exact determinant values and linear solves via optional arbitrary-precision
-  arithmetic (`det_exact`, `solve_exact`, strict/rounded f64 conversions)
-- ✅ Explicit algorithms (LU, solve, determinant)
-- ✅ Inline, stack-backed storage for core types; optional arbitrary-precision
-  exact values allocate as required
-- ✅ No runtime dependencies by default (optional features may add deps)
-- ✅ `unsafe` forbidden
-
-See [CHANGELOG.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/CHANGELOG.md)
-for release history and
-[docs/roadmap.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/roadmap.md)
-for current release planning.
-
-## 🚫 Anti-goals
-
-- Alternate scalar families: `la-stack` deliberately supports finite `f64` and
-  optional exact `BigRational` input domains, not `f32`, `f16`, complex, or
-  generic scalar APIs
-- Bare-metal performance: use [`blas`](https://crates.io/crates/blas) or
-  [`lapack`](https://crates.io/crates/lapack) with a native backend selected
-  through [`blas-src`](https://crates.io/crates/blas-src),
-  [`lapack-src`](https://crates.io/crates/lapack-src), or
-  [`openblas-src`](https://crates.io/crates/openblas-src)
-- Broad general-purpose linear algebra: use [`nalgebra`](https://crates.io/crates/nalgebra)
-- Large matrices/dimensions with parallelism: use [`faer`](https://crates.io/crates/faer)
 
 ## 🔢 Scalar and bounded-value types
 
 The public point-value scalar model deliberately has two input domains:
 
-- finite `f64` through `Matrix<D>` and `Vector<D>` for floating-point work;
 - arbitrary-precision `BigRational` through `RationalMatrix<D>` and
-  `RationalVector<D>` behind the optional `"exact"` feature.
+  `RationalVector<D>` behind the optional `"exact"` feature;
+- finite `f64` through `Matrix<D>` and `Vector<D>` for floating-point work.
 
 `Interval` is a separate bounded-value layer over finite `f64` endpoints. It
 encloses exact-real values during a small set of outward-rounded operations and
@@ -229,6 +156,47 @@ conversion when an `f64` result is required. It does not promise a
 Lower-precision `f32` / `f16` throughput-oriented workloads are outside the
 crate's scope; they usually indicate large-matrix or accelerator-oriented use
 cases better served by broader linear-algebra libraries.
+
+## 🧩 API at a glance
+
+Start with the capability you need; the [API reference][api-reference] lists
+the complete public surface, and the [worked examples][api-guide] show how
+to combine operations.
+
+| Capability | Main entry points |
+|---|---|
+| Vector operations and norms | [`Vector<D>`][api-vector] |
+| Floating-point determinants and solves | [`Matrix<D>`][api-matrix], [`Lu<D>`][api-lu], [`Ldlt<D>`][api-ldlt] |
+| Gram matrix construction | [`gram_matrix`][api-gram] |
+| Certified dot, affine-difference, and determinant estimates | [`ScalarWithErrorBound`][api-scalar-bound], [`DeterminantWithErrorBound`][api-det-bound] |
+| Interval expressions and determinant signs | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
+| Exact signs, determinants, solves, and output conversion¹ | [Exact arithmetic examples][api-exact] |
+| Runtime selection of a const-generic matrix dimension | [Dimension dispatch examples][api-dispatch] |
+
+[`Tolerance`][api-tolerance] validates numerical rejection thresholds.
+[`LaError`][api-error] and its reason/location enums preserve structured
+failure details; match non-exhaustive enums with a wildcard and struct-style
+variants with `..`. See the [storage, access, and error guide][api-contracts]
+for the full contracts.
+
+¹ Requires `features = ["exact"]`.
+
+[api-reference]: https://docs.rs/la-stack/latest/la_stack/
+[api-guide]: https://docs.rs/la-stack/latest/la_stack/guide/index.html
+[api-vector]: https://docs.rs/la-stack/latest/la_stack/struct.Vector.html
+[api-matrix]: https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html
+[api-lu]: https://docs.rs/la-stack/latest/la_stack/struct.Lu.html
+[api-ldlt]: https://docs.rs/la-stack/latest/la_stack/struct.Ldlt.html
+[api-gram]: https://docs.rs/la-stack/latest/la_stack/fn.gram_matrix.html
+[api-scalar-bound]: https://docs.rs/la-stack/latest/la_stack/struct.ScalarWithErrorBound.html
+[api-det-bound]: https://docs.rs/la-stack/latest/la_stack/struct.DeterminantWithErrorBound.html
+[api-interval]: https://docs.rs/la-stack/latest/la_stack/struct.Interval.html
+[api-interval-matrix]: https://docs.rs/la-stack/latest/la_stack/struct.IntervalMatrix.html
+[api-exact]: https://docs.rs/la-stack/latest/la_stack/guide/exact/index.html
+[api-dispatch]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#dimension-dispatch
+[api-tolerance]: https://docs.rs/la-stack/latest/la_stack/struct.Tolerance.html
+[api-error]: https://docs.rs/la-stack/latest/la_stack/enum.LaError.html
+[api-contracts]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#storage-access-and-errors
 
 ## ✨ Features
 
@@ -315,58 +283,116 @@ the renames. `Matrix::norm_inf()` remains the maximum absolute row sum.
 [guide-certified]: https://docs.rs/la-stack/latest/la_stack/guide/certified/index.html
 [guide-adaptive]: https://docs.rs/la-stack/latest/la_stack/guide/adaptive/index.html
 
-## 🧩 API at a glance
+## 🧮 Mathematical basis
 
-Start with the capability you need; the [API reference][api-reference] lists
-the complete public surface, and the [worked examples][api-guide] show how
-to combine operations.
+`la-stack` operates on finite IEEE 754 binary64 values in small, fixed
+dimensions. Its floating-point paths use [LU with partial pivoting][refs-lu],
+[LDLT without pivoting][refs-ldlt] for exactly symmetric positive-definite matrices, and closed-form
+determinants through D=4. These results remain subject to conditioning and
+binary64 rounding;
+factorization tolerances are rejection thresholds, not accuracy guarantees. For
+D≤4, direct determinants can be paired with a
+[conservative absolute roundoff bound][refs-det-bound] when its range
+preconditions hold. [Fixed-vector dot products and direct affine differences][refs-reductions]
+can likewise return a paired estimate and certified absolute
+roundoff bound without enabling arbitrary-precision dependencies.
 
-| Capability | Main entry points |
-|---|---|
-| Vector operations and norms | [`Vector<D>`][api-vector] |
-| Floating-point determinants and solves | [`Matrix<D>`][api-matrix], [`Lu<D>`][api-lu], [`Ldlt<D>`][api-ldlt] |
-| Gram matrix construction | [`gram_matrix`][api-gram] |
-| Certified dot, affine-difference, and determinant estimates | [`ScalarWithErrorBound`][api-scalar-bound], [`DeterminantWithErrorBound`][api-det-bound] |
-| Interval expressions and determinant signs | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
-| Exact signs, determinants, solves, and output conversion¹ | [Exact arithmetic examples][api-exact] |
-| Runtime selection of a const-generic matrix dimension | [Dimension dispatch examples][api-dispatch] |
+Derived binary64 expressions can instead be assembled with `Interval`
+subtraction, addition, multiplication, negation, and square. The resulting
+`IntervalMatrix<D>` [determinant sign][refs-interval] is certified through D=7 when its enclosure
+separates zero; the singleton `[0, 0]` also certifies exact zero. Every other
+overlap with zero is explicitly inconclusive. This default-feature surface is
+distinct from arbitrary-precision exact arithmetic.
 
-[`Tolerance`][api-tolerance] validates numerical rejection thresholds.
-[`LaError`][api-error] and its reason/location enums preserve structured
-failure details; match non-exhaustive enums with a wildcard and struct-style
-variants with `..`. See the [storage, access, and error guide][api-contracts]
-for the full contracts.
+With `features = ["exact"]`, callers can either lift stored binary64 inputs
+losslessly or supply already-exact rational inputs for
+[exact determinant signs][refs-exact-sign], determinant values, and
+[solves][refs-exact-solve]. Exactness over binary64 input starts at the
+stored values and cannot recover information rounded away before construction.
+See the
+[mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md)
+for the algorithms, validity boundaries, and supporting references.
 
-¹ Requires `features = ["exact"]`.
+## 🎯 Design goals
 
-[api-reference]: https://docs.rs/la-stack/latest/la_stack/
-[api-guide]: https://docs.rs/la-stack/latest/la_stack/guide/index.html
-[api-vector]: https://docs.rs/la-stack/latest/la_stack/struct.Vector.html
-[api-matrix]: https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html
-[api-lu]: https://docs.rs/la-stack/latest/la_stack/struct.Lu.html
-[api-ldlt]: https://docs.rs/la-stack/latest/la_stack/struct.Ldlt.html
-[api-gram]: https://docs.rs/la-stack/latest/la_stack/fn.gram_matrix.html
-[api-scalar-bound]: https://docs.rs/la-stack/latest/la_stack/struct.ScalarWithErrorBound.html
-[api-det-bound]: https://docs.rs/la-stack/latest/la_stack/struct.DeterminantWithErrorBound.html
-[api-interval]: https://docs.rs/la-stack/latest/la_stack/struct.Interval.html
-[api-interval-matrix]: https://docs.rs/la-stack/latest/la_stack/struct.IntervalMatrix.html
-[api-exact]: https://docs.rs/la-stack/latest/la_stack/guide/exact/index.html
-[api-dispatch]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#dimension-dispatch
-[api-tolerance]: https://docs.rs/la-stack/latest/la_stack/struct.Tolerance.html
-[api-error]: https://docs.rs/la-stack/latest/la_stack/enum.LaError.html
-[api-contracts]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#storage-access-and-errors
+- ✅ `const fn` where possible (compile-time evaluation of determinants, dot products, etc.)
+- ✅ Const-generic storage (no dynamically sized matrix or vector representation)
+- ✅ `Copy` types where possible
+- ✅ Defined binary64 arithmetic semantics: Rust's `f64::algebraic_*`
+  operations are forbidden because their unspecified reassociation, precision,
+  and special-value behavior is incompatible with the crate's error bounds,
+  non-finite classification, exact fallbacks, and reproducibility contract;
+  deliberate `f64::mul_add` remains allowed for its defined single-rounding
+  semantics
+- ✅ Error-bounded f64 dot, affine-difference, and determinant filtering plus
+  optional exact signs (`dot_with_errbound`, `dot_difference_with_errbound`,
+  `det_errbound`, `det_sign_exact`)
+- ✅ Overflow- and underflow-safe Euclidean vector norms (`norm`)
+- ✅ Outward-rounded interval expressions and division-free determinant signs
+  through D=7, with explicit inconclusive evidence
+- ✅ Exact determinant values and linear solves via optional arbitrary-precision
+  arithmetic (`det_exact`, `solve_exact`, strict/rounded f64 conversions)
+- ✅ Explicit algorithms (LU, solve, determinant)
+- ✅ Inline, stack-backed storage for core types; optional arbitrary-precision
+  exact values allocate as required
+- ✅ No runtime dependencies by default (optional features may add deps)
+- ✅ `unsafe` forbidden
+
+See [CHANGELOG.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/CHANGELOG.md)
+for release history and
+[docs/roadmap.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/roadmap.md)
+for current release planning.
+
+## 🚫 Anti-goals
+
+- Alternate scalar families: `la-stack` deliberately supports finite `f64` and
+  optional exact `BigRational` input domains, not `f32`, `f16`, complex, or
+  generic scalar APIs
+- Bare-metal performance: use [`blas`](https://crates.io/crates/blas) or
+  [`lapack`](https://crates.io/crates/lapack) with a native backend selected
+  through [`blas-src`](https://crates.io/crates/blas-src),
+  [`lapack-src`](https://crates.io/crates/lapack-src), or
+  [`openblas-src`](https://crates.io/crates/openblas-src)
+- Broad general-purpose linear algebra: use [`nalgebra`](https://crates.io/crates/nalgebra)
+- Large matrices/dimensions with parallelism: use [`faer`](https://crates.io/crates/faer)
 
 <a name="documentation-map"></a>
 
 ## 🗺️ Documentation Map
 
 - [API guide][api-guide] — worked examples, API selection, storage, and error contracts.
-- [Mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md) — algorithms, numerical guarantees, and limitations.
 - [Benchmarking](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/BENCHMARKING.md) — benchmark suites, comparison workflows, and measurement methodology.
-- [Performance reports](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md) — release-to-release measurement results and provenance.
 - [Coverage](https://github.com/acgetchell/la-stack/blob/main/docs/MEASURING_COVERAGE.md) — local and CI coverage commands and report locations.
-- [Roadmap](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/roadmap.md) — release planning, future directions, and non-goals.
+- [Mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md) — algorithms, numerical guarantees, and limitations.
+- [Performance reports](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md) — release-to-release measurement results and provenance.
 - [Releasing](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/RELEASING.md) — release preparation, validation, and publication.
+- [Roadmap](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/roadmap.md) — release planning, future directions, and non-goals.
+
+## 📋 Examples
+
+The `examples/` directory contains small, runnable programs:
+
+- **`const_det_4x4`** — compile-time 4×4 determinant via `det_direct()`
+- **`det_5x5`** — determinant of a 5×5 matrix via LU
+- **`exact_det_3x3`** — exact determinant value of a near-singular 3×3 matrix (requires `exact` feature)
+- **`exact_sign_3x3`** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
+- **`exact_solve_3x3`** — exact solve of a near-singular 3×3 system vs f64 LU (requires `exact` feature)
+- **`ldlt_solve_3x3`** — solve a 3×3 symmetric positive definite system via LDLT
+- **`rational_input_5x5`** — exact rational solve of a 5×5 system that becomes singular as f64 (requires `exact` feature)
+- **`solve_5x5`** — solve a 5×5 system via LU with partial pivoting
+
+```bash
+just examples
+# or individually:
+cargo run --example const_det_4x4
+cargo run --example det_5x5
+cargo run --features exact --example exact_det_3x3
+cargo run --features exact --example exact_sign_3x3
+cargo run --features exact --example exact_solve_3x3
+cargo run --example ldlt_solve_3x3
+cargo run --features exact --example rational_input_5x5
+cargo run --example solve_5x5
+```
 
 ## 📈 Benchmarks (vs nalgebra/faer)
 
@@ -429,32 +455,6 @@ expectations are validated outside the timed closures.
 | 64 | 17,357.785 | 13,878.401 | 12,199.761 | -25.1% | -42.3% |
 
 <!-- BENCH_TABLE:lu_solve:median:new:END -->
-
-## 📋 Examples
-
-The `examples/` directory contains small, runnable programs:
-
-- **`solve_5x5`** — solve a 5×5 system via LU with partial pivoting
-- **`det_5x5`** — determinant of a 5×5 matrix via LU
-- **`ldlt_solve_3x3`** — solve a 3×3 symmetric positive definite system via LDLT
-- **`const_det_4x4`** — compile-time 4×4 determinant via `det_direct()`
-- **`exact_det_3x3`** — exact determinant value of a near-singular 3×3 matrix (requires `exact` feature)
-- **`exact_sign_3x3`** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
-- **`exact_solve_3x3`** — exact solve of a near-singular 3×3 system vs f64 LU (requires `exact` feature)
-- **`rational_input_5x5`** — exact rational solve of a 5×5 system that becomes singular as f64 (requires `exact` feature)
-
-```bash
-just examples
-# or individually:
-cargo run --example solve_5x5
-cargo run --example det_5x5
-cargo run --example ldlt_solve_3x3
-cargo run --example const_det_4x4
-cargo run --features exact --example exact_det_3x3
-cargo run --features exact --example exact_sign_3x3
-cargo run --features exact --example exact_solve_3x3
-cargo run --features exact --example rational_input_5x5
-```
 
 ## 🤝 Contributing
 

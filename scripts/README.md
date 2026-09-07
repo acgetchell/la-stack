@@ -287,6 +287,7 @@ validates SemVer, and handles GitHub's 125KB tag-annotation size limit.
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
 | `tag_release.py` | Create annotated git tags from CHANGELOG.md sections |
 | `postprocess_changelog.py` | Normalize and reflow generated git-cliff Markdown safely |
+| `release_baseline.py` | Inventory full Criterion suites and validate complete raw release baselines before packaging |
 | `subprocess_utils.py` | Safe subprocess wrappers for git commands |
 | `update_cargo_tool_pins.py` | Reconcile repository-owned Cargo and active uv tool pins with installed versions |
 | `update_python_dev_pins.py` | Resolve and advance exact Python development-tool pins through uv |

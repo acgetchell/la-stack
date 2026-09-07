@@ -285,6 +285,14 @@ bench-latest: bench-vs-linalg-la-stack bench-exact
 bench-latest-vs-last baseline="last": bench-latest python-sync
     uv run --locked bench-compare {{ quote(baseline) }}
 
+# Discover all release benchmarks and report their expected measurement budget.
+bench-release-inventory: _ensure-uv
+    uv run --locked scripts/release_baseline.py inventory
+
+# Check every discovered benchmark before the release workflow packages it.
+bench-release-check tag: _ensure-uv
+    uv run --locked scripts/release_baseline.py validate --baseline {{ quote(tag) }}
+
 # Save a Criterion baseline. Defaults to all release-signal benchmark suites.
 bench-save-baseline tag suite="all":
     #!/usr/bin/env bash
