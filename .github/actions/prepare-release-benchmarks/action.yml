@@ -1,9 +1,25 @@
 name: Prepare release benchmarks
 description: Install uncached tools, validate inputs, and inventory full release suites within the caller's shared timeout.
 
+inputs:
+  validated-attempt:
+    description: Workflow attempt that checked the release draft
+    required: true
+
 runs:
   using: composite
   steps:
+    - name: Require fresh release preflight
+      shell: bash
+      env:
+        VALIDATED_ATTEMPT: ${{ inputs.validated-attempt }}
+      run: |
+        set -euo pipefail
+        if [[ "$VALIDATED_ATTEMPT" != "$GITHUB_RUN_ATTEMPT" ]]; then
+          echo "::error::Rerun all jobs or dispatch again to revalidate the draft before benchmarking"
+          exit 1
+        fi
+
     - name: Install Rust toolchain
       uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
       with:

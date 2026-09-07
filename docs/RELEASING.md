@@ -1,7 +1,13 @@
 # Releasing la-stack
 
 Prepare each `vX.Y.Z` release in a dedicated PR. After that PR is merged,
-create the annotated tag, publish to crates.io, and create the GitHub release.
+create the annotated tag, publish to crates.io, and create a draft GitHub release.
+You then start the `Release Benchmarks` workflow, which attaches the durable
+baseline and **automatically publishes that same draft as the public release**.
+
+The local benchmarks used to prepare the release PR do not require a draft.
+The draft is needed later as the upload destination for the benchmark archive
+produced on GitHub Actions.
 
 The changelog is generated for the target tag before the tag exists, so the
 release process does not require a temporary local tag.
@@ -215,22 +221,73 @@ git push origin "$TAG"
 cargo publish --locked
 ```
 
-### 5. Create the GitHub release
+### 5. Create the draft GitHub release
+
+Create an unpublished release where the workflow can attach its benchmark archive:
 
 ```bash
-gh release create "$TAG" --title "$TAG" --notes-from-tag
+gh release create "$TAG" --verify-tag --draft --title "$TAG" --notes-from-tag
 ```
 
 Keep the release title identical to the tag, including its leading `v`.
+Leave it as a stable draft: publishing now would make the release immutable
+before the benchmark archive can be attached. GitHub recommends this
+[draft-first sequence for immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).
 
-### 6. Verify the durable Criterion baseline
+### 6. Run benchmarks and publish the draft
 
-After the `Release Benchmarks` workflow completes, verify that the release
-contains its long-lived baseline archive:
+**Starting this workflow also authorizes automatic publication.** You do not
+need a separate command to convert the draft into a published release.
+
+Start the workflow from the release tag, passing the same tag as its input:
 
 ```bash
-gh release view "$TAG" --json assets \
-  --jq ".assets[] | select(.name == \"la-stack-$TAG-criterion-baseline.tar.gz\") | .name" | cat
+gh workflow run release-benchmarks.yml --ref "$TAG" -f tag="$TAG"
+```
+
+Once GitHub accepts the command, you can close the terminal and leave the
+workflow running. It runs on GitHub's runners and needs no further input to
+publish the release. Check its status later, when convenient, on the
+[Release Benchmarks Actions page](https://github.com/acgetchell/la-stack/actions/workflows/release-benchmarks.yml).
+
+The workflow runs from the tagged version of its definition, so the tag must
+include this release workflow. Using the tag as the workflow ref keeps execution
+in that tag's cache scope. Dispatching from `main` or a different tag is rejected.
+
+The workflow automatically:
+
+1. Runs the full benchmark suites for the tagged commit.
+2. Uploads the archive to the draft and verifies its name, state, size, and
+   SHA-256 digest.
+3. Removes the draft status, making the same release public with the archive
+   already attached.
+
+A benchmark, upload, or verification failure leaves the release as a draft.
+Follow [Recovering a failed run](#recovering-a-failed-run) to retry.
+
+Before benchmarking, the workflow requires
+exactly one mutable, non-prerelease draft whose tag and title match the stable
+`vX.Y.Z` input, and resolves the existing tag to a commit. It benchmarks that
+commit only if it matches the workflow's own commit, then rechecks the captured
+release ID and tag commit before attaching
+the archive and again before publication. Do not edit the draft, move the tag,
+or publish manually while the workflow is running.
+
+Runs for the same tag are serialized without cancelling an active run.
+
+### 7. Verify publication and the durable Criterion baseline
+
+After the workflow completes, open the repository's
+[Releases page](https://github.com/acgetchell/la-stack/releases). Confirm that
+`$TAG` is published and its assets include
+`la-stack-$TAG-criterion-baseline.tar.gz`. This is a check of the completed
+publication; the workflow does not wait for you to perform it.
+
+For an optional command-line check:
+
+```bash
+gh release view "$TAG" --json isDraft,assets \
+  --jq "select(.isDraft == false) | .assets[] | select(.name == \"la-stack-$TAG-criterion-baseline.tar.gz\") | .name" | cat
 ```
 
 The command must print `la-stack-$TAG-criterion-baseline.tar.gz`. A short-lived
@@ -239,19 +296,48 @@ Actions artifact is not a substitute for this release asset.
 The benchmark producer has read-only repository permissions and restores no
 dependency caches, including tool binaries. It disables Rust toolchain and
 `setup-just` caching and installs the pinned just and cargo-nextest versions
-with `cargo install --locked`. Only the separate publisher job receives
-`contents: write` to attach the packaged baseline to the release.
+with `cargo install --locked`. The short preflight job receives `contents: write`
+for draft visibility; the separate publisher receives it to attach the archive
+and publish. Neither privileged job checks out or executes repository code.
 
 The producer budgets 150 minutes for `vs_linalg` and 90 minutes for `exact`
 within a 285-minute job. Both suites retain full release sampling. Inventory
 and raw-data validation must succeed before the single complete archive is
 packaged and uploaded; inspect the suite timing summary when a run fails.
 See the [hosted runtime budget](BENCHMARKING.md#hosted-release-runtime-budget)
-for measured history, capacity estimates, and headroom. A manual
-[workflow validation run](BENCHMARKING.md#validate-the-release-workflow)
-exercises packaging and temporary upload without attaching a release asset.
+for measured history, capacity estimates, and headroom, and
+[workflow validation](BENCHMARKING.md#validate-the-release-workflow) for local
+regression checks and hosted evidence requirements.
 
-### 7. Remove the merged release branch
+### Recovering a failed run
+
+If preflight or the producer failed, rerun all jobs with `gh run rerun <run-id>`
+or dispatch again. The producer requires a preflight from the current attempt;
+rerunning failed benchmark jobs alone stops before tool setup or measurement
+because the earlier draft check is stale.
+
+If the producer succeeded and only the publisher failed, preserve the existing
+30-day Actions artifact and rerun failed jobs:
+
+```bash
+gh run rerun <run-id> --failed
+```
+
+The publisher reuses an already uploaded draft asset only if its state, size,
+and digest match the downloaded archive. It never overwrites or deletes assets.
+A conflicting or incomplete upload stops the run; inspect the draft and remove
+only that conflicting asset manually before retrying. An expired temporary
+artifact requires a new full run.
+
+A full rerun or new dispatch creates a distinct Actions artifact named
+`bench-baseline-$TAG-<run-id>-<producer-attempt>`. Fresh measurements may differ
+from an earlier uploaded draft asset, so resolve any conflict before retrying
+publication. If the release is already published, every rerun fails closed
+without changing it, including when an earlier publication succeeded but its
+response was lost. Verify the public release in that case. Existing immutable
+releases with missing assets cannot be repaired by this workflow.
+
+### 8. Remove the merged release branch
 
 After publication and baseline verification succeed:
 

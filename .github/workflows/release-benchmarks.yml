@@ -1,6 +1,6 @@
 name: Release Benchmarks
 
-# Archive full Criterion benchmark baselines for published releases.
+# Attach full Criterion baselines to a draft before publishing the release.
 # Release jobs publish durable artifacts, so they intentionally do not restore
 # or save dependency caches.
 
@@ -8,14 +8,15 @@ permissions:
   contents: read
 
 on:
-  release:
-    types:
-      - published
-  # Exercise the full producer on a selected ref without publishing a release.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Stable vX.Y.Z tag matching the workflow ref, with a mutable draft release
+        required: true
+        type: string
 
 concurrency:
-  group: release-benchmarks-${{ github.event.release.tag_name || github.ref }}
+  group: release-benchmarks-${{ inputs.tag }}
   cancel-in-progress: false
 
 env:
@@ -23,21 +24,71 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  validate-release:
+    # Draft visibility requires push access. This job executes no repository code.
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release-id: ${{ steps.target.outputs.release-id }}
+      commit: ${{ steps.target.outputs.commit }}
+      validated-attempt: ${{ github.run_attempt }}
+    steps:
+      - name: Validate draft release target
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Expected an existing stable vX.Y.Z tag"
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/tags/$RELEASE_TAG" ]]; then
+            echo "::error::Dispatch with --ref $RELEASE_TAG and the matching tag input"
+            exit 1
+          fi
+          # The release-by-tag endpoint only guarantees published releases.
+          releases="$(gh api "repos/$GH_REPO/releases?per_page=100" --paginate --slurp)"
+          release_id="$(jq -er --arg tag "$RELEASE_TAG" '
+            [.[][] | select(.tag_name == $tag)]
+            | if length == 1 and .[0].draft == true and .[0].prerelease == false
+                and .[0].immutable == false and .[0].name == $tag
+              then .[0].id else error("Expected exactly one mutable stable draft with the tag as its title") end
+          ' <<< "$releases")"
+          [[ "$release_id" =~ ^[1-9][0-9]*$ ]] || exit 1
+          # Fully qualify the tag to avoid a same-named branch; peel annotated tags.
+          commit="$(gh api "repos/$GH_REPO/commits/refs/tags/$RELEASE_TAG" --jq .sha)"
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          if [[ "$commit" != "$GITHUB_SHA" ]]; then
+            echo "::error::Release tag no longer matches the workflow commit"
+            exit 1
+          fi
+          echo "release-id=$release_id" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
   release-baseline:
+    needs: validate-release
     runs-on: ubuntu-latest
     # 2 min checkout + 28 min shared setup + 150 min comparative + 90 min exact
     # + 15 min for the tail and runner overhead.
     timeout-minutes: 285
     env:
-      RELEASE_TAG: ${{ github.event.release.tag_name || format('validation-{0}-{1}', github.run_id, github.run_attempt) }}
+      RELEASE_TAG: ${{ inputs.tag }}
       CRITERION_HOME: ${{ github.workspace }}/target/criterion
     outputs:
       release-asset: ${{ steps.package-baseline.outputs.asset }}
+      artifact-name: ${{ steps.package-baseline.outputs.artifact-name }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name || github.sha }}
+          # Use the workflow's own commit and tag cache scope, never a separate ref.
+          ref: ${{ github.sha }}
           persist-credentials: false
         timeout-minutes: 2
 
@@ -45,6 +96,8 @@ jobs:
         # One parent timeout bounds all nested installs, validation, and inventory.
         timeout-minutes: 28
         uses: ./.github/actions/prepare-release-benchmarks # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
+        with:
+          validated-attempt: ${{ needs.validate-release.outputs.validated-attempt }}
 
       - name: Save comparative Criterion baseline
         id: comparative
@@ -78,11 +131,12 @@ jobs:
           cp target/release-benchmark-inventory.json target/criterion/release-benchmark-inventory.json
           tar -C target -czf "$asset" criterion
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
+          echo "artifact-name=bench-baseline-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Upload temporary baseline artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bench-baseline-${{ env.RELEASE_TAG }}
+          name: ${{ steps.package-baseline.outputs.artifact-name }}
           path: ${{ steps.package-baseline.outputs.asset }}
           retention-days: 30
           if-no-files-found: error
@@ -121,8 +175,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   publish-baseline:
-    if: ${{ github.event_name == 'release' }}
-    needs: release-baseline
+    needs: [validate-release, release-baseline]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -132,18 +185,69 @@ jobs:
       - name: Download release baseline
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: bench-baseline-${{ github.event.release.tag_name }}
+          name: ${{ needs.release-baseline.outputs.artifact-name }}
 
-      - name: Attach baseline to GitHub Release
+      - name: Attach baseline and publish draft
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_ID: ${{ needs.validate-release.outputs.release-id }}
+          RELEASE_COMMIT: ${{ needs.validate-release.outputs.commit }}
           RELEASE_ASSET: ${{ needs.release-baseline.outputs.release-asset }}
         run: |
           set -euo pipefail
 
-          gh release upload "$RELEASE_TAG" "$RELEASE_ASSET" --clobber
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
+          [[ "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]] || exit 1
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$RELEASE_ASSET" == "la-stack-${RELEASE_TAG}-criterion-baseline.tar.gz" ]] || exit 1
+          [[ -f "$RELEASE_ASSET" && ! -L "$RELEASE_ASSET" && -s "$RELEASE_ASSET" ]] || exit 1
+          digest="$(sha256sum "$RELEASE_ASSET")"
+          digest="sha256:${digest%% *}"
+          size="$(wc -c < "$RELEASE_ASSET")"
+          release_path="repos/$GH_REPO/releases/$RELEASE_ID"
+
+          check_draft() {
+            gh api "$release_path" | jq -e --arg tag "$RELEASE_TAG" --argjson id "$RELEASE_ID" '
+              .id == $id and .tag_name == $tag and .name == $tag
+              and .draft == true and .prerelease == false and .immutable == false
+            ' > /dev/null
+            local current_commit
+            current_commit="$(gh api "repos/$GH_REPO/commits/refs/tags/$RELEASE_TAG" --jq .sha)"
+            [[ "$current_commit" == "$RELEASE_COMMIT" ]]
+          }
+          matching_assets() {
+            gh api "$release_path/assets?per_page=100" --paginate --slurp |
+              jq --arg name "$RELEASE_ASSET" '[.[][] | select(.name == $name)]'
+          }
+          verify_asset() {
+            jq -e --arg digest "$digest" --argjson size "$size" '
+              length == 1 and .[0].state == "uploaded"
+              and .[0].digest == $digest and .[0].size == $size
+            ' > /dev/null
+          }
+
+          check_draft
+          assets="$(matching_assets)"
+          if [[ "$(jq length <<< "$assets")" == 0 ]]; then
+            # Address the captured release ID, never a replacement draft by tag.
+            gh api "https://uploads.github.com/$release_path/assets?name=$RELEASE_ASSET" \
+              --method POST --header 'Content-Type: application/gzip' \
+              --input "$RELEASE_ASSET" > /dev/null
+          elif ! verify_asset <<< "$assets"; then
+            echo "::error::Conflicting draft asset; inspect it before removing it and retrying"
+            exit 1
+          fi
+
+          # An interrupted upload can be reused only when its bytes match exactly.
+          # Recheck mutable state and tag after upload, before the irreversible step.
+          check_draft
+          matching_assets | verify_asset
+          gh api "$release_path" --method PATCH -F draft=false |
+            jq -e --arg tag "$RELEASE_TAG" --argjson id "$RELEASE_ID" '
+              .id == $id and .tag_name == $tag and .draft == false and .prerelease == false
+            ' > /dev/null
 
       - name: Release baseline summary
         env:
@@ -154,5 +258,5 @@ jobs:
           {
             echo "### Release Benchmark Baseline"
             echo ""
-            echo "Uploaded release asset: \`$RELEASE_ASSET\`"
+            echo "Published release with verified asset: \`$RELEASE_ASSET\`"
           } >> "$GITHUB_STEP_SUMMARY"

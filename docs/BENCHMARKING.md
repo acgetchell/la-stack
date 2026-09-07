@@ -687,6 +687,17 @@ The durable published baseline is the GitHub Release artifact created by
 correctness gate before timing or packaging the artifact. The committed release
 comparison is `docs/performance.md`, created by `just performance-release`.
 
+Follow [Releasing](RELEASING.md#5-create-the-draft-github-release): create the
+tagged stable release as a draft, dispatch the workflow with
+`--ref "$TAG" -f tag="$TAG"`, and let the workflow upload and verify the archive before it
+publishes the draft. Dispatch requires a stable `vX.Y.Z` tag and exactly one
+mutable draft with that tag as its title. The producer checks out the resolved
+tag commit only when it matches the workflow's own commit. The dispatch ref
+must be that same tag, which keeps execution in the tag's cache scope; the
+publisher rechecks the commit and captured release ID.
+Missing releases, prereleases, and published releases are rejected before
+benchmarking. Publication makes the attached evidence immutable.
+
 ### Hosted Release Runtime Budget
 
 The producer runs full `vs_linalg` and `exact` suites sequentially on one
@@ -734,30 +745,39 @@ Each named baseline's four raw JSON files must match its `new` measurement.
 Missing diagnostics, failed Criterion writes, stale baselines, and malformed
 measurements all stop publication. Only successful validation permits packaging
 the single `criterion/` archive, including the inventory manifest, and uploading
-the temporary Actions artifact. The release-only publisher attaches that archive
-as `la-stack-$TAG-criterion-baseline.tar.gz`.
+the temporary Actions artifact. The separate publisher attaches that archive
+as `la-stack-$TAG-criterion-baseline.tar.gz` to the draft, verifies its uploaded
+state, size, and SHA-256 digest, and only then publishes the release.
 
 ### Validate The Release Workflow
 
-After pushing a branch containing the workflow change, dispatch the producer
-against that ref with the GitHub CLI:
+Run the applicable local gates for workflow changes:
 
 ```bash
-gh workflow run release-benchmarks.yml --ref <branch>
-gh run list --workflow release-benchmarks.yml --event workflow_dispatch
-gh run watch <run-id> --exit-status
-gh run download <run-id> --name bench-baseline-validation-<run-id>-1
+just lint-config
+just python-ci
+just markdown-ci
+just doc-check
 ```
 
-This existing workflow is already registered by its release runs, so the CLI
-can select a branch containing the manual trigger. The Actions page also offers
-manual dispatch once the trigger is available on the default branch; see
-[GitHub's dispatch documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch).
+The Python suite executes the workflow's shell with simulated GitHub API
+responses to test draft rejection, commit changes, upload failures, asset
+verification, and safe reruns. Archive fixtures check the complete dataset.
 
-A manual run uses the selected commit and a `validation-<run-id>-<attempt>`
-baseline name. It performs full input validation, measurement, dataset checks,
-packaging, and the 30-day temporary upload; its publisher is skipped. For a
-rerun, substitute the actual attempt number in the artifact name. Record the
-successful run URL and both elapsed suite times when validating a budget change.
-The estimates above still require this representative hosted run; local tests
-and archive fixtures do not establish GitHub-runner runtime or upload success.
+Every hosted dispatch now requires a real release draft and authorizes its
+publication; there is no producer-only manual mode. Use the
+[release sequence](RELEASING.md#6-run-benchmarks-and-publish-the-draft) for a
+planned release. Record the successful run URL and both elapsed suite times
+when validating a budget change. The estimates above still require this
+representative hosted run; local tests and archive fixtures do not establish
+GitHub-runner runtime or upload success.
+
+The temporary artifact is named
+`bench-baseline-$TAG-<run-id>-<producer-attempt>` and retained for 30 days.
+Retry a failed producer by rerunning all jobs or dispatching again, so the
+draft is checked in the same attempt before setup or measurement starts.
+Rerunning only failed publisher jobs reuses the successful producer's artifact.
+An existing draft asset is reused only when its bytes match; conflicting assets
+require inspection and manual removal while the release is still a draft.
+Published releases are always rejected, and `--clobber` is never used. See
+[failed-run recovery](RELEASING.md#recovering-a-failed-run) before retrying.
