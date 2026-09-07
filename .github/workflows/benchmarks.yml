@@ -58,7 +58,9 @@ env:
 jobs:
   bench:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The full exact suite has 260+ cases: Criterion's default 3 s warm-up
+    # plus 5 s measurement already needs 35+ minutes, before build/analysis.
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,8 +111,7 @@ jobs:
               repo: context.repo.repo,
               workflow_id: 'benchmarks.yml',
               branch: 'main',
-              status: 'completed',
-              conclusion: 'success',
+              status: 'success',
               per_page: 5,
             });
 
@@ -158,15 +159,16 @@ jobs:
             echo "::notice::Baseline found — comparing against main"
             echo "comparison_available=true" >> "$GITHUB_OUTPUT"
             # --baseline-lenient rather than --baseline: benches added on the
-            # PR branch that don't yet exist in the main baseline get a
-            # "no baseline data" notice instead of aborting the whole run.
+            # PR branch that don't yet exist in the main baseline run without
+            # a comparison instead of aborting the whole run.
+            # Keep normal sampling; plots/HTML are unused by the summary.
             cargo bench --locked --features bench,exact --bench exact \
-              -- --baseline-lenient main 2>&1 | tee bench-output.txt
+              -- --noplot --baseline-lenient main 2>&1 | tee bench-output.txt
           else
             echo "::notice::No baseline found — running without comparison"
             echo "comparison_available=false" >> "$GITHUB_OUTPUT"
             cargo bench --locked --features bench,exact --bench exact \
-              2>&1 | tee bench-output.txt
+              -- --noplot 2>&1 | tee bench-output.txt
           fi
 
           if grep -q "Performance has regressed" bench-output.txt; then
@@ -182,11 +184,11 @@ jobs:
           github.ref == 'refs/heads/main'
         run: >
           cargo bench --locked --features bench,exact --bench exact
-          -- --save-baseline main
+          -- --noplot --save-baseline main
 
       - name: Run benchmarks (manual ref)
         if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
-        run: cargo bench --locked --features bench,exact --bench exact
+        run: cargo bench --locked --features bench,exact --bench exact -- --noplot
 
       - name: Upload baseline artifact
         if: >
@@ -208,12 +210,24 @@ jobs:
           comparison_available="${BENCH_COMPARISON_AVAILABLE:-}"
           regression="${BENCH_REGRESSION:-}"
 
+          # Lenient comparisons silently skip missing baselines. Require a
+          # change report for every analyzed case before claiming coverage.
+          if [ -f bench-output.txt ]; then
+            analyzed="$(grep -c '^Benchmarking .*: Analyzing$' bench-output.txt || true)"
+            compared="$(grep -c '^[[:space:]]*change:' bench-output.txt || true)"
+            if [ "$analyzed" = "0" ] || [ "$analyzed" != "$compared" ]; then
+              comparison_available=false
+            fi
+          else
+            comparison_available=false
+          fi
+
           if [ "$comparison_available" != "true" ] || [ -z "$regression" ]; then
             {
               echo "### ❓ Benchmark Comparison Unavailable"
               echo ""
               echo "No usable comparison against the main baseline was produced."
-              echo "The benchmark still ran, but no regression claim can be made."
+              echo "Benchmarks may be incomplete or lack a baseline; no regression claim can be made."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "::warning::Benchmark comparison unavailable"
           elif [ "$regression" = "true" ]; then

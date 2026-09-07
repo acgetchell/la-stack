@@ -101,3 +101,36 @@ advisories or release notes unless anonymity is requested.
 This project uses GitHub CodeQL, Dependabot security updates, secret scanning
 with push protection, `cargo audit`, zizmor, Clippy SARIF analysis, and
 repository-owned Semgrep rules.
+
+### Numerical logging false positives
+
+CodeQL's `rust/cleartext-logging` query uses name-based heuristics to identify
+potentially sensitive data. Here, `Matrix::certified_error_bound` and the
+benchmark helper's `certified_bound` refer to numerical rounding-error bounds.
+They contain no credentials, cryptographic certificates, or personal information.
+
+Alerts #171–#178 were reviewed against commit
+`bd80cc05df3ebf409d8db9a471b671a5737bf0c4`: their sinks are assertion or panic
+diagnostics for deterministic test and benchmark fixtures. These individual
+alerts were dismissed as false positives with that rationale. Keep the query
+enabled and preserve diagnostic values needed to investigate numerical failures.
+Review new alerts on their own data flow.
+
+### Benchmark dependency maintenance
+
+As of September 7, 2026, `paste` 1.0.15 enters through the development dependency
+`faer` 0.24.4, via `gemm` 0.19.0 and `pulp` 0.22.3. Those are the latest
+published upstream versions checked on that date. Repository-owned Rust code
+already uses `pastey`; changing that direct dependency cannot replace upstream
+uses of `paste`.
+
+[RUSTSEC-2024-0436](https://rustsec.org/advisories/RUSTSEC-2024-0436.html) is an
+unmaintained-package advisory with no patched version. It is a genuine
+maintenance concern, separate from the logging false positives. `paste` is absent
+from the library's normal and build dependency graph, including with `exact`
+enabled, but its procedural macro executes when building development targets.
+
+Keep this advisory visible in `cargo audit`. Recheck the dependency path with
+`cargo tree --locked --all-features -i paste` when updating `faer`, `gemm`, or
+`pulp`, and remove the dependency through a maintained upstream release when
+available.
