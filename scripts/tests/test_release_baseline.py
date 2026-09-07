@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -14,6 +15,7 @@ import release_baseline
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/release-benchmarks.yml"
+PREPARATION = REPO_ROOT / ".github/actions/prepare-release-benchmarks/action.yml"
 IDS = {"vs_linalg": ["d2/la_stack_dot", "diagnostic/peer"], "exact": ["exact_d2/det_exact"]}
 BASELINE = "v1.2.3"
 
@@ -207,9 +209,13 @@ def test_discovery_refuses_stale_measurements(dataset: tuple[Path, Path], tmp_pa
 
 def test_workflow_fails_closed_and_manual_runs_cannot_publish() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
+    preparation = PREPARATION.read_text(encoding="utf-8")
+    assert preparation.index("- name: Validate benchmark inputs") < preparation.index("- name: Inventory full release suites")
+    assert "run: just test-bench-inputs" in preparation
+    assert "run: just bench-release-inventory" in preparation
+    assert "continue-on-error" not in preparation
     steps = [
-        "Validate benchmark inputs",
-        "Inventory full release suites",
+        "Prepare release benchmarks",
         "Save comparative Criterion baseline",
         "Save exact Criterion baseline",
         "Validate complete release dataset",
@@ -226,6 +232,30 @@ def test_workflow_fails_closed_and_manual_runs_cannot_publish() -> None:
     assert "needs: release-baseline" in publisher
     assert "GH_REPO: ${{ github.repository }}" in publisher
     assert "contents: write" not in workflow.split("  publish-baseline:\n", 1)[0]
+
+
+def test_setup_limits_preserve_benchmark_and_tail_budgets() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    producer = workflow.split("  release-baseline:\n", 1)[1].split("  publish-baseline:\n", 1)[0]
+    job_limit = re.search(r"(?m)^    timeout-minutes: (\d+)$", producer)
+    assert job_limit is not None
+    setup = producer.split("    steps:\n", 1)[1].split("      - name: Save comparative Criterion baseline", 1)[0]
+    setup_steps = re.findall(r"(?ms)^      - .*?(?=^      - |\Z)", setup)
+    assert setup_steps
+    setup_limits: list[int] = []
+    for step in setup_steps:
+        limit = re.search(r"(?m)^        timeout-minutes: (\d+)$", step)
+        assert limit is not None, f"unbounded setup step: {step}"
+        setup_limits.append(int(limit[1]))
+    assert all(limit > 0 for limit in setup_limits)
+    assert sum(setup_limits) <= 30
+    assert "uses: ./.github/actions/prepare-release-benchmarks" in setup
+    assert "using: composite" in PREPARATION.read_text(encoding="utf-8")
+    benchmark_limits = [
+        int(limit) for limit in re.findall(r"(?ms)^      - name: Save (?:comparative|exact) Criterion baseline\n.*?^        timeout-minutes: (\d+)$", producer)
+    ]
+    assert benchmark_limits == [150, 90]
+    assert int(job_limit[1]) - sum(setup_limits) - sum(benchmark_limits) >= 15
 
 
 @pytest.mark.parametrize(("suite", "step"), [("vs_linalg", "Save comparative Criterion baseline"), ("exact", "Save exact Criterion baseline")])

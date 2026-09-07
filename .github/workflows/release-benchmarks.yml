@@ -25,7 +25,8 @@ env:
 jobs:
   release-baseline:
     runs-on: ubuntu-latest
-    # 30 min setup/discovery + 150 min comparative + 90 min exact + 15 min tail.
+    # 2 min checkout + 28 min shared setup + 150 min comparative + 90 min exact
+    # + 15 min for the tail and runner overhead.
     timeout-minutes: 285
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || format('validation-{0}-{1}', github.run_id, github.run_attempt) }}
@@ -38,56 +39,12 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || github.sha }}
           persist-credentials: false
+        timeout-minutes: 2
 
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-        with:
-          cache: false
-          cache-bin: false
-
-      - name: Set up just
-        uses: ./.github/actions/setup-just # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
-        with:
-          cache: false
-
-      - name: Resolve tool versions
-        id: tool_versions
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version="$(just --evaluate cargo_nextest_version)"
-          uv_version="$(just --evaluate uv_version)"
-          if [[ -z "$version" || -z "$uv_version" ]]; then
-            echo "::error::Could not resolve pinned tool versions from justfile"
-            exit 1
-          fi
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "uv_version=$uv_version" >> "$GITHUB_OUTPUT"
-
-      - name: Install cargo-nextest
-        env:
-          CARGO_NEXTEST_VERSION: ${{ steps.tool_versions.outputs.version }}
-        run: cargo install --locked cargo-nextest --version "$CARGO_NEXTEST_VERSION"
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version-file: ".python-version"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: ${{ steps.tool_versions.outputs.uv_version }}
-          enable-cache: false
-
-      - name: Validate benchmark inputs
-        run: just test-bench-inputs
-
-      - name: Inventory full release suites
-        timeout-minutes: 20
-        run: just bench-release-inventory
+      - name: Prepare release benchmarks
+        # One parent timeout bounds all nested installs, validation, and inventory.
+        timeout-minutes: 28
+        uses: ./.github/actions/prepare-release-benchmarks # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
 
       - name: Save comparative Criterion baseline
         id: comparative

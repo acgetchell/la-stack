@@ -691,10 +691,14 @@ comparison is `docs/performance.md`, created by `just performance-release`.
 
 The producer runs full `vs_linalg` and `exact` suites sequentially on one
 `ubuntu-latest` runner. Separate steps allow 150 and 90 minutes respectively;
-the outer job allows 285 minutes, reserving 30 minutes for cold setup, input
-validation and inventory, plus 15 minutes for validation, packaging, upload,
-and diagnostics. Discovery compiles both suites before measurement and has
-its own 20-minute timeout. Dependency caches remain disabled.
+the outer job allows 285 minutes. Checkout has a 2-minute timeout, followed
+by a composite preparation step with one shared 28-minute timeout covering
+all tool installation, input validation, and inventory. These two limits bound
+setup execution to 30 minutes; exceeding either fails the producer before
+benchmarking or publication. The remaining 15 minutes provide headroom for
+dataset validation, packaging, upload, diagnostics, and runner overhead.
+Discovery compiles both suites before measurement and shares the preparation
+deadline with the preceding work. Dependency caches remain disabled.
 
 The [v0.4.5 run](https://github.com/acgetchell/la-stack/actions/runs/32444040827)
 measured 304 comparative benchmarks in about 55m 34s, plus 2m 9s compilation
