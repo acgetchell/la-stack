@@ -65,7 +65,8 @@ can build custom adaptive-precision logic with pure f64 arithmetic.
 `Vector::dot_with_errbound()` and `Vector::dot_difference_with_errbound()` use
 deterministic left-to-right binary64 FMA reductions. When their rounded
 intermediates stay normal or are exact zeros, the standard
-`gamma_n = nu / (1 - nu)` model bounds the absolute forward error by
+`gamma_n = n·u / (1 - n·u)` model, with `u = 2^-53`, `n = D` for the dot
+product, and `n = 2D` for the affine difference, bounds the absolute forward error by
 `gamma_n Σ |a_i b_i|` \[[9], [10], [11]\]. The magnitude sum and final bound are
 rounded upward, while `TwoSum` supplies outward endpoints. Gradual underflow or
 proof-only range exhaustion makes the filter unavailable rather than turning an

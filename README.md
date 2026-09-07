@@ -161,7 +161,7 @@ losslessly or supply already-exact rational inputs for
 [solves][refs-exact-solve]. Exactness over binary64 input starts at the
 stored values and cannot recover information rounded away before construction.
 See the
-[mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md)
+[mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md)
 for the algorithms, validity boundaries, and supporting references.
 
 ## 🎯 Design goals
@@ -361,7 +361,7 @@ for the full contracts.
 ## 🗺️ Documentation Map
 
 - [API guide][api-guide] — worked examples, API selection, storage, and error contracts.
-- [Mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md) — algorithms, numerical guarantees, and limitations.
+- [Mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md) — algorithms, numerical guarantees, and limitations.
 - [Benchmarking](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/BENCHMARKING.md) — benchmark suites, comparison workflows, and measurement methodology.
 - [Performance reports](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md) — release-to-release measurement results and provenance.
 - [Coverage](https://github.com/acgetchell/la-stack/blob/main/docs/MEASURING_COVERAGE.md) — local and CI coverage commands and report locations.

@@ -97,6 +97,9 @@ impl ScaledProduct {
     }
 
     /// Multiply by one factor while retaining a normalized mantissa.
+    ///
+    /// A non-finite factor is recorded so [`Self::finish`] returns `None`,
+    /// even if another factor is zero.
     #[inline]
     pub(crate) const fn multiply(&mut self, factor: f64) {
         let bits = factor.to_bits();
@@ -163,9 +166,10 @@ impl ScaledProduct {
 
     /// Finalize the accumulated mantissa and pending factor as binary64.
     ///
-    /// Returns `None` only when the accumulated result rounds outside the
-    /// finite binary64 range. Magnitudes below that range round to a signed
-    /// zero or subnormal value with round-to-nearest, ties-to-even semantics.
+    /// Returns `None` if any factor was non-finite or the accumulated result
+    /// rounds outside the finite binary64 range. Magnitudes below that range
+    /// round to a signed zero or subnormal value with round-to-nearest,
+    /// ties-to-even semantics.
     /// Earlier mantissa products have already rounded, so this does not
     /// guarantee correct rounding of the exact product of all original factors.
     #[inline]

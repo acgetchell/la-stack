@@ -155,7 +155,7 @@ without rounding coordinate differences first. For each coordinate it applies
 `2D`-event tree.
 
 Let `u = 2^-53` be binary64 unit roundoff and
-`γₙ = nu / (1 - nu)`. When every estimate FMA result is normal or an exact
+`γₙ = n·u / (1 - n·u)`. When every estimate FMA result is normal or an exact
 zero, standard floating-point reduction analysis gives [9-11]
 
 ```text

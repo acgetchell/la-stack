@@ -462,6 +462,41 @@ rules:
             ...
           ...
 
+  - id: la-stack.github-actions.zizmor-version-resolved-from-just
+    languages:
+      - yaml
+    severity: ERROR
+    message: "Resolve the zizmor_version step's output with the canonical just --evaluate zizmor_version sequence in .github/workflows/zizmor.yml."
+    metadata:
+      category: security
+      rationale: >-
+        An output expression alone does not prove scanner parity. Require the
+        resolver to read justfile and publish that value without replacement.
+    paths:
+      include:
+        - "/.github/workflows/**/*.yml"
+        - "/.github/workflows/**/*.yaml"
+        - "/tests/semgrep/.github/workflows/**/*.yml"
+        - "/tests/semgrep/.github/workflows/**/*.yaml"
+    patterns:
+      - pattern: |
+          id: zizmor_version
+          ...
+          run: $SCRIPT
+      - metavariable-pattern:
+          metavariable: $SCRIPT
+          language: bash
+          patterns:
+            - pattern: ...
+            - pattern-not-inside: |
+                set -euo pipefail
+                version="$(just --evaluate zizmor_version)"
+                if [[ -z "$version" ]]; then
+                  echo "::error::Could not resolve zizmor_version from justfile"
+                  exit 1
+                fi
+                echo "version=$version" >> "$GITHUB_OUTPUT"
+
   - id: la-stack.github-actions.release-no-dependency-cache
     languages:
       - yaml

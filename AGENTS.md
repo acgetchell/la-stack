@@ -114,7 +114,9 @@ Favor the invariant over a convenient edit or faster implementation.
 - Keep the MSRV and contributor/CI toolchain aligned across `Cargo.toml`,
   `rust-toolchain.toml`, and `clippy.toml`; the current baseline is 1.98.1.
 - Rust's `f64::algebraic_*` operations are forbidden in all repository-owned
-  Rust, including tests, examples, and benchmarks. Their unspecified
+  Rust, including tests, examples, and benchmarks, except intentional
+  Semgrep fixtures under `tests/semgrep/` whose `f64::algebraic_*` usage is
+  validated by `just semgrep-test`. Their unspecified
   reassociation, precision, and special-value behavior can invalidate error
   bounds, exact fallbacks, non-finite classification, and reproducibility.
   Ordinary operators and deliberate `f64::mul_add` remain allowed. Any
