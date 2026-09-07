@@ -17,6 +17,34 @@ Fast, stack-allocated linear algebra for fixed dimensions in Rust.
 This crate grew from the need to support [`delaunay`](https://crates.io/crates/delaunay) with fast, stack-allocated linear algebra primitives and algorithms
 while keeping the API intentionally small and explicit.
 
+## Contents
+
+- [Introduction](#-introduction)
+- [Quickstart](#-quickstart)
+- [Mathematical basis](#-mathematical-basis)
+- [Design goals](#-design-goals)
+- [Anti-goals](#-anti-goals)
+- [Use this crate when](#-use-this-crate-when)
+- [Scalar and bounded-value types](#-scalar-and-bounded-value-types)
+- [Features](#-features)
+  - [Adaptive determinant filtering (D ≤ 4)](#adaptive-determinant-filtering-d--4)
+  - [Certified dot products and affine differences](#certified-dot-products-and-affine-differences)
+  - [Compile-time determinants (D ≤ 4)](#compile-time-determinants-d--4)
+  - [Exact arithmetic](#exact-arithmetic-exact-feature)
+  - [LDLT determinant](#ldlt-determinant)
+  - [LU solve](#lu-solve)
+  - [Outward-rounded interval determinants](#outward-rounded-interval-determinants)
+  - [Overflow-safe Euclidean norms](#overflow-safe-euclidean-norms)
+- [API at a glance](#-api-at-a-glance)
+- [Documentation Map](#-documentation-map)
+- [Benchmarks](#-benchmarks-vs-nalgebrafaer)
+- [Examples](#-examples)
+- [Contributing](#-contributing)
+- [Citation](#-citation)
+- [References](#-references)
+- [AI Agents](#-ai-agents)
+- [License](#-license)
+
 ## 📐 Introduction
 
 `la-stack` provides a handful of const-generic, stack-backed building blocks:
@@ -41,6 +69,56 @@ while keeping the API intentionally small and explicit.
 - `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
 - `Ldlt<const D: usize>` for no-pivot factorization intended for exactly
   symmetric positive-definite matrices (solve + det; typed pivot diagnostics)
+
+## 🚀 Quickstart
+
+The minimum supported Rust version (MSRV) is 1.98.1.
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+la-stack = "0.4.5"
+```
+
+### Solve a 5×5 system
+
+This system has solution `[1, 2, 3, 4, 5]` and requires partial pivoting:
+
+```rust
+use la_stack::prelude::*;
+
+fn main() -> Result<(), LaError> {
+    // The zero leading entry requires LU pivoting.
+    let a = Matrix::<5>::try_from_rows([
+        [0.0, 2.0, -1.0, 1.0, 3.0],
+        [4.0, -1.0, 2.0, 0.0, 1.0],
+        [1.0, 3.0, 5.0, -2.0, 0.0],
+        [2.0, 0.0, -1.0, 4.0, 1.0],
+        [-1.0, 2.0, 0.0, 1.0, 6.0],
+    ])?;
+    let b = Vector::try_new([20.0, 13.0, 14.0, 20.0, 37.0])?;
+    let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
+    let x = lu.solve(b)?;
+
+    for (&actual, expected) in x.as_array().iter().zip([1.0, 2.0, 3.0, 4.0, 5.0]) {
+        assert!((actual - expected).abs() <= 1e-12);
+    }
+    Ok(())
+}
+```
+
+The assertion tolerance is suitable for this known example; LU does not
+provide a certified solution error bound.
+
+### Feature flags
+
+- `default`: no runtime dependencies; includes outward-rounded `Interval` and
+  `IntervalMatrix` APIs
+- `exact`: exact determinant signs, determinant values, and solves over stored
+  `f64` values or caller-supplied `BigRational` inputs
+- `bench`: repository-development gate used only by benchmark targets and
+  benchmark-input tests; application crates should not enable it
 
 ## 🧮 Mathematical basis
 
@@ -70,7 +148,7 @@ See the
 [mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md)
 for the algorithms, validity boundaries, and supporting references.
 
-## ✨ Design goals
+## 🎯 Design goals
 
 - ✅ `const fn` where possible (compile-time evaluation of determinants, dot products, etc.)
 - ✅ Const-generic storage (no dynamically sized matrix or vector representation)
@@ -150,447 +228,76 @@ Lower-precision `f32` / `f16` throughput-oriented workloads are outside the
 crate's scope; they usually indicate large-matrix or accelerator-oriented use
 cases better served by broader linear-algebra libraries.
 
-## 🚀 Quickstart
+## ✨ Features
 
-The minimum supported Rust version (MSRV) is 1.98.1.
+### Adaptive determinant filtering (D ≤ 4)
 
-Add this to your `Cargo.toml`:
+`det_direct_with_errbound()` pairs a determinant with its certified absolute
+bound, without optional dependencies. Resolve the sign when `|det| > bound`;
+otherwise an exact fallback is needed. With `exact`, `det_sign_exact()` handles
+filtering and fallback automatically.
+[Worked examples: the floating-point filter and exact fallback][guide-adaptive].
 
-```toml
-[dependencies]
-la-stack = "0.4.5"
-```
+### Certified dot products and affine differences
 
-### Feature flags
+`dot_with_errbound()` and `dot_difference_with_errbound()` return certified
+bounds for dot products and `axis · (left - right)` over the original stored
+coordinates. Their endpoints support sign and threshold proofs; a bound that
+straddles the threshold or an unavailable certificate is inconclusive.
+[Worked examples: dot-product signs and affine threshold tests][guide-certified].
 
-- `default`: no runtime dependencies; includes outward-rounded `Interval` and
-  `IntervalMatrix` APIs
-- `exact`: exact determinant signs, determinant values, and solves over stored
-  `f64` values or caller-supplied `BigRational` inputs
-- `bench`: repository-development gate used only by benchmark targets and
-  benchmark-input tests; application crates should not enable it
+### Compile-time determinants (D ≤ 4)
 
-### LU solve
+`det_direct()` evaluates closed-form determinants in `const` contexts through
+D=4. `det()` selects those formulas automatically and uses zero-tolerance LU
+for larger dimensions; a failed numerical pivot remains `LaError::Singular`.
+[Compile-time example and dimension contracts][guide-compile-time].
 
-Solve a 5×5 system via LU:
+### Exact arithmetic (`"exact"` feature)
 
-```rust
-use la_stack::prelude::*;
-
-fn main() -> Result<(), LaError> {
-    // This system requires pivoting (a[0][0] = 0), so it's a good LU demo.
-    // A = J - I: zeros on diagonal, ones elsewhere.
-    let a = Matrix::<5>::try_from_rows([
-        [0.0, 1.0, 1.0, 1.0, 1.0],
-        [1.0, 0.0, 1.0, 1.0, 1.0],
-        [1.0, 1.0, 0.0, 1.0, 1.0],
-        [1.0, 1.0, 1.0, 0.0, 1.0],
-        [1.0, 1.0, 1.0, 1.0, 0.0],
-    ])?;
-
-    let b = Vector::<5>::try_new([14.0, 13.0, 12.0, 11.0, 10.0])?;
-
-    let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
-    let x = lu.solve(b)?.into_array();
-
-    // Floating-point rounding is expected; compare with a tolerance.
-    let expected = [1.0, 2.0, 3.0, 4.0, 5.0];
-    for (x_i, e_i) in x.iter().zip(expected.iter()) {
-        assert!((*x_i - *e_i).abs() <= 1e-12);
-    }
-
-    Ok(())
-}
-```
-
-### LDLT determinant
-
-Compute a determinant for a symmetric positive-definite matrix via LDLT (no
-pivoting).
-
-For these matrices, `LDLᵀ` is a square-root-free Cholesky form. Multiplying each
-column of `L` by the square root of the corresponding diagonal entry yields a
-Cholesky factor:
-
-```rust
-use la_stack::prelude::*;
-
-fn main() -> Result<(), LaError> {
-    // This matrix is symmetric positive-definite (A = L*L^T) so LDLT works without pivoting.
-    let a = Matrix::<5>::try_from_rows([
-        [1.0, 1.0, 0.0, 0.0, 0.0],
-        [1.0, 2.0, 1.0, 0.0, 0.0],
-        [0.0, 1.0, 2.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0, 2.0, 1.0],
-        [0.0, 0.0, 0.0, 1.0, 2.0],
-    ])?;
-
-    let ldlt = match a.ldlt(DEFAULT_SINGULAR_TOL) {
-        Ok(ldlt) => ldlt,
-        Err(err @ LaError::Asymmetric {
-            row,
-            col,
-            upper,
-            lower,
-            allowed_abs_diff,
-            ..
-        }) => {
-            eprintln!(
-                "LDLT mismatch at ({row}, {col}): {upper} vs {lower} (allowed {allowed_abs_diff})"
-            );
-            return Err(err);
-        }
-        Err(err) => return Err(err),
-    };
-
-    let det = ldlt.det()?;
-    assert!((det - 1.0).abs() <= 1e-12);
-
-    Ok(())
-}
-```
-
-> ⚠️ **LDLT invariant:** The input matrix must be **exactly symmetric**: every
-> mirrored pair must compare equal (`+0.0 == -0.0` is accepted). Asymmetric
-> inputs passed to
-> [`Matrix::ldlt`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.ldlt)
-> return a typed `LaError::Asymmetric` containing both observed values and the
-> required allowed difference of zero. The tolerance-based
-> [`Matrix::first_asymmetry`](https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html#method.first_asymmetry)
-> and `Matrix::is_symmetric` methods remain useful diagnostics, but do not prove
-> the exact precondition required by LDLT. Use `lu()` when exact symmetry or
-> positive definiteness is not guaranteed. A negative LDLT diagonal or a zero
-> diagonal with nonzero remaining coupling returns
-> `LaError::NotPositiveSemidefinite` with a typed
-> `PositiveSemidefiniteViolation`. An uncoupled zero or positive pivot
-> at or below the caller's tolerance returns `LaError::Singular` with a
-> numerical `SingularityReason`. Because these pivots are computed in binary64,
-> success is not an exact positive-definiteness certificate for the stored
-> matrix.
-
-## ⚡ Compile-time determinants (D ≤ 4)
-
-`det_direct()` is a `const fn` providing closed-form determinants for D=0–4,
-using fused multiply-add where applicable. It returns `Ok(Some(det))` for those
-dimensions and `Ok(None)` for D ≥ 5. `Matrix::<0>::zero().det_direct()` returns
-`Ok(Some(1.0))` (the empty-product convention). For D=1–4, direct formulas
-bypass LU factorization entirely. This enables compile-time evaluation when
-inputs are known:
-
-```rust
-use la_stack::prelude::*;
-
-// Evaluated entirely at compile time — no runtime cost.
-const DET: Result<Option<f64>, LaError> = match Matrix::<4>::try_from_rows([
-    [2.0, 0.0, 0.0, 0.0],
-    [0.0, 3.0, 0.0, 0.0],
-    [0.0, 0.0, 5.0, 0.0],
-    [0.0, 0.0, 0.0, 7.0],
-]) {
-    Ok(matrix) => matrix.det_direct(),
-    Err(err) => Err(err),
-};
-
-fn main() -> Result<(), LaError> {
-    assert_eq!(DET?, Some(210.0));
-    Ok(())
-}
-```
-
-The public `det()` method automatically dispatches through the closed-form path
-for D ≤ 4 and falls back to zero-tolerance LU for D ≥ 5. Tiny nonzero
-determinants are not flattened by a configured pivot tolerance. The LU fallback
-returns `LaError::Singular` when floating-point elimination cannot produce a
-non-zero pivot; it does not misreport that numerical failure as an exact zero.
-Use `lu()` directly when you need a different tolerance policy, and use the
-exact determinant APIs when exact singularity classification matters.
-
-## 📦 Outward-rounded interval determinants
-
-`Interval` encloses expression construction that has not yet been reduced to a
-single stored `f64`. Point intervals preserve finite binary64 values exactly;
-`try_from_subtraction`, `try_add`, `try_mul`, `negate`, and `try_square` enclose
-the corresponding exact-real operations. `IntervalMatrix<D>::det_sign()` then
-uses a division-free subset expansion through D=7, returning positive,
-negative, zero, or inconclusive evidence.
-
-```rust
-use la_stack::prelude::*;
-
-fn main() -> Result<(), LaError> {
-    // Relative coordinates and the lifted norm retain their construction error.
-    let x = Interval::try_from_subtraction(0.1, 0.0)?;
-    let y = Interval::try_from_subtraction(0.1, 0.0)?;
-    let z = Interval::try_from_subtraction(0.1, 0.0)?;
-    let lifted = x
-        .try_square()?
-        .try_add(&y.try_square()?)?
-        .try_add(&z.try_square()?)?;
-
-    let matrix = IntervalMatrix::<4>::from_rows([
-        [Interval::ONE, Interval::ZERO, Interval::ZERO, Interval::ONE],
-        [Interval::ZERO, Interval::ONE, Interval::ZERO, Interval::ONE],
-        [Interval::ZERO, Interval::ZERO, Interval::ONE, Interval::ONE],
-        [x, y, z, lifted],
-    ]);
-    assert_eq!(
-        matrix.det_sign()?,
-        IntervalDeterminantSign::Negative,
-    );
-    Ok(())
-}
-```
-
-Every successful interval keeps finite ordered endpoints. Subnormal bounds are
-preserved, both signed zeros are treated as real zero and canonicalized to
-`+0.0`, and underflowed nonzero products widen toward the least subnormal value.
-If an exact result range cannot fit between finite binary64 endpoints, the
-operation returns `LaError::IntervalRangeExhausted` with its interval operation
-recorded in `ArithmeticOperation`.
-
-`Positive`, `Negative`, and `Zero` are proofs. `Inconclusive` only means that
-the determinant enclosure overlaps zero; it must not be converted to equality
-or singularity. A filtered-exact caller should rebuild the same derived
-expression with `RationalMatrix` and call `det_sign()` when the interval result
-is inconclusive or reports range failure. Lifting a finished `Matrix` with
-`IntervalMatrix::from_matrix` encloses its stored entries, but cannot recover
-rounding that occurred while those entries were assembled.
-
-## 🔬 Exact arithmetic (`"exact"` feature)
-
-The default build has **zero runtime dependencies**. Enable the optional
-`exact` Cargo feature to add exact arithmetic methods using arbitrary-precision
-rationals (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
-`BigRational`):
+Enable exact determinant signs, determinant values, and solves:
 
 ```toml
 [dependencies]
 la-stack = { version = "0.4.5", features = ["exact"] }
 ```
 
-The feature exposes two deliberate input domains:
+`Matrix` / `Vector` exact methods preserve stored `f64` values;
+`RationalMatrix` / `RationalVector` also preserve rational expressions before
+any `f64` rounding. Keep exact results or explicitly choose strict versus
+rounded conversion with `ExactF64Conversion`.
+[Worked examples: rational inputs, exact solves, and output conversion][api-exact].
 
-- `Matrix<D>` / `Vector<D>` store finite binary64 inputs. Their exact methods
-  treat each stored bit pattern as its exact rational value, so the determinant
-  or solve stage introduces no further roundoff. They cannot recover information
-  already lost before construction.
-- `RationalMatrix<D>` / `RationalVector<D>` accept coefficients already
-  assembled as `BigRational`. They preserve derived differences, squared norms,
-  affine coefficients, and other rational expressions without an intermediate
-  `f64` conversion.
+### LDLT determinant
 
-**Determinants:**
+`Matrix::ldlt()` provides a square-root-free factorization for exactly symmetric
+positive-definite matrices, supporting determinants and solves without pivoting.
+Approximate symmetry is not sufficient, and floating-point success is not an
+exact positive-definiteness certificate.
+[Worked example and typed pivot diagnostics][guide-ldlt].
 
-- **`det_exact()`** — returns the exact determinant as a `BigRational`
-- **`det_exact_f64()`** — returns the exact determinant as `f64` only when
-  it is exactly representable (or `LaError::Unrepresentable` otherwise)
-- **`det_exact_rounded_f64()`** — returns the exact determinant rounded to a
-  finite `f64` using IEEE 754 round-to-nearest, ties-to-even
-- **`det_sign_exact()`** — infallibly returns the provably correct
-  `DeterminantSign` variant (`Negative`, `Zero`, or `Positive`)
+### LU solve
 
-**Linear system solve:**
+`Matrix::lu()` uses partial pivoting for general square systems. Reuse one
+`Lu` factorization for multiple right-hand sides or a determinant; pivot
+tolerances control rejection, not solution accuracy.
+[Worked example: solving and reusing factors][guide-lu].
 
-- **`solve_exact(b)`** — solves `Ax = b` exactly, returning a
-  `RationalVector<D>`
-- **`solve_exact_f64(b)`** — solves `Ax = b` exactly, returning `Vector<D>` only when
-  every component is exactly representable as `f64`
-- **`solve_exact_rounded_f64(b)`** — solves `Ax = b` exactly, returning each
-  component rounded to finite `f64` using IEEE 754 round-to-nearest,
-  ties-to-even
-- **`ExactF64Conversion`** — converts an existing exact determinant or solution
-  under the strict or rounded contract without repeating exact elimination
+### Outward-rounded interval determinants
 
-**Already-exact rational input:**
+`Interval` preserves bounds while assembling differences, squares, and other
+expressions. `IntervalMatrix::det_sign()` certifies determinant signs through
+D=7: an enclosure separated from zero proves its sign, and `[0, 0]` proves
+exact zero. Other overlaps with zero are inconclusive and may need exact fallback.
+[Worked example: lifted coordinates, range errors, and fallback][guide-intervals].
 
-- **`RationalMatrix::det_sign()`** — returns the exact sign without constructing
-  a rational determinant
-- **`RationalMatrix::det()`** — returns the exact `BigRational` determinant
-- **`RationalMatrix::solve(&rhs)`** — returns a `RationalVector<D>` exact
-  solution
-- **`try_with_rational_matrix!`** — dispatches a runtime-selected dimension
-  through D=8 to a const-generic rational matrix on stable Rust
+### Overflow-safe Euclidean norms
 
-The `Matrix::det_exact*` value and conversion methods return
-`LaError::DeterminantScaleOverflow` if their aggregate power-of-two scaling
-exceeds the internal exponent representation. `RationalMatrix::det()` is
-infallible because it clears rational row denominators without an exponent-scale
-conversion. The exact solve methods for both input domains return
-`LaError::Singular` with `SingularityReason::Exact` when the stored matrix is
-exactly singular.
-
-For exact-to-f64 output, strict conversions use
-`UnrepresentableReason::RequiresRounding` when explicit rounding can produce a
-finite value and `UnrepresentableReason::NotFinite` otherwise. Rounded
-conversions opt into nearest-even rounding but still report `NotFinite` when no
-finite `f64` exists.
-
-The following 5×5 system has exact determinant 2^-60. Its exact rational inputs
-therefore produce a unique solution through the general Bareiss path. Supplying
-the same coefficients as `f64` inputs loses the `2^-60` perturbation at `1.0`,
-making the leading rows identical and the binary64 system singular.
-
-```rust,ignore
-use core::assert_matches;
-
-use la_stack::prelude::*;
-
-fn main() -> Result<(), LaError> {
-    // This is far below one binary64 ULP at 1.0, so 1.0 + 2^-60 rounds to 1.0.
-    let epsilon = BigRational::new(1.into(), (1_u64 << 60).into());
-    let one = BigRational::from_integer(1.into());
-    let zero = BigRational::from_integer(0.into());
-
-    // The leading block is [[1, 1], [1, 1 + 2^-60]]. The remaining diagonal
-    // extends the example to D=5, where the general Bareiss path is used.
-    let matrix = RationalMatrix::<5>::try_from_fn(|row, col| match (row, col) {
-        (0, 0 | 1) | (1, 0) => one.clone(),
-        (1, 1) => &one + &epsilon,
-        _ if row == col => one.clone(),
-        _ => zero.clone(),
-    })?;
-    assert_eq!(matrix.det_sign(), DeterminantSign::Positive);
-    assert_eq!(matrix.det(), epsilon);
-
-    let rhs = RationalVector::try_new([
-        zero,
-        -&epsilon,
-        BigRational::from_integer(2.into()),
-        BigRational::from_integer(3.into()),
-        BigRational::from_integer(4.into()),
-    ])?;
-    let exact_solution = matrix.solve(&rhs)?;
-    assert_eq!(
-        exact_solution.as_array(),
-        &[
-            BigRational::from_integer(1.into()),
-            BigRational::from_integer((-1).into()),
-            BigRational::from_integer(2.into()),
-            BigRational::from_integer(3.into()),
-            BigRational::from_integer(4.into()),
-        ]
-    );
-
-    // Supplying the same coefficients as f64 inputs destroys the perturbation
-    // and makes the matrix singular, even though the exact solution is integral.
-    let epsilon_f64 = epsilon.try_to_f64()?;
-    assert_eq!((1.0 + epsilon_f64).to_bits(), 1.0_f64.to_bits());
-    let f64_matrix = Matrix::<5>::try_from_rows([
-        [1.0, 1.0, 0.0, 0.0, 0.0],
-        [1.0, 1.0 + epsilon_f64, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0, 1.0],
-    ])?;
-    let f64_rhs = Vector::<5>::try_new([0.0, -epsilon_f64, 2.0, 3.0, 4.0])?;
-    let f64_solve = f64_matrix
-        .lu(DEFAULT_SINGULAR_TOL)
-        .and_then(|lu| lu.solve(f64_rhs));
-    assert_matches!(
-        f64_solve,
-        Err(LaError::Singular { .. })
-    );
-    Ok(())
-}
-```
-
-```rust,ignore
-use la_stack::prelude::*;
-
-fn main() -> Result<(), LaError> {
-    // Exact determinant
-    let m = Matrix::<3>::try_from_rows([
-        [1.0, 2.0, 3.0],
-        [4.0, 5.0, 6.0],
-        [7.0, 8.0, 9.0],
-    ])?;
-    assert_eq!(m.det_sign_exact(), DeterminantSign::Zero); // exactly singular
-
-    let det = m.det_exact()?;
-    assert_eq!(det, BigRational::from_integer(0.into())); // exact zero
-    let det_f64 = det.try_to_f64()?;
-    assert_eq!(det_f64, 0.0);
-
-    // If strict exact-to-f64 conversion would require rounding, opt in
-    // explicitly with the rounded API.
-    let inexact = Matrix::<2>::try_from_rows([
-        [1.0 + f64::EPSILON, 0.0],
-        [0.0, 1.0 - f64::EPSILON],
-    ])?;
-    let exact_det = inexact.det_exact()?;
-    let rounded_det = match exact_det.try_to_f64() {
-        Ok(det) => det,
-        Err(err) if err.requires_rounding() => exact_det.to_rounded_f64()?,
-        Err(err) => return Err(err),
-    };
-    assert_eq!(rounded_det.to_bits(), 1.0f64.to_bits());
-
-    // If the exact determinant cannot fit in f64, keep the BigRational value.
-    let big = f64::MAX / 2.0;
-    let huge = Matrix::<3>::try_from_rows([
-        [0.0, 0.0, 1.0],
-        [big, 0.0, 1.0],
-        [0.0, big, 1.0],
-    ])?;
-    let huge_det = huge.det_exact()?;
-    assert_eq!(
-        huge_det
-            .try_to_f64()
-            .err()
-            .and_then(|err| err.unrepresentable_reason()),
-        Some(UnrepresentableReason::NotFinite)
-    );
-    println!("exact determinant = {huge_det}");
-
-    // Exact linear system solve
-    let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
-    let b = Vector::<2>::try_new([5.0, 11.0])?;
-    let exact_x = a.solve_exact(b)?;
-    let x = exact_x.try_to_f64()?.into_array();
-    assert!((x[0] - 1.0).abs() <= f64::EPSILON);
-    assert!((x[1] - 2.0).abs() <= f64::EPSILON);
-
-    Ok(())
-}
-```
-
-With the `exact` feature enabled, `RationalMatrix`, `RationalVector`,
-`DeterminantSign`, `ExactF64Conversion`, `BigInt`, and `BigRational` are
-re-exported from the crate root and prelude,
-alongside the most commonly needed `num-traits` items (`FromPrimitive`,
-`ToPrimitive`, `Signed`). This lets consumers construct exact values
-(`BigRational::from_f64`, `from_i64`), query sign (`is_positive` /
-`is_negative`), and convert back to `f64` (`try_to_f64`, `to_rounded_f64`, or
-the raw `to_f64`) with a single
-`use la_stack::prelude::*;` — no need to add `num-bigint`, `num-rational`,
-or `num-traits` to their own `Cargo.toml`. Use
-`DeterminantSign::as_i8()` only when numeric −1/0/+1 interoperability is
-required.
-
-For `det_sign_exact()`, D ≤ 4 matrices first use a fast f64 filter
-(error-bounded `det_direct()`) when its rounded intermediates stay in the normal
-range or are exact structural zeros. An inconclusive filter falls back to the
-same direct determinant expansion in `BigInt`. D ≥ 5 skips the closed-form
-filter and uses fraction-free Bareiss elimination in `BigInt`.
-Because `Matrix` stores only finite entries, arithmetic range failures in the
-filter are inconclusive rather than errors and the exact fallback is total.
-
-## 📏 Overflow-safe Euclidean norms
-
-`Vector::norm()` computes the Euclidean norm with a deterministic scaled
-sum-of-squares recurrence, so large or subnormal finite coordinates do not fail
-merely because their raw squares overflow or underflow. It returns positive zero
-for empty and all-zero vectors and reports `LaError::NonFinite` with
-`ArithmeticOperation::VectorNorm` only when the exact norm rounds to infinity.
-Near the upper range, a fixed-size stack accumulator sums squares exactly and
-compares squared rounding midpoints to prevent false or hidden overflow. This
-fallback needs no optional dependencies. The general binary64 result remains
-approximate and has no certified error bound.
-
-`Vector::norm_squared()` remains the direct left-to-right FMA sum of squares for
-callers that need the squared norm. Its distinct contract deliberately reports
-overflow when that square is not finite, even when `norm()` can return a finite
-norm.
+`Vector::norm()` avoids unnecessary overflow and underflow from squaring
+coordinates. `norm_squared()` computes the squared norm and can overflow even
+when the norm is finite. Both results remain approximate, without a certified
+error bound.
+[Worked example and range contracts][guide-norms].
 
 **v0.4.6 migration:** `Vector::norm2_sq()` is renamed to `Vector::norm_squared()`,
 the unreleased `Vector::norm2()` API is named `Vector::norm()`, and
@@ -598,217 +305,66 @@ the unreleased `Vector::norm2()` API is named `Vector::norm()`, and
 are removed; their numerical behavior and error contracts are unchanged by
 the renames. `Matrix::norm_inf()` remains the maximum absolute row sum.
 
-## 🎯 Certified dot products and affine differences
-
-`Vector::dot_with_errbound()` evaluates the same left-to-right FMA tree as
-`Vector::dot()` and returns its estimate together with a certified absolute
-roundoff bound. `Vector::dot_difference_with_errbound()` directly evaluates
-
-```text
-Σᵢ axis[i] × (left[i] - right[i])
-```
-
-as two FMAs per coordinate. It does not first round `left - right` into a new
-`Vector`, so the certificate covers the intended expression over the original
-stored binary64 coordinates.
-
-The opaque `ScalarWithErrorBound` exposes the estimate, absolute error bound,
-and finite outward-rounded lower and upper bounds. Those endpoints support
-positive, negative, and caller-selected threshold proofs:
-
-```rust
-use la_stack::prelude::*;
-
-fn is_separated<const D: usize>(
-    axis: &Vector<D>,
-    left: &Vector<D>,
-    right: &Vector<D>,
-    threshold: f64,
-) -> Result<Option<bool>, LaError> {
-    let Some(value) = axis.dot_difference_with_errbound(left, right)? else {
-        return Ok(None);
-    };
-    if value.lower_bound() > threshold {
-        Ok(Some(true))
-    } else if value.upper_bound() <= threshold {
-        Ok(Some(false))
-    } else {
-        Ok(None)
-    }
-}
-
-# fn main() -> Result<(), LaError> {
-let axis = Vector::<2>::try_new([2.0, -1.0])?;
-let left = Vector::<2>::try_new([4.0, 1.0])?;
-let right = Vector::<2>::try_new([1.0, 3.0])?;
-assert_eq!(is_separated(&axis, &left, &right, 1.0)?, Some(true));
-# Ok(())
-# }
-```
-
-An interval that overlaps the threshold is inconclusive, not equal. Likewise,
-`Ok(None)` means gradual underflow or proof-only range exhaustion prevented a
-certificate. A filtered-exact caller should rebuild the same dot or affine
-expression in `BigRational` (available through the `exact` feature) or another
-exact backend. A `LaError::NonFinite` instead reports that the specified FMA
-estimate itself overflowed. These certified bounds describe roundoff in a fixed
-arithmetic tree; they are distinct from user-selected numerical tolerances.
-
-## 🛡️ Adaptive determinant filtering (D ≤ 4)
-
-`det_direct_with_errbound()` returns a closed-form determinant together with
-the conservative absolute error bound used by the fast filter, computed from
-one call that evaluates the determinant once and computes its matching bound.
-It returns `None` when a D ≤ 4 computation may be affected by gradual
-underflow, as well as for unsupported D ≥ 5 dimensions.
-It returns `LaError::NonFinite` if the determinant or bound computation
-overflows to NaN or infinity.
-This method does NOT require the `exact` feature — it uses pure f64 arithmetic
-and is available by default. Use `det_errbound()` when only the bound is needed.
-The paired API enables custom adaptive-precision logic for geometric predicates:
-
-```rust,ignore
-use la_stack::prelude::*;
-
-fn adaptive_det_sign<const D: usize>(
-    matrix: &Matrix<D>,
-) -> DeterminantSign {
-    if let Ok(Some(estimate)) = matrix.det_direct_with_errbound() {
-        if estimate.determinant().abs() > estimate.absolute_error_bound() {
-            return if estimate.determinant() > 0.0 {
-                DeterminantSign::Positive
-            } else {
-                DeterminantSign::Negative
-            };
-        }
-    }
-
-    matrix.det_sign_exact()
-}
-
-fn main() -> Result<(), LaError> {
-    let identity = Matrix::<3>::identity();
-    assert_eq!(
-        adaptive_det_sign(&identity),
-        DeterminantSign::Positive
-    );
-
-    // A zero determinant cannot pass the f64 sign filter, so this exercises
-    // the exact fallback.
-    let singular = Matrix::<3>::try_from_rows([
-        [1.0, 2.0, 3.0],
-        [4.0, 5.0, 6.0],
-        [7.0, 8.0, 9.0],
-    ])?;
-    assert_eq!(adaptive_det_sign(&singular), DeterminantSign::Zero);
-
-    // The f64 filter overflows for this finite matrix, but the exact fallback
-    // still resolves its positive determinant sign.
-    let big = f64::MAX / 2.0;
-    let overflowing = Matrix::<3>::try_from_rows([
-        [0.0, 0.0, 1.0],
-        [big, 0.0, 1.0],
-        [0.0, big, 1.0],
-    ])?;
-    assert_eq!(
-        adaptive_det_sign(&overflowing),
-        DeterminantSign::Positive
-    );
-
-    Ok(())
-}
-```
-
-The error coefficients (`ERR_COEFF_2`, `ERR_COEFF_3`, `ERR_COEFF_4`) are
-conservative, dimension-specific constants, not caller-tunable tolerances. The
-[mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md#determinants-and-certified-sign-filtering)
-documents the bound and states its range preconditions. The constants are explicit
-crate-root exports for advanced users who want to compose the same bound:
-`use la_stack::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};`. They intentionally stay
-out of the common prelude.
+[guide-lu]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#solving-and-reusing-factors
+[guide-ldlt]: https://docs.rs/la-stack/latest/la_stack/guide/ldlt/index.html
+[guide-compile-time]: https://docs.rs/la-stack/latest/la_stack/guide/compile_time/index.html
+[guide-intervals]: https://docs.rs/la-stack/latest/la_stack/guide/intervals/index.html
+[guide-norms]: https://docs.rs/la-stack/latest/la_stack/guide/norms/index.html
+[guide-certified]: https://docs.rs/la-stack/latest/la_stack/guide/certified/index.html
+[guide-adaptive]: https://docs.rs/la-stack/latest/la_stack/guide/adaptive/index.html
 
 ## 🧩 API at a glance
 
-| Type | Storage | Purpose | Key methods |
-|---|---|---|---|
-| `Vector<D>` | `[f64; D]` | Finite fixed-length vector for input and computation | `try_new`, `as_array`, `into_array`, `dot`, `dot_with_errbound`, `dot_difference_with_errbound`, `norm`, `norm_squared` |
-| `Matrix<D>` | `[[f64; D]; D]` | Finite square matrix for input and computation | See below |
-| `Interval` | Two finite ordered `f64` bounds | Outward-rounded exact-real enclosure | `try_new`, `point`, `try_from_subtraction`, `try_add`, `try_mul`, `negate`, `try_square` |
-| `IntervalMatrix<D>` | `[[Interval; D]; D]` | Division-free determinant enclosure and sign proof through D=7 | `from_rows`, `try_from_point_rows`, `from_matrix`, `det`, `det_sign` |
-| `IntervalDeterminantSign` | enum | Positive, negative, zero, or inconclusive determinant evidence | — |
-| `RationalVector<D>`¹ | `[BigRational; D]` | Exact rational right-hand side and solution | `try_new`, `try_from_fn`, `as_array`, `into_array`, `get` |
-| `RationalMatrix<D>`¹ | `[[BigRational; D]; D]` | Exact rational matrix for determinant and solve operations | `try_from_rows`, `try_from_fn`, `as_rows`, `det_sign`, `det`, `solve` |
-| `DeterminantWithErrorBound` | Opaque validated pair | Paired direct determinant and certified absolute bound | `determinant`, `absolute_error_bound` |
-| `ScalarWithErrorBound` | Opaque validated certificate | Paired scalar estimate, absolute bound, and outward endpoints | `estimate`, `absolute_error_bound`, `lower_bound`, `upper_bound` |
-| `Lu<D>` | Inline factors + permutation | Factorization for solves/det | `solve`, `det` |
-| `Ldlt<D>` | Inline factors | No-pivot SPD factorization for solves/det | `solve`, `det` |
-| `Tolerance` | finite non-negative `f64` | Validated numerical threshold | `try_new`, `get` |
-| `LaError` | typed variants and reasons | Structured, actionable failure reporting | See error semantics below |
-| `DeterminantSign`¹ | enum | Exact determinant sign | `as_i8` |
-| `ExactF64Conversion`¹ | trait | Strict or explicitly rounded conversion of exact results to `f64` | `try_to_f64`, `to_rounded_f64` |
+Start with the capability you need; the [API reference][api-reference] lists
+the complete public surface, and the [worked examples][api-guide] show how
+to combine operations.
 
-`Matrix<D>` and `Vector<D>` use the intentional inline `f64` scalar model.
-`IntervalMatrix<D>` retains inline fixed-size storage and uses a fixed 128-entry
-stack workspace for its supported determinant dimensions. The exact-feature
-rational types retain fixed-size outer arrays while their `BigRational` scalars
-use arbitrary-precision integer storage.
+| Capability | Main entry points |
+|---|---|
+| Vector operations and norms | [`Vector<D>`][api-vector] |
+| Floating-point determinants and solves | [`Matrix<D>`][api-matrix], [`Lu<D>`][api-lu], [`Ldlt<D>`][api-ldlt] |
+| Gram matrix construction | [`gram_matrix`][api-gram] |
+| Certified dot, affine-difference, and determinant estimates | [`ScalarWithErrorBound`][api-scalar-bound], [`DeterminantWithErrorBound`][api-det-bound] |
+| Interval expressions and determinant signs | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
+| Exact signs, determinants, solves, and output conversion¹ | [Exact arithmetic examples][api-exact] |
+| Runtime selection of a const-generic matrix dimension | [Dimension dispatch examples][api-dispatch] |
 
-For a runtime-selected interval dimension from 0 through
-`MAX_INTERVAL_MATRIX_DIM` (7), `try_with_interval_matrix!` dispatches to a
-concrete `IntervalMatrix<N>`. This is useful when stable Rust cannot express a
-derived const dimension such as `D + 1`.
-
-For a runtime dimension from 0 through `MAX_STACK_MATRIX_DISPATCH_DIM` (7),
-`try_with_stack_matrix!` dispatches to a concrete `Matrix<N>` while preserving
-inline stack storage. Larger dimensions produce
-`LaError::UnsupportedDimension`, converted through `From<LaError>` into the
-closure's declared `Result` error type; the macro does not introduce a
-dynamically sized matrix representation.
-
-With the exact feature, a runtime dimension from 0 through
-`MAX_RATIONAL_MATRIX_DISPATCH_DIM` (8) can similarly be dispatched with
-`try_with_rational_matrix!` to a concrete `RationalMatrix<N>`. Larger
-dimensions produce `LaError::UnsupportedDimension`; the rational macro also
-preserves the const-generic representation rather than introducing a
-dynamically sized matrix type.
-
-`Matrix<D>` key methods: `as_rows`, `into_rows`, `lu`, `ldlt`, `det`,
-`det_direct`, `det_direct_with_errbound`, `det_errbound`,
-`det_exact`¹, `det_exact_f64`¹, `det_exact_rounded_f64`¹, `det_sign_exact`¹,
-`solve_exact`¹, `solve_exact_f64`¹, `solve_exact_rounded_f64`¹.
-Matrix and vector constructors validate non-finite inputs at public API
-boundaries. After construction, `Matrix<D>` and `Vector<D>` carry that
-finite-storage invariant directly, so factorization kernels do not repeat an
-O(D²) input scan. Computed factor matrices are still checked before they become
-observable results.
-
-`Matrix::as_rows` and `Vector::as_array` borrow their validated backing arrays;
-`Matrix::into_rows` and `Vector::into_array` consume the value and return the
-owned fixed-size arrays.
-
-`Matrix::get(row, col)` returns `None` for out-of-bounds coordinates;
-`Matrix::try_get` instead returns a structured `LaError` preserving those
-coordinates. The single fallible `Matrix::set` validates both coordinates and
-finiteness before mutating the matrix.
-
-`LaError` and its reason/location enums are non-exhaustive. Numerical
-singularity records the `FactorizationKind`,
-observed pivot magnitude, and tolerance, while exact-arithmetic singularity is
-identified separately. `LaError::NonFinite` retains the crate-wide non-finite
-contract but uses `NonFiniteOrigin`, `NonFiniteLocation`, and
-`ArithmeticOperation` to distinguish invalid inputs from computed overflow.
-`LaError::InvertedInterval` preserves rejected finite bounds when the lower
-endpoint exceeds the upper endpoint, and `LaError::IntervalRangeExhausted`
-distinguishes finite-input interval range loss from a non-finite value.
-`InvalidToleranceReason` distinguishes negative from non-finite tolerances, and
-`PositiveSemidefiniteViolation` distinguishes negative LDLT pivots from a zero
-pivot with nonzero coupling. Match these public enums with a wildcard and use
-`..` for struct-style variants so future error context can be added without
-breaking callers.
+[`Tolerance`][api-tolerance] validates numerical rejection thresholds.
+[`LaError`][api-error] and its reason/location enums preserve structured
+failure details; match non-exhaustive enums with a wildcard and struct-style
+variants with `..`. See the [storage, access, and error guide][api-contracts]
+for the full contracts.
 
 ¹ Requires `features = ["exact"]`.
 
-## 📊 Benchmarks (vs nalgebra/faer)
+[api-reference]: https://docs.rs/la-stack/latest/la_stack/
+[api-guide]: https://docs.rs/la-stack/latest/la_stack/guide/index.html
+[api-vector]: https://docs.rs/la-stack/latest/la_stack/struct.Vector.html
+[api-matrix]: https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html
+[api-lu]: https://docs.rs/la-stack/latest/la_stack/struct.Lu.html
+[api-ldlt]: https://docs.rs/la-stack/latest/la_stack/struct.Ldlt.html
+[api-gram]: https://docs.rs/la-stack/latest/la_stack/fn.gram_matrix.html
+[api-scalar-bound]: https://docs.rs/la-stack/latest/la_stack/struct.ScalarWithErrorBound.html
+[api-det-bound]: https://docs.rs/la-stack/latest/la_stack/struct.DeterminantWithErrorBound.html
+[api-interval]: https://docs.rs/la-stack/latest/la_stack/struct.Interval.html
+[api-interval-matrix]: https://docs.rs/la-stack/latest/la_stack/struct.IntervalMatrix.html
+[api-exact]: https://docs.rs/la-stack/latest/la_stack/guide/exact/index.html
+[api-dispatch]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#dimension-dispatch
+[api-tolerance]: https://docs.rs/la-stack/latest/la_stack/struct.Tolerance.html
+[api-error]: https://docs.rs/la-stack/latest/la_stack/enum.LaError.html
+[api-contracts]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#storage-access-and-errors
+
+## 🗺️ Documentation Map
+
+- [API guide][api-guide] — worked examples, API selection, storage, and error contracts.
+- [Mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md) — algorithms, numerical guarantees, and limitations.
+- [Benchmarking](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/BENCHMARKING.md) — benchmark suites, comparison workflows, and measurement methodology.
+- [Performance reports](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/PERFORMANCE.md) — release-to-release measurement results and provenance.
+- [Coverage](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/COVERAGE.md) — local and CI coverage commands and report locations.
+- [Roadmap](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/roadmap.md) — release planning, future directions, and non-goals.
+- [Releasing](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/RELEASING.md) — release preparation, validation, and publication.
+
+## 📈 Benchmarks (vs nalgebra/faer)
 
 ![LU solve (factor + solve): median time vs dimension][lu-solve-benchmark]
 
@@ -928,7 +484,7 @@ For coverage commands and report locations, see
 For the full contributor workflow, see
 [CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/CONTRIBUTING.md).
 
-## 📝 Citation
+## 📚 Citation
 
 If you use this library in academic work, please cite it using
 [CITATION.cff](https://github.com/acgetchell/la-stack/blob/v0.4.5/CITATION.cff)
@@ -936,7 +492,7 @@ If you use this library in academic work, please cite it using
 Zenodo under the
 [all-versions concept DOI](https://doi.org/10.5281/zenodo.18158926).
 
-## 📚 References
+## 🔎 References
 
 For canonical references to the algorithms used by this crate, see
 [REFERENCES.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/REFERENCES.md).
@@ -949,7 +505,7 @@ before proposing or applying changes. See
 [CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/CONTRIBUTING.md)
 for the repository's AI-assisted development note.
 
-## 📄 License
+## 📜 License
 
 BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/v0.4.5/LICENSE).
 

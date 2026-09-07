@@ -18,7 +18,7 @@ _coverage_base_args := '''--features exact \
   --workspace --lib --tests \
   --verbose'''
 cargo_edit_version := "0.13.13"
-cargo_llvm_cov_version := "0.9.0"
+cargo_llvm_cov_version := "0.9.1"
 cargo_machete_version := "0.9.2"
 cargo_nextest_version := "0.9.143"
 cargo_update_version := "22.1.1"
@@ -26,7 +26,7 @@ clippy_sarif_version := "0.8.0"
 dprint_version := "0.57.4"
 git_cliff_version := "2.14.1"
 just_version := "1.58.0"
-rumdl_version := "0.2.66"
+rumdl_version := "0.2.67"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
 typos_version := "1.50.1"

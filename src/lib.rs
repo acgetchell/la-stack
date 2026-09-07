@@ -5,315 +5,904 @@
 
 #[cfg(doc)]
 mod readme_doctests {
-    //! Executable versions of README examples.
+    //! Executable version of the README quickstart.
     /// ```rust
     /// use la_stack::prelude::*;
     ///
-    /// # fn main() -> Result<(), LaError> {
-    /// // This system requires pivoting (a[0][0] = 0), so it's a good LU demo.
-    /// let a = Matrix::<5>::try_from_rows([
-    ///     [0.0, 1.0, 1.0, 1.0, 1.0],
-    ///     [1.0, 0.0, 1.0, 1.0, 1.0],
-    ///     [1.0, 1.0, 0.0, 1.0, 1.0],
-    ///     [1.0, 1.0, 1.0, 0.0, 1.0],
-    ///     [1.0, 1.0, 1.0, 1.0, 0.0],
-    /// ])?;
+    /// fn main() -> Result<(), LaError> {
+    ///     // The zero leading entry requires LU pivoting.
+    ///     let a = Matrix::<5>::try_from_rows([
+    ///         [0.0, 2.0, -1.0, 1.0, 3.0],
+    ///         [4.0, -1.0, 2.0, 0.0, 1.0],
+    ///         [1.0, 3.0, 5.0, -2.0, 0.0],
+    ///         [2.0, 0.0, -1.0, 4.0, 1.0],
+    ///         [-1.0, 2.0, 0.0, 1.0, 6.0],
+    ///     ])?;
+    ///     let b = Vector::try_new([20.0, 13.0, 14.0, 20.0, 37.0])?;
+    ///     let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
+    ///     let x = lu.solve(b)?;
     ///
-    /// let b = Vector::<5>::try_new([14.0, 13.0, 12.0, 11.0, 10.0])?;
-    ///
-    /// let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
-    /// let x = lu.solve(b)?.into_array();
-    ///
-    /// // Floating-point rounding is expected; compare with a tolerance.
-    /// let expected = [1.0, 2.0, 3.0, 4.0, 5.0];
-    /// for (x_i, e_i) in x.iter().zip(expected.iter()) {
-    ///     assert!((*x_i - *e_i).abs() <= 1e-12);
+    ///     for (&actual, expected) in x.as_array().iter().zip([1.0, 2.0, 3.0, 4.0, 5.0]) {
+    ///         assert!((actual - expected).abs() <= 1e-12);
+    ///     }
+    ///     Ok(())
     /// }
-    /// # Ok(())
-    /// # }
     /// ```
     fn solve_5x5_example() {}
-
-    /// ```rust
-    /// use la_stack::prelude::*;
-    ///
-    /// # fn main() -> Result<(), LaError> {
-    /// // This matrix is symmetric positive-definite (A = L*L^T) so LDLT works without pivoting.
-    /// let a = Matrix::<5>::try_from_rows([
-    ///     [1.0, 1.0, 0.0, 0.0, 0.0],
-    ///     [1.0, 2.0, 1.0, 0.0, 0.0],
-    ///     [0.0, 1.0, 2.0, 1.0, 0.0],
-    ///     [0.0, 0.0, 1.0, 2.0, 1.0],
-    ///     [0.0, 0.0, 0.0, 1.0, 2.0],
-    /// ])?;
-    ///
-    /// let ldlt = match a.ldlt(DEFAULT_SINGULAR_TOL) {
-    ///     Ok(ldlt) => ldlt,
-    ///     Err(err @ LaError::Asymmetric { row, col, .. }) => {
-    ///         eprintln!("LDLT requires symmetry; first mismatch at ({row}, {col})");
-    ///         return Err(err);
-    ///     }
-    ///     Err(err) => return Err(err),
-    /// };
-    ///
-    /// let det = ldlt.det()?;
-    /// assert!((det - 1.0).abs() <= 1e-12);
-    /// # Ok(())
-    /// # }
-    /// ```
-    fn det_5x5_ldlt_example() {}
-
-    /// ```rust
-    /// use la_stack::prelude::*;
-    ///
-    /// // Evaluated entirely at compile time — no runtime cost.
-    /// const DET: Result<Option<f64>, LaError> = match Matrix::<4>::try_from_rows([
-    ///     [2.0, 0.0, 0.0, 0.0],
-    ///     [0.0, 3.0, 0.0, 0.0],
-    ///     [0.0, 0.0, 5.0, 0.0],
-    ///     [0.0, 0.0, 0.0, 7.0],
-    /// ]) {
-    ///     Ok(matrix) => matrix.det_direct(),
-    ///     Err(err) => Err(err),
-    /// };
-    ///
-    /// # fn main() -> Result<(), LaError> {
-    /// assert_eq!(DET?, Some(210.0));
-    /// # Ok(())
-    /// # }
-    /// ```
-    fn det_direct_4x4_const_example() {}
-
-    /// ```rust
-    /// use la_stack::prelude::*;
-    ///
-    /// # fn main() -> Result<(), LaError> {
-    /// let x = Interval::try_from_subtraction(0.1, 0.0)?;
-    /// let y = Interval::try_from_subtraction(0.1, 0.0)?;
-    /// let z = Interval::try_from_subtraction(0.1, 0.0)?;
-    /// let lifted = x
-    ///     .try_square()?
-    ///     .try_add(&y.try_square()?)?
-    ///     .try_add(&z.try_square()?)?;
-    ///
-    /// let matrix = IntervalMatrix::<4>::from_rows([
-    ///     [Interval::ONE, Interval::ZERO, Interval::ZERO, Interval::ONE],
-    ///     [Interval::ZERO, Interval::ONE, Interval::ZERO, Interval::ONE],
-    ///     [Interval::ZERO, Interval::ZERO, Interval::ONE, Interval::ONE],
-    ///     [x, y, z, lifted],
-    /// ]);
-    /// assert_eq!(
-    ///     matrix.det_sign()?,
-    ///     IntervalDeterminantSign::Negative,
-    /// );
-    /// # Ok(())
-    /// # }
-    /// ```
-    fn interval_determinant_example() {}
-
-    /// ```rust
-    /// use la_stack::prelude::*;
-    ///
-    /// fn is_separated<const D: usize>(
-    ///     axis: &Vector<D>,
-    ///     left: &Vector<D>,
-    ///     right: &Vector<D>,
-    ///     threshold: f64,
-    /// ) -> Result<Option<bool>, LaError> {
-    ///     let Some(value) = axis.dot_difference_with_errbound(left, right)? else {
-    ///         return Ok(None);
-    ///     };
-    ///     if value.lower_bound() > threshold {
-    ///         Ok(Some(true))
-    ///     } else if value.upper_bound() <= threshold {
-    ///         Ok(Some(false))
-    ///     } else {
-    ///         Ok(None)
-    ///     }
-    /// }
-    ///
-    /// # fn main() -> Result<(), LaError> {
-    /// let axis = Vector::<2>::try_new([2.0, -1.0])?;
-    /// let left = Vector::<2>::try_new([4.0, 1.0])?;
-    /// let right = Vector::<2>::try_new([1.0, 3.0])?;
-    /// assert_eq!(is_separated(&axis, &left, &right, 1.0)?, Some(true));
-    /// # Ok(())
-    /// # }
-    /// ```
-    fn certified_linear_form_example() {}
-
-    #[cfg(feature = "exact")]
-    /// ```rust
-    /// use la_stack::prelude::*;
-    ///
-    /// # fn main() -> Result<(), LaError> {
-    /// // Exact determinant
-    /// let m = Matrix::<3>::try_from_rows([
-    ///     [1.0, 2.0, 3.0],
-    ///     [4.0, 5.0, 6.0],
-    ///     [7.0, 8.0, 9.0],
-    /// ])?;
-    /// assert_eq!(m.det_sign_exact(), DeterminantSign::Zero); // exactly singular
-    ///
-    /// let det = m.det_exact()?;
-    /// assert_eq!(det, BigRational::from_integer(0.into())); // exact zero
-    /// let det_f64 = det.try_to_f64()?;
-    /// assert_eq!(det_f64, 0.0);
-    ///
-    /// // If strict exact-to-f64 conversion would require rounding, opt in
-    /// // explicitly with the rounded API.
-    /// let inexact = Matrix::<2>::try_from_rows([
-    ///     [1.0 + f64::EPSILON, 0.0],
-    ///     [0.0, 1.0 - f64::EPSILON],
-    /// ])?;
-    /// let exact_det = inexact.det_exact()?;
-    /// let rounded_det = match exact_det.try_to_f64() {
-    ///     Ok(det) => det,
-    ///     Err(err) if err.requires_rounding() => exact_det.to_rounded_f64()?,
-    ///     Err(err) => return Err(err),
-    /// };
-    /// assert_eq!(rounded_det.to_bits(), 1.0f64.to_bits());
-    ///
-    /// // If the exact determinant cannot fit in f64, keep the BigRational value.
-    /// let big = f64::MAX / 2.0;
-    /// let huge = Matrix::<3>::try_from_rows([
-    ///     [0.0, 0.0, 1.0],
-    ///     [big, 0.0, 1.0],
-    ///     [0.0, big, 1.0],
-    /// ])?;
-    /// let huge_det = huge.det_exact()?;
-    /// assert_eq!(
-    ///     huge_det
-    ///         .try_to_f64()
-    ///         .err()
-    ///         .and_then(|err| err.unrepresentable_reason()),
-    ///     Some(UnrepresentableReason::NotFinite)
-    /// );
-    /// println!("exact determinant = {huge_det}");
-    ///
-    /// // Exact linear system solve
-    /// let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
-    /// let b = Vector::<2>::try_new([5.0, 11.0])?;
-    /// let exact_x = a.solve_exact(b)?;
-    /// let x = exact_x.try_to_f64()?.into_array();
-    /// assert!((x[0] - 1.0).abs() <= f64::EPSILON);
-    /// assert!((x[1] - 2.0).abs() <= f64::EPSILON);
-    /// # Ok(())
-    /// # }
-    /// ```
-    fn exact_arithmetic_example() {}
-
-    #[cfg(feature = "exact")]
-    /// ```rust
-    /// use core::assert_matches;
-    ///
-    /// use la_stack::prelude::*;
-    ///
-    /// # fn main() -> Result<(), LaError> {
-    /// let epsilon = BigRational::new(1.into(), (1_u64 << 60).into());
-    /// let one = BigRational::from_integer(1.into());
-    /// let zero = BigRational::from_integer(0.into());
-    ///
-    /// let matrix = RationalMatrix::<5>::try_from_fn(|row, col| match (row, col) {
-    ///     (0, 0 | 1) | (1, 0) => one.clone(),
-    ///     (1, 1) => &one + &epsilon,
-    ///     _ if row == col => one.clone(),
-    ///     _ => zero.clone(),
-    /// })?;
-    /// assert_eq!(matrix.det_sign(), DeterminantSign::Positive);
-    /// assert_eq!(matrix.det(), epsilon);
-    ///
-    /// let rhs = RationalVector::try_new([
-    ///     zero,
-    ///     -&epsilon,
-    ///     BigRational::from_integer(2.into()),
-    ///     BigRational::from_integer(3.into()),
-    ///     BigRational::from_integer(4.into()),
-    /// ])?;
-    /// let exact_solution = matrix.solve(&rhs)?;
-    /// assert_eq!(
-    ///     exact_solution.as_array(),
-    ///     &[
-    ///         BigRational::from_integer(1.into()),
-    ///         BigRational::from_integer((-1).into()),
-    ///         BigRational::from_integer(2.into()),
-    ///         BigRational::from_integer(3.into()),
-    ///         BigRational::from_integer(4.into()),
-    ///     ]
-    /// );
-    ///
-    /// let epsilon_f64 = epsilon.try_to_f64()?;
-    /// assert_eq!((1.0 + epsilon_f64).to_bits(), 1.0_f64.to_bits());
-    /// let f64_matrix = Matrix::<5>::try_from_rows([
-    ///     [1.0, 1.0, 0.0, 0.0, 0.0],
-    ///     [1.0, 1.0 + epsilon_f64, 0.0, 0.0, 0.0],
-    ///     [0.0, 0.0, 1.0, 0.0, 0.0],
-    ///     [0.0, 0.0, 0.0, 1.0, 0.0],
-    ///     [0.0, 0.0, 0.0, 0.0, 1.0],
-    /// ])?;
-    /// let f64_rhs = Vector::<5>::try_new([0.0, -epsilon_f64, 2.0, 3.0, 4.0])?;
-    /// let f64_solve = f64_matrix
-    ///     .lu(DEFAULT_SINGULAR_TOL)
-    ///     .and_then(|lu| lu.solve(f64_rhs));
-    /// assert_matches!(
-    ///     f64_solve,
-    ///     Err(LaError::Singular { .. })
-    /// );
-    /// # Ok(())
-    /// # }
-    /// ```
-    fn rational_input_example() {}
-
-    #[cfg(feature = "exact")]
-    /// ```rust
-    /// use la_stack::prelude::*;
-    ///
-    /// fn adaptive_det_sign<const D: usize>(
-    ///     matrix: &Matrix<D>,
-    /// ) -> DeterminantSign {
-    ///     if let Ok(Some(estimate)) = matrix.det_direct_with_errbound() {
-    ///         if estimate.determinant().abs() > estimate.absolute_error_bound() {
-    ///             return if estimate.determinant() > 0.0 {
-    ///                 DeterminantSign::Positive
-    ///             } else {
-    ///                 DeterminantSign::Negative
-    ///             };
-    ///         }
-    ///     }
-    ///
-    ///     matrix.det_sign_exact()
-    /// }
-    ///
-    /// # fn main() -> Result<(), LaError> {
-    /// let identity = Matrix::<3>::identity();
-    /// assert_eq!(
-    ///     adaptive_det_sign(&identity),
-    ///     DeterminantSign::Positive
-    /// );
-    ///
-    /// let singular = Matrix::<3>::try_from_rows([
-    ///     [1.0, 2.0, 3.0],
-    ///     [4.0, 5.0, 6.0],
-    ///     [7.0, 8.0, 9.0],
-    /// ])?;
-    /// assert_eq!(adaptive_det_sign(&singular), DeterminantSign::Zero);
-    ///
-    /// let big = f64::MAX / 2.0;
-    /// let overflowing = Matrix::<3>::try_from_rows([
-    ///     [0.0, 0.0, 1.0],
-    ///     [big, 0.0, 1.0],
-    ///     [0.0, big, 1.0],
-    /// ])?;
-    /// assert_eq!(
-    ///     adaptive_det_sign(&overflowing),
-    ///     DeterminantSign::Positive
-    /// );
-    /// # Ok(())
-    /// # }
-    /// ```
-    fn adaptive_precision_example() {}
 }
 
+// Documentation-only workflows keep the README overview compact without adding
+// a runtime API. Their examples are executed by the default/exact doctest gates.
+#[cfg(doc)]
+pub mod guide {
+    //! Worked examples and contracts for choosing and combining APIs.
+    //!
+    //! Start with [`prelude`](crate::prelude) for common imports. The crate's
+    //! generated reference lists the complete public surface; these examples
+    //! demonstrate how the pieces fit together.
+    //!
+    //! Explore the topic guides for more workflows:
+    //!
+    //! - [LDLT determinants and symmetry](ldlt)
+    //! - [Compile-time determinants](compile_time)
+    //! - [Outward-rounded interval determinants](intervals)
+    //! - [Overflow-safe Euclidean norms](norms)
+    //! - [Certified dot products and affine differences](certified)
+    //! - [Adaptive determinant filtering](adaptive)
+    //!
+    //! Enabling `exact` also adds the exact-arithmetic guide to the module list.
+    //!
+    //! # Solving and reusing factors
+    //!
+    //! [`Matrix::lu`](crate::Matrix::lu) computes a partially pivoted
+    //! factorization. Keep the resulting [`Lu`](crate::Lu) to solve multiple
+    //! right-hand sides without repeating factorization. This 5×5 system has a
+    //! zero leading entry, so the first elimination step requires pivoting.
+    //!
+    //! ```rust
+    //! use la_stack::prelude::*;
+    //!
+    //! # fn main() -> Result<(), LaError> {
+    //! let a = Matrix::<5>::try_from_rows([
+    //!     [0.0, 2.0, -1.0, 1.0, 3.0],
+    //!     [4.0, -1.0, 2.0, 0.0, 1.0],
+    //!     [1.0, 3.0, 5.0, -2.0, 0.0],
+    //!     [2.0, 0.0, -1.0, 4.0, 1.0],
+    //!     [-1.0, 2.0, 0.0, 1.0, 6.0],
+    //! ])?;
+    //! let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
+    //! let systems = [
+    //!     ([20.0, 13.0, 14.0, 20.0, 37.0], [1.0, 2.0, 3.0, 4.0, 5.0]),
+    //!     ([5.0, 6.0, 7.0, 6.0, 8.0], [1.0; 5]),
+    //! ];
+    //! for (rhs, expected) in systems {
+    //!     let solution = lu.solve(Vector::try_new(rhs)?)?;
+    //!     for (&actual, expected) in solution.as_array().iter().zip(expected) {
+    //!         assert!((actual - expected).abs() <= 1e-12);
+    //!     }
+    //! }
+    //! # Ok(())
+    //! # }
+    //! ```
+    //!
+    //! The assertions use a tolerance suitable for this known fixture; they do
+    //! not establish a general error bound for LU. Factorization tolerances
+    //! reject small pivots and are not accuracy guarantees.
+    //! [`Ldlt`](crate::Ldlt) offers the same solve/determinant workflow for
+    //! exactly symmetric positive-definite input, without pivoting. Approximate
+    //! symmetry from [`Matrix::is_symmetric`](crate::Matrix::is_symmetric) or
+    //! [`Matrix::first_asymmetry`](crate::Matrix::first_asymmetry) does not prove
+    //! the exact symmetry required by [`Matrix::ldlt`](crate::Matrix::ldlt).
+    //!
+    //! # Gram matrices
+    //!
+    //! [`gram_matrix`](crate::gram_matrix) accepts `M` vectors of dimension `N`
+    //! and returns a `Matrix<M>` of pairwise inner products. Here five vectors
+    //! in six dimensions produce a 5×5 matrix. Each dot product is computed once
+    //! and mirrored, so the result is bit-for-bit symmetric.
+    //!
+    //! ```rust
+    //! use la_stack::prelude::*;
+    //!
+    //! # fn main() -> Result<(), LaError> {
+    //! let vectors = [
+    //!     Vector::try_new([1.0, 1.0, 0.0, 0.0, 0.0, 0.0])?,
+    //!     Vector::try_new([0.0, 1.0, 1.0, 0.0, 0.0, 0.0])?,
+    //!     Vector::try_new([0.0, 0.0, 1.0, 1.0, 0.0, 0.0])?,
+    //!     Vector::try_new([0.0, 0.0, 0.0, 1.0, 1.0, 0.0])?,
+    //!     Vector::try_new([0.0, 0.0, 0.0, 0.0, 1.0, 1.0])?,
+    //! ];
+    //! let gram = gram_matrix(&vectors)?;
+    //! assert_eq!(gram.norm_inf()?, 4.0);
+    //! assert!(gram.is_symmetric(Tolerance::try_new(0.0)?)?);
+    //!
+    //! // This fixture's exact Gram matrix is tridiagonal: 2 on the diagonal,
+    //! // 1 immediately above/below it. Its 5×5 determinant is 6.
+    //! let determinant = gram.ldlt(DEFAULT_SINGULAR_TOL)?.det()?;
+    //! assert!((determinant - 6.0).abs() <= 1e-12);
+    //! # Ok(())
+    //! # }
+    //! ```
+    //!
+    //! Gram construction provides no certified rounding-error bound and does
+    //! not prove rank or positive definiteness. The generated function
+    //! documentation explains its conditioning and geometric interpretation.
+    //!
+    //! # Dimension dispatch
+    //!
+    //! [`try_with_stack_matrix!`](crate::try_with_stack_matrix) selects a
+    //! concrete `Matrix<N>` for runtime dimensions 0 through
+    //! [`MAX_STACK_MATRIX_DISPATCH_DIM`](crate::MAX_STACK_MATRIX_DISPATCH_DIM)
+    //! (7). The closure receives a zero matrix and returns its declared result.
+    //!
+    //! ```rust
+    //! use core::assert_matches;
+    //!
+    //! use la_stack::prelude::*;
+    //!
+    //! # fn main() -> Result<(), LaError> {
+    //! let requested = 5usize;
+    //! let determinant = try_with_stack_matrix!(requested, |mut matrix| -> Result<f64, LaError> {
+    //!     for row in 0..requested {
+    //!         matrix.set(row, row, 2.0)?;
+    //!         if row + 1 < requested {
+    //!             matrix.set(row, row + 1, 1.0)?;
+    //!             matrix.set(row + 1, row, 1.0)?;
+    //!         }
+    //!     }
+    //!     matrix.det()
+    //! })?;
+    //! assert!((determinant - 6.0).abs() <= 1e-12);
+    //!
+    //! let unsupported = try_with_stack_matrix!(8, |matrix| -> Result<f64, LaError> {
+    //!     matrix.det()
+    //! });
+    //! assert_matches!(
+    //!     unsupported,
+    //!     Err(LaError::UnsupportedDimension { requested: 8, max: 7, .. })
+    //! );
+    //! # Ok(())
+    //! # }
+    //! ```
+    //!
+    //! [`try_with_interval_matrix!`](crate::try_with_interval_matrix) similarly
+    //! dispatches dimensions 0 through
+    //! [`MAX_INTERVAL_MATRIX_DIM`](crate::MAX_INTERVAL_MATRIX_DIM) (7) to an
+    //! [`IntervalMatrix`](crate::IntervalMatrix). These macros are useful when
+    //! stable Rust cannot express a derived const dimension such as `D + 1`.
+    //! Larger dimensions produce [`LaError::UnsupportedDimension`](crate::LaError::UnsupportedDimension),
+    //! converted through `From<LaError>` into the closure's declared error type.
+    //! Dispatch preserves const-generic storage; it does not create a dynamically
+    //! sized matrix representation or limit dimensions chosen directly at compile time.
+    //!
+    //! # Storage, access, and errors
+    //!
+    //! [`Matrix<D>`](crate::Matrix) and [`Vector<D>`](crate::Vector) store
+    //! `[[f64; D]; D]` and `[f64; D]` inline. Constructors validate non-finite
+    //! inputs, and the types preserve that finite-storage invariant. Factorization
+    //! kernels therefore avoid a repeated O(D²) input scan; computed factor
+    //! matrices are still checked before becoming observable results.
+    //!
+    //! [`Matrix::as_rows`](crate::Matrix::as_rows) and
+    //! [`Vector::as_array`](crate::Vector::as_array) borrow validated backing
+    //! arrays. [`Matrix::into_rows`](crate::Matrix::into_rows) and
+    //! [`Vector::into_array`](crate::Vector::into_array) consume the value and
+    //! return owned fixed-size arrays.
+    //! [`Matrix::get`](crate::Matrix::get) returns `None` for invalid coordinates;
+    //! [`Matrix::try_get`](crate::Matrix::try_get) preserves them in a typed error.
+    //! [`Matrix::set`](crate::Matrix::set) checks coordinates and finiteness
+    //! before mutation. [`Matrix::norm_inf`](crate::Matrix::norm_inf) computes
+    //! the maximum absolute row sum.
+    //!
+    //! [`Vector::dot`](crate::Vector::dot), [`Vector::norm`](crate::Vector::norm),
+    //! and [`Vector::norm_squared`](crate::Vector::norm_squared) provide ordinary
+    //! vector reductions. [`ScalarWithErrorBound`](crate::ScalarWithErrorBound)
+    //! is the opaque result of the certified dot and affine-difference methods;
+    //! it exposes the estimate, absolute bound, and outward-rounded endpoints.
+    //! [`DeterminantWithErrorBound`](crate::DeterminantWithErrorBound) pairs a
+    //! direct determinant with its certified absolute bound. Use
+    //! [`Matrix::det_errbound`](crate::Matrix::det_errbound) for the bound alone.
+    //!
+    //! [`Interval`](crate::Interval) stores two finite ordered bounds and supports
+    //! point construction, outward-rounded subtraction, addition, multiplication,
+    //! negation, and square. [`IntervalMatrix`](crate::IntervalMatrix) stores
+    //! `[[Interval; D]; D]` inline and uses a fixed 128-entry stack workspace for
+    //! supported determinant dimensions. [`IntervalDeterminantSign`](crate::IntervalDeterminantSign)
+    //! distinguishes positive, negative, exact zero, and inconclusive evidence.
+    //!
+    //! Parse numerical thresholds through [`Tolerance::try_new`](crate::Tolerance::try_new).
+    //! [`LaError`](crate::LaError) and its reason/location enums are non-exhaustive;
+    //! use wildcard match arms and `..` for struct-style variants. In particular:
+    //!
+    //! - [`SingularityReason`](crate::SingularityReason) separates exact singularity
+    //!   from numerical rejection, retaining the [`FactorizationKind`](crate::FactorizationKind),
+    //!   observed pivot magnitude, and tolerance for the latter.
+    //! - [`NonFiniteOrigin`](crate::NonFiniteOrigin), [`NonFiniteLocation`](crate::NonFiniteLocation),
+    //!   and [`ArithmeticOperation`](crate::ArithmeticOperation) distinguish invalid
+    //!   inputs from computed non-finite values.
+    //! - [`LaError::InvertedInterval`](crate::LaError::InvertedInterval) preserves
+    //!   rejected finite endpoints; [`LaError::IntervalRangeExhausted`](crate::LaError::IntervalRangeExhausted)
+    //!   distinguishes finite-input interval range loss from a non-finite value.
+    //! - [`InvalidToleranceReason`](crate::InvalidToleranceReason) distinguishes
+    //!   negative and non-finite tolerances.
+    //! - [`PositiveSemidefiniteViolation`](crate::PositiveSemidefiniteViolation)
+    //!   distinguishes a negative LDLT pivot from a zero pivot with nonzero coupling.
+
+    pub mod ldlt {
+        //! LDLT determinants and exact symmetry.
+        //!
+        //! Compute a determinant for a symmetric positive-definite matrix via LDLT (no
+        //! pivoting).
+        //!
+        //! For these matrices, `LDLᵀ` is a square-root-free Cholesky form. Multiplying each
+        //! column of `L` by the square root of the corresponding diagonal entry yields a
+        //! Cholesky factor:
+        //!
+        //! ```rust
+        //! use la_stack::prelude::*;
+        //!
+        //! fn main() -> Result<(), LaError> {
+        //!     // This matrix is symmetric positive-definite (A = L*L^T) so LDLT works without pivoting.
+        //!     let a = Matrix::<5>::try_from_rows([
+        //!         [1.0, 1.0, 0.0, 0.0, 0.0],
+        //!         [1.0, 2.0, 1.0, 0.0, 0.0],
+        //!         [0.0, 1.0, 2.0, 1.0, 0.0],
+        //!         [0.0, 0.0, 1.0, 2.0, 1.0],
+        //!         [0.0, 0.0, 0.0, 1.0, 2.0],
+        //!     ])?;
+        //!
+        //!     let ldlt = match a.ldlt(DEFAULT_SINGULAR_TOL) {
+        //!         Ok(ldlt) => ldlt,
+        //!         Err(err @ LaError::Asymmetric {
+        //!             row,
+        //!             col,
+        //!             upper,
+        //!             lower,
+        //!             allowed_abs_diff,
+        //!             ..
+        //!         }) => {
+        //!             eprintln!(
+        //!                 "LDLT mismatch at ({row}, {col}): {upper} vs {lower} (allowed {allowed_abs_diff})"
+        //!             );
+        //!             return Err(err);
+        //!         }
+        //!         Err(err) => return Err(err),
+        //!     };
+        //!
+        //!     let det = ldlt.det()?;
+        //!     assert!((det - 1.0).abs() <= 1e-12);
+        //!
+        //!     Ok(())
+        //! }
+        //! ```
+        //!
+        //! > ⚠️ **LDLT invariant:** The input matrix must be **exactly symmetric**: every
+        //! > mirrored pair must compare equal (`+0.0 == -0.0` is accepted). Asymmetric
+        //! > inputs passed to
+        //! > [`Matrix::ldlt`](crate::Matrix::ldlt)
+        //! > return a typed `LaError::Asymmetric` containing both observed values and the
+        //! > required allowed difference of zero. The tolerance-based
+        //! > [`Matrix::first_asymmetry`](crate::Matrix::first_asymmetry)
+        //! > and [`Matrix::is_symmetric`](crate::Matrix::is_symmetric) methods remain useful diagnostics, but do not prove
+        //! > the exact precondition required by LDLT. Use `lu()` when exact symmetry or
+        //! > positive definiteness is not guaranteed. A negative LDLT diagonal or a zero
+        //! > diagonal with nonzero remaining coupling returns
+        //! > `LaError::NotPositiveSemidefinite` with a typed
+        //! > `PositiveSemidefiniteViolation`. An uncoupled zero or positive pivot
+        //! > at or below the caller's tolerance returns `LaError::Singular` with a
+        //! > numerical `SingularityReason`. Because these pivots are computed in binary64,
+        //! > success is not an exact positive-definiteness certificate for the stored
+        //! > matrix.
+    }
+
+    pub mod compile_time {
+        //! Compile-time determinants and dimension dispatch.
+        //!
+        //! [`det_direct()`](crate::Matrix::det_direct) is a `const fn` providing closed-form determinants for D=0–4,
+        //! using fused multiply-add where applicable. It returns `Ok(Some(det))` for those
+        //! dimensions and `Ok(None)` for D ≥ 5. `Matrix::<0>::zero().det_direct()` returns
+        //! `Ok(Some(1.0))` (the empty-product convention). For D=1–4, direct formulas
+        //! bypass LU factorization entirely. This enables compile-time evaluation when
+        //! inputs are known:
+        //!
+        //! ```rust
+        //! use la_stack::prelude::*;
+        //!
+        //! // Evaluated entirely at compile time — no runtime cost.
+        //! const DET: Result<Option<f64>, LaError> = match Matrix::<4>::try_from_rows([
+        //!     [2.0, 0.0, 0.0, 0.0],
+        //!     [0.0, 3.0, 0.0, 0.0],
+        //!     [0.0, 0.0, 5.0, 0.0],
+        //!     [0.0, 0.0, 0.0, 7.0],
+        //! ]) {
+        //!     Ok(matrix) => matrix.det_direct(),
+        //!     Err(err) => Err(err),
+        //! };
+        //!
+        //! fn main() -> Result<(), LaError> {
+        //!     assert_eq!(DET?, Some(210.0));
+        //!     Ok(())
+        //! }
+        //! ```
+        //!
+        //! The public `det()` method automatically dispatches through the closed-form path
+        //! for D ≤ 4 and falls back to zero-tolerance LU for D ≥ 5. Tiny nonzero
+        //! determinants are not flattened by a configured pivot tolerance. The LU fallback
+        //! returns `LaError::Singular` when floating-point elimination cannot produce a
+        //! non-zero pivot; it does not misreport that numerical failure as an exact zero.
+        //! Use `lu()` directly when you need a different tolerance policy, and use the
+        //! exact determinant APIs when exact singularity classification matters.
+    }
+
+    pub mod intervals {
+        //! Outward-rounded interval expressions and determinant signs.
+        //!
+        //! `Interval` encloses expression construction that has not yet been reduced to a
+        //! single stored `f64`. Point intervals preserve finite binary64 values exactly;
+        //! `try_from_subtraction`, `try_add`, `try_mul`, `negate`, and `try_square` enclose
+        //! the corresponding exact-real operations. [`IntervalMatrix<D>::det_sign()`](crate::IntervalMatrix::det_sign) then
+        //! uses a division-free subset expansion through D=7, returning positive,
+        //! negative, zero, or inconclusive evidence.
+        //!
+        //! ```rust
+        //! use la_stack::prelude::*;
+        //!
+        //! fn main() -> Result<(), LaError> {
+        //!     // Relative coordinates and the lifted norm retain their construction error.
+        //!     let x = Interval::try_from_subtraction(0.1, 0.0)?;
+        //!     let y = Interval::try_from_subtraction(0.1, 0.0)?;
+        //!     let z = Interval::try_from_subtraction(0.1, 0.0)?;
+        //!     let lifted = x
+        //!         .try_square()?
+        //!         .try_add(&y.try_square()?)?
+        //!         .try_add(&z.try_square()?)?;
+        //!
+        //!     let matrix = IntervalMatrix::<4>::from_rows([
+        //!         [Interval::ONE, Interval::ZERO, Interval::ZERO, Interval::ONE],
+        //!         [Interval::ZERO, Interval::ONE, Interval::ZERO, Interval::ONE],
+        //!         [Interval::ZERO, Interval::ZERO, Interval::ONE, Interval::ONE],
+        //!         [x, y, z, lifted],
+        //!     ]);
+        //!     assert_eq!(
+        //!         matrix.det_sign()?,
+        //!         IntervalDeterminantSign::Negative,
+        //!     );
+        //!     Ok(())
+        //! }
+        //! ```
+        //!
+        //! Every successful interval keeps finite ordered endpoints. Subnormal bounds are
+        //! preserved, both signed zeros are treated as real zero and canonicalized to
+        //! `+0.0`, and underflowed nonzero products widen toward the least subnormal value.
+        //! If an exact result range cannot fit between finite binary64 endpoints, the
+        //! operation returns `LaError::IntervalRangeExhausted` with its interval operation
+        //! recorded in `ArithmeticOperation`.
+        //!
+        //! `Positive`, `Negative`, and `Zero` are proofs. `Inconclusive` only means that
+        //! the determinant enclosure overlaps zero; it must not be converted to equality
+        //! or singularity. A filtered-exact caller should rebuild the same derived
+        //! expression with `RationalMatrix` and call `det_sign()` when the interval result
+        //! is inconclusive or reports range failure. Lifting a finished `Matrix` with
+        //! [`IntervalMatrix::from_matrix`](crate::IntervalMatrix::from_matrix) encloses its stored entries, but cannot recover
+        //! rounding that occurred while those entries were assembled.
+    }
+
+    pub mod norms {
+        //! Overflow-safe Euclidean norms and squared norms.
+        //!
+        //! `Vector::norm()` computes the Euclidean norm with a deterministic scaled
+        //! sum-of-squares recurrence, so large or subnormal finite coordinates do not fail
+        //! merely because their raw squares overflow or underflow. It returns positive zero
+        //! for empty and all-zero vectors and reports `LaError::NonFinite` with
+        //! `ArithmeticOperation::VectorNorm` only when the exact norm rounds to infinity.
+        //! Near the upper range, a fixed-size stack accumulator sums squares exactly and
+        //! compares squared rounding midpoints to prevent false or hidden overflow. This
+        //! fallback needs no optional dependencies. The general binary64 result remains
+        //! approximate and has no certified error bound.
+        //!
+        //! `Vector::norm_squared()` remains the direct left-to-right FMA sum of squares for
+        //! callers that need the squared norm. Its distinct contract deliberately reports
+        //! overflow when that square is not finite, even when `norm()` can return a finite
+        //! norm.
+        //!
+        //! # Large and subnormal coordinates
+        //!
+        //! ```rust
+        //! use core::assert_matches;
+        //!
+        //! use la_stack::prelude::*;
+        //!
+        //! # fn main() -> Result<(), LaError> {
+        //! let large = Vector::<5>::try_new([3e200, 4e200, 0.0, 0.0, 0.0])?;
+        //! assert!((large.norm()? / 1e200 - 5.0).abs() <= 1e-12);
+        //! assert_matches!(
+        //!     large.norm_squared(),
+        //!     Err(LaError::NonFinite {
+        //!         origin: NonFiniteOrigin::Computation {
+        //!             operation: ArithmeticOperation::VectorSquaredNorm, ..
+        //!         },
+        //!         location: NonFiniteLocation::Step { index: 0, .. },
+        //!         ..
+        //!     })
+        //! );
+        //!
+        //! let tiny = f64::from_bits(16);
+        //! let small = Vector::<5>::try_new([3.0 * tiny, 4.0 * tiny, 0.0, 0.0, 0.0])?;
+        //! assert_eq!(small.norm()?, 5.0 * tiny);
+        //! assert_eq!(small.norm_squared()?, 0.0); // The raw squares underflow.
+        //! # Ok(())
+        //! # }
+        //! ```
+        //!
+        //! The large-vector assertion uses a tolerance for this fixture, not a certified
+        //! error bound. The small vector shows why taking the square root of
+        //! `norm_squared()` can lose a representable nonzero norm.
+    }
+
+    pub mod certified {
+        //! Certified dot products and affine differences.
+        //!
+        //! `Vector::dot_with_errbound()` evaluates the same left-to-right FMA tree as
+        //! `Vector::dot()` and returns its estimate together with a certified absolute
+        //! roundoff bound. `Vector::dot_difference_with_errbound()` directly evaluates
+        //!
+        //! ```text
+        //! Σᵢ axis[i] × (left[i] - right[i])
+        //! ```
+        //!
+        //! as two FMAs per coordinate. It does not first round `left - right` into a new
+        //! `Vector`, so the certificate covers the intended expression over the original
+        //! stored binary64 coordinates.
+        //!
+        //! The opaque [`ScalarWithErrorBound`](crate::ScalarWithErrorBound) exposes the estimate, absolute error bound,
+        //! and finite outward-rounded lower and upper bounds. Those endpoints support
+        //! positive, negative, and caller-selected threshold proofs:
+        //!
+        //! # A certified dot-product sign
+        //!
+        //! ```rust
+        //! use la_stack::prelude::*;
+        //!
+        //! # fn main() -> Result<(), LaError> {
+        //! let axis = Vector::<5>::try_new([2.0, -1.0, 3.0, 1.0, -2.0])?;
+        //! let point = Vector::<5>::try_new([4.0, 1.0, 2.0, 3.0, 1.0])?;
+        //! let positive = axis.dot_with_errbound(&point)?.and_then(|value| {
+        //!     if value.lower_bound() > 0.0 {
+        //!         Some(true)
+        //!     } else if value.upper_bound() <= 0.0 {
+        //!         Some(false)
+        //!     } else {
+        //!         None // An enclosure overlapping zero is inconclusive.
+        //!     }
+        //! });
+        //! assert_eq!(positive, Some(true));
+        //! # Ok(())
+        //! # }
+        //! ```
+        //!
+        //! # An affine threshold test
+        //!
+        //! ```rust
+        //! use la_stack::prelude::*;
+        //!
+        //! fn is_separated<const D: usize>(
+        //!     axis: &Vector<D>,
+        //!     left: &Vector<D>,
+        //!     right: &Vector<D>,
+        //!     threshold: f64,
+        //! ) -> Result<Option<bool>, LaError> {
+        //!     let Some(value) = axis.dot_difference_with_errbound(left, right)? else {
+        //!         return Ok(None);
+        //!     };
+        //!     if value.lower_bound() > threshold {
+        //!         Ok(Some(true))
+        //!     } else if value.upper_bound() <= threshold {
+        //!         Ok(Some(false))
+        //!     } else {
+        //!         Ok(None)
+        //!     }
+        //! }
+        //!
+        //! # fn main() -> Result<(), LaError> {
+        //! let axis = Vector::<2>::try_new([2.0, -1.0])?;
+        //! let left = Vector::<2>::try_new([4.0, 1.0])?;
+        //! let right = Vector::<2>::try_new([1.0, 3.0])?;
+        //! assert_eq!(is_separated(&axis, &left, &right, 1.0)?, Some(true));
+        //! # Ok(())
+        //! # }
+        //! ```
+        //!
+        //! An interval that overlaps the threshold is inconclusive, not equal. Likewise,
+        //! `Ok(None)` means gradual underflow or proof-only range exhaustion prevented a
+        //! certificate. A filtered-exact caller should rebuild the same dot or affine
+        //! expression in `BigRational` (available through the `exact` feature) or another
+        //! exact backend. A `LaError::NonFinite` instead reports that the specified FMA
+        //! estimate itself overflowed. These certified bounds describe roundoff in a fixed
+        //! arithmetic tree; they are distinct from user-selected numerical tolerances.
+    }
+
+    pub mod adaptive {
+        //! Adaptive determinant filtering with certified bounds.
+        //!
+        //! [`det_direct_with_errbound()`](crate::Matrix::det_direct_with_errbound) returns a closed-form determinant together with
+        //! the conservative absolute error bound used by the fast filter, computed from
+        //! one call that evaluates the determinant once and computes its matching bound.
+        //! It returns `None` when a D ≤ 4 computation may be affected by gradual
+        //! underflow, as well as for unsupported D ≥ 5 dimensions.
+        //! It returns `LaError::NonFinite` if the determinant or bound computation
+        //! overflows to NaN or infinity.
+        //! This method does NOT require the `exact` feature — it uses pure f64 arithmetic
+        //! and is available by default. Use [`det_errbound()`](crate::Matrix::det_errbound) when only the bound is needed.
+        //! The paired API enables custom adaptive-precision logic for geometric predicates:
+        //!
+        //! ```rust
+        //! use la_stack::prelude::*;
+        //!
+        //! # fn main() -> Result<(), LaError> {
+        //! let matrix = Matrix::<3>::identity();
+        //! let sign = matrix.det_direct_with_errbound()?.and_then(|value| {
+        //!     if value.determinant() > value.absolute_error_bound() {
+        //!         Some(1)
+        //!     } else if -value.determinant() > value.absolute_error_bound() {
+        //!         Some(-1)
+        //!     } else {
+        //!         None // The bound cannot establish a sign.
+        //!     }
+        //! });
+        //! assert_eq!(sign, Some(1));
+        //! # Ok(())
+        //! # }
+        //! ```
+        //!
+        //! With the `exact` feature, `Matrix::det_sign_exact()`
+        //! already handles filtering and exact fallback. The
+        //! [custom adaptive example](https://docs.rs/la-stack/latest/la_stack/guide/exact/index.html#adaptive-determinant-filtering)
+        //! shows positive, singular, and overflowing filter cases. It requires `exact`.
+        //!
+        //! The error coefficients (`ERR_COEFF_2`, `ERR_COEFF_3`, `ERR_COEFF_4`) are
+        //! conservative, dimension-specific constants, not caller-tunable tolerances. The
+        //! [mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md#determinants-and-certified-sign-filtering)
+        //! documents the bound and states its range preconditions. The constants are explicit
+        //! crate-root exports for advanced users who want to compose the same bound:
+        //! `use la_stack::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};`. They intentionally stay
+        //! out of the common prelude.
+    }
+
+    #[cfg(feature = "exact")]
+    pub mod exact {
+        //! Exact arithmetic over stored binary64 and rational inputs.
+        //!
+        //! The default build has **zero runtime dependencies**. Enable the optional
+        //! `exact` Cargo feature to add exact arithmetic methods using arbitrary-precision
+        //! rationals (this pulls in `num-bigint`, `num-rational`, and `num-traits` for
+        //! `BigRational`):
+        //!
+        //! See the [crate-level installation instructions](crate) for Cargo configuration.
+        //!
+        //! The feature exposes two deliberate input domains:
+        //!
+        //! - `Matrix<D>` / `Vector<D>` store finite binary64 inputs. Their exact methods
+        //!   treat each stored bit pattern as its exact rational value, so the determinant
+        //!   or solve stage introduces no further roundoff. They cannot recover information
+        //!   already lost before construction.
+        //! - `RationalMatrix<D>` / `RationalVector<D>` accept coefficients already
+        //!   assembled as `BigRational`. They preserve derived differences, squared norms,
+        //!   affine coefficients, and other rational expressions without an intermediate
+        //!   `f64` conversion.
+        //!
+        //! **Determinants:**
+        //!
+        //! - **`det_exact()`** — returns the exact determinant as a `BigRational`
+        //! - **`det_exact_f64()`** — returns the exact determinant as `f64` only when
+        //!   it is exactly representable (or `LaError::Unrepresentable` otherwise)
+        //! - **`det_exact_rounded_f64()`** — returns the exact determinant rounded to a
+        //!   finite `f64` using IEEE 754 round-to-nearest, ties-to-even
+        //! - **`det_sign_exact()`** — infallibly returns the provably correct
+        //!   `DeterminantSign` variant (`Negative`, `Zero`, or `Positive`)
+        //!
+        //! **Linear system solve:**
+        //!
+        //! - **`solve_exact(b)`** — solves `Ax = b` exactly, returning a
+        //!   `RationalVector<D>`
+        //! - **`solve_exact_f64(b)`** — solves `Ax = b` exactly, returning `Vector<D>` only when
+        //!   every component is exactly representable as `f64`
+        //! - **`solve_exact_rounded_f64(b)`** — solves `Ax = b` exactly, returning each
+        //!   component rounded to finite `f64` using IEEE 754 round-to-nearest,
+        //!   ties-to-even
+        //! - **`ExactF64Conversion`** — converts an existing exact determinant or solution
+        //!   under the strict or rounded contract without repeating exact elimination
+        //!
+        //! **Already-exact rational input:**
+        //!
+        //! - **`RationalMatrix::det_sign()`** — returns the exact sign without constructing
+        //!   a rational determinant
+        //! - **`RationalMatrix::det()`** — returns the exact `BigRational` determinant
+        //! - **`RationalMatrix::solve(&rhs)`** — returns a `RationalVector<D>` exact
+        //!   solution
+        //! - **`try_with_rational_matrix!`** — dispatches a runtime-selected dimension
+        //!   through D=8 to a const-generic rational matrix on stable Rust
+        //!
+        //! The `Matrix::det_exact*` value and conversion methods return
+        //! `LaError::DeterminantScaleOverflow` if their aggregate power-of-two scaling
+        //! exceeds the internal exponent representation. `RationalMatrix::det()` is
+        //! infallible because it clears rational row denominators without an exponent-scale
+        //! conversion. The exact solve methods for both input domains return
+        //! `LaError::Singular` with `SingularityReason::Exact` when the stored matrix is
+        //! exactly singular.
+        //!
+        //! For exact-to-f64 output, strict conversions use
+        //! `UnrepresentableReason::RequiresRounding` when explicit rounding can produce a
+        //! finite value and `UnrepresentableReason::NotFinite` otherwise. Rounded
+        //! conversions opt into nearest-even rounding but still report `NotFinite` when no
+        //! finite `f64` exists.
+        //!
+        //! # Preserving rational inputs
+        //!
+        //! The following 5×5 system has exact determinant 2^-60. Its exact rational inputs
+        //! therefore produce a unique solution through the general Bareiss path. Supplying
+        //! the same coefficients as `f64` inputs loses the `2^-60` perturbation at `1.0`,
+        //! making the leading rows identical and the binary64 system singular.
+        //!
+        //! ```rust
+        //! use core::assert_matches;
+        //!
+        //! use la_stack::prelude::*;
+        //!
+        //! fn main() -> Result<(), LaError> {
+        //!     // This is far below one binary64 ULP at 1.0, so 1.0 + 2^-60 rounds to 1.0.
+        //!     let epsilon = BigRational::new(1.into(), (1_u64 << 60).into());
+        //!     let one = BigRational::from_integer(1.into());
+        //!     let zero = BigRational::from_integer(0.into());
+        //!
+        //!     // The leading block is [[1, 1], [1, 1 + 2^-60]]. The remaining diagonal
+        //!     // extends the example to D=5, where the general Bareiss path is used.
+        //!     let matrix = RationalMatrix::<5>::try_from_fn(|row, col| match (row, col) {
+        //!         (0, 0 | 1) | (1, 0) => one.clone(),
+        //!         (1, 1) => &one + &epsilon,
+        //!         _ if row == col => one.clone(),
+        //!         _ => zero.clone(),
+        //!     })?;
+        //!     assert_eq!(matrix.det_sign(), DeterminantSign::Positive);
+        //!     assert_eq!(matrix.det(), epsilon);
+        //!
+        //!     let rhs = RationalVector::try_new([
+        //!         zero,
+        //!         -&epsilon,
+        //!         BigRational::from_integer(2.into()),
+        //!         BigRational::from_integer(3.into()),
+        //!         BigRational::from_integer(4.into()),
+        //!     ])?;
+        //!     let exact_solution = matrix.solve(&rhs)?;
+        //!     assert_eq!(
+        //!         exact_solution.as_array(),
+        //!         &[
+        //!             BigRational::from_integer(1.into()),
+        //!             BigRational::from_integer((-1).into()),
+        //!             BigRational::from_integer(2.into()),
+        //!             BigRational::from_integer(3.into()),
+        //!             BigRational::from_integer(4.into()),
+        //!         ]
+        //!     );
+        //!
+        //!     // Supplying the same coefficients as f64 inputs destroys the perturbation
+        //!     // and makes the matrix singular, even though the exact solution is integral.
+        //!     let epsilon_f64 = epsilon.try_to_f64()?;
+        //!     assert_eq!((1.0 + epsilon_f64).to_bits(), 1.0_f64.to_bits());
+        //!     let f64_matrix = Matrix::<5>::try_from_rows([
+        //!         [1.0, 1.0, 0.0, 0.0, 0.0],
+        //!         [1.0, 1.0 + epsilon_f64, 0.0, 0.0, 0.0],
+        //!         [0.0, 0.0, 1.0, 0.0, 0.0],
+        //!         [0.0, 0.0, 0.0, 1.0, 0.0],
+        //!         [0.0, 0.0, 0.0, 0.0, 1.0],
+        //!     ])?;
+        //!     let f64_rhs = Vector::<5>::try_new([0.0, -epsilon_f64, 2.0, 3.0, 4.0])?;
+        //!     let f64_solve = f64_matrix
+        //!         .lu(DEFAULT_SINGULAR_TOL)
+        //!         .and_then(|lu| lu.solve(f64_rhs));
+        //!     assert_matches!(
+        //!         f64_solve,
+        //!         Err(LaError::Singular { .. })
+        //!     );
+        //!     Ok(())
+        //! }
+        //! ```
+        //!
+        //! # Stored binary64 inputs and output conversion
+        //!
+        //! ```rust
+        //! use la_stack::prelude::*;
+        //!
+        //! fn main() -> Result<(), LaError> {
+        //!     // Exact determinant
+        //!     let m = Matrix::<3>::try_from_rows([
+        //!         [1.0, 2.0, 3.0],
+        //!         [4.0, 5.0, 6.0],
+        //!         [7.0, 8.0, 9.0],
+        //!     ])?;
+        //!     assert_eq!(m.det_sign_exact(), DeterminantSign::Zero); // exactly singular
+        //!
+        //!     let det = m.det_exact()?;
+        //!     assert_eq!(det, BigRational::from_integer(0.into())); // exact zero
+        //!     let det_f64 = det.try_to_f64()?;
+        //!     assert_eq!(det_f64, 0.0);
+        //!
+        //!     // If strict exact-to-f64 conversion would require rounding, opt in
+        //!     // explicitly with the rounded API.
+        //!     let inexact = Matrix::<2>::try_from_rows([
+        //!         [1.0 + f64::EPSILON, 0.0],
+        //!         [0.0, 1.0 - f64::EPSILON],
+        //!     ])?;
+        //!     let exact_det = inexact.det_exact()?;
+        //!     let rounded_det = match exact_det.try_to_f64() {
+        //!         Ok(det) => det,
+        //!         Err(err) if err.requires_rounding() => exact_det.to_rounded_f64()?,
+        //!         Err(err) => return Err(err),
+        //!     };
+        //!     assert_eq!(rounded_det.to_bits(), 1.0f64.to_bits());
+        //!
+        //!     // If the exact determinant cannot fit in f64, keep the BigRational value.
+        //!     let big = f64::MAX / 2.0;
+        //!     let huge = Matrix::<3>::try_from_rows([
+        //!         [0.0, 0.0, 1.0],
+        //!         [big, 0.0, 1.0],
+        //!         [0.0, big, 1.0],
+        //!     ])?;
+        //!     let huge_det = huge.det_exact()?;
+        //!     assert_eq!(
+        //!         huge_det
+        //!             .try_to_f64()
+        //!             .err()
+        //!             .and_then(|err| err.unrepresentable_reason()),
+        //!         Some(UnrepresentableReason::NotFinite)
+        //!     );
+        //!     println!("exact determinant = {huge_det}");
+        //!
+        //!     // Exact linear system solve
+        //!     let a = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
+        //!     let b = Vector::<2>::try_new([5.0, 11.0])?;
+        //!     let exact_x = a.solve_exact(b)?;
+        //!     let x = exact_x.try_to_f64()?.into_array();
+        //!     assert!((x[0] - 1.0).abs() <= f64::EPSILON);
+        //!     assert!((x[1] - 2.0).abs() <= f64::EPSILON);
+        //!
+        //!     Ok(())
+        //! }
+        //! ```
+        //!
+        //! With the `exact` feature enabled, `RationalMatrix`, `RationalVector`,
+        //! `DeterminantSign`, `ExactF64Conversion`, `BigInt`, and `BigRational` are
+        //! re-exported from the crate root and prelude,
+        //! alongside the most commonly needed `num-traits` items (`FromPrimitive`,
+        //! `ToPrimitive`, `Signed`). This lets consumers construct exact values
+        //! (`BigRational::from_f64`, `from_i64`), query sign (`is_positive` /
+        //! `is_negative`), and convert back to `f64` (`try_to_f64`, `to_rounded_f64`, or
+        //! the raw `to_f64`) with a single
+        //! `use la_stack::prelude::*;` — no need to add `num-bigint`, `num-rational`,
+        //! or `num-traits` to their own `Cargo.toml`. Use
+        //! `DeterminantSign::as_i8()` only when numeric −1/0/+1 interoperability is
+        //! required.
+        //!
+        //! For `det_sign_exact()`, D ≤ 4 matrices first use a fast f64 filter
+        //! (error-bounded [`det_direct()`](crate::Matrix::det_direct)) when its rounded intermediates stay in the normal
+        //! range or are exact structural zeros. An inconclusive filter falls back to the
+        //! same direct determinant expansion in `BigInt`. D ≥ 5 skips the closed-form
+        //! filter and uses fraction-free Bareiss elimination in `BigInt`.
+        //! Because `Matrix` stores only finite entries, arithmetic range failures in the
+        //! filter are inconclusive rather than errors and the exact fallback is total.
+        //!
+        //! # A five-dimensional rational solve
+        //!
+        //! ```rust
+        //! use core::assert_matches;
+        //!
+        //! use la_stack::prelude::*;
+        //!
+        //! # fn main() -> Result<(), LaError> {
+        //! // A tridiagonal exact matrix with determinant 6.
+        //! let matrix = RationalMatrix::<5>::try_from_fn(|row, col| {
+        //!     BigRational::from_integer(if row == col {
+        //!         2.into()
+        //!     } else if row.abs_diff(col) == 1 {
+        //!         1.into()
+        //!     } else {
+        //!         0.into()
+        //!     })
+        //! })?;
+        //! let numerators = [4, 8, 12, 16, 14];
+        //! let rhs = RationalVector::try_from_fn(|row| {
+        //!     BigRational::new(numerators[row].into(), 3.into())
+        //! })?;
+        //! let solution = matrix.solve(&rhs)?;
+        //! let expected = [1, 2, 3, 4, 5].map(|n| BigRational::new(n.into(), 3.into()));
+        //! assert_eq!(solution.as_array(), &expected);
+        //!
+        //! // Keep the exact solution until the caller explicitly opts into rounding.
+        //! assert_matches!(
+        //!     solution.try_to_f64(),
+        //!     Err(LaError::Unrepresentable {
+        //!         index: Some(0),
+        //!         reason: UnrepresentableReason::RequiresRounding,
+        //!         ..
+        //!     })
+        //! );
+        //! let rounded = solution.to_rounded_f64()?;
+        //! assert_eq!(rounded.as_array(), &[1.0 / 3.0, 2.0 / 3.0, 1.0, 4.0 / 3.0, 5.0 / 3.0]);
+        //! # Ok(())
+        //! # }
+        //! ```
+        //!
+        //! # Rational dimension dispatch
+        //!
+        //! [`try_with_rational_matrix!`](crate::try_with_rational_matrix) selects a
+        //! concrete `RationalMatrix<N>` for dimensions 0 through
+        //! [`MAX_RATIONAL_MATRIX_DISPATCH_DIM`](crate::MAX_RATIONAL_MATRIX_DISPATCH_DIM)
+        //! (8). Larger dimensions return [`LaError::UnsupportedDimension`](crate::LaError::UnsupportedDimension),
+        //! converted through `From<LaError>` into the closure's declared error type.
+        //! The macro preserves the const-generic representation.
+        //!
+        //! Rational constructors include `try_from_rows` / `try_new` and
+        //! `try_from_fn`; `as_rows` / `as_array` and `get` borrow their stored
+        //! values, while `into_rows` / `into_array` return the owned arrays.
+        //!
+        //! # Adaptive determinant filtering
+        //!
+        //! This example requires `exact` and illustrates a custom filter with exact
+        //! fallback. Use [`Matrix::det_sign_exact`](crate::Matrix::det_sign_exact) directly
+        //! when no custom filtering policy is needed.
+        //!
+        //! ```rust
+        //! use la_stack::prelude::*;
+        //!
+        //! fn adaptive_det_sign<const D: usize>(
+        //!     matrix: &Matrix<D>,
+        //! ) -> DeterminantSign {
+        //!     if let Ok(Some(estimate)) = matrix.det_direct_with_errbound() {
+        //!         if estimate.determinant().abs() > estimate.absolute_error_bound() {
+        //!             return if estimate.determinant() > 0.0 {
+        //!                 DeterminantSign::Positive
+        //!             } else {
+        //!                 DeterminantSign::Negative
+        //!             };
+        //!         }
+        //!     }
+        //!
+        //!     matrix.det_sign_exact()
+        //! }
+        //!
+        //! fn main() -> Result<(), LaError> {
+        //!     let identity = Matrix::<3>::identity();
+        //!     assert_eq!(
+        //!         adaptive_det_sign(&identity),
+        //!         DeterminantSign::Positive
+        //!     );
+        //!
+        //!     // A zero determinant cannot pass the f64 sign filter, so this exercises
+        //!     // the exact fallback.
+        //!     let singular = Matrix::<3>::try_from_rows([
+        //!         [1.0, 2.0, 3.0],
+        //!         [4.0, 5.0, 6.0],
+        //!         [7.0, 8.0, 9.0],
+        //!     ])?;
+        //!     assert_eq!(adaptive_det_sign(&singular), DeterminantSign::Zero);
+        //!
+        //!     // The f64 filter overflows for this finite matrix, but the exact fallback
+        //!     // still resolves its positive determinant sign.
+        //!     let big = f64::MAX / 2.0;
+        //!     let overflowing = Matrix::<3>::try_from_rows([
+        //!         [0.0, 0.0, 1.0],
+        //!         [big, 0.0, 1.0],
+        //!         [0.0, big, 1.0],
+        //!     ])?;
+        //!     assert_eq!(
+        //!         adaptive_det_sign(&overflowing),
+        //!         DeterminantSign::Positive
+        //!     );
+        //!
+        //!     Ok(())
+        //! }
+        //! ```
+    }
+}
 mod error;
 #[cfg(feature = "exact")]
 mod exact;

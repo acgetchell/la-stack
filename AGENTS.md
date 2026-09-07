@@ -230,12 +230,32 @@ When user requests commit message generation:
 
 - `src/lib.rs` includes `README.md` with `#![doc = include_str!("../README.md")]`, so README examples are the
   docs.rs landing page examples.
+- Keep the README quickstart and brief capability descriptions discoverable;
+  put fuller worked API examples and caller contracts in the documentation-only
+  `guide` module in `src/lib.rs`. Preserve useful detail in the linked guide when
+  shortening README sections, including numerical limitations and error semantics.
+- Link API references and worked API guides to docs.rs. Keep repository-owned
+  mathematical background, benchmark reports, roadmap, contributing, and release
+  instructions on GitHub, using absolute URLs to the intended repository revision.
+- README links and Contents anchors must work both on GitHub and in generated
+  rustdoc. Repository-relative file links can resolve incorrectly from rustdoc;
+  verify destinations in both contexts and use intra-doc links within Rust docs
+  where the referenced item is available under the selected features.
+- Choose docs.rs `latest` links for intentionally current guidance and explicit
+  versions for release-specific contracts. docs.rs builds published crates, so
+  merging changes does not publish new guide pages. Local rendering checks do
+  not establish availability on the published site.
 - When changing Rust examples in `README.md`, mirror executable versions in the private `readme_doctests` module in
   `src/lib.rs`. Keep mirrors hidden/private so they do not duplicate the docs.rs landing page, but make them runnable
   by `cargo test --doc`.
 - README examples that require optional features may remain `rust,ignore` in README for default-feature doctest
   compatibility, but must have a `#[cfg(feature = "...")]` hidden doctest mirror in `src/lib.rs` and be verified with
   the matching feature set (for example, `cargo test --features exact --doc`).
+- Guide examples run directly as doctests; gate feature-dependent guides with
+  the matching feature and remove obsolete private mirrors when moving examples
+  out of README. Run `just doc-check` for changed guide docs and inspect generated
+  pages and anchors for explicit links, which rustdoc does not validate. Validate
+  changed executable examples with the default and matching feature doctest recipes.
 - When intentionally updating package versions or dependency snippets, keep README `la-stack` dependency examples in
   sync with the package `version` in `Cargo.toml`. Do not perform version bumps unless explicitly requested by the
   maintainer; see **Public-API stability** above.
