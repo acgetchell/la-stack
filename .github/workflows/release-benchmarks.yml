@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing stable vX.Y.Z tag with a mutable draft release
+        description: Stable vX.Y.Z tag matching the workflow ref, with a mutable draft release
         required: true
         type: string
 
@@ -48,6 +48,10 @@ jobs:
             echo "::error::Expected an existing stable vX.Y.Z tag"
             exit 1
           fi
+          if [[ "$GITHUB_REF" != "refs/tags/$RELEASE_TAG" ]]; then
+            echo "::error::Dispatch with --ref $RELEASE_TAG and the matching tag input"
+            exit 1
+          fi
           # The release-by-tag endpoint only guarantees published releases.
           releases="$(gh api "repos/$GH_REPO/releases?per_page=100" --paginate --slurp)"
           release_id="$(jq -er --arg tag "$RELEASE_TAG" '
@@ -60,6 +64,10 @@ jobs:
           # Fully qualify the tag to avoid a same-named branch; peel annotated tags.
           commit="$(gh api "repos/$GH_REPO/commits/refs/tags/$RELEASE_TAG" --jq .sha)"
           [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          if [[ "$commit" != "$GITHUB_SHA" ]]; then
+            echo "::error::Release tag no longer matches the workflow commit"
+            exit 1
+          fi
           echo "release-id=$release_id" >> "$GITHUB_OUTPUT"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
@@ -79,7 +87,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.validate-release.outputs.commit }}
+          # Use the workflow's own commit and tag cache scope, never a separate ref.
+          ref: ${{ github.sha }}
           persist-credentials: false
         timeout-minutes: 2
 

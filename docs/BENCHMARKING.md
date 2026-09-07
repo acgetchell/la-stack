@@ -688,11 +688,13 @@ correctness gate before timing or packaging the artifact. The committed release
 comparison is `docs/performance.md`, created by `just performance-release`.
 
 Follow [Releasing](RELEASING.md#5-create-the-draft-github-release): create the
-tagged stable release as a draft, dispatch the workflow from `main` with
-`-f tag="$TAG"`, and let the workflow upload and verify the archive before it
+tagged stable release as a draft, dispatch the workflow with
+`--ref "$TAG" -f tag="$TAG"`, and let the workflow upload and verify the archive before it
 publishes the draft. Dispatch requires a stable `vX.Y.Z` tag and exactly one
 mutable draft with that tag as its title. The producer checks out the resolved
-tag commit; the publisher rechecks that commit and the captured release ID.
+tag commit only when it matches the workflow's own commit. The dispatch ref
+must be that same tag, which keeps execution in the tag's cache scope; the
+publisher rechecks the commit and captured release ID.
 Missing releases, prereleases, and published releases are rejected before
 benchmarking. Publication makes the attached evidence immutable.
 

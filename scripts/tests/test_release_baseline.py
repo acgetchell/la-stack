@@ -83,7 +83,7 @@ def test_complete_dataset_round_trips_through_workflow_archive(dataset: tuple[Pa
     )
     assert result.returncode == 0, result.stderr
     asset = f"la-stack-{BASELINE}-criterion-baseline.tar.gz"
-    assert output.read_text() == f"asset={asset}\nartifact-name=bench-baseline-{BASELINE}-123-2\n"
+    assert output.read_text(encoding="utf-8") == f"asset={asset}\nartifact-name=bench-baseline-{BASELINE}-123-2\n"
     with tarfile.open(tmp_path / asset) as archive:
         for ids in IDS.values():
             for benchmark in ids:
@@ -144,7 +144,7 @@ def test_invalid_measurement_blocks_publication(dataset: tuple[Path, Path], corr
             times = [2.0] * 99 if corruption == "short-samples" else [float("inf")] * 100
             write_json(directory / "sample.json", {"iters": [1.0] * 100, "times": times})
         else:
-            estimates = json.loads((directory / "estimates.json").read_text())
+            estimates = json.loads((directory / "estimates.json").read_text(encoding="utf-8"))
             interval = estimates["median"]["confidence_interval"]
             interval["lower_bound" if corruption == "reversed-interval" else "confidence_level"] = 4.0
             write_json(directory / "estimates.json", estimates)
@@ -243,7 +243,8 @@ def test_workflow_requires_preflight_and_isolates_publication_permissions() -> N
     assert "needs: validate-release" in producer
     assert "validated-attempt: ${{ github.run_attempt }}" in preflight
     assert "validated-attempt: ${{ needs.validate-release.outputs.validated-attempt }}" in producer
-    assert "ref: ${{ needs.validate-release.outputs.commit }}" in producer
+    assert "ref: ${{ github.sha }}" in producer
+    assert "ref: ${{ needs.validate-release.outputs.commit }}" not in producer
     assert "contents: write" not in producer
     assert "persist-credentials: false" in producer
     assert "contents: write" in preflight
@@ -301,8 +302,8 @@ def test_failed_suite_retains_timing_and_does_not_mark_completion(tmp_path: Path
         },
     )
     assert result.returncode == 0, result.stderr
-    assert "| vs_linalg | failure |" in summary.read_text()
-    assert "| exact | skipped |" in summary.read_text()
+    assert "| vs_linalg | failure |" in summary.read_text(encoding="utf-8")
+    assert "| exact | skipped |" in summary.read_text(encoding="utf-8")
 
 
 # Only the GitHub boundary is substituted. jq predicates, checksums, shell
@@ -378,6 +379,8 @@ def github_release(tmp_path: Path) -> dict[str, str]:
         "RELEASE_ID": "42",
         "RELEASE_COMMIT": "a" * 40,
         "RELEASE_ASSET": asset,
+        "GITHUB_REF": f"refs/tags/{BASELINE}",
+        "GITHUB_SHA": "a" * 40,
         "GITHUB_OUTPUT": (tmp_path / "outputs").as_posix(),
     }
 
@@ -385,11 +388,27 @@ def github_release(tmp_path: Path) -> dict[str, str]:
 def test_preflight_captures_draft_identity_and_peeled_tag_commit(tmp_path: Path, github_release: dict[str, str]) -> None:
     result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, github_release)
     assert result.returncode == 0, result.stderr
-    assert (tmp_path / "outputs").read_text() == f"release-id=42\ncommit={'a' * 40}\n"
-    calls = (tmp_path / "api-calls").read_text()
+    assert (tmp_path / "outputs").read_text(encoding="utf-8") == f"release-id=42\ncommit={'a' * 40}\n"
+    calls = (tmp_path / "api-calls").read_text(encoding="utf-8")
     assert "--paginate --slurp" in calls
     assert f"commits/refs/tags/{BASELINE}" in calls
     assert "--method" not in calls
+
+
+@pytest.mark.parametrize("ref", ["refs/heads/main", f"refs/heads/{BASELINE}", "refs/tags/v9.9.9", ""])
+def test_preflight_rejects_dispatch_outside_release_tag(tmp_path: Path, github_release: dict[str, str], ref: str) -> None:
+    result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, {**github_release, "GITHUB_REF": ref})
+    assert result.returncode == 1
+    assert f"Dispatch with --ref {BASELINE}" in result.stdout
+    assert not (tmp_path / "api-calls").exists()
+    assert not (tmp_path / "outputs").exists()
+
+
+def test_preflight_rejects_tag_moved_since_dispatch(tmp_path: Path, github_release: dict[str, str]) -> None:
+    result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, {**github_release, "RELEASE_COMMIT": "b" * 40})
+    assert result.returncode == 1
+    assert "Release tag no longer matches the workflow commit" in result.stdout
+    assert not (tmp_path / "outputs").exists()
 
 
 @pytest.mark.parametrize("validated_attempt", ["", "1", "2"])
@@ -432,7 +451,7 @@ def test_preflight_rejects_unsuitable_release(tmp_path: Path, github_release: di
     write_json(tmp_path / "releases.json", [releases])
     result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, github_release)
     assert result.returncode != 0
-    assert "commits/" not in (tmp_path / "api-calls").read_text()
+    assert "commits/" not in (tmp_path / "api-calls").read_text(encoding="utf-8")
     assert not (tmp_path / "outputs").exists()
 
 
@@ -457,7 +476,7 @@ def test_publisher_verifies_durable_asset_before_publication(tmp_path: Path, git
         shutil.copyfile(tmp_path / "uploaded-assets.json", tmp_path / "assets.json")
     result = run_shell(GITHUB_STUB + shell_step("Attach baseline and publish draft"), tmp_path, github_release)
     assert result.returncode == 0, result.stderr
-    calls = (tmp_path / "api-calls").read_text().splitlines()
+    calls = (tmp_path / "api-calls").read_text(encoding="utf-8").splitlines()
     assert calls[-1] == "api repos/owner/repo/releases/42 --method PATCH -F draft=false"
     assert calls[-2] == "api repos/owner/repo/releases/42/assets?per_page=100 --paginate --slurp"
     assert calls.count("api repos/owner/repo/releases/42") == 2
@@ -493,7 +512,7 @@ def test_moved_tag_stops_publication(tmp_path: Path, github_release: dict[str, s
 @pytest.mark.parametrize("existing", [False, True])
 @pytest.mark.parametrize("problem", ["missing", "duplicate", "wrong-name", "wrong-digest", "wrong-size", "starter", "no-digest"])
 def test_bad_durable_asset_stops_publication(tmp_path: Path, github_release: dict[str, str], existing: bool, problem: str) -> None:
-    metadata = json.loads((tmp_path / "uploaded-assets.json").read_text())[1][0]
+    metadata = json.loads((tmp_path / "uploaded-assets.json").read_text(encoding="utf-8"))[1][0]
     assets = [metadata]
     if problem == "missing":
         assets = []
@@ -529,4 +548,4 @@ def test_publication_failure_propagates_without_deleting_uploaded_asset(tmp_path
     assert result.returncode != 0
     assert (tmp_path / "upload-called").exists()
     assert (tmp_path / "publish-called").exists()
-    assert "DELETE" not in (tmp_path / "api-calls").read_text()
+    assert "DELETE" not in (tmp_path / "api-calls").read_text(encoding="utf-8")

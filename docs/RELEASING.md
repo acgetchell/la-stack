@@ -239,16 +239,20 @@ before the benchmark archive can be attached. GitHub recommends this
 **Starting this workflow also authorizes automatic publication.** You do not
 need a separate command to convert the draft into a published release.
 
-Start the workflow from `main` with the explicit release tag:
+Start the workflow from the release tag, passing the same tag as its input:
 
 ```bash
-gh workflow run release-benchmarks.yml --ref main -f tag="$TAG"
+gh workflow run release-benchmarks.yml --ref "$TAG" -f tag="$TAG"
 ```
 
 Once GitHub accepts the command, you can close the terminal and leave the
 workflow running. It runs on GitHub's runners and needs no further input to
 publish the release. Check its status later, when convenient, on the
 [Release Benchmarks Actions page](https://github.com/acgetchell/la-stack/actions/workflows/release-benchmarks.yml).
+
+The workflow runs from the tagged version of its definition, so the tag must
+include this release workflow. Using the tag as the workflow ref keeps execution
+in that tag's cache scope. Dispatching from `main` or a different tag is rejected.
 
 The workflow automatically:
 
@@ -264,7 +268,8 @@ Follow [Recovering a failed run](#recovering-a-failed-run) to retry.
 Before benchmarking, the workflow requires
 exactly one mutable, non-prerelease draft whose tag and title match the stable
 `vX.Y.Z` input, and resolves the existing tag to a commit. It benchmarks that
-commit, then rechecks the captured release ID and tag commit before attaching
+commit only if it matches the workflow's own commit, then rechecks the captured
+release ID and tag commit before attaching
 the archive and again before publication. Do not edit the draft, move the tag,
 or publish manually while the workflow is running.
 
