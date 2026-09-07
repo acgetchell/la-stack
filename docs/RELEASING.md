@@ -242,6 +242,15 @@ dependency caches, including tool binaries. It disables Rust toolchain and
 with `cargo install --locked`. Only the separate publisher job receives
 `contents: write` to attach the packaged baseline to the release.
 
+The producer budgets 150 minutes for `vs_linalg` and 90 minutes for `exact`
+within a 285-minute job. Both suites retain full release sampling. Inventory
+and raw-data validation must succeed before the single complete archive is
+packaged and uploaded; inspect the suite timing summary when a run fails.
+See the [hosted runtime budget](BENCHMARKING.md#hosted-release-runtime-budget)
+for measured history, capacity estimates, and headroom. A manual
+[workflow validation run](BENCHMARKING.md#validate-the-release-workflow)
+exercises packaging and temporary upload without attaching a release asset.
+
 ### 7. Remove the merged release branch
 
 After publication and baseline verification succeed:

@@ -100,6 +100,11 @@ owns the Python script inventory and entry points for comparisons, plotting,
 release metadata, changelog generation/archiving, and tag preparation.
 The [justfile](../justfile) owns executable development workflows.
 
+`scripts/release_baseline.py` owns release-suite inventory and complete raw
+Criterion validation. The release workflow packages only datasets that pass
+that gate; its regression and archive tests live in
+`scripts/tests/test_release_baseline.py`.
+
 ## Documentation owners
 
 Use [Documentation guidance](dev/docs.md) for README, references, mathematical
