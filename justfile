@@ -571,7 +571,7 @@ lint-config: json-check toml-ci yaml-ci github-actions-check justfile-fmt-check
 lint-docs: markdown-ci docs-version-check
 
 # Markdown
-markdown-check: _ensure-rumdl
+markdown-check: _ensure-rumdl _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -585,24 +585,7 @@ markdown-check: _ensure-rumdl
     done < <(git ls-files -co --exclude-standard -z -- '*.md')
     if [ "${#files[@]}" -gt 0 ]; then
         printf '%s\0' "${files[@]}" | xargs -0 -n100 rumdl check
-        violations=0
-        for file in "${files[@]}"; do
-            line_number=0
-            while IFS= read -r line || [[ -n "$line" ]]; do
-                line_number=$((line_number + 1))
-                case "$line" in
-                    '|'*) continue ;;
-                esac
-                if [ "${#line}" -gt 160 ]; then
-                    printf '%s:%d: line length %d exceeds 160\n' "$file" "$line_number" "${#line}" >&2
-                    violations=$((violations + 1))
-                fi
-            done < "$file"
-        done
-        if [ "$violations" -gt 0 ]; then
-            echo "Markdown raw line-length check failed." >&2
-            exit 1
-        fi
+        uv run --locked scripts/check_markdown_lines.py "${files[@]}"
     else
         echo "No markdown files found to check."
     fi

@@ -783,7 +783,7 @@ pub mod guide {
         //! required.
         //!
         //! For `det_sign_exact()`, D ≤ 4 matrices first use a fast f64 filter
-        //! (error-bounded [`det_direct()`](crate::Matrix::det_direct)) when its rounded intermediates stay in the normal
+        //! (error-bounded [`det_direct_with_errbound()`](crate::Matrix::det_direct_with_errbound)) when its rounded intermediates stay in the normal
         //! range or are exact structural zeros. An inconclusive filter falls back to the
         //! same direct determinant expansion in `BigInt`. D ≥ 5 skips the closed-form
         //! filter and uses fraction-free Bareiss elimination in `BigInt`.

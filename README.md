@@ -36,7 +36,7 @@ while keeping the API intentionally small and explicit.
   - [Outward-rounded interval determinants](#outward-rounded-interval-determinants)
   - [Overflow-safe Euclidean norms](#overflow-safe-euclidean-norms)
 - [API at a glance](#-api-at-a-glance)
-- [Documentation Map](#-documentation-map)
+- [Documentation Map](#documentation-map)
 - [Benchmarks](#-benchmarks-vs-nalgebrafaer)
 - [Examples](#-examples)
 - [Contributing](#-contributing)
@@ -353,6 +353,8 @@ for the full contracts.
 [api-tolerance]: https://docs.rs/la-stack/latest/la_stack/struct.Tolerance.html
 [api-error]: https://docs.rs/la-stack/latest/la_stack/enum.LaError.html
 [api-contracts]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#storage-access-and-errors
+
+<a name="documentation-map"></a>
 
 ## 🗺️ Documentation Map
 

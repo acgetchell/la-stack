@@ -159,8 +159,8 @@ jobs:
             echo "::notice::Baseline found — comparing against main"
             echo "comparison_available=true" >> "$GITHUB_OUTPUT"
             # --baseline-lenient rather than --baseline: benches added on the
-            # PR branch that don't yet exist in the main baseline get a
-            # "no baseline data" notice instead of aborting the whole run.
+            # PR branch that don't yet exist in the main baseline run without
+            # a comparison instead of aborting the whole run.
             # Keep normal sampling; plots/HTML are unused by the summary.
             cargo bench --locked --features bench,exact --bench exact \
               -- --noplot --baseline-lenient main 2>&1 | tee bench-output.txt
@@ -209,6 +209,18 @@ jobs:
 
           comparison_available="${BENCH_COMPARISON_AVAILABLE:-}"
           regression="${BENCH_REGRESSION:-}"
+
+          # Lenient comparisons silently skip missing baselines. Require a
+          # change report for every analyzed case before claiming coverage.
+          if [ -f bench-output.txt ]; then
+            analyzed="$(grep -c '^Benchmarking .*: Analyzing$' bench-output.txt || true)"
+            compared="$(grep -c '^[[:space:]]*change:' bench-output.txt || true)"
+            if [ "$analyzed" = "0" ] || [ "$analyzed" != "$compared" ]; then
+              comparison_available=false
+            fi
+          else
+            comparison_available=false
+          fi
 
           if [ "$comparison_available" != "true" ] || [ -z "$regression" ]; then
             {
