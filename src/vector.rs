@@ -27,17 +27,18 @@ use crate::{ArithmeticOperation, LaError};
 ///
 /// # Examples
 /// ```
+/// use core::assert_matches;
 /// use la_stack::prelude::*;
 ///
 /// # fn main() -> Result<(), LaError> {
 /// let left = Vector::<2>::try_new([1.0, 2.0])?;
 /// let right = Vector::<2>::try_new([3.0, 4.0])?;
-/// let bounded: ScalarWithErrorBound = left
-///     .dot_with_errbound(&right)?
-///     .expect("small integer products have a binary64 bound");
-/// assert_eq!(bounded.estimate(), 11.0);
-/// assert!(bounded.lower_bound() <= 11.0);
-/// assert!(bounded.upper_bound() >= 11.0);
+/// let certificate = left.dot_with_errbound(&right)?;
+/// assert_eq!(certificate.map(ScalarWithErrorBound::estimate), Some(11.0));
+/// // Preserve None: without a certificate, an exact fallback is needed
+/// // before making a claim about the exact-real result.
+/// let enclosure = certificate.map(|bounded| (bounded.lower_bound(), bounded.upper_bound()));
+/// assert_matches!(enclosure, Some((lower, upper)) if lower <= 11.0 && 11.0 <= upper);
 /// # Ok(())
 /// # }
 /// ```
@@ -82,8 +83,8 @@ impl ScalarWithErrorBound {
 
     /// Construct a validated public result with finite outward endpoints.
     ///
-    /// The `TwoSum` residuals determine whether either rounded endpoint must be
-    /// moved by one binary64 value. Returning `None` instead of publishing an
+    /// Exact addition residuals determine whether either rounded endpoint must
+    /// move by one binary64 value. Returning `None` instead of publishing an
     /// infinite endpoint enforces the public proof-unavailable contract.
     const fn try_new(estimate: f64, absolute_error_bound: f64) -> Option<Self> {
         if !estimate.is_finite() || !absolute_error_bound.is_finite() || absolute_error_bound < 0.0
@@ -502,11 +503,21 @@ impl<const D: usize> Vector<D> {
     /// # fn main() -> Result<(), LaError> {
     /// let left = Vector::<3>::try_new([1.0, 2.0, 3.0])?;
     /// let right = Vector::<3>::try_new([4.0, 5.0, 6.0])?;
-    /// let bounded = left
-    ///     .dot_with_errbound(&right)?
-    ///     .expect("ordinary inputs have a binary64 bound");
-    /// assert_eq!(bounded.estimate(), 32.0);
-    /// assert!(bounded.lower_bound() > 0.0);
+    /// let positive = left.dot_with_errbound(&right)?.and_then(|bounded| {
+    ///     if bounded.lower_bound() > 0.0 {
+    ///         Some(true)
+    ///     } else if bounded.upper_bound() <= 0.0 {
+    ///         Some(false)
+    ///     } else {
+    ///         None // The enclosure cannot establish whether the result is positive.
+    ///     }
+    /// });
+    /// assert_eq!(positive, Some(true));
+    ///
+    /// // Finite inputs can also lack a certificate; use an exact fallback
+    /// // before deciding the sign in this case.
+    /// let tiny = Vector::<2>::try_new([1e-200, 1e-200])?;
+    /// assert_eq!(tiny.dot_with_errbound(&tiny)?, None);
     /// # Ok(())
     /// # }
     /// ```
@@ -574,11 +585,17 @@ impl<const D: usize> Vector<D> {
     /// let axis = Vector::<2>::try_new([2.0, -1.0])?;
     /// let left = Vector::<2>::try_new([4.0, 1.0])?;
     /// let right = Vector::<2>::try_new([1.0, 3.0])?;
-    /// let bounded = axis
-    ///     .dot_difference_with_errbound(&left, &right)?
-    ///     .expect("ordinary inputs have a binary64 bound");
-    /// assert_eq!(bounded.estimate(), 8.0);
-    /// assert!(bounded.lower_bound() > 1.0);
+    /// let separated = axis.dot_difference_with_errbound(&left, &right)?.and_then(|bounded| {
+    ///     if bounded.lower_bound() > 1.0 {
+    ///         Some(true)
+    ///     } else if bounded.upper_bound() <= 1.0 {
+    ///         Some(false)
+    ///     } else {
+    ///         None // An exact fallback is needed to decide this threshold test.
+    ///     }
+    /// });
+    /// // An unavailable certificate also remains None through and_then.
+    /// assert_eq!(separated, Some(true));
     /// # Ok(())
     /// # }
     /// ```
@@ -732,7 +749,10 @@ impl<const D: usize> Vector<D> {
     ///
     /// let large = Vector::<2>::try_new([1.0e200, 1.0e200])?;
     /// assert!(large.norm()?.is_finite());
-    /// assert!(large.norm_squared().is_err());
+    /// assert_eq!(
+    ///     large.norm_squared(),
+    ///     Err(LaError::non_finite_computation_step(ArithmeticOperation::VectorSquaredNorm, 0)),
+    /// );
     /// # Ok(())
     /// # }
     /// ```
@@ -794,6 +814,82 @@ mod tests {
     use pastey::paste;
 
     use super::*;
+
+    fn assert_certified_proof_loss_survives_normal_terms<const D: usize>() {
+        let mut left_data = [0.0; D];
+        left_data[0] = f64::MIN_POSITIVE;
+        left_data[D - 1] = 1.0;
+        let mut right_data = [1.0; D];
+        right_data[0] = 0.5;
+        let left = Vector::new(left_data);
+        let right = Vector::new(right_data);
+
+        // The first product is subnormal; the last restores a normal estimate,
+        // but cannot restore the lost certificate for the complete reduction.
+        assert_abs_diff_eq!(left.dot(&right).unwrap(), 1.0, epsilon = 0.0);
+        assert_eq!(left.dot_with_errbound(&right), Ok(None));
+        assert_eq!(
+            left.dot_difference_with_errbound(&right, &Vector::zero()),
+            Ok(None)
+        );
+    }
+
+    fn assert_certified_proof_loss_preserves_later_overflow<const D: usize>() {
+        let mut axis_data = [0.0; D];
+        axis_data[0] = f64::MIN_POSITIVE;
+        axis_data[D - 1] = f64::MAX;
+        let axis = Vector::new(axis_data);
+        let mut left_data = [0.0; D];
+        left_data[0] = 0.5;
+        left_data[D - 1] = 2.0;
+
+        assert_eq!(
+            axis.dot_with_errbound(&Vector::new(left_data)),
+            Err(LaError::non_finite_computation_step(
+                ArithmeticOperation::VectorDotProduct,
+                D - 1,
+            ))
+        );
+        let difference_error = Err(LaError::non_finite_computation_step(
+            ArithmeticOperation::VectorDotDifference,
+            D - 1,
+        ));
+        assert_eq!(
+            axis.dot_difference_with_errbound(&Vector::new(left_data), &Vector::zero()),
+            difference_error
+        );
+
+        // Overflow in the second FMA must also remain observable after the
+        // earlier coordinate has already made certification unavailable.
+        left_data[D - 1] = 0.0;
+        let mut right_data = [0.0; D];
+        right_data[D - 1] = -2.0;
+        assert_eq!(
+            axis.dot_difference_with_errbound(&Vector::new(left_data), &Vector::new(right_data)),
+            difference_error
+        );
+    }
+
+    macro_rules! gen_certified_reduction_sequence_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<certified_proof_loss_survives_normal_terms_ $d d>]() {
+                    assert_certified_proof_loss_survives_normal_terms::<$d>();
+                }
+
+                #[test]
+                fn [<certified_proof_loss_preserves_later_overflow_ $d d>]() {
+                    assert_certified_proof_loss_preserves_later_overflow::<$d>();
+                }
+            }
+        };
+    }
+
+    gen_certified_reduction_sequence_tests!(2);
+    gen_certified_reduction_sequence_tests!(3);
+    gen_certified_reduction_sequence_tests!(4);
+    gen_certified_reduction_sequence_tests!(5);
 
     macro_rules! gen_vector_tests {
         ($d:literal) => {
@@ -1177,7 +1273,13 @@ mod tests {
         let large = Vector::<2>::new([1.0e200, -1.0e200]);
         let expected = 2.0f64.sqrt() * 1.0e200;
         assert_abs_diff_eq!(large.norm().unwrap(), expected, epsilon = 2.0e184);
-        assert!(large.norm_squared().is_err());
+        assert_eq!(
+            large.norm_squared(),
+            Err(LaError::non_finite_computation_step(
+                ArithmeticOperation::VectorSquaredNorm,
+                0,
+            )),
+        );
 
         let mixed = Vector::<4>::new([1.0e200, 1.0e-200, -f64::from_bits(1), 0.0]);
         assert_eq!(mixed.norm(), Ok(1.0e200));

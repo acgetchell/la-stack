@@ -2,6 +2,8 @@
 
 //! Solve a 5×5 linear system via LU factorization (with pivoting).
 
+use approx::assert_abs_diff_eq;
+
 use la_stack::prelude::*;
 
 fn main() -> Result<(), LaError> {
@@ -20,6 +22,9 @@ fn main() -> Result<(), LaError> {
 
     let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
     let x = lu.solve(b)?.into_array();
+    for (actual, expected) in x.into_iter().zip([1.0, 2.0, 3.0, 4.0, 5.0]) {
+        assert_abs_diff_eq!(actual, expected, epsilon = 1.0e-12);
+    }
 
     println!("x = {x:?}");
     Ok(())

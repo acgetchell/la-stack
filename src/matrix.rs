@@ -1175,10 +1175,12 @@ impl<const D: usize> Matrix<D> {
     ///
     /// # fn main() -> Result<(), LaError> {
     /// let matrix = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
-    /// if let Some(estimate) = matrix.det_direct_with_errbound()? {
-    ///     assert_eq!(estimate.determinant(), -2.0);
-    ///     assert!(estimate.absolute_error_bound() >= 0.0);
-    /// }
+    /// let estimate = matrix.det_direct_with_errbound()?;
+    /// assert_eq!(estimate.map(|value| value.determinant()), Some(-2.0));
+    /// assert_eq!(
+    ///     estimate.map(|value| (0.0..1.0e-12).contains(&value.absolute_error_bound())),
+    ///     Some(true),
+    /// );
     /// # Ok(())
     /// # }
     /// ```
@@ -1240,9 +1242,8 @@ impl<const D: usize> Matrix<D> {
     ///     [4.0, 5.0, 6.0],
     ///     [7.0, 8.0, 9.0],
     /// ])?;
-    /// if let Some(bound) = m.det_errbound()? {
-    ///     assert!(bound >= 0.0);
-    /// }
+    /// let bound = m.det_errbound()?;
+    /// assert_eq!(bound.map(|value| (0.0..1.0e-12).contains(&value)), Some(true));
     /// # Ok(())
     /// # }
     /// ```
@@ -1288,9 +1289,14 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Errors
-    /// Returns [`LaError::NonFinite`] when the bound computation overflows to
-    /// NaN or infinity. Underflow-sensitive finite computations return
-    /// `Ok(None)` instead because they are valid inputs for an exact fallback.
+    /// Propagates [`LaError::NonFinite`] from
+    /// [`det_direct_with_errbound`](Self::det_direct_with_errbound) when either
+    /// the determinant or bound computation produces NaN or infinity. The error
+    /// retains [`ArithmeticOperation::Determinant`] or
+    /// [`ArithmeticOperation::DeterminantErrorBound`] as its computation origin.
+    /// A non-finite determinant remains an error even if underflow prevents
+    /// computing its bound. Underflow-sensitive finite computations return
+    /// `Ok(None)` because they remain valid inputs for an exact fallback.
     #[inline]
     pub const fn det_errbound(&self) -> Result<Option<f64>, LaError> {
         match self.det_direct_with_errbound() {
@@ -2399,6 +2405,40 @@ mod tests {
     }
 
     // === det_errbound tests (no `exact` feature required) ===
+
+    #[test]
+    fn det_errbound_d0_is_zero() {
+        assert_eq!(Matrix::<0>::zero().det_errbound(), Ok(Some(0.0)));
+    }
+
+    #[test]
+    fn det_errbound_d1_is_zero() {
+        assert_eq!(
+            Matrix::<1>::try_from_rows([[42.0]]).unwrap().det_errbound(),
+            Ok(Some(0.0))
+        );
+    }
+
+    #[test]
+    fn det_errbound_d3_non_identity() {
+        let m = Matrix::<3>::try_from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 10.0]])
+            .unwrap();
+        let bound = m.det_errbound().unwrap().unwrap();
+        assert!(bound > 0.0);
+    }
+
+    #[test]
+    fn det_errbound_d4_non_identity() {
+        let m = Matrix::<4>::try_from_rows([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0, 0.0],
+            [0.0, 0.0, 3.0, 0.0],
+            [0.0, 0.0, 0.0, 4.0],
+        ])
+        .unwrap();
+        let bound = m.det_errbound().unwrap().unwrap();
+        assert!(bound > 0.0);
+    }
 
     #[test]
     fn det_errbound_matches_documented_coefficient_scale() {

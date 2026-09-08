@@ -3,10 +3,12 @@
 #![forbid(unsafe_code)]
 #![cfg(feature = "exact")]
 
+use core::array::from_fn;
 use core::cmp::Ordering;
 
-use la_stack::prelude::*;
 use pastey::paste;
+
+use la_stack::prelude::*;
 
 const POSITIVE_ZERO_BITS: u64 = 0;
 const NEGATIVE_ZERO_BITS: u64 = 1_u64 << 63;
@@ -63,7 +65,7 @@ fn canonical_vector_conversions_preserve_raw_contract<const D: usize>() {
         ),
     ];
     for (value, expected) in success {
-        let raw = std::array::from_fn::<_, D, _>(|_| value.clone());
+        let raw = from_fn::<_, D, _>(|_| value.clone());
         let canonical = RationalVector::try_new(raw.clone()).unwrap();
         for actual in [
             canonical.try_to_f64(),
@@ -97,7 +99,7 @@ fn canonical_vector_conversions_preserve_raw_contract<const D: usize>() {
     ];
     for (value, reason, rounded) in failures {
         for index in 0..D {
-            let raw = std::array::from_fn(|i| match i.cmp(&index) {
+            let raw = from_fn(|i| match i.cmp(&index) {
                 Ordering::Equal => value.clone(),
                 Ordering::Greater => BigRational::from_integer(BigInt::from(1_u8) << 1024_u32),
                 Ordering::Less => raw_rational(3, -6),

@@ -30,6 +30,11 @@ fn main() -> Result<(), LaError> {
     };
     let det_exact = m.det_exact()?;
     let det_exact_as_f64 = det_exact.try_to_f64()?;
+    assert_eq!(
+        det_exact,
+        BigRational::new((-3).into(), (1_u64 << 50).into())
+    );
+    assert_eq!(det_exact_as_f64.to_bits(), (-3.0 * perturbation).to_bits());
 
     println!("Near-singular 3×3 matrix (perturbation = 2^-50 ≈ {perturbation:.2e}):");
     for row in m.as_rows() {

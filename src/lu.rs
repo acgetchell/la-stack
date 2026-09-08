@@ -419,6 +419,7 @@ impl<const D: usize> Lu<D> {
 
 #[cfg(test)]
 mod tests {
+    use core::array::from_fn;
     use core::hint::black_box;
 
     use approx::assert_abs_diff_eq;
@@ -536,24 +537,15 @@ mod tests {
     #[test]
     fn row_permutation_keeps_mapping_and_parity_synchronized() {
         let mut permutation = RowPermutation::<4>::identity();
-        assert_eq!(
-            core::array::from_fn(|row| permutation.source_row(row)),
-            [0, 1, 2, 3]
-        );
+        assert_eq!(from_fn(|row| permutation.source_row(row)), [0, 1, 2, 3]);
         assert!(!permutation.is_odd());
 
         permutation.swap(0, 3);
-        assert_eq!(
-            core::array::from_fn(|row| permutation.source_row(row)),
-            [3, 1, 2, 0]
-        );
+        assert_eq!(from_fn(|row| permutation.source_row(row)), [3, 1, 2, 0]);
         assert!(permutation.is_odd());
 
         permutation.swap(1, 2);
-        assert_eq!(
-            core::array::from_fn(|row| permutation.source_row(row)),
-            [3, 2, 1, 0]
-        );
+        assert_eq!(from_fn(|row| permutation.source_row(row)), [3, 2, 1, 0]);
         assert!(!permutation.is_odd());
     }
 

@@ -26,6 +26,7 @@ fn main() -> Result<(), LaError> {
     ])?;
 
     let sign = m.det_sign_exact();
+    assert_eq!(sign, DeterminantSign::Negative);
     let det_f64 = m.det()?;
 
     println!("Near-singular 3×3 matrix (perturbation = 2^-50 ≈ {perturbation:.2e}):");

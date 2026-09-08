@@ -2,10 +2,13 @@
 
 //! Shared helpers for the `vs_linalg` benchmark and its smoke tests.
 
+use core::array::from_fn;
+
 use faer::linalg::solvers::{Ldlt as FaerLdlt, PartialPivLu};
 use faer::perm::PermRef;
-use la_stack::{LaError, Matrix, Tolerance, Vector};
 use nalgebra::SMatrix;
+
+use la_stack::{LaError, Matrix, Tolerance, Vector};
 
 #[cfg(not(la_stack_v0_4_3_api))]
 use crate::bench_utils::OrAbort;
@@ -327,8 +330,6 @@ impl<const D: usize> ValidatedLuSolveInput<D> {
 pub fn validated_lu_solve_input<const D: usize>(
     scenario: LuSolveScenario,
 ) -> ValidatedLuSolveInput<D> {
-    use core::array::from_fn;
-
     assert!((2..=64).contains(&D));
     let expected = from_fn(|i| f64::from(u32::try_from(i + 1).or_abort("solution index")));
     let (rows, rhs) = match scenario {
@@ -426,7 +427,7 @@ pub fn make_vector_array<const D: usize>(offset: f64) -> [f64; D] {
 #[inline]
 #[must_use]
 pub fn make_norm_descending_array<const D: usize>() -> [f64; D] {
-    std::array::from_fn(|index| {
+    from_fn(|index| {
         let magnitude = vector_entry(D - index - 1, 0.0);
         if index % 2 == 0 {
             magnitude
@@ -440,7 +441,7 @@ pub fn make_norm_descending_array<const D: usize>() -> [f64; D] {
 #[inline]
 #[must_use]
 pub fn make_norm_repeated_scale_array<const D: usize>() -> [f64; D] {
-    std::array::from_fn(|index| if index % 2 == 0 { 3.0 } else { -3.0 })
+    from_fn(|index| if index % 2 == 0 { 3.0 } else { -3.0 })
 }
 
 /// Build a norm input with one non-zero entry and otherwise skipped zeros.
@@ -469,7 +470,7 @@ pub fn make_norm_wide_dynamic_range_array<const D: usize>() -> [f64; D] {
         -1.0e200,
     ];
 
-    std::array::from_fn(|index| VALUES[index % VALUES.len()])
+    from_fn(|index| VALUES[index % VALUES.len()])
 }
 
 /// Build the named Euclidean-norm scenario corpus in stable benchmark order.

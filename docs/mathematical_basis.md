@@ -167,7 +167,8 @@ implementation constructs an upper bound on the magnitude sum: exact
 integer-significand comparison determines whether each rounded product must move
 to its next representable value, and every positive accumulation is rounded
 upward. The division forming `γₙ` and its final multiplication are also rounded
-upward. `TwoSum` then selects finite outward endpoints for `estimate ± bound`.
+upward. Magnitude-ordered `FastTwoSum` then selects finite outward endpoints for
+`estimate ± bound` \[17\].
 
 The relative-error argument is not used across gradual underflow. A nonzero
 product or estimate FMA in the subnormal range, an invalid `γₙ`, or finite-range
@@ -471,10 +472,12 @@ failure. Both signed-zero inputs represent exact real zero and are canonicalized
 to `+0.0`; finite subnormal endpoints remain valid.
 
 Point construction introduces no width. Exact-real subtraction and interval
-addition use an error-free `TwoSum` residual to determine whether the rounded
-result is exact or which adjacent binary64 value is required for the outward
-endpoint [8]. Multiplication decomposes each nonzero binary64 operand into its exact
-integer significand and power of two, compares the exact 106-bit significand
+addition use an error-free, magnitude-ordered `FastTwoSum` residual to determine
+whether the rounded result is exact or which adjacent binary64 value is required
+for the outward endpoint. Ordering the operands prevents intermediate overflow
+whenever the rounded sum is finite \[17\]. Multiplication decomposes each nonzero
+binary64 operand into its exact integer significand and power of two, compares
+the exact 106-bit significand
 product with the rounded result, and widens only in the required direction.
 This comparison also handles products that underflow to zero: a positive result
 is enclosed by `[0, f64::from_bits(1)]`, and a negative result by the mirrored

@@ -2,6 +2,9 @@
 
 //! Independently validated rational inputs shared by timing and allocation probes.
 
+use core::array::from_fn;
+use core::cmp::Ordering;
+
 use la_stack::{BigInt, BigRational, DeterminantSign, RationalMatrix, RationalVector};
 
 use super::bench_utils::OrAbort;
@@ -64,8 +67,8 @@ impl<const D: usize> ValidatedRationalInput<D> {
 /// # Panics
 /// Panics if construction or the independent determinant/solve checks fail.
 pub fn rational_input<const D: usize>(kind: RationalInputKind) -> ValidatedRationalInput<D> {
-    let mut rows = std::array::from_fn(|row| {
-        std::array::from_fn(|col| {
+    let mut rows = from_fn(|row| {
+        from_fn(|col| {
             if row == col {
                 let diagonal = 2 * D + row + 1;
                 BigRational::from_integer(BigInt::from(diagonal))
@@ -89,9 +92,8 @@ pub fn rational_input<const D: usize>(kind: RationalInputKind) -> ValidatedRatio
             }
         }
     }
-    let expected_solution = std::array::from_fn(|index| {
-        BigRational::new(BigInt::from(index + 1), BigInt::from(index + 2))
-    });
+    let expected_solution =
+        from_fn(|index| BigRational::new(BigInt::from(index + 1), BigInt::from(index + 2)));
     let rhs_data = rational_matvec(&rows, &expected_solution);
     let matrix = RationalMatrix::try_from_rows(rows.clone())
         .or_abort("rational benchmark matrix construction");
@@ -121,7 +123,7 @@ fn rational_matvec<const D: usize>(
     rows: &[[BigRational; D]; D],
     vector: &[BigRational; D],
 ) -> [BigRational; D] {
-    std::array::from_fn(|row| {
+    from_fn(|row| {
         rows[row]
             .iter()
             .zip(vector.iter())
@@ -202,7 +204,7 @@ pub fn rational_solve_gaussian<const D: usize>(
         }
     }
 
-    let mut solution = std::array::from_fn(|_| zero.clone());
+    let mut solution = from_fn(|_| zero.clone());
     for row in (0..D).rev() {
         let mut value = rhs[row].clone();
         for (coefficient, component) in rows[row].iter().zip(solution.iter()).skip(row + 1) {
@@ -216,8 +218,8 @@ pub fn rational_solve_gaussian<const D: usize>(
 fn determinant_sign(value: &BigRational) -> DeterminantSign {
     let zero = BigRational::from_integer(BigInt::from(0));
     match value.cmp(&zero) {
-        std::cmp::Ordering::Less => DeterminantSign::Negative,
-        std::cmp::Ordering::Equal => DeterminantSign::Zero,
-        std::cmp::Ordering::Greater => DeterminantSign::Positive,
+        Ordering::Less => DeterminantSign::Negative,
+        Ordering::Equal => DeterminantSign::Zero,
+        Ordering::Greater => DeterminantSign::Positive,
     }
 }

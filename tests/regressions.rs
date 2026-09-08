@@ -12,6 +12,31 @@ use proptest::prelude::*;
 #[path = "common/proptest_config.rs"]
 mod proptest_config;
 
+#[test]
+fn interval_extreme_sums_preserve_outward_bounds_in_both_orders() -> Result<(), LaError> {
+    // MAX - 3·2^970 is the exact midpoint between MAX's two predecessors.
+    // Its rounded sum is finite, but unsorted TwoSum can overflow internally.
+    const SMALL: f64 = -3.0 * f64::from_bits(1993_u64 << 52);
+    const DIFFERENCE: Result<Interval, LaError> = Interval::try_from_subtraction(SMALL, -f64::MAX);
+    let upper = f64::MAX.next_down();
+    let expected = Interval::try_new(upper.next_down(), upper)?;
+    assert_eq!(DIFFERENCE, Ok(expected));
+
+    for (small, large, enclosure) in [
+        (SMALL, f64::MAX, expected),
+        (-SMALL, -f64::MAX, expected.negate()),
+    ] {
+        for (left, right) in [(small, large), (large, small)] {
+            assert_eq!(
+                Interval::point(left)?.try_add(&Interval::point(right)?),
+                Ok(enclosure),
+            );
+            assert_eq!(Interval::try_from_subtraction(left, -right), Ok(enclosure));
+        }
+    }
+    Ok(())
+}
+
 /// Pad the independently identified near-overflow pair to a fixed dimension.
 fn norm_boundary_vector<const D: usize>(left: f64, right: f64) -> Vector<D> {
     let mut values = [0.0; D];

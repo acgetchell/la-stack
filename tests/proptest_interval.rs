@@ -47,6 +47,16 @@ fn assert_outward_result(
         Ok(interval) => {
             prop_assert!(interval_contains_exact(interval, exact));
             prop_assert!(exact_fits_finite_interval(exact));
+            // A scalar operation needs only the exact point or the two adjacent
+            // floats bracketing it. An unnecessarily wide interval loses proofs.
+            if interval.lower() < interval.upper() {
+                prop_assert_eq!(
+                    exact_f64(interval.lower().next_up()),
+                    exact_f64(interval.upper()),
+                );
+                prop_assert!(exact_f64(interval.lower()) < *exact);
+                prop_assert!(*exact < exact_f64(interval.upper()));
+            }
         }
         Err(LaError::IntervalRangeExhausted { operation, .. }) => {
             prop_assert_eq!(operation, expected_operation);
@@ -81,25 +91,23 @@ fn assert_conclusive_sign_matches(
 fn rational_det<const D: usize>(rows: &[[f64; D]; D]) -> BigRational {
     let mut work: [[BigRational; D]; D] =
         from_fn(|row| from_fn(|column| exact_f64(rows[row][column])));
+    let zero = BigRational::from_integer(0.into());
     let mut negative = false;
 
     for column in 0..D {
-        let mut pivot_row = column;
-        while pivot_row < D && work[pivot_row][column] == BigRational::from_integer(0.into()) {
-            pivot_row += 1;
-        }
-        if pivot_row == D {
-            return BigRational::from_integer(0.into());
-        }
+        let Some(pivot_row) = (column..D).find(|&row| work[row][column] != zero) else {
+            return zero;
+        };
         if pivot_row != column {
             work.swap(pivot_row, column);
             negative = !negative;
         }
 
-        let pivot = work[column][column].clone();
-        let pivot_row = work[column].clone();
-        for row in work.iter_mut().skip(column + 1) {
-            let factor = &row[column] / &pivot;
+        let (pivot_rows, rows_below) = work.split_at_mut(column + 1);
+        let pivot_row = &pivot_rows[column];
+        let pivot = &pivot_row[column];
+        for row in rows_below {
+            let factor = &row[column] / pivot;
             for (entry, pivot_entry) in row.iter_mut().zip(pivot_row.iter()).skip(column) {
                 let reduction = &factor * pivot_entry;
                 *entry -= reduction;
@@ -204,14 +212,39 @@ proptest! {
             square,
             &(exact_f64(left_upper) * exact_f64(left_upper)),
         ));
-        if left.contains(0.0) {
-            prop_assert!(square.contains(0.0));
+        if left_lower <= 0.0 && left_upper >= 0.0 {
+            prop_assert_eq!(square.lower().to_bits(), 0);
         }
     }
 }
 
 proptest! {
     #![proptest_config(with_default_cases(512))]
+
+    #[test]
+    fn opposite_sign_extreme_sums_enclose_exact_rational_results(
+        half_ulps in 1_u16..=1024,
+        maximum_offset in prop_oneof![Just(0_u16), 1_u16..=1024],
+        negate in any::<bool>(),
+    ) {
+        let small = -f64::from(half_ulps) * f64::from_bits(1993_u64 << 52);
+        let large = f64::from_bits(f64::MAX.to_bits() - u64::from(maximum_offset));
+        let (small, large) = if negate { (-small, -large) } else { (small, large) };
+        let exact = exact_f64(small) + exact_f64(large);
+
+        for (left, right) in [(small, large), (large, small)] {
+            assert_outward_result(
+                Interval::point(left)?.try_add(&Interval::point(right)?),
+                &exact,
+                ArithmeticOperation::IntervalAddition,
+            )?;
+            assert_outward_result(
+                Interval::try_from_subtraction(left, -right),
+                &exact,
+                ArithmeticOperation::IntervalSubtraction,
+            )?;
+        }
+    }
 
     #[test]
     fn arbitrary_finite_point_operations_are_outward_or_report_true_range_loss(

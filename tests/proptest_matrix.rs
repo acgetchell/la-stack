@@ -73,14 +73,20 @@ macro_rules! gen_matrix_proptests {
 
                 #[test]
                 fn [<matrix_set_get_in_bounds_ $d d>](
+                    rows in array::[<uniform $d>](array::[<uniform $d>](small_f64())),
                     r in 0usize..$d,
                     c in 0usize..$d,
                     v in small_f64(),
                 ) {
-                    let mut m = Matrix::<$d>::zero();
+                    let mut m = Matrix::<$d>::try_from_rows(rows).unwrap();
+                    let mut expected = rows;
                     prop_assert_eq!(m.set(r, c, v), Ok(()));
+                    expected[r][c] = v;
+                    prop_assert_eq!(m.as_rows(), &expected);
                     assert_abs_diff_eq!(m.get(r, c).unwrap(), v, epsilon = 0.0);
                     prop_assert_eq!(m.set(r, c, -v), Ok(()));
+                    expected[r][c] = -v;
+                    prop_assert_eq!(m.as_rows(), &expected);
                     assert_abs_diff_eq!(m.try_get(r, c).unwrap(), -v, epsilon = 0.0);
                 }
 

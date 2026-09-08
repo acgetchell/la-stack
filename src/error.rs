@@ -397,9 +397,9 @@ pub enum LaError {
     /// A matrix algorithm or runtime dispatch helper does not support a dimension.
     #[non_exhaustive]
     UnsupportedDimension {
-        /// Runtime dimension requested by the caller.
+        /// Matrix dimension requested by the caller.
         requested: usize,
-        /// Largest dimension supported by the dispatch helper.
+        /// Largest matrix dimension supported by the operation.
         max: usize,
     },
     /// A matrix index is outside the `D×D` storage domain.

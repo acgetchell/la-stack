@@ -8,6 +8,8 @@
 //!
 //! Run with: `cargo run --example ldlt_solve_3x3`
 
+use approx::assert_abs_diff_eq;
+
 use la_stack::prelude::*;
 
 fn main() -> Result<(), LaError> {
@@ -20,6 +22,11 @@ fn main() -> Result<(), LaError> {
     let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL)?;
     let x = ldlt.solve(b)?.into_array();
     let det = ldlt.det()?;
+    for (actual, expected) in x.into_iter().zip([1.0, 2.0, 3.0]) {
+        assert_abs_diff_eq!(actual, expected, epsilon = 1.0e-12);
+    }
+    // Tridiagonal determinant recurrence: d3 = 4*(4*4 - 1) - 4.
+    assert_abs_diff_eq!(det, 56.0, epsilon = 1.0e-12);
 
     println!("A (3×3 SPD tridiagonal):");
     for row in a.as_rows() {

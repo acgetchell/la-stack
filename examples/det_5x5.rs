@@ -2,6 +2,8 @@
 
 //! Compute the determinant of a 5×5 matrix via explicit LU factorization.
 
+use approx::assert_abs_diff_eq;
+
 use la_stack::prelude::*;
 
 fn main() -> Result<(), LaError> {
@@ -18,6 +20,7 @@ fn main() -> Result<(), LaError> {
     // Compute via explicit LU factorization.
     let lu = a.lu(DEFAULT_SINGULAR_TOL)?;
     let det = lu.det()?;
+    assert_abs_diff_eq!(det, 4.0, epsilon = 1.0e-12);
 
     println!("det = {det}");
     Ok(())

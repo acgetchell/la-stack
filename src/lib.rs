@@ -1012,17 +1012,14 @@ const EPS: f64 = f64::EPSILON; // 2^-52
 ///
 /// # fn main() -> Result<(), LaError> {
 /// let m = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]])?;
-/// let Some(det) = m.det_direct()? else {
-///     return Ok(());
-/// };
-/// assert_eq!(det, -2.0);
+/// let det = m.det_direct()?;
+/// assert_eq!(det, Some(-2.0));
 /// // Compute the bound from the raw constant for illustration; most
 /// // callers would match on `m.det_errbound()?` instead.
 /// let p = (1.0_f64 * 4.0).abs() + (2.0_f64 * 3.0).abs();
 /// let bound = ERR_COEFF_2 * p;
-/// if det.abs() > bound {
-///     // The f64 sign is provably correct without exact arithmetic.
-/// }
+/// // The f64 sign is provably correct without exact arithmetic.
+/// assert_eq!(det.map(|value| value.abs() > bound), Some(true));
 /// # Ok(())
 /// # }
 /// ```
@@ -1118,6 +1115,8 @@ pub use vector::{ScalarWithErrorBound, Vector};
 /// The macro creates a zero matrix with type `Matrix<N>` for the selected
 /// runtime dimension `N`, then evaluates the supplied closure body.  Supported
 /// runtime dimensions run from `0` through [`MAX_STACK_MATRIX_DISPATCH_DIM`].
+/// The body may mutate or consume captured values. It is not evaluated for
+/// unsupported dimensions.
 /// Unsupported dimensions return
 /// `Err(LaError::UnsupportedDimension { requested, max })` converted with
 /// `From<LaError>`, so downstream crates can use their own public error type.
@@ -1185,11 +1184,11 @@ macro_rules! try_with_stack_matrix {
         }
     }};
     (@arm $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
-        let __la_stack_body = |$matrix: $crate::Matrix<$d>| -> $ret { $body };
+        let mut __la_stack_body = |$matrix: $crate::Matrix<$d>| -> $ret { $body };
         __la_stack_body($crate::Matrix::<$d>::zero())
     }};
     (@arm_mut $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
-        let __la_stack_body = |mut $matrix: $crate::Matrix<$d>| -> $ret { $body };
+        let mut __la_stack_body = |mut $matrix: $crate::Matrix<$d>| -> $ret { $body };
         __la_stack_body($crate::Matrix::<$d>::zero())
     }};
 }
@@ -1200,6 +1199,8 @@ macro_rules! try_with_stack_matrix {
 /// dimension, then evaluates the closure body. Supported dimensions run from
 /// `0` through [`MAX_INTERVAL_MATRIX_DIM`]. Unsupported dimensions return
 /// [`LaError::UnsupportedDimension`] converted through `From<LaError>`.
+/// The body may mutate or consume captured values. It is not evaluated for
+/// unsupported dimensions.
 ///
 /// # Errors
 /// Returns [`LaError::UnsupportedDimension`] (converted through
@@ -1267,11 +1268,11 @@ macro_rules! try_with_interval_matrix {
         }
     }};
     (@arm $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
-        let __la_stack_body = |$matrix: $crate::IntervalMatrix<$d>| -> $ret { $body };
+        let mut __la_stack_body = |$matrix: $crate::IntervalMatrix<$d>| -> $ret { $body };
         __la_stack_body($crate::IntervalMatrix::<$d>::zero())
     }};
     (@arm_mut $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
-        let __la_stack_body = |mut $matrix: $crate::IntervalMatrix<$d>| -> $ret { $body };
+        let mut __la_stack_body = |mut $matrix: $crate::IntervalMatrix<$d>| -> $ret { $body };
         __la_stack_body($crate::IntervalMatrix::<$d>::zero())
     }};
 }
@@ -1283,6 +1284,8 @@ macro_rules! try_with_interval_matrix {
 /// supported on stable Rust. The closure may fill the matrix through
 /// [`RationalMatrix::set`] or replace it with a value built by
 /// [`RationalMatrix::try_from_fn`].
+/// The body may mutate or consume captured values. It is not evaluated for
+/// unsupported dimensions.
 ///
 /// # Errors
 /// Returns [`LaError::UnsupportedDimension`] (converted through
@@ -1354,11 +1357,11 @@ macro_rules! try_with_rational_matrix {
         }
     }};
     (@arm $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
-        let __la_stack_body = |$matrix: $crate::RationalMatrix<$d>| -> $ret { $body };
+        let mut __la_stack_body = |$matrix: $crate::RationalMatrix<$d>| -> $ret { $body };
         __la_stack_body($crate::RationalMatrix::<$d>::zero())
     }};
     (@arm_mut $d:literal, $matrix:ident, $ret:ty, $body:block) => {{
-        let __la_stack_body = |mut $matrix: $crate::RationalMatrix<$d>| -> $ret { $body };
+        let mut __la_stack_body = |mut $matrix: $crate::RationalMatrix<$d>| -> $ret { $body };
         __la_stack_body($crate::RationalMatrix::<$d>::zero())
     }};
 }

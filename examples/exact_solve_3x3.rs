@@ -34,6 +34,15 @@ fn main() -> Result<(), LaError> {
 
     // Exact solve.
     let exact_x = a.solve_exact(b)?;
+    // Only the third component is nonzero: one third of the third column is b.
+    assert_eq!(
+        exact_x.as_array(),
+        &[
+            BigRational::from_integer(0.into()),
+            BigRational::from_integer(0.into()),
+            BigRational::new(1.into(), 3.into()),
+        ],
+    );
     println!("Near-singular 3×3 system (perturbation = 2^-50 ≈ {perturbation:.2e}):");
     for row in a.as_rows() {
         print!("  [");
@@ -62,7 +71,15 @@ fn main() -> Result<(), LaError> {
         exact_x.as_array()[1],
         exact_x.as_array()[2]
     );
-    match exact_x.try_to_f64() {
+    let strict = exact_x.try_to_f64();
+    assert_eq!(
+        strict,
+        Err(LaError::unrepresentable(
+            Some(2),
+            UnrepresentableReason::RequiresRounding,
+        )),
+    );
+    match strict {
         Ok(x) => {
             let x = x.into_array();
             println!(
@@ -73,6 +90,7 @@ fn main() -> Result<(), LaError> {
         Err(err) if err.requires_rounding() => {
             println!("exact try_to_f64(): {err}");
             let x = exact_x.to_rounded_f64()?.into_array();
+            assert_eq!(x.map(f64::to_bits), [0, 0, 0x3fd5_5555_5555_5555]);
             println!(
                 "exact to_rounded_f64(): x = [{:+.6e}, {:+.6e}, {:+.6e}]",
                 x[0], x[1], x[2]
