@@ -27,15 +27,15 @@ the commands measure and where their outputs go.
 | Goal | Recipe |
 |------|--------|
 | Latest-release local audit | `just performance-local` |
-| Non-exact release-signal check against tags | `just performance-local-non-exact v0.4.5 v0.4.4` |
+| Non-exact release-signal check against tags | `just performance-local-non-exact v0.4.6 v0.4.5` |
 | Fast saved-baseline loop | `just bench-save-baseline <name> <suite>` then `just bench-compare <name> <suite> all-benches` |
 | Full crate comparison | `just bench-vs-linalg` |
 | Interval determinant filter | `just bench-interval` |
 | Certified dot/linear-form filter | `just bench-linear-form` |
 | README table and plot | `just performance-release` then `just performance-readme` |
-| Release report | `just performance-release v0.4.5 v0.4.4` |
+| Release report | `just performance-release v0.4.6 v0.4.5` |
 | Build docs from retained release inputs | `just performance-doc` |
-| Published-asset comparison | `just performance-github-assets v0.4.5 v0.4.4` |
+| Published-asset comparison | `just performance-github-assets v0.4.6 v0.4.5` |
 
 Rule of thumb:
 
@@ -128,7 +128,9 @@ just performance-local
 
 This creates isolated temporary worktrees and runs both library revisions on the
 same machine with the current checkout's benchmark sources, manifests, lockfile,
-benchmark-input tests, recipes, and Rust toolchain. Staged and unstaged changes
+benchmark-input tests, recipes, and Rust toolchain. Current example sources are
+also copied so Cargo can resolve every target declared by the shared manifest;
+the comparison does not build or time those examples. Staged and unstaged changes
 to tracked files are applied to the current worktree. Untracked files are
 excluded; stage a new file before running the command if it must participate in
 the comparison. Only the baseline library implementation comes from the release
@@ -143,24 +145,32 @@ digests, Criterion selection/commands, and both correctness-gate results. The
 report reader rejects malformed or mismatched provenance and incomplete
 selected-suite coverage.
 
-The shared harness carries an explicit v0.4.3-only API adapter for renamed or
-ownership-adjusted calls (`det_sign_exact`, `Tolerance`, and vector dot
-products). The adapter changes only how the same operation is invoked; it does
-not patch either library implementation. Comparison builds cap lint diagnostics
-at warning for both revisions because the current manifest's lint policy may
-reject historical source that predates a lint, even though that source remains
-valid benchmark input.
+For the default `all` suite, timing runs occur in this order:
 
-The paired `det_direct_with_errbound` API postdates v0.4.3, so its D=2-4
-baseline rows remain explicitly unavailable in that comparison. The older
-bound-only `det_errbound` API is source-compatible and remains a required
-shared-harness baseline.
+1. Baseline la-stack, nalgebra, and faer comparison benchmarks.
+2. Baseline la-stack exact benchmarks.
+3. Current la-stack comparison benchmarks, filtered to `la_stack` names.
+4. Current la-stack exact benchmarks.
 
-The v0.4.3 LU/LDLT balanced-range determinant paths return an incorrect zero,
-so their two D=8 stress rows are deliberately not timed as baselines. Reports
-leave those baselines explicitly unavailable rather than presenting invalid
-performance evidence. The other v0.4.3 D=8 pivoting and ill-conditioned rows
-remain in the comparison.
+La-stack is measured once per revision; the nalgebra/faer measurements from the
+baseline phase are reused as peer context. The filtered current run disables
+Criterion HTML generation because skipped peer `new` samples are deliberately
+removed before current measurements. The retained CSV/JSON inputs and Python
+renderer provide the release report. Baseline-saving recipes also disable unused
+Criterion plots and HTML without changing sampling.
+
+New release comparisons require v0.4.4 or newer on both sides. v0.4.3 and older
+are unsupported: the workflow rejects them before benchmark setup. Historical
+Markdown reports remain in the archive, but are not regenerated with the current
+harness. There are no v0.4.3 API adapters or missing-row exemptions.
+
+v0.4.4 and v0.4.5 use adapters for renamed norm methods and the array return
+type of `solve_exact`, and omit the later rational-input API. These adapters
+preserve the same operations and mathematical checks without patching either
+library implementation. Comparison builds cap lint diagnostics at warning for
+both revisions because the current manifest's lint policy may reject historical
+source that predates a lint, even though that source remains valid benchmark
+input.
 
 This command does not depend on existing local `target/criterion/` baselines.
 It is slower than reusing a saved baseline, but less sensitive to stale local
@@ -183,10 +193,10 @@ distinct release identifiers.
 For a narrower non-exact check against a known release pair, run:
 
 ```bash
-just performance-local-non-exact v0.4.5 v0.4.4
+just performance-local-non-exact v0.4.6 v0.4.5
 ```
 
-This generates a local `v0.4.4` `vs_linalg` baseline, measures the current
+This generates a local `v0.4.5` `vs_linalg` baseline, measures the current
 la-stack `vs_linalg` rows, and renders a `vs_linalg` report. The report includes
 saved baseline nalgebra/faer timings as context where matching peer rows exist,
 without rerunning current peer crates.
@@ -252,7 +262,8 @@ just performance-readme
 
 `performance-readme` does not run benchmarks. It loads the canonical
 `target/bench-reports/performance.csv` and adjacent provenance JSON retained by
-`performance-release`, then uses the current la-stack result and the peer
+`performance-release`, falling back to the latest committed local snapshot when
+both scratch inputs are absent. It then uses the current la-stack result and the peer
 nalgebra/faer results measured by that same shared current harness. It requires
 all three timings for every canonical dimension (D=2, 3, 4, 5, 8, 16, 32, and
 64) before updating:
@@ -285,7 +296,7 @@ Release PRs promote one curated release-to-release comparison into committed
 docs:
 
 ```bash
-just performance-release v0.4.5 v0.4.4
+just performance-release v0.4.6 v0.4.5
 ```
 
 With no arguments, `just performance-release` infers the current release tag
@@ -303,6 +314,13 @@ intervals in nanoseconds. Those peer fields are the source for
 the release pair, source states, commands, toolchain, Criterion version,
 harness/configuration digests, host, and schema version.
 
+Before deleting the temporary worktree, the workflow also exports
+`performance.full.csv` and `performance.full.provenance.json`. These preserve
+every recorded case from the baseline and current phases, including diagnostics
+and peer measurements outside the curated report selection. Means, medians,
+95% confidence intervals, and sample counts retain full timing precision.
+No additional benchmark executions are needed for this export.
+
 Before creating worktrees or running either benchmark revision, structured
 local and release-report workflows require an identifiable CPU model. Raw
 Criterion benchmark recipes may still record measurements when that metadata
@@ -310,11 +328,15 @@ is unavailable, but those measurements cannot be promoted as reproducible
 release evidence.
 
 The pair is validated and published before the temporary worktree is removed.
-`docs/performance.md` is then rendered from a validated reload of that retained
-pair, and the previous committed report is archived under
+All four inputs are preserved under `docs/performance/<release-pair>/<run-digest>/`
+with `latest.json` pointing to that snapshot. `docs/performance.md` is rendered
+from a validated reload of the selected pair, and the previous committed report is archived under
 `docs/archive/performance/`. Archive filenames are release-pair names such as
 `v0.4.2-vs-v0.4.1.md`. Serialization, validation, rendering, coverage, or
-promotion failures preserve the previous valid report and artifact pair.
+promotion failures preserve the previous valid report, inputs, and snapshot
+pointer. Review and commit the complete snapshot along with the curated report.
+See the [local summary index](performance/README.md) for the schema and
+comparison limits.
 
 To reproduce and promote the report without running Cargo or creating Git
 worktrees, use:
@@ -325,7 +347,9 @@ just performance-doc
 
 This command fails closed on a missing, partial, malformed, mismatched, or
 unsupported artifact pair. It consumes the default CSV/JSON pair retained by a
-successful `performance-local` or `performance-release` run, rewrites the
+successful `performance-local` or `performance-release` run, or follows
+`docs/performance/latest.json` when both default scratch inputs are absent.
+It rewrites the
 scratch Markdown, promotes it to `docs/performance.md`, and archives the previous
 committed report when the release pair changes. Promotion requires distinct
 current and baseline package versions, so a same-version local comparison is
@@ -343,7 +367,7 @@ requirement applies even when both release tags are supplied explicitly because
 the recipe still downloads their GitHub Release assets:
 
 ```bash
-just performance-github-assets v0.4.5 v0.4.4
+just performance-github-assets v0.4.6 v0.4.5
 ```
 
 With no arguments, the recipe discovers the latest and previous stable
@@ -364,12 +388,15 @@ shared-harness workflow before attributing a difference solely to library code.
 | `target/bench-reports/performance.md` | No | `bench-compare`, `performance-local`, `performance-release`, `performance-doc` | Canonical local comparison report. |
 | `target/bench-reports/performance.csv` | No | `performance-local`, `performance-release` | Validated tabular inputs for the canonical comparison and README publisher. |
 | `target/bench-reports/performance.provenance.json` | No | `performance-local`, `performance-release` | Schema, package identifiers, source, command, toolchain, host, digest, and harness provenance consumed by the README publisher. |
+| `target/bench-reports/performance.full.*` | No | `performance-local`, `performance-release` | Every recorded local case, with timing summaries and provenance. |
 | `target/bench-reports/performance-non-exact.*` | No | `performance-local-non-exact` | Narrowed non-exact report and retained peer-context comparison inputs. |
 | `target/bench-reports/github-assets-performance.md` | No | `performance-github-assets` | Local report from published release artifacts. |
 | `target/bench-reports/github-assets-performance.csv` | No | `performance-github-assets` | Tabular inputs derived from published native archives. |
 | `target/bench-reports/github-assets-performance.provenance.json` | No | `performance-github-assets` | Provenance for the published-asset report inputs. |
 | `docs/performance.md` | Yes | `performance-release`, `performance-doc` | Latest curated release-to-release comparison. |
+| `docs/performance/` | Yes | `performance-release`, `performance-doc` | Complete local summary snapshots, selected report inputs, and latest pointer; survives `just clean`. |
 | `docs/archive/performance/` | Yes | `performance-release`, `performance-doc` | Older curated release-to-release comparisons. |
+| `docs/archive/performance/studies/` | Yes | Maintainer investigations | Completed optimization studies and decisions. |
 | `docs/assets/bench/` | Yes | `performance-readme` | README benchmark CSV/SVG assets and JSON provenance. |
 | GitHub Release | Remote | `.github/workflows/release-benchmarks.yml` | Criterion baseline archive. |
 
@@ -378,12 +405,12 @@ Published baseline assets use the filename
 
 Everything under `target/bench-reports/` is reproducible local scratch owned by
 the performance-report workflows. It survives temporary-worktree cleanup but
-may be removed by `just clean` or `cargo clean`; retain or copy the CSV/JSON pair
-while reviewing or re-rendering a release PR. The compact CSV is the analysis and
-Markdown-reproduction layer for both local and release comparisons. It does not
-replace the full native Criterion `.tar.gz` archive attached to each GitHub
-Release, which remains the durable raw
-baseline for post-release comparisons.
+may be removed by `just clean` or `cargo clean`. Promoted local snapshots remain
+under `docs/performance/`, so report and README regeneration do not require
+another measurement run. Unpromoted local experiments remain scratch data.
+The saved summaries do not replace the full native Criterion `.tar.gz` archive
+attached to each GitHub Release. Hosted archives retain raw samples from a
+different machine; local summary comparisons must use their recorded environment.
 
 ## `vs_linalg` Methodology
 
@@ -408,10 +435,17 @@ adapter code computes the agreed mathematical kernel inside the timed closure:
 | LDLT/Cholesky factorization and solve rows | Native `Ldlt` APIs | Native `Cholesky` APIs | Native LDLT APIs |
 | `det_via_lu`, `det_from_lu` | Native `Lu::det` | Native `LU::determinant` | Harness adapter: product of the U diagonal and permutation sign |
 | `det_from_ldlt` / `det_from_cholesky` | Native `Ldlt::det` | Native `Cholesky::determinant` | Harness adapter: product of the D diagonal |
-| `dot` | Native `Vector::dot` | Native `dot` | Harness adapter: left-to-right fused multiply-add loop |
+| `dot` | Native `Vector::dot` | Native `dot` | Native `linalg::matmul::dot::inner_prod` |
 | `norm2_sq` | Native `Vector::norm_squared` | Native `norm_squared` | Native `squared_norm_l2` |
 | `norm2` | Native `Vector::norm` | Native `norm` | Native `norm_l2` |
 | `inf_norm` | Native `Matrix::norm_inf` | Harness adapter: maximum absolute row sum | Harness adapter: maximum absolute row sum |
+
+Native faer dot products use the `faer_dot_native` benchmark ID. Historical
+`faer_dot` samples measured a repository-owned scalar fused multiply-add loop;
+report readers never substitute those samples for the native operation. A saved
+baseline without `faer_dot_native` has no native faer dot context. The README
+chart and table compare LU factorization plus one solve; the detailed release
+report also includes dot products and other kernels.
 
 The `norm2`, `norm2_sq`, and `inf_norm` benchmark IDs, including scenario suffixes, are
 retained for continuity with saved baselines. The current public methods are
@@ -462,7 +496,7 @@ compared implementations, documented beside the benchmark, and checked against
 direct `iter` in the same binary to show that batching does not materially alter
 the reported kernel time or cross-crate ratio.
 
-The integration smoke test `tests/vs_linalg_inputs.rs` reuses the benchmark
+The integration smoke test `benches/comparison/tests/vs_linalg_inputs.rs` reuses the benchmark
 input helpers and verifies that la-stack, nalgebra, and faer agree on the
 determinant, solve, dot, Euclidean-norm, squared-norm, and infinity-norm results for every
 measured dimension: D=2, 3, 4, 5, 8, 16, 32, and 64. The same focused recipe
@@ -522,7 +556,7 @@ Cholesky:
 Read these as SPD factorization/solve/determinant comparisons, not as identical
 algorithm comparisons across all three crates.
 
-The [solve finalization decision](performance/solve-finalization.md) records
+The [solve finalization decision](archive/performance/studies/solve-finalization.md) records
 why #234 retained the existing result construction after testing all eight
 README dimensions. It links the regression tests and current benchmark command.
 
@@ -558,7 +592,7 @@ random-corpus groups, and adversarial-input groups:
 - `rational_input_wide{256,1024}_d{2..8}` — diagnostic rational groups with
   large positive rational row factors. These retain exact solutions and strict
   diagonal dominance while exercising heap-backed numerator and denominator
-  storage. See the [row-clearing study](performance/rational-row-clearing.md)
+  storage. See the [row-clearing study](archive/performance/studies/rational-row-clearing.md)
   for fixtures, allocation evidence, focused timing commands, and limitations.
 
 Rational Gaussian determinant and solve references use direct `bencher.iter`,
@@ -658,14 +692,14 @@ iteration, while the saved v0.4.2 samples used direct closures. The current
 shared harness borrows a prevalidated input for both revisions. It also verifies
 that the D=2–4 headline fixtures resolve through the floating-point filter, so
 those rows continue to measure the intended common path. Use a current
-shared-harness comparison before attributing the historical D=2 or D=3 changes
-to the library implementation.
+shared-harness comparison between supported releases before attributing timing
+changes to the library implementation. v0.4.3 and older cannot be rerun with the
+current workflow.
 
-For exact-arithmetic comparisons against v0.4.2 or older baselines, rows such
-as `det_exact_rounded_f64 (vs det_exact_f64)` mean the current rounded API is
-being compared to the historical lossy `*_exact_f64` benchmark. Rows such as
-`det_exact_f64_result (vs det_exact_f64)` intentionally show the overhead of the
-new strict conversion contract against that same historical baseline.
+Archived reports may show rows such as `det_exact_rounded_f64 (vs det_exact_f64)`
+or `det_exact_f64_result (vs det_exact_f64)`. Those used the historical lossy
+`*_exact_f64` baseline. New comparisons require matching benchmark identifiers;
+the pre-v0.4.3 name substitutions have been removed.
 
 The default `release-signal` scope includes the canonical exact-arithmetic
 groups because their inputs and execution order are fixed across revisions. Historical

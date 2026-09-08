@@ -5,13 +5,224 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-09-08
+
+### ⚠️ Breaking Changes
+
+- Matrix::solve_exact now returns RationalVector&lt;D&gt; instead of [BigRational; D]. Use as_array() or into_array() when raw storage is required.
+- rename Vector::norm2() to Vector::norm(), Vector::norm2_sq() to Vector::norm_squared(), and Matrix::inf_norm()
+  to Matrix::norm_inf(). No compatibility aliases are provided.
+- la-stack now requires Rust 1.98.1.
+
+### Merged Pull Requests
+
+- Bump the github-actions group with 4 updates [#240](https://github.com/acgetchell/la-stack/pull/240)
+- Bump the github-actions group with 3 updates [#223](https://github.com/acgetchell/la-stack/pull/223)
+- Bump the github-actions group with 4 updates [#221](https://github.com/acgetchell/la-stack/pull/221)
+
+### Added
+
+- Accept rational matrix inputs [`703746e`](https://github.com/acgetchell/la-stack/commit/703746e576bf15cca6a4c1e259292b4334946409)
+
+  - add fixed-size rational matrix and vector types with exact determinant signs, determinant values, and solves
+  - provide stable runtime dispatch through D=8 with explicit exact-to-f64 conversion
+  - preserve typed diagnostics while reusing row-cleared Bareiss elimination
+  - add release-tracked Criterion comparisons against BigRational Gaussian elimination
+  - document the two-domain scalar model and the f64 precision boundary
+- Add certified determinant sign enclosures [`cd94ebb`](https://github.com/acgetchell/la-stack/commit/cd94ebbbfecccc1fc79887eec39f1e2b8a3fc56a)
+  - Add outward-rounded interval arithmetic with typed range and input errors.
+  - Certify determinant signs through D=7 with explicit inconclusive results.
+  - Provide runtime dimension dispatch, documentation, and benchmark coverage.
+  - Refresh pinned Python development tools and transitive dependencies.
+- Add certified dot and affine error bounds [`973e662`](https://github.com/acgetchell/la-stack/commit/973e662bfa1bb85631f6826034f128b181a326c4)
+  - Add proof-bearing scalar certificates for dot products and unrounded axis · (left - right) reductions.
+  - Expose outward bounds for sign and threshold filtering, with inconclusive results when proof conditions fail.
+  - Document and benchmark the deterministic FMA error model.
+- Add overflow-safe Euclidean norms [`f1f7b11`](https://github.com/acgetchell/la-stack/commit/f1f7b11d873db9c70c7db9920ee36efa7b4ed801)
+  - Add allocation-free Vector::norm2 with scaled accumulation for large and subnormal finite coordinates.
+  - Resolve upper-range rounding with exact stack-based square sums, preventing false or hidden overflow without the exact feature.
+  - Report VectorNorm-tagged NonFinite errors only when the exact norm rounds to infinity; preserve norm2_sq's distinct range contract.
+  - Avoid redundant first-coordinate arithmetic and share binary64 rounding primitives across vector and interval operations.
+  - Document approximation limits and add peer-crate norm benchmarks plus scenario comparisons with hypot and Delaunay reference kernels.
+- Add const-generic Gram matrix construction [`a62e72a`](https://github.com/acgetchell/la-stack/commit/a62e72a0468ea13c7c5e851dbf195123d5bb0d38)
+  - Add allocation-free, const-evaluable `gram_matrix` with independent vector count and dimension
+  - Preserve bitwise symmetry and typed dot-product overflow diagnostics
+  - Document geometric uses, conditioning, and floating-point limitations
+  - Add benchmarks for square and rectangular vector collections
+  - Simplify exact rational scaling using canonical positive denominators
+  - Deduplicate factorization property-test fixtures and assertions
+
+### Changed
+
+- Assert legacy artifact fixture uses schema 2 [`4524f86`](https://github.com/acgetchell/la-stack/commit/4524f86cbdcb69cdd73e1299520c2ac36a145f02)
+- Cover enclosure and range-exhaustion boundaries [`c2437b8`](https://github.com/acgetchell/la-stack/commit/c2437b80fabe6f549111512c9fce2499d4d67346)
+
+  - Exercise binade-boundary multiplication and selected-extrema overflow cases.
+  - Cover determinant accumulation failures, square/addition exhaustion, and matrix access bounds.
+  - Clarify that lifting an already-rounded matrix encloses only its stored values.
+- [**breaking**] Standardize vector and matrix norm names [`ab483d4`](https://github.com/acgetchell/la-stack/commit/ab483d4c4cb96b2d3f2ba0be38e96f5820b0de91)
+  - Distinguish Euclidean norm from squared norm with clearer vector APIs.
+  - Use norm_inf for the matrix maximum absolute row sum.
+  - Preserve numerical behavior and typed error contracts.
+  - Retain historical benchmark IDs and adapters for older releases.
+  - Document the v0.4.6 migration and clarify norm definitions.
+
+### Dependencies
+
+- Bump the github-actions group with 4 updates [#221](https://github.com/acgetchell/la-stack/pull/221)
+  [`fa501a8`](https://github.com/acgetchell/la-stack/commit/fa501a8d3ae068783f5e83f773ef979a843f14fb)
+- Bump the github-actions group with 3 updates [#223](https://github.com/acgetchell/la-stack/pull/223)
+  [`c0d7c93`](https://github.com/acgetchell/la-stack/commit/c0d7c932c81267dbd780f6b3706f16341f1410c8)
+- Bump the github-actions group with 4 updates [#240](https://github.com/acgetchell/la-stack/pull/240)
+  [`98e322c`](https://github.com/acgetchell/la-stack/commit/98e322c4e32081177c8d4c11aa7aaf7e23a77b4e)
+
+### Fixed
+
+- Advance exact Python dev pins with just update [`3616ae9`](https://github.com/acgetchell/la-stack/commit/3616ae97245952b4afd3247fca06cb5db9d3e6e0)
+
+  - Resolve direct development tools as one compatible cross-platform set.
+  - Preserve runtime and build-system dependency requirements.
+  - Refresh Ruff, Semgrep, Ty, and their compatible transitive dependencies.
+- Enforce the f64 algebraic-operation ban [`753179c`](https://github.com/acgetchell/la-stack/commit/753179c001ce750195b85bf7bc680cca0558eb34)
+  - Reject algebraic f64 calls and function items across repository-owned Rust while preserving ordinary operators and `mul_add`.
+  - Document the numerical contract, MSRV, release-pinned references, and native BLAS alternatives.
+  - Refresh contributor tool pins and adapt subprocess encoding to Ty 0.0.74.
+- Detect qualified f64 algebraic operations [`31021f1`](https://github.com/acgetchell/la-stack/commit/31021f1322a9c443fa4df63e632e8038600b2461)
+  - Reject `&lt;f64&gt;::algebraic_*` calls and function items.
+  - Preserve qualified FMA calls and function items as allowed.
+- Make just update reconcile all managed tools [`b1ca30a`](https://github.com/acgetchell/la-stack/commit/b1ca30a3f3977d3504b9383aff3907ce73f5a72a)
+  - Preflight update prerequisites before modifying dependency or lock state.
+  - Update Cargo and Python dependencies while preserving coupled exact-arithmetic requirements.
+  - Upgrade setup-owned Cargo tools and atomically reconcile their pins with the active uv version.
+  - Keep actionlint and zizmor compatible for local composite-action references.
+- Validate uv before repository updates [`37a17ed`](https://github.com/acgetchell/la-stack/commit/37a17edc82488ff0f04ec5775fe1eb13760b0468)
+  - Require the active uv to report a stable X.Y.Z version before dependency or Cargo tool changes.
+  - Preserve pin reconciliation for newer stable uv installations.
+- Reject ambiguous uv output before repository updates [`6bb2412`](https://github.com/acgetchell/la-stack/commit/6bb24127cca69f5029346b63fa9bb330381ae9c7)
+  - Validate uv output with the reconciler's single-stable-version parser before dependency or tool mutations.
+  - Accept newer stable uv releases while rejecting ambiguous, missing, prerelease, and embedded versions.
+  - Refresh managed tool pins and the Semgrep development dependency.
+- Make Python automation portable on Windows [`2370cbf`](https://github.com/acgetchell/la-stack/commit/2370cbf819f893ca598f83394330a5936fd10c6b)
+  - Bind uv version validation to the exact launcher selected by update recipes
+  - Preserve byte-exact Git input and explicit text newline policies
+  - Guard repository scripts against platform-dependent subprocess and file I/O
+- Enforce complete Python type annotations [`b2be4e7`](https://github.com/acgetchell/la-stack/commit/b2be4e73c19d0566efd9d7854e325375287c5e83)
+  - Enable missing-annotation checks for function parameters and methods
+  - Format and type-check repository-owned Python fixtures alongside scripts
+  - Preserve intentional negative fixtures with narrow lint suppressions
+- Enforce Python type-only import linting [`dd3d399`](https://github.com/acgetchell/la-stack/commit/dd3d399bf181aea7697c0cca1b6a60f67a39cd2b)
+  - Apply Ruff's TC rules to Python static-analysis fixtures.
+  - Keep annotation-only dependencies out of runtime imports.
+- Enforce complete Python fixture linting [`ebc45fe`](https://github.com/acgetchell/la-stack/commit/ebc45fefeb99eec72c13c939d3eb5c3505bf1114)
+  - Run the full configured Ruff policy over Python Semgrep fixtures in canonical CI.
+  - Isolate deliberate fixture violations with narrow per-file suppressions.
+  - Exclude static-analysis fixtures from CodeRabbit review and leave docstring policy to Ruff.
+- [**breaking**] Harden rational APIs and release comparisons
+  [`d8f9897`](https://github.com/acgetchell/la-stack/commit/d8f9897f59cce0a220efdbbcbaaf9180861889e9)
+  - canonicalize signed and unreduced rational inputs at construction boundaries
+  - preserve invariant-bearing RationalVector solutions across both exact input domains
+  - retain typed singularity, conversion, and runtime-dispatch diagnostics
+  - make release comparisons capability-aware for pre-rational benchmark baselines
+  - clarify exact-input guarantees, f64 precision loss, and benchmark provenance
+- Make rational comparisons fair and backward-compatible [`67afc8e`](https://github.com/acgetchell/la-stack/commit/67afc8e61345e1993680c315223e544ea1800937)
+  - Exclude input cloning from consuming BigRational reference timings.
+  - Support schema-1 artifacts that predate rational-input provenance.
+  - Omit unsupported rational-input rows from legacy coverage checks.
+- Avoid false certificate logging alerts [`d8d21db`](https://github.com/acgetchell/la-stack/commit/d8d21dbf76d7a4fa3ba15f37a6086179e7394976)
+  - Rename numerical-bound locals so CodeQL does not mistake them for sensitive certificate data.
+  - Document finite bound invariants, the affine error formula, and typed failure contexts.
+  - Make proof-range and second-FMA overflow expectations explicit.
+- Complete benchmark CI and improve documentation navigation [`ee1c60f`](https://github.com/acgetchell/la-stack/commit/ee1c60f72a7570deae10aa90e54141c9422e4322)
+  - Allow the full exact benchmark suite to finish while preserving normal sampling and skipping unused plots.
+  - Select successful main baselines and report incomplete comparisons accurately.
+  - Add a canonical 5×5 quickstart, linked feature summaries, Contents, and a Documentation Map.
+  - Move detailed examples and numerical contracts into rustdoc guides.
+  - Record README, docs.rs, and GitHub documentation conventions.
+  - Document numerical logging false positives and the outstanding paste maintenance advisory.
+  - Update cargo-llvm-cov and rumdl tool pins.
+- Correct Windows Markdown checks and benchmark summaries [`e7ca1fe`](https://github.com/acgetchell/la-stack/commit/e7ca1fe2bcd172d4000434b87ce9d511ac7a1487)
+  - Count Unicode characters consistently to prevent false Markdown line-length failures on Windows.
+  - Report benchmark comparisons as unavailable when baseline coverage is missing or incomplete.
+  - Stabilize Documentation Map navigation across GitHub and rustdoc.
+  - Link exact determinant filtering to det_direct_with_errbound().
+- Align zizmor audits and harden release cache isolation [`ee091c3`](https://github.com/acgetchell/la-stack/commit/ee091c36e8c6bff299f3536aba6c05ec5c7f659d)
+  - Synchronize local and CI zizmor versions and personas, enable authenticated online audits, and clearly report offline fallback.
+  - Remove dependency and tool caches from release benchmark production while preserving separate producer and publisher permissions.
+  - Enforce scanner-version and release-cache policies with Semgrep.
+  - Reorganize README, references, and mathematical guidance with early API selection, alphabetized methods, and stable thematic citations.
+  - Expand algorithm references, determinant-bound derivations, and numerical contracts for exact conversion, intervals, and scaled products.
+  - Trim AGENTS.md into focused linked guides and document file ownership.
+  - Establish documentation filename conventions and align coverage navigation, performance-report links, and generator output paths.
+- Verify zizmor version sources and clarify numerical docs [`421bcda`](https://github.com/acgetchell/la-stack/commit/421bcdae365145eb2e32e5087e4ef50d1989c43a)
+  - Require the zizmor resolver to read the canonical justfile pin and publish it without substituting a hard-coded or unrelated version.
+  - Point README mathematical-basis links to the main branch.
+  - Define roundoff-bound notation explicitly, including binary64 unit roundoff and the D and 2D reduction counts.
+  - Document non-finite factor rejection in ScaledProduct.
+  - Exempt intentional Semgrep fixtures from the algebraic-operation prohibition while retaining it for other repository-owned Rust.
+- Budget and validate release Criterion baselines [`42a3e1f`](https://github.com/acgetchell/la-stack/commit/42a3e1fc2f4db0fee13e7ae2a72295ec7286934f)
+  - Allow 150 minutes for comparative benchmarks and 90 minutes for exact benchmarks within a 285-minute job, preserving full Criterion sampling.
+  - Require complete, valid raw measurements and matching saved baselines before packaging the archive with its benchmark inventory.
+  - Report suite runtimes and support manual runs without release publication.
+  - Specify the repository explicitly when uploading release assets.
+  - Document runtime estimates, headroom, and pre-release verification.
+- Enforce benchmark setup limits and improve README navigation
+  [`d8382ea`](https://github.com/acgetchell/la-stack/commit/d8382eac0b6b467ea390ea04a5ec04fb4600bc8a)
+  - Limit checkout to 2 minutes and share a 28-minute timeout across tool installation, input validation, and benchmark inventory.
+  - Align budget documentation with the enforced setup limits.
+  - Place scalar types, API navigation, and features after Quickstart, move Examples before Benchmarks, and update the Contents list.
+  - Sort feature flags, scalar domains, documentation links, examples, and their run commands lexicographically.
+- Attach benchmark baselines before publishing releases [`0ddf9cf`](https://github.com/acgetchell/la-stack/commit/0ddf9cf31e65a41ddeff2fc996f84222c1f19ebf)
+  - Require an explicit stable tag and a matching mutable draft release.
+  - Benchmark the resolved tag commit and verify the uploaded archive's size and SHA-256 digest before publishing the draft.
+  - Reuse matching draft assets on publisher retries without overwriting conflicting assets or modifying published releases.
+  - Require fresh draft checks when rerunning benchmarks.
+  - Document draft creation, workflow dispatch, and failed-run recovery.
+- Isolate release benchmarks from default-branch caches [`d9434f2`](https://github.com/acgetchell/la-stack/commit/d9434f2cfcf20c05a898228e563fd0d1eee63632)
+  - Run benchmarks from the release tag and check out the workflow's own commit to keep execution in that tag's cache scope.
+  - Reject mismatched dispatch refs and tags moved since dispatch.
+  - Update release instructions to use --ref "$TAG" instead of main.
+- Correct interval bounds and support mutable dispatch captures
+  [`3fb215b`](https://github.com/acgetchell/la-stack/commit/3fb215b6dcbc17d5ed209b4b35a6038d8e0362af)
+  - Use magnitude-ordered FastTwoSum to avoid spurious non-finite errors in interval addition and subtraction near f64::MAX.
+  - Allow dimension-dispatch macro bodies to mutate captures while preserving support for consuming closures.
+  - Skip redundant GCD work when clearing rational denominators.
+  - Clarify numerical certificates, error provenance, and mutation guarantees in API documentation.
+  - Sort README API entries and document the existing Gram benchmark suite.
+
+### Maintenance
+
+- Tighten dependency-update tooling and diagnostics [`7e845d1`](https://github.com/acgetchell/la-stack/commit/7e845d12c7ad4a9d4dffb01740b5016098aa09ef)
+
+  - add `cargo-update` to pinned tool setup and include it in `just update` maintenance flow
+  - make archive, benchmark, and tag release scripts emit safer error handling with preserved sub-exception diagnostics
+  - strengthen SemVer and ordering validation paths in tool scripts to fail fast with clearer messages
+  - refresh contributor/release docs and exact-api docs for updated setup/update expectations
+  - normalize and simplify exact-module test structure without changing runtime behavior
+
+### Performance
+
+- Characterize rational row-clearing allocation costs [`2688964`](https://github.com/acgetchell/la-stack/commit/2688964817484f3466f1cff733eff04e1b26e857)
+
+  - Add small and wide-component rational benchmark fixtures across D=2–8.
+  - Isolate component cloning and integer scaling costs from complete determinant, sign, and solve operations.
+  - Publish allocation and timing data with provenance and reproduction steps supporting the existing borrowed implementation.
+- [**breaking**] Optimize exact conversion and dense 4D determinants
+  [`7fd6d8e`](https://github.com/acgetchell/la-stack/commit/7fd6d8efd3cf6c12be5a591d87addd6e4961fa82)
+  - Avoid redundant fraction reduction in strict RationalVector conversion.
+  - Share minors in dense exact 4×4 determinants while preserving the sparse fast path.
+  - Add adversarial solve benchmarks across D=2,3,4,5,8,16,32,64 and exact-arithmetic diagnostics.
+  - Include Gaussian reference working-copy costs in benchmark timings.
+  - Document the decision to retain existing LU/LDLT solve finalization after finding no repeatable speedup.
+  - Align tooling with Rust 1.98.1 and refresh dependency and tool pins.
+
 ## [0.4.5] - 2026-08-21
 
 ### ⚠️ Breaking Changes
 
-- Unify local and release performance workflows
-- Require Rust 1.97.1
-- Require Rust 1.98.0
+- la-stack now requires Rust 1.97.1.
+- rename performance-rerender to performance-doc and performance-local-vs-linalg to performance-local-non-exact, replace --rerender with --promote-artifacts,
+  and remove performance-archive-published.
+- la-stack now requires Rust 1.98.0.
 
 ### Merged Pull Requests
 
@@ -120,8 +331,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠️ Breaking Changes
 
-- Make numerical invariants and errors explicit
-- Require Rust 1.97.0
+- Rename `Tolerance::new` to `Tolerance::try_new` and `Matrix::get_checked` to `Matrix::try_get` ; remove `Matrix::set_checked` in favor of `Matrix::set` .
+  `Vector::dot` and `Vector::norm2_sq` now borrow their operands. `det_sign_exact` is now infallible and returns `DeterminantSign` instead of
+  `Result<i8, LaError>` . `LaError` variants now use typed reason, location, and origin fields and require `..` in downstream matches. LDLT now requires exact
+  symmetry, determinant error bounds may be unavailable under gradual underflow, and `ERR_COEFF_2` , `ERR_COEFF_3` , and `ERR_COEFF_4` are no longer exported by
+  the prelude.
+- Rust versions earlier than 1.97.0 are no longer supported.
 
 ### Added
 
@@ -227,7 +442,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠️ Breaking Changes
 
-- Make exact f64 conversions strict
+- det_exact_f64 and solve_exact_f64 now return LaError::Unrepresentable instead of rounding or reporting Overflow for exact values that cannot be represented
+  exactly as finite f64. Call det_exact_rounded_f64 or solve_exact_rounded_f64 to opt into rounded finite f64 results.
+- strict exact-to-f64 APIs now return LaError::Unrepresentable instead of silently rounding, public Matrix and Vector construction is fallible, and the previous
+  finite proof wrapper APIs are removed.
 
 ### Added
 
@@ -891,6 +1109,7 @@ Older releases are archived by minor series:
 - [0.2.x](docs/archive/changelog/0.2.md)
 - [0.1.x](docs/archive/changelog/0.1.md)
 
+[0.4.6]: https://github.com/acgetchell/la-stack/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/acgetchell/la-stack/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/acgetchell/la-stack/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/acgetchell/la-stack/compare/v0.4.2...v0.4.3

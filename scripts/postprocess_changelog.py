@@ -348,6 +348,19 @@ def _extract_section_summaries(
     return pr_entries, breaking_entries
 
 
+def _summary_insertion_index(section: list[str]) -> int:
+    """Place new summaries after the version heading or an existing breaking summary."""
+    if "### ⚠️ Breaking Changes" in section:
+        index = section.index("### ⚠️ Breaking Changes") + 1
+        while index < len(section) and not section[index].startswith("### "):
+            index += 1
+    else:
+        index = 1
+        while index < len(section) and not section[index].strip():
+            index += 1
+    return index
+
+
 def _inject_summary_sections(text: str) -> str:
     """
     Insert "Merged Pull Requests" and "Breaking Changes" summary sections into a changelog text.
@@ -377,11 +390,14 @@ def _inject_summary_sections(text: str) -> str:
         end = boundaries[sec_idx + 1] if sec_idx + 1 < len(boundaries) else len(lines)
         section = lines[start:end]
 
-        # Guard against double-injection.
-        if any("### Merged Pull Requests" in s or "### ⚠️ Breaking Changes" in s for s in section):
-            continue
-
+        # git-cliff renders full breaking descriptions; older input may have neither summary.
+        has_pr_summary = "### Merged Pull Requests" in section
+        has_breaking_summary = "### ⚠️ Breaking Changes" in section
         pr_entries, breaking_entries = _extract_section_summaries(section)
+        if has_pr_summary:
+            pr_entries = []
+        if has_breaking_summary:
+            breaking_entries = []
 
         if not pr_entries and not breaking_entries:
             continue
@@ -389,10 +405,7 @@ def _inject_summary_sections(text: str) -> str:
         # Sort PRs by highest PR number, descending (newest first).
         pr_entries.sort(key=_max_pr_number, reverse=True)
 
-        # Insertion point: first non-blank line after the heading.
-        insert_at = start + 1
-        while insert_at < end and lines[insert_at].strip() == "":
-            insert_at += 1
+        insert_at = start + _summary_insertion_index(section)
 
         block: list[str] = []
         if breaking_entries:
@@ -834,9 +847,41 @@ def _strip_dependabot_metadata(text: str) -> str:
     return "\n".join(result)
 
 
+def _escape_breaking_prose(text: str) -> str:
+    """Escape HTML in breaking descriptions while preserving Markdown code."""
+    result: list[str] = []
+    in_breaking = False
+    active_fence: _CodeFence | None = None
+    for line in text.split("\n"):
+        if active_fence is not None:
+            result.append(line)
+            if _closes_code_fence(line, active_fence):
+                active_fence = None
+            continue
+        if line.startswith(("## ", "### ")):
+            in_breaking = line == "### ⚠️ Breaking Changes"
+        active_fence = _opening_code_fence(line)
+        if not in_breaking or active_fence is not None:
+            result.append(line)
+            continue
+        position = 0
+        escaped: list[str] = []
+        while position < len(line):
+            end = _backtick_span_end(line, position) if line[position] == "`" else None
+            if end is not None:
+                escaped.append(line[position:end])
+                position = end
+            else:
+                escaped.append({"<": "&lt;", ">": "&gt;"}.get(line[position], line[position]))
+                position += 1
+        result.append("".join(escaped))
+    return "\n".join(result)
+
+
 def postprocess_text(text: str) -> str:
     """Apply changelog markdown hygiene transforms to *text*."""
     text = _strip_dependabot_metadata(text)
+    text = _escape_breaking_prose(text)
 
     # Inject PR / breaking-change summary sections before reflow.
     text = _inject_summary_sections(text)

@@ -8,10 +8,10 @@ mod bench_utils;
 #[path = "../benches/common/exact.rs"]
 pub mod exact_bench;
 
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 #[path = "../benches/common/exact_diagnostics.rs"]
 pub mod exact_diagnostics;
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 #[path = "../benches/common/rational.rs"]
 pub mod rational_bench;
 
@@ -26,7 +26,7 @@ use exact_bench::{
     large_entries_3x3_input, make_matrix_rows, make_random_input_corpus, make_vector_array,
     near_singular_3x3_input, validate_exact_fixture, validate_f64_determinant_benchmarks,
 };
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 use exact_diagnostics::{ConversionKind, Det4Kind, canonical_conversion_input, exact_det4_input};
 
 fn baseline_input<const D: usize>() -> ExactInput<D> {
@@ -40,7 +40,7 @@ fn baseline_input<const D: usize>() -> ExactInput<D> {
 }
 
 fn validate_baseline_and_random_corpus<const D: usize>() {
-    #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+    #[cfg(not(la_stack_pre_rational_input_api))]
     for kind in ConversionKind::ALL {
         let _ = canonical_conversion_input::<D>(kind);
     }
@@ -51,7 +51,7 @@ fn validate_baseline_and_random_corpus<const D: usize>() {
     }
 }
 
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 #[test]
 fn determinant_diagnostic_fixtures_are_correct() {
     for kind in Det4Kind::ALL {
@@ -60,7 +60,7 @@ fn determinant_diagnostic_fixtures_are_correct() {
 }
 
 /// Keep the filter-resolved control and typed non-finite fallback distinct.
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 #[test]
 fn determinant_extreme_diagnostic_filter_paths_are_stable() {
     use la_stack::{ArithmeticOperation, LaError};
@@ -81,20 +81,10 @@ fn determinant_extreme_diagnostic_filter_paths_are_stable() {
 /// Report whether `det_sign_exact` can certify this fixture through its direct filter.
 ///
 /// Both a missing bound and a direct-path error select the exact fallback.
-#[cfg(not(la_stack_v0_4_3_api))]
 fn fast_filter_is_conclusive<const D: usize>(input: ExactInput<D>) -> bool {
     match input.matrix.det_direct_with_errbound() {
         Ok(Some(estimate)) => estimate.determinant().abs() > estimate.absolute_error_bound(),
         Ok(None) | Err(_) => false,
-    }
-}
-
-/// Use the separate v0.4.3 determinant and bound APIs for the same filter test.
-#[cfg(la_stack_v0_4_3_api)]
-fn fast_filter_is_conclusive<const D: usize>(input: ExactInput<D>) -> bool {
-    match (input.matrix.det_direct(), input.matrix.det_errbound()) {
-        (Ok(Some(determinant)), Ok(Some(bound))) => determinant.abs() > bound,
-        (Ok(None) | Err(_), _) | (_, Ok(None) | Err(_)) => false,
     }
 }
 

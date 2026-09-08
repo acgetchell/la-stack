@@ -4,7 +4,7 @@ import json
 import re
 import subprocess
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -45,7 +45,7 @@ def _write_harness_provenance(
     criterion_dir: Path,
     *,
     sha256: str = "a" * 64,
-    baseline: str = "v0.4.3",
+    baseline: str = "v0.4.5",
 ) -> None:
     """Write valid shared-harness provenance metadata."""
     criterion_dir.mkdir(parents=True, exist_ok=True)
@@ -75,10 +75,10 @@ def _schema2_provenance_data() -> dict[str, object]:
         "source_state_sha256": "c" * 64,
     }
     return {
-        "baseline": "v0.4.3",
-        "current": "v0.4.4",
+        "baseline": "v0.4.5",
+        "current": "v0.4.6",
         "criterion": {
-            "baseline_command": ["just", "bench-save-baseline", "v0.4.3"],
+            "baseline_command": ["just", "bench-save-baseline", "v0.4.5"],
             "criterion_version": "0.7.0",
             "current_command": ["just", "bench-latest"],
             "sample": "new",
@@ -87,7 +87,7 @@ def _schema2_provenance_data() -> dict[str, object]:
             "suite": "all",
         },
         "measurement": {
-            "baseline_api_compatibility": "la_stack_v0_4_3_api",
+            "baseline_api_compatibility": "la_stack_pre_rational_input_api",
             "baseline_commit": "baseline-commit",
             "baseline_git_clean": False,
             "baseline_source_state_sha256": "d" * 64,
@@ -105,7 +105,7 @@ def _schema2_provenance_data() -> dict[str, object]:
         "publication": environment,
         "schema": 2,
         "validation": {
-            "baseline_api_compatibility": "la_stack_v0_4_3_api",
+            "baseline_api_compatibility": "la_stack_pre_rational_input_api",
             "baseline_commit": "baseline-commit",
             "baseline_git_clean": False,
             "baseline_revision": "passed",
@@ -124,7 +124,7 @@ def _schema2_provenance_data() -> dict[str, object]:
 def _read_harness_provenance(  # noqa: PLR0913
     criterion_dir: Path,
     *,
-    baseline: str = "v0.4.3",
+    baseline: str = "v0.4.5",
     suite: bench_compare.BenchmarkSuite = "all",
     scope: bench_compare.ComparisonScope = "release-signal",
     stat: bench_compare.Statistic = "median",
@@ -417,15 +417,18 @@ def test_collect_comparisons(tmp_path: Path) -> None:
     # Save the same data as a baseline
     for d, det, det_exact in [(2, 2.0, 8000.0), (3, 10.0, 42000.0)]:
         group = tmp_path / f"exact_d{d}"
-        _write_estimates(group / "det" / "v0.3.0" / "estimates.json", "median", det)
-        _write_estimates(group / "det_exact" / "v0.3.0" / "estimates.json", "median", det_exact)
-        _write_estimates(group / "det_exact_f64" / "v0.3.0" / "estimates.json", "median", det_exact * 1.1)
-        _write_estimates(group / "solve_exact_f64" / "v0.3.0" / "estimates.json", "median", det_exact * 1.3)
+        _write_estimates(group / "det" / "v0.4.4" / "estimates.json", "median", det)
+        _write_estimates(group / "det_exact" / "v0.4.4" / "estimates.json", "median", det_exact)
+        for bench in ("det_exact_f64_result", "det_exact_rounded_f64"):
+            _write_estimates(group / bench / "v0.4.4" / "estimates.json", "median", det_exact * 1.1)
+        for bench in ("solve_exact_f64_result", "solve_exact_rounded_f64"):
+            _write_estimates(group / bench / "v0.4.4" / "estimates.json", "median", det_exact * 1.3)
     random_group = tmp_path / "exact_random_corpus_d3"
-    _write_estimates(random_group / "det_exact" / "v0.3.0" / "estimates.json", "median", 66000.0)
-    _write_estimates(random_group / "solve_exact_f64" / "v0.3.0" / "estimates.json", "median", 108000.0)
+    _write_estimates(random_group / "det_exact" / "v0.4.4" / "estimates.json", "median", 66000.0)
+    for bench in ("solve_exact_f64_result", "solve_exact_rounded_f64"):
+        _write_estimates(random_group / bench / "v0.4.4" / "estimates.json", "median", 108000.0)
 
-    collection = bench_compare._collect_comparisons(tmp_path, "v0.3.0", "median")
+    collection = bench_compare._collect_comparisons(tmp_path, "v0.4.4", "median")
     comparisons = collection.comparisons
     assert len(comparisons) == 15  # fixed dimensions plus the stable random corpus
     assert {c.group for c in comparisons} == {
@@ -435,16 +438,11 @@ def test_collect_comparisons(tmp_path: Path) -> None:
     }
     for c in comparisons:
         assert c.speedup == pytest.approx(c.baseline_ns / c.current_ns)
-    assert {(c.bench, c.baseline_bench) for c in comparisons if c.baseline_bench is not None} == {
-        ("det_exact_f64_result", "det_exact_f64"),
-        ("det_exact_rounded_f64", "det_exact_f64"),
-        ("solve_exact_f64_result", "solve_exact_f64"),
-        ("solve_exact_rounded_f64", "solve_exact_f64"),
-    }
+    assert all(c.baseline_bench is None for c in comparisons)
 
     all_collection = bench_compare._collect_comparisons(
         tmp_path,
-        "v0.3.0",
+        "v0.4.4",
         "median",
         policy=bench_compare.ComparisonPolicy(scope="all-benches"),
     )
@@ -453,14 +451,14 @@ def test_collect_comparisons(tmp_path: Path) -> None:
     random_comparisons = [c for c in all_comparisons if c.group == "exact_random_corpus_d3"]
     assert {(c.bench, c.baseline_bench) for c in random_comparisons} == {
         ("det_exact", None),
-        ("solve_exact_f64_result", "solve_exact_f64"),
-        ("solve_exact_rounded_f64", "solve_exact_f64"),
+        ("solve_exact_f64_result", None),
+        ("solve_exact_rounded_f64", None),
     }
 
 
 def test_collect_comparisons_missing_baseline(tmp_path: Path) -> None:
     _build_criterion_tree(tmp_path)
-    collection = bench_compare._collect_comparisons(tmp_path, "v0.3.0", "median", suite="exact")
+    collection = bench_compare._collect_comparisons(tmp_path, "v0.4.4", "median", suite="exact")
     assert collection.comparisons == []
     det_gap = next(gap for gap in collection.gaps if gap.group == "exact_d2" and gap.bench == "det")
     assert not det_gap.missing_current
@@ -478,59 +476,6 @@ def test_collect_comparisons_records_each_missing_side_in_registry_order(tmp_pat
     assert (first_three[0].missing_current, first_three[0].missing_baseline) == (False, True)
     assert (first_three[1].missing_current, first_three[1].missing_baseline) == (True, False)
     assert (first_three[2].missing_current, first_three[2].missing_baseline) == (True, True)
-
-
-def _write_v043_exact_comparison_samples(
-    criterion_dir: Path,
-    *,
-    missing_current: frozenset[tuple[str, str]] = frozenset(),
-) -> None:
-    unavailable = bench_compare._V0_4_3_UNAVAILABLE_BASELINE_ROWS
-    for group, benches in bench_compare.EXACT_GROUPS.items():
-        for bench in benches:
-            row = (group, bench)
-            if row not in missing_current:
-                _write_estimates(criterion_dir / group / bench / "new" / "estimates.json", "median", 10.0)
-            if row not in unavailable:
-                _write_estimates(criterion_dir / group / bench / "v0.4.3" / "estimates.json", "median", 20.0)
-
-
-def test_v043_adapter_requires_bound_only_baselines_but_allows_missing_paired_rows(tmp_path: Path) -> None:
-    _write_v043_exact_comparison_samples(tmp_path)
-
-    collection = bench_compare._collect_comparisons(
-        tmp_path,
-        "v0.4.3",
-        "median",
-        suite="exact",
-        policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
-    )
-
-    assert collection.gaps == []
-    comparison_rows = {(comparison.group, comparison.bench) for comparison in collection.comparisons}
-    assert all((f"exact_d{dimension}", "det_errbound") in comparison_rows for dimension in (2, 3, 4))
-    assert all((f"exact_d{dimension}", "det_direct_with_errbound") not in comparison_rows for dimension in (2, 3, 4))
-
-
-def test_v043_adapter_reports_missing_current_for_unavailable_paired_row(tmp_path: Path) -> None:
-    target = ("exact_d2", "det_direct_with_errbound")
-    _write_v043_exact_comparison_samples(tmp_path, missing_current=frozenset({target}))
-
-    collection = bench_compare._collect_comparisons(
-        tmp_path,
-        "v0.4.3",
-        "median",
-        suite="exact",
-        policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
-    )
-
-    assert len(collection.gaps) == 1
-    gap = collection.gaps[0]
-    assert gap.suite == "exact"
-    assert gap.group == target[0]
-    assert gap.bench == target[1]
-    assert gap.missing_current
-    assert not gap.missing_baseline
 
 
 def test_pre_rational_adapter_retains_current_rational_rows_without_baselines(tmp_path: Path) -> None:
@@ -568,7 +513,7 @@ def test_pre_rational_historical_harness_excludes_rational_registry_rows(tmp_pat
 
     collection = bench_compare._collect_comparisons(
         tmp_path,
-        "v0.4.4",
+        "v0.4.6",
         "median",
         suite="exact",
         policy=policy,
@@ -663,69 +608,6 @@ def test_d8_release_signal_rows_are_explicit_and_report_missing_baselines(
     assert all(not gap.missing_current and gap.missing_baseline for gap in special_gaps)
 
 
-def test_v043_adapter_allows_only_known_unavailable_d8_baselines(tmp_path: Path) -> None:
-    group = tmp_path / "d8"
-    for bench in bench_compare.VS_LINALG_D8_RELEASE_SIGNAL_BENCHES:
-        _write_estimates(group / bench / "new" / "estimates.json", "median", 10.0)
-    _write_estimates(
-        group / "la_stack_det_from_lu_balanced_range" / "v0.4.3" / "estimates.json",
-        "median",
-        1.0,
-    )
-
-    collection = bench_compare._collect_comparisons(
-        tmp_path,
-        "v0.4.3",
-        "median",
-        suite="vs_linalg",
-        policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
-    )
-
-    special_gaps = [gap for gap in collection.gaps if gap.bench in bench_compare.VS_LINALG_D8_RELEASE_SIGNAL_BENCHES]
-    assert [gap.bench for gap in special_gaps] == [
-        "la_stack_lu_pivoting",
-        "la_stack_lu_ill_conditioned",
-        "la_stack_ldlt_ill_conditioned",
-    ]
-    assert all(not gap.missing_current and gap.missing_baseline for gap in special_gaps)
-    assert not any("balanced_range" in comparison.bench for comparison in collection.comparisons)
-
-
-def test_v043_adapter_still_requires_current_balanced_range_sample(tmp_path: Path) -> None:
-    group = tmp_path / "d8"
-    _write_estimates(
-        group / "la_stack_det_from_lu_balanced_range" / "new" / "estimates.json",
-        "median",
-        10.0,
-    )
-
-    collection = bench_compare._collect_comparisons(
-        tmp_path,
-        "v0.4.3",
-        "median",
-        suite="vs_linalg",
-        policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
-    )
-
-    balanced_gaps = [gap for gap in collection.gaps if "balanced_range" in gap.bench]
-    assert [(gap.bench, gap.missing_current, gap.missing_baseline) for gap in balanced_gaps] == [("la_stack_det_from_ldlt_balanced_range", True, False)]
-
-
-def test_v043_adapter_validates_current_balanced_range_sample(tmp_path: Path) -> None:
-    estimate = tmp_path / "d8" / "la_stack_det_from_lu_balanced_range" / "new" / "estimates.json"
-    estimate.parent.mkdir(parents=True)
-    estimate.write_text("{not json", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="malformed Criterion estimates JSON"):
-        bench_compare._collect_comparisons(
-            tmp_path,
-            "v0.4.3",
-            "median",
-            suite="vs_linalg",
-            policy=bench_compare.ComparisonPolicy(baseline_api_compatibility="la_stack_v0_4_3_api"),
-        )
-
-
 def test_collect_vs_linalg_release_signal_uses_baseline_peer_context(tmp_path: Path) -> None:
     _build_vs_linalg_tree(tmp_path)
     collection = bench_compare._collect_comparisons(tmp_path, "last", "median", suite="vs_linalg")
@@ -741,6 +623,24 @@ def test_collect_vs_linalg_release_signal_uses_baseline_peer_context(tmp_path: P
     ldlt = comparisons[1]
     assert ldlt.baseline_nalgebra_ns == 36.0
     assert ldlt.baseline_faer_ns == 48.0
+
+
+@pytest.mark.parametrize("native_ns", [None, 5.0])
+def test_dot_peer_context_never_substitutes_legacy_scalar_loop(tmp_path: Path, native_ns: float | None) -> None:
+    group = tmp_path / "d2"
+    _write_estimates(group / "la_stack_dot/last/estimates.json", "median", 20.0)
+    _write_estimates(group / "la_stack_dot/new/estimates.json", "median", 10.0)
+    _write_estimates(group / "nalgebra_dot/last/estimates.json", "median", 8.0)
+    _write_estimates(group / "faer_dot/last/estimates.json", "median", 1.0)
+    if native_ns is not None:
+        _write_estimates(group / "faer_dot_native/last/estimates.json", "median", native_ns)
+
+    collection = bench_compare._collect_comparisons(tmp_path, "last", "median", suite="vs_linalg")
+
+    [dot] = collection.comparisons
+    assert dot.bench == "la_stack_dot"
+    assert dot.baseline_nalgebra_ns == 8.0
+    assert dot.baseline_faer_ns == native_ns
 
 
 def test_collect_vs_linalg_all_benches_includes_latest_peer_rows(tmp_path: Path) -> None:
@@ -795,18 +695,20 @@ def test_comparison_uses_one_table_per_suite_with_case_column(tmp_path: Path) ->
     _build_criterion_tree(tmp_path)
     for d, det, det_exact in [(2, 2.0, 8000.0), (3, 10.0, 42000.0)]:
         group = tmp_path / f"exact_d{d}"
-        _write_estimates(group / "det" / "v0.3.0" / "estimates.json", "median", det)
-        _write_estimates(group / "det_exact" / "v0.3.0" / "estimates.json", "median", det_exact)
-        _write_estimates(group / "det_exact_f64" / "v0.3.0" / "estimates.json", "median", det_exact * 1.1)
-        _write_estimates(group / "solve_exact_f64" / "v0.3.0" / "estimates.json", "median", det_exact * 1.3)
+        _write_estimates(group / "det" / "v0.4.4" / "estimates.json", "median", det)
+        _write_estimates(group / "det_exact" / "v0.4.4" / "estimates.json", "median", det_exact)
+        for bench in ("det_exact_f64_result", "det_exact_rounded_f64"):
+            _write_estimates(group / bench / "v0.4.4" / "estimates.json", "median", det_exact * 1.1)
+        for bench in ("solve_exact_f64_result", "solve_exact_rounded_f64"):
+            _write_estimates(group / bench / "v0.4.4" / "estimates.json", "median", det_exact * 1.3)
 
-    comparisons = bench_compare._collect_comparisons(tmp_path, "v0.3.0", "median").comparisons
-    tables = bench_compare._comparison_tables(comparisons, "v0.3.0")
-    assert tables.count("| Case | Benchmark | v0.3.0 (point + CI)") == 1
+    comparisons = bench_compare._collect_comparisons(tmp_path, "v0.4.4", "median").comparisons
+    tables = bench_compare._comparison_tables(comparisons, "v0.4.4")
+    assert tables.count("| Case | Benchmark | v0.4.4 (point + CI)") == 1
     assert "| D=2 |" in tables
     assert "| D=3 |" in tables
-    assert "det_exact_rounded_f64 (vs det_exact_f64)" in tables
-    assert "solve_exact_f64_result (vs solve_exact_f64)" in tables
+    assert "| det_exact_rounded_f64 |" in tables
+    assert "| solve_exact_f64_result |" in tables
 
 
 def test_comparison_tables_include_vs_linalg_peer_context(tmp_path: Path) -> None:
@@ -857,7 +759,7 @@ def test_read_harness_provenance_validates_shared_harness_metadata(tmp_path: Pat
         schema=1,
         mode="shared-current-harness",
         sha256="a" * 64,
-        baseline="v0.4.3",
+        baseline="v0.4.5",
     )
     policy = bench_compare._comparison_policy("release-signal", provenance)
     assert policy == bench_compare.ComparisonPolicy(
@@ -867,7 +769,7 @@ def test_read_harness_provenance_validates_shared_harness_metadata(tmp_path: Pat
 
     collection = bench_compare._collect_comparisons(
         tmp_path,
-        "v0.4.3",
+        "v0.4.5",
         "median",
         suite="exact",
         policy=policy,
@@ -897,20 +799,13 @@ def test_read_schema2_provenance_records_versions_dirty_source_and_both_gates(tm
     assert "Criterion dependency version: `0.7.0`" in rendered
     assert "Current Git clean: `false`" in rendered
     assert "Validated baseline revision: `baseline-commit`" in rendered
-    assert "Baseline API compatibility: `la_stack_v0_4_3_api`" in rendered
-    assert "d8/la_stack_det_from_lu_balanced_range" in rendered
-    assert "d8/la_stack_det_from_ldlt_balanced_range" in rendered
-    assert "exact determinant is one" in rendered
-    assert "exact_d2/det_direct_with_errbound" in rendered
-    assert "exact_d3/det_direct_with_errbound" in rendered
-    assert "exact_d4/det_direct_with_errbound" in rendered
+    assert "Baseline API compatibility: `la_stack_pre_rational_input_api`" in rendered
     assert "rational_input_d{2..8}/*" in rendered
     assert "**Publication and validation environment**:" in rendered
     assert all(len(line) <= 160 for line in markdown)
-    assert "the comparable `det_errbound` baselines remain required" in rendered
     assert bench_compare._comparison_policy("release-signal", provenance) == bench_compare.ComparisonPolicy(
         scope="release-signal",
-        baseline_api_compatibility="la_stack_v0_4_3_api",
+        baseline_api_compatibility="la_stack_pre_rational_input_api",
     )
     assert provenance.measurement is not None
     with pytest.raises(TypeError):
@@ -968,7 +863,7 @@ def test_read_schema2_provenance_rejects_recorded_measurement_without_cpu_model(
         ("suite", "exact"),
         ("scope", "all-benches"),
         ("statistic", "mean"),
-        ("sample", "v0.4.3"),
+        ("sample", "v0.4.5"),
     ],
 )
 def test_read_schema2_provenance_binds_criterion_settings_to_request(
@@ -986,16 +881,16 @@ def test_read_schema2_provenance_binds_criterion_settings_to_request(
         _read_harness_provenance(tmp_path)
 
 
-def test_read_schema2_provenance_rejects_v043_adapter_for_other_baseline(tmp_path: Path) -> None:
+def test_read_schema2_provenance_rejects_pre_rational_adapter_for_newer_baseline(tmp_path: Path) -> None:
     data = _schema2_provenance_data()
-    data["baseline"] = "v0.4.4"
+    data["baseline"] = "v0.4.6"
     (tmp_path / ".la-stack-benchmark-harness.json").write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(
         ValueError,
-        match=r"must be 'la_stack_pre_rational_input_api' for baseline 'v0\.4\.4'",
+        match=r"must be 'none' for baseline 'v0\.4\.6'",
     ):
-        _read_harness_provenance(tmp_path, baseline="v0.4.4")
+        _read_harness_provenance(tmp_path, baseline="v0.4.6")
 
 
 def test_read_schema2_provenance_accepts_pre_rational_adapter_for_v045(tmp_path: Path) -> None:
@@ -1037,7 +932,7 @@ def test_read_schema2_provenance_rejects_revision_contradiction(tmp_path: Path) 
 
 
 def test_read_harness_provenance_rejects_different_requested_baseline(tmp_path: Path) -> None:
-    _write_harness_provenance(tmp_path, baseline="v0.4.3")
+    _write_harness_provenance(tmp_path, baseline="v0.4.5")
 
     with pytest.raises(ValueError, match="does not match requested Criterion baseline 'last'"):
         _read_harness_provenance(tmp_path, baseline="last")
@@ -1065,7 +960,7 @@ def test_read_harness_provenance_rejects_malformed_fields(
         "schema": 1,
         "mode": "shared-current-harness",
         "sha256": "a" * 64,
-        "baseline": "v0.4.3",
+        "baseline": "v0.4.5",
     }
     data[field] = value
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -1138,7 +1033,7 @@ def test_main_comparison_no_baseline(tmp_path: Path, capsys: pytest.CaptureFixtu
     criterion_dir = tmp_path / "criterion"
     _build_criterion_tree(criterion_dir)
 
-    rc = bench_compare.main(["v0.3.0", "--criterion-dir", str(criterion_dir), "--output", str(tmp_path / "out.md")])
+    rc = bench_compare.main(["v0.4.4", "--criterion-dir", str(criterion_dir), "--output", str(tmp_path / "out.md")])
     assert rc == 2
     assert "No comparison data" in capsys.readouterr().err
 
@@ -1147,11 +1042,11 @@ def test_main_comparison_refuses_incomplete_coverage_before_writing(tmp_path: Pa
     criterion_dir = tmp_path / "criterion"
     group = criterion_dir / "exact_d2"
     _write_estimates(group / "det" / "new" / "estimates.json", "median", 10.0)
-    _write_estimates(group / "det" / "v0.4.3" / "estimates.json", "median", 20.0)
+    _write_estimates(group / "det" / "v0.4.5" / "estimates.json", "median", 20.0)
     _write_harness_provenance(criterion_dir)
     output = tmp_path / "report.md"
 
-    rc = bench_compare.main(["v0.4.3", "--suite", "exact", "--criterion-dir", str(criterion_dir), "--output", str(output)])
+    rc = bench_compare.main(["v0.4.5", "--suite", "exact", "--criterion-dir", str(criterion_dir), "--output", str(output)])
 
     assert rc == 2
     assert not output.exists()
@@ -1219,7 +1114,7 @@ def test_main_rejects_invalid_artifact_paths_without_writing(
 
     rc = bench_compare.main(
         [
-            "v0.4.3",
+            "v0.4.5",
             "--repo-root",
             str(tmp_path),
             "--output",
@@ -1334,12 +1229,12 @@ def test_markdown_failure_rolls_back_release_artifact_pair(tmp_path: Path, monke
     timing = bench_compare.TimingEstimate(median_ns=10.0, ci_lower_ns=9.0, ci_upper_ns=11.0)
     bundle = bench_compare.PerformanceBundle(
         context=bench_compare.ArtifactContext(
-            release=bench_compare.ReleasePair(current="v0.4.4", baseline="v0.4.3"),
+            release=bench_compare.ReleasePair(current="v0.4.6", baseline="v0.4.5"),
             statistic="median",
             suite="all",
             scope="release-signal",
             source=bench_compare.ReportSource(
-                version="0.4.4",
+                version="0.4.6",
                 commit="current-commit",
                 ref="HEAD",
                 revision_timestamp="2026-08-04 12:00:00 UTC",
@@ -1376,7 +1271,7 @@ def test_markdown_failure_rolls_back_release_artifact_pair(tmp_path: Path, monke
             root=tmp_path,
             criterion_dir=tmp_path,
             settings=bench_compare.ReportSettings(
-                baseline_name="v0.4.3",
+                baseline_name="v0.4.5",
                 stat="median",
                 suite="all",
                 scope="release-signal",
@@ -1389,87 +1284,31 @@ def test_markdown_failure_rolls_back_release_artifact_pair(tmp_path: Path, monke
     assert output.read_text(encoding="utf-8") == "old markdown\n"
 
 
-def test_atomic_markdown_write_removes_temp_when_fsync_fails(
+@pytest.mark.parametrize("failure_point", ["create", "fsync", "replace"])
+def test_atomic_markdown_write_failure_preserves_original_and_cleans_temp(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
 ) -> None:
     output = tmp_path / "performance.md"
     output.write_text("old\n", encoding="utf-8")
 
-    def fail_fsync(_descriptor: int) -> None:
-        msg = "simulated fsync failure"
+    def fail(*_args: object, **_kwargs: object) -> Never:
+        msg = f"simulated {failure_point} failure"
         raise OSError(msg)
 
-    monkeypatch.setattr(bench_compare.os, "fsync", fail_fsync)
+    if failure_point == "create":
+        monkeypatch.setattr(bench_compare.tempfile, "NamedTemporaryFile", fail)
+    elif failure_point == "fsync":
+        monkeypatch.setattr(bench_compare.os, "fsync", fail)
+    else:
+        monkeypatch.setattr(bench_compare.Path, "replace", fail)
 
-    with pytest.raises(OSError, match="simulated fsync failure"):
+    with pytest.raises(OSError, match=f"simulated {failure_point} failure"):
         bench_compare._write_text_atomic(output, "new\n")
 
     assert output.read_text(encoding="utf-8") == "old\n"
-    assert not list(tmp_path.glob(".performance.md.*.tmp"))
-
-
-def test_main_v043_comparison_allows_only_unavailable_balanced_baselines(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    criterion_dir = tmp_path / "criterion"
-    unavailable = bench_compare._V0_4_3_UNAVAILABLE_BASELINE_ROWS
-    for dimension in bench_compare.VS_LINALG_CANONICAL_DIMS:
-        group = f"d{dimension}"
-        benches = {
-            *bench_compare.VS_LINALG_LA_STACK_BENCHES,
-            *bench_compare.VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM.get(dimension, []),
-        }
-        for bench in benches:
-            _write_estimates(criterion_dir / group / bench / "new" / "estimates.json", "median", 10.0)
-            if (group, bench) not in unavailable:
-                _write_estimates(criterion_dir / group / bench / "v0.4.3" / "estimates.json", "median", 20.0)
-
-    provenance = _schema2_provenance_data()
-    criterion = provenance["criterion"]
-    assert isinstance(criterion, dict)
-    cast("dict[str, object]", criterion)["suite"] = "vs_linalg"
-    (criterion_dir / ".la-stack-benchmark-harness.json").write_text(json.dumps(provenance), encoding="utf-8")
-    output = tmp_path / "report.md"
-    artifact_paths = bench_compare.ArtifactPaths(
-        csv=tmp_path / "performance.csv",
-        provenance=tmp_path / "performance.provenance.json",
-    )
-    monkeypatch.setattr(
-        bench_compare,
-        "_report_source",
-        lambda _root: bench_compare.ReportSource(
-            version="0.4.4",
-            commit="current-commit",
-            ref="test",
-            revision_timestamp="2026-08-04 12:00:00 UTC",
-        ),
-    )
-
-    rc = bench_compare.main(
-        [
-            "v0.4.3",
-            "--suite",
-            "vs_linalg",
-            "--criterion-dir",
-            str(criterion_dir),
-            "--csv-output",
-            str(artifact_paths.csv),
-            "--provenance-output",
-            str(artifact_paths.provenance),
-            "--output",
-            str(output),
-        ]
-    )
-
-    assert rc == 0
-    rendered = output.read_text(encoding="utf-8")
-    assert rendered == bench_compare.render_release_artifacts(artifact_paths)
-    assert "d8/la_stack_det_from_lu_balanced_range" in rendered
-    assert "d8/la_stack_det_from_ldlt_balanced_range" in rendered
-    assert "current-only" in rendered
-    assert "no correctness-compatible benchmark row" in rendered
+    assert list(tmp_path.iterdir()) == [output]
 
 
 def test_main_v045_comparison_publishes_current_only_rational_rows(
@@ -1594,7 +1433,7 @@ def test_main_rejects_harness_provenance_for_a_different_baseline(
     group = criterion_dir / "exact_d2"
     _write_estimates(group / "det" / "new" / "estimates.json", "median", 10.0)
     _write_estimates(group / "det" / "last" / "estimates.json", "median", 20.0)
-    _write_harness_provenance(criterion_dir, baseline="v0.4.3")
+    _write_harness_provenance(criterion_dir, baseline="v0.4.5")
     output = tmp_path / "report.md"
 
     rc = bench_compare.main(["last", "--suite", "exact", "--criterion-dir", str(criterion_dir), "--output", str(output)])

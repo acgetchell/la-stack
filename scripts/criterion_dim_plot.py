@@ -24,11 +24,13 @@ import sys
 import tempfile
 import tomllib
 from collections.abc import Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol, TypeGuard, cast
 
 from benchmark_contract import benchmark_contract_digest
+from benchmark_summaries import report_input_paths, resolve_report_paths
 from performance_artifacts import ArtifactPaths, PerformanceBundle, TimingEstimate, ensure_distinct_paths, load_bundle
 from subprocess_utils import ExecutableNotFoundError, cpu_description, find_project_root, run_git_command, run_safe_command
 
@@ -201,7 +203,7 @@ METRICS: Final[dict[str, Metric]] = {
     "dot": Metric(
         la_bench="la_stack_dot",
         na_bench="nalgebra_dot",
-        fa_bench="faer_dot",
+        fa_bench="faer_dot_native",
         title="Vector dot product",
     ),
     # Different names between crates.
@@ -229,7 +231,6 @@ _PROVENANCE_HARNESS_FILES: Final[tuple[str, ...]] = (
     "rust-toolchain.toml",
     "justfile",
     "tests/exact_bench_config.rs",
-    "tests/vs_linalg_inputs.rs",
 )
 
 
@@ -313,6 +314,7 @@ def _detect_versions(root: Path) -> dict[str, str]:
     cargo_toml = root / "Cargo.toml"
     package_version = _read_cargo_package_version(cargo_toml) or "unknown"
     dep_versions = _read_cargo_dependency_versions(cargo_toml, {"nalgebra", "faer"})
+    dep_versions.update(_read_cargo_dependency_versions(root / "benches/comparison/Cargo.toml", {"nalgebra", "faer"}))
 
     return {
         "la-stack": package_version,
@@ -664,7 +666,7 @@ def _resolve_output_paths(root: Path, metric: str, stat: str, out_svg: str | Non
 def _resolve_performance_paths(root: Path, performance_csv: str) -> ArtifactPaths:
     """Resolve a retained performance CSV and its adjacent provenance JSON."""
     csv = _resolve_under_root(root, performance_csv)
-    return ArtifactPaths(csv=csv, provenance=csv.with_suffix(".provenance.json"))
+    return resolve_report_paths(root, ArtifactPaths(csv=csv, provenance=csv.with_suffix(".provenance.json")))
 
 
 def _collect_rows(criterion_dir: Path, dims: list[int], metric: Metric, stat: str, sample: str) -> tuple[list[Row], list[str]]:
@@ -941,9 +943,11 @@ def _validate_current_measurement(root: Path, measurement: Mapping[str, object])
         "commit": _git_value(root, ["--no-pager", "rev-parse", "HEAD"]),
         "source_state_sha256": current_source_state,
     }
+    if current["commit"] == "unavailable":
+        msg = "current checkout commit 'unavailable'; cannot record README publication provenance"
+        raise ValueError(msg)
     for retained_field, current_field in (
         ("cargo_lock_sha256", "cargo_lock_sha256"),
-        ("current_commit", "commit"),
         ("current_source_state_sha256", "source_state_sha256"),
     ):
         retained = measurement.get(retained_field)
@@ -957,6 +961,9 @@ def _validate_current_measurement(root: Path, measurement: Mapping[str, object])
 
     retained_contract = measurement.get("benchmark_contract_sha256")
     contract_status = "legacy-retained-artifact"
+    if retained_contract is None and measurement.get("current_commit") != current["commit"]:
+        msg = "legacy retained benchmark measurement does not match the current commit; run just performance-release to refresh it"
+        raise ValueError(msg)
     if retained_contract is not None:
         current_contract = benchmark_contract_digest(root)
         if retained_contract != current_contract:
@@ -1178,8 +1185,7 @@ def _validate_publication_paths(root: Path, args: PlotCliArgs, *, out_svg: Path,
     if args.update_readme:
         paths["README output"] = _resolve_under_root(root, args.readme)
         performance = _resolve_performance_paths(root, args.performance_csv)
-        paths["performance input CSV"] = performance.csv
-        paths["performance input provenance"] = performance.provenance
+        paths.update(report_input_paths(performance))
     try:
         ensure_distinct_paths(paths)
     except (OSError, ValueError) as exc:
@@ -1236,25 +1242,28 @@ def _replace_staged_files(pairs: list[tuple[Path, Path]], backup_dir: Path) -> N
         raise
 
 
+def _remove_publication_backup(backup_dir: Path) -> None:
+    """Clean up an unneeded backup without masking the publication outcome."""
+    try:
+        shutil.rmtree(backup_dir)
+    except OSError as exc:
+        print(f"Warning: could not remove artifact backup {backup_dir}: {exc}", file=sys.stderr)
+
+
 def _publish_staged_files(pairs: list[tuple[Path, Path]], root: Path) -> bool:
     """Publish staged files together, preserving backups after rollback failure."""
     backup_dir = Path(tempfile.mkdtemp(prefix=".criterion-dim-plot-backup-", dir=root))
-    preserve_backup = False
-    try:
-        _replace_staged_files(pairs, backup_dir)
-    except PublicationRollbackError as exc:
-        preserve_backup = True
-        print(f"could not publish benchmark artifacts atomically: {exc}", file=sys.stderr)
-        return False
-    except (OSError, ValueError) as exc:
-        print(f"could not publish benchmark artifacts atomically: {exc}", file=sys.stderr)
-        return False
-    finally:
-        if not preserve_backup:
-            try:
-                shutil.rmtree(backup_dir)
-            except OSError as exc:
-                print(f"Warning: could not remove artifact backup {backup_dir}: {exc}", file=sys.stderr)
+    with ExitStack() as cleanup:
+        cleanup.callback(_remove_publication_backup, backup_dir)
+        try:
+            _replace_staged_files(pairs, backup_dir)
+        except PublicationRollbackError as exc:
+            cleanup.pop_all()
+            print(f"could not publish benchmark artifacts atomically: {exc}", file=sys.stderr)
+            return False
+        except (OSError, ValueError) as exc:
+            print(f"could not publish benchmark artifacts atomically: {exc}", file=sys.stderr)
+            return False
     return True
 
 
@@ -1406,11 +1415,15 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
 
     root = _repo_root()
 
-    rc = _validate_readme_target(root, args)
-    if rc != 0:
-        return rc
-    out_svg, out_csv = _resolve_output_paths(root, args.metric, args.stat, args.out, args.csv)
-    rc = _validate_publication_paths(root, args, out_svg=out_svg, out_csv=out_csv)
+    try:
+        rc = _validate_readme_target(root, args)
+        if rc != 0:
+            return rc
+        out_svg, out_csv = _resolve_output_paths(root, args.metric, args.stat, args.out, args.csv)
+        rc = _validate_publication_paths(root, args, out_svg=out_svg, out_csv=out_csv)
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"Invalid retained benchmark inputs: {exc}", file=sys.stderr)
+        return 2
     if rc != 0:
         return rc
     versions = _detect_versions(root)
@@ -1422,8 +1435,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
 
     metric = METRICS[args.metric]
     if args.update_readme:
-        performance_paths = _resolve_performance_paths(root, args.performance_csv)
         try:
+            performance_paths = _resolve_performance_paths(root, args.performance_csv)
             performance_bundle = load_bundle(performance_paths)
             validation = _validate_performance_bundle(root, args, performance_bundle)
             rows = _collect_performance_rows(performance_bundle, metric)
@@ -1446,7 +1459,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
             dims = []
         if not dims:
             print(
-                f"No Criterion results found under {criterion_dir}.\n\nRun benchmarks first, e.g.:\n  cargo bench --bench vs_linalg\n",
+                f"No Criterion results found under {criterion_dir}.\n\nRun benchmarks first, e.g.:\n  just bench-vs-linalg\n",
                 file=sys.stderr,
             )
             return 2

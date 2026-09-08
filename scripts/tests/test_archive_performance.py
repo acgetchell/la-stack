@@ -1,7 +1,9 @@
 """Tests for archive_performance.py."""
 
+import csv
 import io
 import json
+import shutil
 import subprocess
 import tarfile
 from pathlib import Path
@@ -20,6 +22,8 @@ from archive_performance import (
     parse_report_id,
     promote_report,
 )
+from benchmark_summaries import collect_measurements, full_summary_paths, resolve_report_paths
+from criterion_dim_plot import _resolve_performance_paths
 from performance_artifacts import (
     ArtifactContext,
     ArtifactPaths,
@@ -30,6 +34,7 @@ from performance_artifacts import (
     TimingEstimate,
     write_bundle,
 )
+from subprocess_utils import run_cargo_command
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -122,6 +127,22 @@ def _write_fake_rendered_artifacts(args: Sequence[str], *, version: str, baselin
     )
     write_bundle(paths, bundle)
     output.write_text(archive_performance.render_release_artifacts(paths), encoding="utf-8")
+    # The fake renderer stands in for validated timing output. Supply complete
+    # raw samples so the independent summary exporter exercises real parsing.
+    for sample, value in ((baseline, 10.0), ("new", 9.0)):
+        _write_measurement(criterion_dir, f"{group}/{benchmark}", sample, value)
+
+
+def _write_measurement(criterion: Path, benchmark: str, sample: str, value: float) -> None:
+    directory = criterion / benchmark / sample
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "benchmark.json").write_text(json.dumps({"full_id": benchmark}), encoding="utf-8")
+    estimate = {
+        "point_estimate": value,
+        "confidence_interval": {"confidence_level": 0.95, "lower_bound": value * 0.9, "upper_bound": value * 1.1},
+    }
+    (directory / "estimates.json").write_text(json.dumps({"mean": estimate, "median": estimate}), encoding="utf-8")
+    (directory / "sample.json").write_text(json.dumps({"iters": [1.0] * 100, "times": [value] * 100}), encoding="utf-8")
 
 
 def _retained_report(root: Path, *, stem: str = "performance") -> str:
@@ -133,7 +154,7 @@ def _retained_report(root: Path, *, stem: str = "performance") -> str:
 
 
 def test_normalized_report_uses_shared_how_to_update_section() -> None:
-    text = _normalized_report("0.4.3", "v0.4.2")
+    text = _normalized_report("0.4.6", "v0.4.5")
 
     assert text.endswith(archive_performance.HOW_TO_UPDATE_SECTION)
 
@@ -189,13 +210,21 @@ def _write_current_benchmark_tooling(worktree: Path) -> None:
     (worktree / ".config").mkdir(parents=True, exist_ok=True)
     (worktree / "scripts").mkdir(parents=True, exist_ok=True)
     (worktree / "benches" / "common").mkdir(parents=True, exist_ok=True)
+    (worktree / "benches/comparison/tests").mkdir(parents=True, exist_ok=True)
+    (worktree / "examples").mkdir(parents=True, exist_ok=True)
     (worktree / "src").mkdir(parents=True, exist_ok=True)
     (worktree / "tests").mkdir(parents=True, exist_ok=True)
     (worktree / "benches" / "vs_linalg.rs").write_text("fn main() {}\n", encoding="utf-8")
     (worktree / "benches" / "common" / "inputs.rs").write_text("pub const INPUT: f64 = 1.0;\n", encoding="utf-8")
     (worktree / "src" / "lib.rs").write_text("pub fn fixture() {}\n", encoding="utf-8")
     (worktree / "tests" / "exact_bench_config.rs").write_text("// exact fixture\n", encoding="utf-8")
-    (worktree / "tests" / "vs_linalg_inputs.rs").write_text("// linalg fixture\n", encoding="utf-8")
+    (worktree / "benches/comparison/tests/vs_linalg_inputs.rs").write_text("// linalg fixture\n", encoding="utf-8")
+    (worktree / "benches/comparison/Cargo.toml").write_text(
+        '[package]\nname = "fixture-comparison"\nversion = "0.1.0"\nedition = "2024"\n'
+        '[dev-dependencies]\nfixture = { path = "../.." }\n'
+        '[features]\nbench = []\nexact = ["fixture/exact"]\n',
+        encoding="utf-8",
+    )
     (worktree / ".config" / "nextest.toml").write_text("[profile.ci]\nretries = 1\n", encoding="utf-8")
     (worktree / "Cargo.toml").write_text(
         '[package]\nname = "fixture"\nversion = "0.1.0"\n[dev-dependencies]\ncriterion = "0.7.0"\n',
@@ -223,6 +252,7 @@ def test_shared_benchmark_harness_replaces_baseline_content_and_has_stable_diges
     baseline.mkdir()
     _write_current_benchmark_tooling(current)
     _write_current_benchmark_tooling(baseline)
+    (baseline / "tests/vs_linalg_inputs.rs").write_text('compile_error!("obsolete comparison test");\n', encoding="utf-8")
     (baseline / "benches" / "vs_linalg.rs").write_text("fn obsolete() {}\n", encoding="utf-8")
     (baseline / "Cargo.lock").write_text("version = 3\n", encoding="utf-8")
     (baseline / "justfile").write_text("obsolete-benchmark-recipe:\n", encoding="utf-8")
@@ -238,10 +268,69 @@ def test_shared_benchmark_harness_replaces_baseline_content_and_has_stable_diges
     assert (baseline / "benches" / "vs_linalg.rs").read_text(encoding="utf-8") == "fn main() {}\n"
     assert (baseline / "justfile").read_text(encoding="utf-8") == (current / "justfile").read_text(encoding="utf-8")
     assert (baseline / ".config" / "nextest.toml").read_text(encoding="utf-8") == (current / ".config" / "nextest.toml").read_text(encoding="utf-8")
+    assert not (baseline / "tests/vs_linalg_inputs.rs").exists()
+
+
+@pytest.mark.parametrize("example_path", ["examples/rational_input_5x5.rs", "examples/rational_input_5x5/main.rs"])
+def test_shared_harness_preserves_manifest_example_targets(tmp_path: Path, example_path: str) -> None:
+    """Cargo must discover new examples before it can run historical benchmark tests."""
+    current = tmp_path / "current"
+    baseline = tmp_path / "baseline"
+    _write_current_benchmark_tooling(current)
+    _write_current_benchmark_tooling(baseline)
+    baseline_source = baseline / "src" / "lib.rs"
+    baseline_source.write_text("pub fn historical_api() {}\n", encoding="utf-8")
+    (current / "src" / "lib.rs").write_text("pub fn current_api() {}\n", encoding="utf-8")
+    example = current / example_path
+    example.parent.mkdir(parents=True, exist_ok=True)
+    example.write_text("fn main() { fixture::current_api(); }\n", encoding="utf-8")
+    manifest = current / "Cargo.toml"
+    manifest.write_text(
+        '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2024"\n'
+        "[features]\nbench = []\nexact = []\n"
+        '[[example]]\nname = "rational_input_5x5"\nrequired-features = ["exact"]\n'
+        '[workspace]\nmembers = ["benches/comparison"]\nresolver = "3"\n',
+        encoding="utf-8",
+    )
+
+    digest = archive_performance._install_shared_benchmark_harness(source=current, destination=baseline)
+    run_cargo_command(
+        [
+            "test",
+            "--offline",
+            "--workspace",
+            "--no-run",
+            "--target-dir",
+            str(tmp_path / "target"),
+            "--features",
+            "bench,exact",
+            "--test",
+            "vs_linalg_inputs",
+            "--test",
+            "exact_bench_config",
+            "--manifest-path",
+            str(baseline / "Cargo.toml"),
+        ],
+        cwd=Path(__file__).resolve().parents[2],
+    )
+    metadata = json.loads(
+        run_cargo_command(
+            ["metadata", "--offline", "--no-deps", "--format-version", "1", "--manifest-path", str(baseline / "Cargo.toml")],
+            cwd=Path(__file__).resolve().parents[2],
+        ).stdout
+    )
+
+    library = next(package for package in metadata["packages"] if package["name"] == "fixture")
+    examples = [target for target in library["targets"] if target["kind"] == ["example"]]
+    assert [target["name"] for target in examples] == ["rational_input_5x5"]
+    assert Path(examples[0]["src_path"]) == baseline / example_path
+    assert (baseline / example_path).read_bytes() == example.read_bytes()
+    assert baseline_source.read_text(encoding="utf-8") == "pub fn historical_api() {}\n"
+    assert digest == archive_performance._benchmark_harness_digest(current)
 
 
 def test_github_release_assets_discard_embedded_shared_harness_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    for tag in ("v0.4.2", "v0.4.3"):
+    for tag in ("v0.4.5", "v0.4.6"):
         _write_baseline_archive(
             tmp_path / f"la-stack-{tag}-criterion-baseline.tar.gz",
             include_harness_metadata=True,
@@ -256,8 +345,8 @@ def test_github_release_assets_discard_embedded_shared_harness_metadata(tmp_path
     monkeypatch.setattr(archive_performance, "_download_release_baseline", fake_download)
 
     archive_performance._prepare_github_release_assets(
-        current_tag="v0.4.3",
-        baseline_tag="v0.4.2",
+        current_tag="v0.4.6",
+        baseline_tag="v0.4.5",
         repo_root=tmp_path,
         target_worktree=target_worktree,
         tmp_dir=tmp_path,
@@ -271,7 +360,7 @@ def test_github_release_assets_discard_embedded_shared_harness_metadata(tmp_path
 def test_purge_selected_new_samples_preserves_named_baselines_and_other_suites(tmp_path: Path) -> None:
     criterion_dir = tmp_path / "criterion"
     exact_new = criterion_dir / "exact_d2" / "det_exact" / "new"
-    exact_baseline = criterion_dir / "exact_d2" / "det_exact" / "v0.4.2"
+    exact_baseline = criterion_dir / "exact_d2" / "det_exact" / "v0.4.5"
     rational_new = criterion_dir / "rational_input_d8" / "det_row_cleared_bareiss" / "new"
     linalg_new = criterion_dir / "d2" / "la_stack_lu" / "new"
     for directory in (exact_new, exact_baseline, rational_new, linalg_new):
@@ -288,6 +377,53 @@ def test_purge_selected_new_samples_preserves_named_baselines_and_other_suites(t
     assert not rational_new.exists()
     assert exact_baseline.is_dir()
     assert linalg_new.is_dir()
+
+
+def test_complete_summaries_preserve_diagnostic_phases_and_full_precision(tmp_path: Path) -> None:
+    baseline = "v0.4.5"
+    peer = "lu_solve_pivoting_d2/faer_lu_solve"
+    changed = "lu_solve_pivoting_d2/la_stack_lu_solve"
+    added = "canonical_conversion_non_dyadic_d2/convert"
+    precise = 1.2345678901234567
+    for sample in (baseline, "new"):
+        _write_measurement(tmp_path, peer, sample, 20.0)
+        _write_measurement(tmp_path, changed, sample, 10.0)
+    archive_performance._purge_criterion_new_samples(criterion_dir=tmp_path, suite="all")
+    _write_measurement(tmp_path, changed, "new", precise)
+    _write_measurement(tmp_path, added, "new", 3.0)
+
+    rows = collect_measurements(tmp_path, baseline)
+
+    assert {(row.phase, row.benchmark_id) for row in rows} == {
+        ("baseline", peer),
+        ("baseline", changed),
+        ("current", changed),
+        ("current", added),
+    }
+    observed = next(row for row in rows if row.phase == "current" and row.benchmark_id == changed)
+    assert observed.mean.median_ns == precise
+    assert observed.median.median_ns == precise
+
+
+@pytest.mark.parametrize("missing", ["benchmark.json", "estimates.json", "sample.json"])
+def test_complete_summaries_reject_incomplete_diagnostics(tmp_path: Path, missing: str) -> None:
+    case = "det4_diagnostic_dense/det"
+    for sample in ("v0.4.5", "new"):
+        _write_measurement(tmp_path, case, sample, 1.0)
+    (tmp_path / case / "new" / missing).unlink()
+
+    with pytest.raises(FileNotFoundError):
+        collect_measurements(tmp_path, "v0.4.5")
+
+
+def test_complete_summaries_reject_duplicate_criterion_identities(tmp_path: Path) -> None:
+    for sample in ("v0.4.5", "new"):
+        _write_measurement(tmp_path, "diagnostic/first", sample, 1.0)
+    _write_measurement(tmp_path, "diagnostic/second", "new", 2.0)
+    (tmp_path / "diagnostic/second/new/benchmark.json").write_text('{"full_id":"diagnostic/first"}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate phase/benchmark"):
+        collect_measurements(tmp_path, "v0.4.5")
 
 
 def test_apply_current_diff_includes_only_tracked_changes_without_mutating_index(tmp_path: Path) -> None:
@@ -524,8 +660,8 @@ def test_temporary_worktree_cleanup_does_not_mask_primary_error(
 
 
 def test_normalize_tag_adds_leading_v() -> None:
-    assert normalize_tag("0.4.2") == "v0.4.2"
-    assert normalize_tag("v0.4.2") == "v0.4.2"
+    assert normalize_tag("0.4.5") == "v0.4.5"
+    assert normalize_tag("v0.4.5") == "v0.4.5"
     assert normalize_tag("v1.2.3-rc.1+build.7") == "v1.2.3-rc.1+build.7"
 
 
@@ -535,23 +671,23 @@ def test_normalize_tag_rejects_non_semver_baseline_names() -> None:
 
 
 def test_parse_report_id_reads_current_and_baseline_tags() -> None:
-    report_id = parse_report_id(_report("0.4.2", "v0.4.1"))
+    report_id = parse_report_id(_report("0.4.5", "v0.4.4"))
 
-    assert report_id.current_tag == "v0.4.2"
-    assert report_id.baseline_tag == "v0.4.1"
-    assert report_id.archive_name == "v0.4.2-vs-v0.4.1.md"
+    assert report_id.current_tag == "v0.4.5"
+    assert report_id.baseline_tag == "v0.4.4"
+    assert report_id.archive_name == "v0.4.5-vs-v0.4.4.md"
 
 
 @pytest.mark.parametrize(
     ("extra", "message"),
     [
-        ("\n**la-stack** v0.4.3 · `def5678` (release/test) · 2026-06-09 12:00:00 UTC\n", "la-stack version line"),
+        ("\n**la-stack** v0.4.6 · `def5678` (release/test) · 2026-06-09 12:00:00 UTC\n", "la-stack version line"),
         ("\nComparison against baseline **v0.4.0**:\n", "comparison baseline line"),
     ],
 )
 def test_parse_report_id_rejects_duplicate_identity_lines(extra: str, message: str) -> None:
     with pytest.raises(ValueError, match=rf"exactly one {message}.*found 2"):
-        parse_report_id(_report("0.4.2", "v0.4.1") + extra)
+        parse_report_id(_report("0.4.5", "v0.4.4") + extra)
 
 
 def test_main_preserves_exception_group_diagnostics(
@@ -567,7 +703,7 @@ def test_main_preserves_exception_group_diagnostics(
 
     monkeypatch.setattr(archive_performance, "resolve_archive_request", fail_request)
 
-    assert main(["v0.4.3", "v0.4.2"]) == 1
+    assert main(["v0.4.6", "v0.4.5"]) == 1
     captured = capsys.readouterr()
     assert "publication and rollback failed (2 sub-exceptions)" in captured.err
     assert "could not publish docs/performance.md" in captured.err
@@ -588,12 +724,12 @@ def test_published_release_pair_discovers_latest_stable_semver_pair(tmp_path: Pa
         assert cwd == tmp_path
         return _result(
             "["
-            '{"tagName":"v0.4.2","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
+            '{"tagName":"v0.4.5","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
             '{"tagName":"v0.4.10","isDraft":false,"isPrerelease":false,"publishedAt":"2026-04-01T00:00:00Z"},'
             '{"tagName":"v0.4.11-rc.1","isDraft":false,"isPrerelease":true,"publishedAt":"2026-06-01T00:00:00Z"},'
             '{"tagName":"v0.4.11","isDraft":true,"isPrerelease":false,"publishedAt":"2026-06-02T00:00:00Z"},'
             '{"tagName":"not-semver","isDraft":false,"isPrerelease":false,"publishedAt":"2026-06-03T00:00:00Z"},'
-            '{"tagName":"v0.4.3","isDraft":false,"isPrerelease":false,"publishedAt":"2026-03-01T00:00:00Z"}'
+            '{"tagName":"v0.4.6","isDraft":false,"isPrerelease":false,"publishedAt":"2026-03-01T00:00:00Z"}'
             "]"
         )
 
@@ -602,7 +738,7 @@ def test_published_release_pair_discovers_latest_stable_semver_pair(tmp_path: Pa
     report_id = archive_performance._published_release_pair(tmp_path)
 
     assert report_id.current_tag == "v0.4.10"
-    assert report_id.baseline_tag == "v0.4.3"
+    assert report_id.baseline_tag == "v0.4.6"
 
 
 def test_published_release_pair_uses_latest_published_release_not_highest_semver(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -635,7 +771,7 @@ def test_published_release_pair_uses_latest_published_release_not_highest_semver
 )
 def test_stable_published_releases_requires_boolean_flags(field: str, value: object) -> None:
     release: dict[str, object] = {
-        "tagName": "v0.4.3",
+        "tagName": "v0.4.6",
         "isDraft": False,
         "isPrerelease": False,
         "publishedAt": "2026-02-01T00:00:00Z",
@@ -649,7 +785,7 @@ def test_stable_published_releases_requires_boolean_flags(field: str, value: obj
 @pytest.mark.parametrize("published_at", ["2026-02-01T00:00:00", "not-a-timestamp", ""])
 def test_stable_published_releases_requires_aware_timestamp(published_at: str) -> None:
     release = {
-        "tagName": "v0.4.3",
+        "tagName": "v0.4.6",
         "isDraft": False,
         "isPrerelease": False,
         "publishedAt": published_at,
@@ -663,7 +799,7 @@ def test_stable_published_releases_normalizes_timestamp_to_utc() -> None:
     releases = archive_performance._stable_published_releases(
         [
             {
-                "tagName": "v0.4.3",
+                "tagName": "v0.4.6",
                 "isDraft": False,
                 "isPrerelease": False,
                 "publishedAt": "2026-02-01T01:00:00+01:00",
@@ -675,7 +811,7 @@ def test_stable_published_releases_normalizes_timestamp_to_utc() -> None:
 
 
 def test_resolve_archive_request_infer_release_uses_package_version_and_previous_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.6"\n', encoding="utf-8")
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         assert command == "gh"
@@ -683,8 +819,8 @@ def test_resolve_archive_request_infer_release_uses_package_version_and_previous
         assert cwd == tmp_path
         return _result(
             "["
-            '{"tagName":"v0.4.1","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
-            '{"tagName":"v0.4.2","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"}'
+            '{"tagName":"v0.4.4","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
+            '{"tagName":"v0.4.5","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"}'
             "]"
         )
 
@@ -702,13 +838,13 @@ def test_resolve_archive_request_infer_release_uses_package_version_and_previous
         )
     )
 
-    assert request.current_tag == "v0.4.3"
-    assert request.baseline_tag == "v0.4.2"
+    assert request.current_tag == "v0.4.6"
+    assert request.baseline_tag == "v0.4.5"
     assert request.worktree_ref == "HEAD"
-    assert request.tags_to_fetch == ("v0.4.2",)
+    assert request.tags_to_fetch == ("v0.4.5",)
 
 
-@pytest.mark.parametrize("package_version", ["0.4.4", "0.4.3"])
+@pytest.mark.parametrize("package_version", ["0.4.4", "0.4.6"])
 def test_resolve_archive_request_infer_release_requires_unpublished_package_version(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -722,14 +858,14 @@ def test_resolve_archive_request_infer_release_requires_unpublished_package_vers
         assert cwd == tmp_path
         return _result(
             "["
-            '{"tagName":"v0.4.3","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"},'
+            '{"tagName":"v0.4.6","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"},'
             '{"tagName":"v0.4.4","isDraft":false,"isPrerelease":false,"publishedAt":"2026-03-01T00:00:00Z"}'
             "]"
         )
 
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
-    with pytest.raises(ValueError, match=r"must be newer than latest published stable release v0\.4\.4"):
+    with pytest.raises(ValueError, match=r"must be newer than latest published stable release v0\.4\.6"):
         archive_performance.resolve_archive_request(
             archive_performance.ArchiveRequestOptions(
                 current_tag=None,
@@ -744,7 +880,7 @@ def test_resolve_archive_request_infer_release_requires_unpublished_package_vers
 
 
 def test_resolve_archive_request_current_vs_latest_uses_package_version_and_latest_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.6"\n', encoding="utf-8")
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         assert command == "gh"
@@ -752,8 +888,8 @@ def test_resolve_archive_request_current_vs_latest_uses_package_version_and_late
         assert cwd == tmp_path
         return _result(
             "["
-            '{"tagName":"v0.4.1","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
-            '{"tagName":"v0.4.2","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"}'
+            '{"tagName":"v0.4.4","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
+            '{"tagName":"v0.4.5","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"}'
             "]"
         )
 
@@ -771,23 +907,23 @@ def test_resolve_archive_request_current_vs_latest_uses_package_version_and_late
         )
     )
 
-    assert request.current_tag == "v0.4.3"
-    assert request.baseline_tag == "v0.4.2"
+    assert request.current_tag == "v0.4.6"
+    assert request.baseline_tag == "v0.4.5"
     assert request.worktree_ref == "HEAD"
-    assert request.tags_to_fetch == ("v0.4.2",)
+    assert request.tags_to_fetch == ("v0.4.5",)
 
 
 def test_resolve_archive_request_current_vs_latest_allows_equal_release_tags_for_local_reports(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.6"\n', encoding="utf-8")
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         assert command == "gh"
         assert args[:2] == ["release", "list"]
         assert cwd == tmp_path
-        return _result('[{"tagName":"v0.4.3","isDraft":false,"isPrerelease":false,"publishedAt":"2026-03-01T00:00:00Z"}]')
+        return _result('[{"tagName":"v0.4.6","isDraft":false,"isPrerelease":false,"publishedAt":"2026-03-01T00:00:00Z"}]')
 
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
@@ -803,10 +939,10 @@ def test_resolve_archive_request_current_vs_latest_allows_equal_release_tags_for
         )
     )
 
-    assert request.current_tag == "v0.4.3"
-    assert request.baseline_tag == "v0.4.3"
+    assert request.current_tag == "v0.4.6"
+    assert request.baseline_tag == "v0.4.6"
     assert request.worktree_ref == "HEAD"
-    assert request.tags_to_fetch == ("v0.4.3",)
+    assert request.tags_to_fetch == ("v0.4.6",)
 
 
 def test_benchmark_env_uses_current_repo_toolchain(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -828,7 +964,7 @@ def test_benchmark_env_respects_existing_toolchain_override(tmp_path: Path, monk
 
 def test_parser_rejects_unsupported_scope() -> None:
     with pytest.raises(SystemExit):
-        archive_performance.build_parser().parse_args(["v0.4.3", "v0.4.2", "--scope", "quick"])
+        archive_performance.build_parser().parse_args(["v0.4.6", "v0.4.5", "--scope", "quick"])
 
 
 @pytest.mark.parametrize(
@@ -846,8 +982,8 @@ def test_generation_config_rejects_unsupported_benchmark_selection(
 ) -> None:
     kwargs: dict[str, Any] = {
         "repo_root": tmp_path,
-        "current_tag": "v0.4.3",
-        "baseline_tag": "v0.4.2",
+        "current_tag": "v0.4.6",
+        "baseline_tag": "v0.4.5",
         "worktree_ref": "HEAD",
     }
     kwargs[field] = value
@@ -856,7 +992,7 @@ def test_generation_config_rejects_unsupported_benchmark_selection(
         GenerationConfig(**kwargs)
 
 
-def test_comparison_benchmark_env_preserves_flags_and_selects_v043_adapter(
+def test_comparison_benchmark_env_preserves_flags_and_selects_pre_rational_adapter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -871,11 +1007,11 @@ def test_comparison_benchmark_env_preserves_flags_and_selects_v043_adapter(
     current = archive_performance._comparison_benchmark_env(tmp_path)
     baseline = archive_performance._comparison_benchmark_env(
         tmp_path,
-        api_compatibility="la_stack_v0_4_3_api",
+        api_compatibility="la_stack_pre_rational_input_api",
     )
 
     assert current["RUSTFLAGS"] == "-C target-cpu=native --cap-lints=warn"
-    assert baseline["RUSTFLAGS"] == ("-C target-cpu=native --cap-lints=warn --cfg=la_stack_v0_4_3_api")
+    assert baseline["RUSTFLAGS"] == ("-C target-cpu=native --cap-lints=warn --cfg=la_stack_pre_rational_input_api")
     assert current["RUSTUP_TOOLCHAIN"] == "1.97.0"
 
 
@@ -914,10 +1050,10 @@ def test_comparison_benchmark_env_extends_encoded_rustflags(
 
     env = archive_performance._comparison_benchmark_env(
         tmp_path,
-        api_compatibility="la_stack_v0_4_3_api",
+        api_compatibility="la_stack_pre_rational_input_api",
     )
 
-    assert env["CARGO_ENCODED_RUSTFLAGS"] == ("-C\x1ftarget-cpu=native\x1f--cap-lints=warn\x1f--cfg=la_stack_v0_4_3_api")
+    assert env["CARGO_ENCODED_RUSTFLAGS"] == ("-C\x1ftarget-cpu=native\x1f--cap-lints=warn\x1f--cfg=la_stack_pre_rational_input_api")
     assert env["RUSTUP_TOOLCHAIN"] == "nightly"
 
 
@@ -931,7 +1067,7 @@ def test_fallback_baseline_cargo_commands_enforce_lockfile(
     _write_legacy_benchmark_tooling(worktree)
 
     command, args = archive_performance._baseline_tool_args(
-        baseline_tag="v0.4.2",
+        baseline_tag="v0.4.5",
         suite=suite,
         baseline_worktree=worktree,
     )
@@ -955,6 +1091,32 @@ def test_fallback_current_cargo_command_matches_suite(
     assert archive_performance._fallback_current_command(suite=suite) == expected
 
 
+@pytest.mark.parametrize("github_assets", [False, True])
+@pytest.mark.parametrize("baseline", ["v0.4.3", "v0.4.2"])
+def test_unsupported_baseline_fails_before_fetch_or_worktree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    github_assets: bool,
+    baseline: str,
+) -> None:
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.6"\n', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    def fail_external_work(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unsupported baseline reached external work")
+
+    monkeypatch.setattr(archive_performance, "run_git_command", fail_external_work)
+    monkeypatch.setattr(archive_performance, "run_safe_command", fail_external_work)
+    args = ["v0.4.6", baseline, "--generate-in-temp-worktree"]
+    if github_assets:
+        args.append("--github-assets")
+
+    assert main(args) == 1
+    assert "comparisons require v0.4.4 or newer" in capsys.readouterr().err
+    assert not (tmp_path / "target").exists()
+
+
 def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path: Path) -> None:
     source = tmp_path / "target" / "bench-reports" / "performance.md"
     current = tmp_path / "docs" / "performance.md"
@@ -963,27 +1125,27 @@ def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path: Pat
     source.parent.mkdir(parents=True)
     current.parent.mkdir(parents=True)
     archive_dir.mkdir(parents=True)
-    source.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
-    current.write_text(_report("0.4.1", "v0.4.0"), encoding="utf-8")
+    source.write_text(_report("0.4.5", "v0.4.4"), encoding="utf-8")
+    current.write_text(_report("0.4.4", "v0.4.0"), encoding="utf-8")
     (archive_dir / "v0.3.1-vs-v0.3.0.md").write_text(_report("0.3.1", "v0.3.0"), encoding="utf-8")
 
     promoted = promote_report(
         source=source,
         current=current,
         archive_dir=archive_dir,
-        expected_current_tag="v0.4.2",
-        expected_baseline_tag="v0.4.1",
+        expected_current_tag="v0.4.5",
+        expected_baseline_tag="v0.4.4",
     )
 
-    assert promoted.archive_name == "v0.4.2-vs-v0.4.1.md"
-    assert current.read_text(encoding="utf-8") == _normalized_report("0.4.2", "v0.4.1")
-    assert (archive_dir / "v0.4.1-vs-v0.4.0.md").read_text(encoding="utf-8") == _normalized_report("0.4.1", "v0.4.0")
+    assert promoted.archive_name == "v0.4.5-vs-v0.4.4.md"
+    assert current.read_text(encoding="utf-8") == _normalized_report("0.4.5", "v0.4.4")
+    assert (archive_dir / "v0.4.4-vs-v0.4.0.md").read_text(encoding="utf-8") == _normalized_report("0.4.4", "v0.4.0")
     assert (archive_dir / "README.md").read_text(encoding="utf-8") == (
         "# Archived Performance Reports\n\n"
         "Older release-to-release benchmark comparisons are archived here.\n"
         "`docs/performance.md` contains the latest curated comparison.\n\n"
         "- [v0.3.1-vs-v0.3.0](v0.3.1-vs-v0.3.0.md)\n"
-        "- [v0.4.1-vs-v0.4.0](v0.4.1-vs-v0.4.0.md)\n"
+        "- [v0.4.4-vs-v0.4.0](v0.4.4-vs-v0.4.0.md)\n"
     )
 
 
@@ -992,19 +1154,19 @@ def test_promote_report_is_idempotent_for_same_release_pair(tmp_path: Path) -> N
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
 
-    source.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    source.write_text(_report("0.4.5", "v0.4.4"), encoding="utf-8")
     current.parent.mkdir(parents=True)
-    current.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    current.write_text(_report("0.4.5", "v0.4.4"), encoding="utf-8")
 
     promote_report(
         source=source,
         current=current,
         archive_dir=archive_dir,
-        expected_current_tag="v0.4.2",
-        expected_baseline_tag="v0.4.1",
+        expected_current_tag="v0.4.5",
+        expected_baseline_tag="v0.4.4",
     )
 
-    assert not (archive_dir / "v0.4.2-vs-v0.4.1.md").exists()
+    assert not (archive_dir / "v0.4.5-vs-v0.4.4.md").exists()
     assert "- No archived performance reports yet." in (archive_dir / "README.md").read_text(encoding="utf-8")
 
 
@@ -1012,21 +1174,21 @@ def test_promote_report_does_not_overwrite_existing_archive(tmp_path: Path) -> N
     source = tmp_path / "performance-new.md"
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    archived = archive_dir / "v0.4.1-vs-v0.4.0.md"
+    archived = archive_dir / "v0.4.4-vs-v0.4.0.md"
 
-    source.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    source.write_text(_report("0.4.5", "v0.4.4"), encoding="utf-8")
     current.parent.mkdir(parents=True)
-    current.write_text(_report("0.4.1", "v0.4.0"), encoding="utf-8")
+    current.write_text(_report("0.4.4", "v0.4.0"), encoding="utf-8")
     archive_dir.mkdir(parents=True)
-    archived_payload = _normalized_report("0.4.1", "v0.4.0").replace("\n", "\r\n").encode()
+    archived_payload = _normalized_report("0.4.4", "v0.4.0").replace("\n", "\r\n").encode()
     archived.write_bytes(archived_payload)
 
     promote_report(
         source=source,
         current=current,
         archive_dir=archive_dir,
-        expected_current_tag="v0.4.2",
-        expected_baseline_tag="v0.4.1",
+        expected_current_tag="v0.4.5",
+        expected_baseline_tag="v0.4.4",
     )
 
     assert archived.read_bytes() == archived_payload
@@ -1036,11 +1198,11 @@ def test_promote_report_rejects_mismatched_existing_archive_without_mutation(tmp
     source = tmp_path / "performance-new.md"
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    archived = archive_dir / "v0.4.1-vs-v0.4.0.md"
+    archived = archive_dir / "v0.4.4-vs-v0.4.0.md"
     index = archive_dir / "README.md"
-    original = _report("0.4.1", "v0.4.0")
+    original = _report("0.4.4", "v0.4.0")
 
-    source.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    source.write_text(_report("0.4.5", "v0.4.4"), encoding="utf-8")
     current.parent.mkdir(parents=True)
     current.write_text(original, encoding="utf-8")
     archive_dir.mkdir(parents=True)
@@ -1052,8 +1214,8 @@ def test_promote_report_rejects_mismatched_existing_archive_without_mutation(tmp
             source=source,
             current=current,
             archive_dir=archive_dir,
-            expected_current_tag="v0.4.2",
-            expected_baseline_tag="v0.4.1",
+            expected_current_tag="v0.4.5",
+            expected_baseline_tag="v0.4.4",
         )
 
     assert current.read_text(encoding="utf-8") == original
@@ -1066,10 +1228,10 @@ def test_promote_report_rejects_non_file_archive_collision_without_mutation(tmp_
     source = tmp_path / "performance-new.md"
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    archived = archive_dir / "v0.4.1-vs-v0.4.0.md"
-    original = _report("0.4.1", "v0.4.0")
+    archived = archive_dir / "v0.4.4-vs-v0.4.0.md"
+    original = _report("0.4.4", "v0.4.0")
 
-    source.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    source.write_text(_report("0.4.5", "v0.4.4"), encoding="utf-8")
     current.parent.mkdir(parents=True)
     current.write_text(original, encoding="utf-8")
     archive_dir.mkdir(parents=True)
@@ -1085,8 +1247,8 @@ def test_promote_report_rejects_non_file_archive_collision_without_mutation(tmp_
             source=source,
             current=current,
             archive_dir=archive_dir,
-            expected_current_tag="v0.4.2",
-            expected_baseline_tag="v0.4.1",
+            expected_current_tag="v0.4.5",
+            expected_baseline_tag="v0.4.4",
         )
 
     assert current.read_text(encoding="utf-8") == original
@@ -1097,15 +1259,15 @@ def test_promote_report_rejects_unexpected_release_pair(tmp_path: Path) -> None:
     source = tmp_path / "performance-new.md"
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    source.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    source.write_text(_report("0.4.5", "v0.4.4"), encoding="utf-8")
 
     with pytest.raises(ValueError, match="does not match requested release pair"):
         promote_report(
             source=source,
             current=current,
             archive_dir=archive_dir,
-            expected_current_tag="v0.4.3",
-            expected_baseline_tag="v0.4.2",
+            expected_current_tag="v0.4.6",
+            expected_baseline_tag="v0.4.5",
         )
 
 
@@ -1113,20 +1275,20 @@ def test_promote_report_rewrites_legacy_update_instructions(tmp_path: Path) -> N
     source = tmp_path / "performance-new.md"
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    source.write_text(_legacy_report("0.4.3", "v0.4.2"), encoding="utf-8")
+    source.write_text(_legacy_report("0.4.6", "v0.4.5"), encoding="utf-8")
     current.parent.mkdir(parents=True)
-    current.write_text(_legacy_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    current.write_text(_legacy_report("0.4.5", "v0.4.4"), encoding="utf-8")
 
     promote_report(
         source=source,
         current=current,
         archive_dir=archive_dir,
-        expected_current_tag="v0.4.3",
-        expected_baseline_tag="v0.4.2",
+        expected_current_tag="v0.4.6",
+        expected_baseline_tag="v0.4.5",
     )
 
     current_text = current.read_text(encoding="utf-8")
-    archived_text = (archive_dir / "v0.4.2-vs-v0.4.1.md").read_text(encoding="utf-8")
+    archived_text = (archive_dir / "v0.4.5-vs-v0.4.4.md").read_text(encoding="utf-8")
     assert "just performance-local" in current_text
     assert "just performance-release" in current_text
     assert "just performance-github-assets" in current_text
@@ -1145,12 +1307,12 @@ def test_main_promotes_generated_report_to_docs_performance(
     source = tmp_path / "target" / "bench-reports" / "performance.md"
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    generated = _report("0.4.3", "v0.4.2")
+    generated = _report("0.4.6", "v0.4.5")
 
     source.parent.mkdir(parents=True)
     source.write_text(generated, encoding="utf-8")
     current.parent.mkdir(parents=True)
-    current.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    current.write_text(_report("0.4.5", "v0.4.4"), encoding="utf-8")
     gates: list[Path] = []
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
@@ -1161,8 +1323,8 @@ def test_main_promotes_generated_report_to_docs_performance(
 
     rc = main(
         [
-            "v0.4.3",
-            "v0.4.2",
+            "v0.4.6",
+            "v0.4.5",
             "--source",
             str(source),
             "--current",
@@ -1174,9 +1336,9 @@ def test_main_promotes_generated_report_to_docs_performance(
 
     assert rc == 0
     assert current.read_text(encoding="utf-8") == archive_performance._normalize_how_to_update(generated)
-    assert (archive_dir / "v0.4.2-vs-v0.4.1.md").exists()
+    assert (archive_dir / "v0.4.5-vs-v0.4.4.md").exists()
     assert gates == [tmp_path]
-    assert "Current performance report: v0.4.3 vs v0.4.2" in capsys.readouterr().out
+    assert "Current performance report: v0.4.6 vs v0.4.5" in capsys.readouterr().out
 
 
 def test_main_reports_release_pair_mismatch_to_stderr(
@@ -1188,13 +1350,13 @@ def test_main_reports_release_pair_mismatch_to_stderr(
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     source.parent.mkdir(parents=True)
-    source.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
+    source.write_text(_report("0.4.6", "v0.4.5"), encoding="utf-8")
     monkeypatch.setattr(archive_performance, "_run_benchmark_input_gate", lambda *_args, **_kwargs: None)
 
     rc = main(
         [
             "v0.4.4",
-            "v0.4.3",
+            "v0.4.6",
             "--source",
             str(source),
             "--current",
@@ -1361,7 +1523,7 @@ def test_local_release_generation_rejects_unavailable_cpu_before_external_work(
             config=GenerationConfig(
                 repo_root=tmp_path,
                 current_tag="v0.4.4",
-                baseline_tag="v0.4.3",
+                baseline_tag="v0.4.6",
                 worktree_ref="HEAD",
             ),
         )
@@ -1369,7 +1531,7 @@ def test_local_release_generation_rejects_unavailable_cpu_before_external_work(
     assert not output.exists()
 
 
-@pytest.mark.parametrize("alias", ["artifact-csv", "current-report"])
+@pytest.mark.parametrize("alias", ["artifact-csv", "full-csv", "full-json", "current-report"])
 def test_main_promote_artifacts_rejects_output_alias_without_mutation(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -1385,12 +1547,17 @@ def test_main_promote_artifacts_rejects_output_alias_without_mutation(
     artifacts.provenance.write_bytes(b"original provenance\n")
     current = tmp_path / "docs" / "performance.md"
     current.parent.mkdir(parents=True)
-    current.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
+    current.write_text(_report("0.4.6", "v0.4.5"), encoding="utf-8")
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    output = artifacts.csv if alias == "artifact-csv" else current
+    output = {
+        "artifact-csv": artifacts.csv,
+        "full-csv": full_summary_paths(artifacts).csv,
+        "full-json": full_summary_paths(artifacts).provenance,
+        "current-report": current,
+    }[alias]
     bundle = SimpleNamespace(
         context=SimpleNamespace(
-            release=SimpleNamespace(current="v0.4.4", baseline="v0.4.3"),
+            release=SimpleNamespace(current="v0.4.4", baseline="v0.4.6"),
         )
     )
     monkeypatch.chdir(tmp_path)
@@ -1398,7 +1565,7 @@ def test_main_promote_artifacts_rejects_output_alias_without_mutation(
     monkeypatch.setattr(
         archive_performance,
         "render_release_artifacts",
-        lambda _paths: _report("0.4.4", "v0.4.3"),
+        lambda _paths: _report("0.4.4", "v0.4.6"),
     )
 
     rc = main(
@@ -1422,7 +1589,7 @@ def test_main_promote_artifacts_rejects_output_alias_without_mutation(
     assert "must use distinct paths" in captured.err
     assert artifacts.csv.read_bytes() == b"original csv\n"
     assert artifacts.provenance.read_bytes() == b"original provenance\n"
-    assert current.read_text(encoding="utf-8") == _report("0.4.3", "v0.4.2")
+    assert current.read_text(encoding="utf-8") == _report("0.4.6", "v0.4.5")
     assert not archive_dir.exists()
 
 
@@ -1435,7 +1602,7 @@ def test_main_reraises_unexpected_errors(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(archive_performance, "_run_archive_request", fail_unexpected)
 
     with pytest.raises(AssertionError, match="unexpected test failure"):
-        main(["v0.4.3", "v0.4.2"])
+        main(["v0.4.6", "v0.4.5"])
 
 
 def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1457,13 +1624,13 @@ def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pyt
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
-        if command == "just" and args == ["bench-save-baseline", "v0.4.2", "exact"]:
+        if command == "just" and args == ["bench-save-baseline", "v0.4.5", "exact"]:
             assert cwd is not None
             criterion_dir = cwd / "target" / "criterion"
             criterion_dir.mkdir(parents=True)
             (criterion_dir / "baseline.txt").write_text("baseline\n", encoding="utf-8")
         if command == "uv":
-            _write_fake_rendered_artifacts(args, version="0.4.3", baseline="v0.4.2")
+            _write_fake_rendered_artifacts(args, version="0.4.6", baseline="v0.4.5")
         return _result()
 
     monkeypatch.chdir(tmp_path)
@@ -1473,15 +1640,15 @@ def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pyt
 
     rc = main(
         [
-            "v0.4.3",
-            "v0.4.2",
+            "v0.4.6",
+            "v0.4.5",
             "--current",
             str(current),
             "--archive-dir",
             str(archive_dir),
             "--generate-in-temp-worktree",
             "--worktree-ref",
-            "v0.4.3",
+            "v0.4.6",
             "--no-apply-current-diff",
             "--suite",
             "exact",
@@ -1497,7 +1664,7 @@ def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pyt
     assert output.read_text(encoding="utf-8") == current.read_text(encoding="utf-8")
     assert "Generated benchmark report in a temporary worktree" in captured.out
     assert str(output) in captured.out
-    assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.3" for kind, args, _ in calls)
+    assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.6" for kind, args, _ in calls)
     assert any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
     assert any(kind == "uv" and "--suite" in args and args[args.index("--suite") + 1] == "exact" for kind, args, _ in calls)
     assert any(kind == "uv" and args[:2] == ("run", "--locked") for kind, args, _ in calls)
@@ -1522,7 +1689,7 @@ def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pyt
 
 
 def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.6"\n', encoding="utf-8")
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     calls: list[RunnerCall] = []
@@ -1546,7 +1713,7 @@ def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path: Path, m
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
-        if command == "just" and args == ["bench-save-baseline", "v0.4.2"]:
+        if command == "just" and args == ["bench-save-baseline", "v0.4.5"]:
             assert cwd is not None
             criterion_dir = cwd / "target" / "criterion"
             criterion_dir.mkdir(parents=True)
@@ -1562,8 +1729,8 @@ def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path: Path, m
 
     rc = main(
         [
-            "v0.4.3",
-            "v0.4.2",
+            "v0.4.6",
+            "v0.4.5",
             "--current",
             str(current),
             "--archive-dir",
@@ -1615,8 +1782,8 @@ def test_generate_report_rejects_unsafe_baseline_archive(tmp_path: Path, monkeyp
 
     rc = main(
         [
-            "v0.4.3",
-            "v0.4.2",
+            "v0.4.6",
+            "v0.4.5",
             "--current",
             str(current),
             "--archive-dir",
@@ -1644,7 +1811,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.delenv("RUSTUP_TOOLCHAIN", raising=False)
-    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.3"\n', encoding="utf-8")
+    (tmp_path / "Cargo.toml").write_text('[package]\nversion = "0.4.6"\n', encoding="utf-8")
     (tmp_path / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.97.0"\n', encoding="utf-8")
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
@@ -1667,14 +1834,14 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
-        if command == "just" and args == ["bench-save-baseline", "v0.4.2"]:
+        if command == "just" and args == ["bench-save-baseline", "v0.4.5"]:
             assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
             assert cwd is not None
             assert "bench-latest" in (cwd / "justfile").read_text(encoding="utf-8")
             criterion_dir = cwd / "target" / "criterion"
             criterion_dir.mkdir(parents=True)
             (criterion_dir / "baseline.txt").write_text("baseline\n", encoding="utf-8")
-            for sample in ("new", "v0.4.2"):
+            for sample in ("new", "v0.4.5"):
                 estimates = criterion_dir / "exact_d2" / "det_exact" / sample / "estimates.json"
                 estimates.parent.mkdir(parents=True, exist_ok=True)
                 estimates.write_text("{}\n", encoding="utf-8")
@@ -1683,12 +1850,12 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
             assert cwd is not None
             criterion_dir = cwd / "target" / "criterion" / "exact_d2" / "det_exact"
             assert not (criterion_dir / "new").exists()
-            assert (criterion_dir / "v0.4.2" / "estimates.json").is_file()
+            assert (criterion_dir / "v0.4.5" / "estimates.json").is_file()
         if command == "uv":
             report_root = Path(args[args.index("--repo-root") + 1])
             criterion_root = Path(args[args.index("--criterion-dir") + 1])
             metadata = json.loads((criterion_root / archive_performance._BENCHMARK_HARNESS_METADATA).read_text(encoding="utf-8"))
-            assert metadata["baseline"] == "v0.4.2"
+            assert metadata["baseline"] == "v0.4.5"
             assert metadata["mode"] == "shared-current-harness"
             assert metadata["schema"] == 2
             assert metadata["measurement"]["harness_sha256"] == archive_performance._benchmark_harness_digest(report_root)
@@ -1697,7 +1864,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
             assert metadata["criterion"]["criterion_version"] == "manifest requirement 0.7.0"
             assert metadata["validation"]["baseline_revision"] == "passed"
             assert metadata["validation"]["current_revision"] == "passed"
-            _write_fake_rendered_artifacts(args, version="0.4.3", baseline="v0.4.2")
+            _write_fake_rendered_artifacts(args, version="0.4.6", baseline="v0.4.5")
         return _result()
 
     monkeypatch.chdir(tmp_path)
@@ -1707,8 +1874,8 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
 
     rc = main(
         [
-            "v0.4.3",
-            "v0.4.2",
+            "v0.4.6",
+            "v0.4.5",
             "--current",
             str(current),
             "--archive-dir",
@@ -1724,18 +1891,18 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
     assert rc == 0
     assert captured.err.splitlines() == [
         "[performance] validating benchmark inputs in baseline-worktree",
-        "[performance] running all baseline benchmarks for v0.4.2",
-        "[performance] completed all baseline benchmarks for v0.4.2",
+        "[performance] running all baseline benchmarks for v0.4.5; includes nalgebra/faer measurements",
+        "[performance] completed all baseline benchmarks for v0.4.5",
         "[performance] validating benchmark inputs in worktree",
-        "[performance] running current all benchmarks",
+        "[performance] running current all benchmarks for v0.4.6; la-stack only, reusing baseline nalgebra/faer measurements",
         "[performance] completed current all benchmarks",
     ]
     assert current.read_text(encoding="utf-8") == _retained_report(tmp_path)
     assert not any(kind == "gh" for kind, _, _ in calls)
-    assert any(kind == "just" and args == ("bench-save-baseline", "v0.4.2") for kind, args, _ in calls)
+    assert any(kind == "just" and args == ("bench-save-baseline", "v0.4.5") for kind, args, _ in calls)
     assert any(kind == "just" and args == ("bench-latest",) for kind, args, _ in calls)
     assert any(kind == "uv" and "--suite" in args for kind, args, _ in calls)
-    baseline_timing_index = next(index for index, (kind, args, _) in enumerate(calls) if kind == "just" and args == ("bench-save-baseline", "v0.4.2"))
+    baseline_timing_index = next(index for index, (kind, args, _) in enumerate(calls) if kind == "just" and args == ("bench-save-baseline", "v0.4.5"))
     current_timing_index = next(index for index, (kind, args, _) in enumerate(calls) if kind == "just" and args == ("bench-latest",))
     baseline_gate_index = next(
         index
@@ -1778,7 +1945,7 @@ def test_generate_local_non_exact_report_retains_same_version_comparison_artifac
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
-        if command == "just" and args == ["bench-save-baseline", "v0.4.3", "vs_linalg"]:
+        if command == "just" and args == ["bench-save-baseline", "v0.4.6", "vs_linalg"]:
             assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
             assert cwd is not None
             assert "bench-latest" in (cwd / "justfile").read_text(encoding="utf-8")
@@ -1788,7 +1955,7 @@ def test_generate_local_non_exact_report_retains_same_version_comparison_artifac
         if command == "just" and args == ["bench-vs-linalg-la-stack"]:
             assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
         if command == "uv":
-            _write_fake_rendered_artifacts(args, version="0.4.3", baseline="v0.4.3")
+            _write_fake_rendered_artifacts(args, version="0.4.6", baseline="v0.4.6")
         return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
@@ -1799,19 +1966,19 @@ def test_generate_local_non_exact_report_retains_same_version_comparison_artifac
         output=output,
         config=GenerationConfig(
             repo_root=tmp_path,
-            current_tag="v0.4.3",
-            baseline_tag="v0.4.3",
+            current_tag="v0.4.6",
+            baseline_tag="v0.4.6",
             worktree_ref="HEAD",
             suite="vs_linalg",
             apply_current_diff=False,
         ),
     )
 
-    assert report_id.archive_name == "v0.4.3-vs-v0.4.3.md"
+    assert report_id.archive_name == "v0.4.6-vs-v0.4.6.md"
     assert output.read_text(encoding="utf-8") == _retained_report(tmp_path)
     assert output.with_suffix(".csv").is_file()
     assert output.with_suffix(".provenance.json").is_file()
-    assert any(kind == "just" and args == ("bench-save-baseline", "v0.4.3", "vs_linalg") for kind, args, _ in calls)
+    assert any(kind == "just" and args == ("bench-save-baseline", "v0.4.6", "vs_linalg") for kind, args, _ in calls)
     assert any(kind == "just" and args == ("bench-vs-linalg-la-stack",) for kind, args, _ in calls)
     assert any(kind == "uv" and "--csv-output" in args and "--provenance-output" in args for kind, args, _ in calls)
     assert not any(kind == "cargo" for kind, _, _ in calls)
@@ -1832,7 +1999,18 @@ def test_generate_local_non_exact_report_retains_same_version_comparison_artifac
     assert not current.exists()
 
 
-def test_generate_local_report_artifacts_can_be_rendered_and_promoted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _fail_retained_summary_index(_archive: Path) -> None:
+    msg = "simulated retained summary promotion failure"
+    raise OSError(msg)
+
+
+@pytest.mark.parametrize("fail_promotion", [False, True])
+def test_generate_local_report_artifacts_can_be_rendered_and_promoted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fail_promotion: bool,
+) -> None:
     output = tmp_path / "target" / "bench-reports" / "performance.md"
     calls: list[RunnerCall] = []
 
@@ -1850,13 +2028,19 @@ def test_generate_local_report_artifacts_can_be_rendered_and_promoted(tmp_path: 
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
-        if command == "just" and args == ["bench-save-baseline", "v0.4.2", "vs_linalg"]:
+        if command == "just" and args == ["bench-save-baseline", "v0.4.5", "vs_linalg"]:
             assert cwd is not None
             criterion_dir = cwd / "target" / "criterion"
             criterion_dir.mkdir(parents=True)
             (criterion_dir / "baseline.txt").write_text("baseline\n", encoding="utf-8")
+            for sample in ("v0.4.5", "new"):
+                _write_measurement(criterion_dir, "lu_solve_pivoting_d2/faer_lu_solve", sample, 20.0)
+                _write_measurement(criterion_dir, "lu_solve_pivoting_d2/la_stack_lu_solve", sample, 10.0)
+        if command == "just" and args == ["bench-vs-linalg-la-stack"]:
+            assert cwd is not None
+            _write_measurement(cwd / "target/criterion", "lu_solve_pivoting_d2/la_stack_lu_solve", "new", 8.123456789012345)
         if command == "uv":
-            _write_fake_rendered_artifacts(args, version="0.4.3", baseline="v0.4.2")
+            _write_fake_rendered_artifacts(args, version="0.4.6", baseline="v0.4.5")
         return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
@@ -1867,21 +2051,34 @@ def test_generate_local_report_artifacts_can_be_rendered_and_promoted(tmp_path: 
         output=output,
         config=GenerationConfig(
             repo_root=tmp_path,
-            current_tag="v0.4.3",
-            baseline_tag="v0.4.2",
+            current_tag="v0.4.6",
+            baseline_tag="v0.4.5",
             worktree_ref="HEAD",
             suite="vs_linalg",
             apply_current_diff=False,
         ),
     )
 
-    assert report_id.archive_name == "v0.4.3-vs-v0.4.2.md"
-    assert any(kind == "just" and args == ("bench-save-baseline", "v0.4.2", "vs_linalg") for kind, args, _ in calls)
+    assert report_id.archive_name == "v0.4.6-vs-v0.4.5.md"
+    assert any(kind == "just" and args == ("bench-save-baseline", "v0.4.5", "vs_linalg") for kind, args, _ in calls)
     assert any(kind == "just" and args == ("bench-vs-linalg-la-stack",) for kind, args, _ in calls)
     assert not any(kind == "cargo" for kind, _, _ in calls)
     assert not any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
 
     current = tmp_path / "docs" / "performance.md"
+    if fail_promotion:
+        monkeypatch.setattr(archive_performance, "update_archive_index", _fail_retained_summary_index)
+        with pytest.raises(OSError, match="simulated retained summary"):
+            archive_performance.render_and_promote_artifacts(
+                artifacts=ArtifactPaths(csv=output.with_suffix(".csv"), provenance=output.with_suffix(".provenance.json")),
+                output=output,
+                current=current,
+                archive_dir=tmp_path / "docs/archive/performance",
+            )
+        assert not current.exists()
+        assert not list((tmp_path / "docs/performance").rglob("*.csv"))
+        assert not (tmp_path / "docs/performance/latest.json").exists()
+        return
     promoted = archive_performance.render_and_promote_artifacts(
         artifacts=ArtifactPaths(
             csv=output.with_suffix(".csv"),
@@ -1893,6 +2090,32 @@ def test_generate_local_report_artifacts_can_be_rendered_and_promoted(tmp_path: 
     )
     assert promoted == report_id
     assert current.read_text(encoding="utf-8") == output.read_text(encoding="utf-8")
+    _assert_complete_retention_after_clean(tmp_path, calls, monkeypatch)
+
+
+def _assert_complete_retention_after_clean(tmp_path: Path, calls: list[RunnerCall], monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "target/bench-reports/performance.md"
+    current = tmp_path / "docs/performance.md"
+    original = current.read_bytes()
+    scratch = ArtifactPaths(csv=output.with_suffix(".csv"), provenance=output.with_suffix(".provenance.json"))
+    full_text = full_summary_paths(scratch).csv.read_text(encoding="utf-8")
+    rows = list(csv.DictReader(io.StringIO(full_text)))
+    assert len(rows) == 5
+    assert {(row["phase"], row["benchmark_id"]) for row in rows if "faer" in row["benchmark_id"]} == {
+        ("baseline", "lu_solve_pivoting_d2/faer_lu_solve"),
+    }
+    precise = next(row for row in rows if row["phase"] == "current" and row["benchmark_id"].startswith("lu_solve_pivoting"))
+    assert float(precise["mean_ns"]) == 8.123456789012345
+    shutil.rmtree(tmp_path / "target")
+    retained = resolve_report_paths(tmp_path, scratch)
+    assert full_summary_paths(retained).csv.read_text(encoding="utf-8") == full_text
+    assert _resolve_performance_paths(tmp_path, "target/bench-reports/performance.csv") == retained
+    calls.clear()
+    monkeypatch.chdir(tmp_path)
+    assert main(["--promote-artifacts"]) == 0
+    assert not calls
+    assert current.read_bytes() == original
+    assert full_summary_paths(retained).csv.read_text(encoding="utf-8") == full_text
 
 
 def test_main_generates_latest_published_report_from_github_releases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1917,8 +2140,8 @@ def test_main_generates_latest_published_report_from_github_releases(tmp_path: P
         if command == "gh" and args[:2] == ["release", "list"]:
             return _result(
                 "["
-                '{"tagName":"v0.4.2","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
-                '{"tagName":"v0.4.3","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"}'
+                '{"tagName":"v0.4.5","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
+                '{"tagName":"v0.4.6","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"}'
                 "]"
             )
         if command == "gh":
@@ -1926,7 +2149,7 @@ def test_main_generates_latest_published_report_from_github_releases(tmp_path: P
             tag = args[2]
             _write_baseline_archive(download_dir / f"la-stack-{tag}-criterion-baseline.tar.gz")
         if command == "uv":
-            _write_fake_rendered_artifacts(args, version="0.4.3", baseline="v0.4.2")
+            _write_fake_rendered_artifacts(args, version="0.4.6", baseline="v0.4.5")
         return _result()
 
     monkeypatch.chdir(tmp_path)
@@ -1955,15 +2178,15 @@ def test_main_generates_latest_published_report_from_github_releases(tmp_path: P
         == (
             "fetch",
             "origin",
-            "refs/tags/v0.4.3:refs/tags/v0.4.3",
-            "refs/tags/v0.4.2:refs/tags/v0.4.2",
+            "refs/tags/v0.4.6:refs/tags/v0.4.6",
+            "refs/tags/v0.4.5:refs/tags/v0.4.5",
         )
         for kind, args, _ in calls
     )
     fetch_index = next(index for index, (kind, args, _) in enumerate(calls) if kind == "git" and args[:2] == ("fetch", "origin"))
     worktree_index = next(index for index, (kind, args, _) in enumerate(calls) if kind == "git" and args[:3] == ("worktree", "add", "--detach"))
     assert fetch_index < worktree_index
-    assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.3" for kind, args, _ in calls)
+    assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.6" for kind, args, _ in calls)
 
 
 def test_main_normalizes_explicit_bare_tags_before_fetching_and_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1991,7 +2214,7 @@ def test_main_normalizes_explicit_bare_tags_before_fetching_and_checkout(tmp_pat
             tag = args[2]
             _write_baseline_archive(download_dir / f"la-stack-{tag}-criterion-baseline.tar.gz")
         if command == "uv":
-            _write_fake_rendered_artifacts(args, version="0.4.3", baseline="v0.4.2")
+            _write_fake_rendered_artifacts(args, version="0.4.6", baseline="v0.4.5")
         return _result()
 
     monkeypatch.chdir(tmp_path)
@@ -2001,8 +2224,8 @@ def test_main_normalizes_explicit_bare_tags_before_fetching_and_checkout(tmp_pat
 
     rc = main(
         [
-            "0.4.3",
-            "0.4.2",
+            "0.4.6",
+            "0.4.5",
             "--current",
             str(current),
             "--archive-dir",
@@ -2010,7 +2233,7 @@ def test_main_normalizes_explicit_bare_tags_before_fetching_and_checkout(tmp_pat
             "--github-assets",
             "--generate-in-temp-worktree",
             "--worktree-ref",
-            "0.4.3",
+            "0.4.6",
             "--output-only",
             "--output",
             str(output),
@@ -2026,17 +2249,17 @@ def test_main_normalizes_explicit_bare_tags_before_fetching_and_checkout(tmp_pat
         == (
             "fetch",
             "origin",
-            "refs/tags/v0.4.2:refs/tags/v0.4.2",
-            "refs/tags/v0.4.3:refs/tags/v0.4.3",
+            "refs/tags/v0.4.5:refs/tags/v0.4.5",
+            "refs/tags/v0.4.6:refs/tags/v0.4.6",
         )
         for kind, args, _ in calls
     )
     fetch_index = next(index for index, (kind, args, _) in enumerate(calls) if kind == "git" and args[:2] == ("fetch", "origin"))
     worktree_index = next(index for index, (kind, args, _) in enumerate(calls) if kind == "git" and args[:3] == ("worktree", "add", "--detach"))
     assert fetch_index < worktree_index
-    assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.3" for kind, args, _ in calls)
-    assert any(kind == "gh" and args[:3] == ("release", "download", "v0.4.2") for kind, args, _ in calls)
-    assert any(kind == "gh" and args[:3] == ("release", "download", "v0.4.3") for kind, args, _ in calls)
+    assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.6" for kind, args, _ in calls)
+    assert any(kind == "gh" and args[:3] == ("release", "download", "v0.4.5") for kind, args, _ in calls)
+    assert any(kind == "gh" and args[:3] == ("release", "download", "v0.4.6") for kind, args, _ in calls)
 
 
 def test_main_published_latest_fetch_failure_stops_before_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -2063,8 +2286,8 @@ def test_main_published_latest_fetch_failure_stops_before_worktree(tmp_path: Pat
         if command == "gh" and args[:2] == ["release", "list"]:
             return _result(
                 "["
-                '{"tagName":"v0.4.2","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
-                '{"tagName":"v0.4.3","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"}'
+                '{"tagName":"v0.4.5","isDraft":false,"isPrerelease":false,"publishedAt":"2026-01-01T00:00:00Z"},'
+                '{"tagName":"v0.4.6","isDraft":false,"isPrerelease":false,"publishedAt":"2026-02-01T00:00:00Z"}'
                 "]"
             )
         return _result()
@@ -2100,9 +2323,9 @@ def test_failed_atomic_replace_preserves_existing_report(tmp_path: Path, monkeyp
     source = tmp_path / "performance-new.md"
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    original = _report("0.4.2", "v0.4.1")
+    original = _report("0.4.5", "v0.4.4")
 
-    source.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
+    source.write_text(_report("0.4.6", "v0.4.5"), encoding="utf-8")
     current.parent.mkdir(parents=True)
     current.write_text(original, encoding="utf-8")
 
@@ -2117,33 +2340,46 @@ def test_failed_atomic_replace_preserves_existing_report(tmp_path: Path, monkeyp
             source=source,
             current=current,
             archive_dir=archive_dir,
-            expected_current_tag="v0.4.3",
-            expected_baseline_tag="v0.4.2",
+            expected_current_tag="v0.4.6",
+            expected_baseline_tag="v0.4.5",
         )
 
     assert current.read_text(encoding="utf-8") == original
     assert not list(current.parent.glob(".performance.md.*.tmp"))
 
 
-def test_restore_file_removes_temp_when_fsync_fails(
+@pytest.mark.parametrize("operation", ["write", "restore"])
+@pytest.mark.parametrize("failure_point", ["create", "fsync", "replace"])
+def test_atomic_report_update_failure_preserves_original_and_cleans_temp(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    failure_point: str,
 ) -> None:
     target = tmp_path / "docs" / "performance.md"
     target.parent.mkdir()
     target.write_text("current\n", encoding="utf-8")
 
-    def fail_fsync(_descriptor: int) -> None:
-        msg = "simulated fsync failure"
+    def fail(*_args: object, **_kwargs: object) -> Never:
+        msg = f"simulated {failure_point} failure"
         raise OSError(msg)
 
-    monkeypatch.setattr(archive_performance.os, "fsync", fail_fsync)
+    if failure_point == "create":
+        monkeypatch.setattr(archive_performance.tempfile, "NamedTemporaryFile", fail)
+    elif failure_point == "fsync":
+        monkeypatch.setattr(archive_performance.os, "fsync", fail)
+    else:
+        monkeypatch.setattr(archive_performance.Path, "replace", fail)
 
-    with pytest.raises(OSError, match="simulated fsync failure"):
-        archive_performance._restore_file(target, b"restored\n")
+    if operation == "write":
+        with pytest.raises(OSError, match=f"simulated {failure_point} failure"):
+            archive_performance._write_text(target, "updated\n")
+    else:
+        with pytest.raises(OSError, match=f"simulated {failure_point} failure"):
+            archive_performance._restore_file(target, b"restored\n")
 
     assert target.read_text(encoding="utf-8") == "current\n"
-    assert not list(target.parent.glob(".performance.md.*.restore"))
+    assert list(target.parent.iterdir()) == [target]
 
 
 def test_failed_archive_index_update_rolls_back_report_and_new_archive(
@@ -2153,8 +2389,8 @@ def test_failed_archive_index_update_rolls_back_report_and_new_archive(
     source = tmp_path / "performance-new.md"
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
-    original = _normalized_report("0.4.2", "v0.4.1")
-    source.write_text(_report("0.4.3", "v0.4.2"), encoding="utf-8")
+    original = _normalized_report("0.4.5", "v0.4.4")
+    source.write_text(_report("0.4.6", "v0.4.5"), encoding="utf-8")
     current.parent.mkdir(parents=True)
     current.write_text(original, encoding="utf-8")
 
@@ -2169,12 +2405,12 @@ def test_failed_archive_index_update_rolls_back_report_and_new_archive(
             source=source,
             current=current,
             archive_dir=archive_dir,
-            expected_current_tag="v0.4.3",
-            expected_baseline_tag="v0.4.2",
+            expected_current_tag="v0.4.6",
+            expected_baseline_tag="v0.4.5",
         )
 
     assert current.read_text(encoding="utf-8") == original
-    assert not (archive_dir / "v0.4.2-vs-v0.4.1.md").exists()
+    assert not (archive_dir / "v0.4.5-vs-v0.4.4.md").exists()
     assert not (archive_dir / "README.md").exists()
 
 
@@ -2186,7 +2422,7 @@ def test_failed_artifact_promotion_output_write_rolls_back_report_archive_and_in
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     index = archive_dir / "README.md"
     output = tmp_path / "target" / "bench-reports" / "performance.md"
-    original_current = _report("0.4.2", "v0.4.1")
+    original_current = _report("0.4.5", "v0.4.4")
     original_index = "original index\n"
     original_output = "original output\n"
     current.parent.mkdir(parents=True)
@@ -2207,11 +2443,11 @@ def test_failed_artifact_promotion_output_write_rolls_back_report_archive_and_in
 
     with pytest.raises(OSError, match="simulated artifact promotion output failure"):
         archive_performance._promote_report_text(
-            source_text=_report("0.4.3", "v0.4.2"),
+            source_text=_report("0.4.6", "v0.4.5"),
             request=archive_performance.PromotionRequest(
                 current=current,
                 archive_dir=archive_dir,
-                expected=archive_performance.ReportId(current_tag="v0.4.3", baseline_tag="v0.4.2"),
+                expected=archive_performance.ReportId(current_tag="v0.4.6", baseline_tag="v0.4.5"),
                 output=output,
             ),
         )
@@ -2219,14 +2455,14 @@ def test_failed_artifact_promotion_output_write_rolls_back_report_archive_and_in
     assert current.read_text(encoding="utf-8") == original_current
     assert index.read_text(encoding="utf-8") == original_index
     assert output.read_text(encoding="utf-8") == original_output
-    assert not (archive_dir / "v0.4.2-vs-v0.4.1.md").exists()
+    assert not (archive_dir / "v0.4.5-vs-v0.4.4.md").exists()
 
 
 def test_generate_and_promote_rejects_artifact_alias_before_worktree(tmp_path: Path) -> None:
     current = tmp_path / "docs" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     current.parent.mkdir(parents=True)
-    current.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    current.write_text(_report("0.4.5", "v0.4.4"), encoding="utf-8")
     artifacts = ArtifactPaths(
         csv=current,
         provenance=current.with_suffix(".provenance.json"),
@@ -2239,31 +2475,33 @@ def test_generate_and_promote_rejects_artifact_alias_before_worktree(tmp_path: P
             archive_dir=archive_dir,
             config=GenerationConfig(
                 repo_root=tmp_path,
-                current_tag="v0.4.3",
-                baseline_tag="v0.4.2",
+                current_tag="v0.4.6",
+                baseline_tag="v0.4.5",
                 worktree_ref="HEAD",
             ),
             artifacts=artifacts,
         )
 
-    assert current.read_text(encoding="utf-8") == _report("0.4.2", "v0.4.1")
+    assert current.read_text(encoding="utf-8") == _report("0.4.5", "v0.4.4")
     assert not archive_dir.exists()
 
 
-def test_generate_output_only_rejects_artifact_alias_before_worktree(tmp_path: Path) -> None:
-    output = tmp_path / "target" / "bench-reports" / "performance.md"
+@pytest.mark.parametrize("alias", ["selected", "full-csv", "full-json"])
+def test_generate_output_only_rejects_artifact_alias_before_worktree(tmp_path: Path, alias: str) -> None:
+    report = tmp_path / "target" / "bench-reports" / "performance.csv"
     artifacts = ArtifactPaths(
-        csv=output,
-        provenance=output.with_suffix(".provenance.json"),
+        csv=report,
+        provenance=report.with_suffix(".provenance.json"),
     )
+    output = {"selected": report, "full-csv": full_summary_paths(artifacts).csv, "full-json": full_summary_paths(artifacts).provenance}[alias]
 
     with pytest.raises(ValueError, match="must use distinct paths"):
         generate_worktree_report(
             output=output,
             config=GenerationConfig(
                 repo_root=tmp_path,
-                current_tag="v0.4.3",
-                baseline_tag="v0.4.2",
+                current_tag="v0.4.6",
+                baseline_tag="v0.4.5",
                 worktree_ref="HEAD",
             ),
             artifacts=artifacts,
@@ -2283,7 +2521,7 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(
     output = tmp_path / "target" / "bench-reports" / "performance.md"
     archive_dir = tmp_path / "docs" / "archive" / "performance"
     current.parent.mkdir(parents=True)
-    current.write_text(_report("0.4.2", "v0.4.1"), encoding="utf-8")
+    current.write_text(_report("0.4.5", "v0.4.4"), encoding="utf-8")
     calls: list[RunnerCall] = []
 
     def fake_run_git(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
@@ -2304,7 +2542,7 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
-        if command == "just" and args == ["bench-save-baseline", "v0.4.2"]:
+        if command == "just" and args == ["bench-save-baseline", "v0.4.5"]:
             assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
             assert cwd is not None
             criterion_dir = cwd / "target" / "criterion"
@@ -2313,7 +2551,7 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(
         if command == "just" and args == ["bench-latest"]:
             assert kwargs["env"]["RUSTUP_TOOLCHAIN"] == "1.97.0"
         if command == "uv":
-            _write_fake_rendered_artifacts(args, version="0.4.3", baseline="v0.4.2")
+            _write_fake_rendered_artifacts(args, version="0.4.6", baseline="v0.4.5")
         return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
@@ -2326,17 +2564,17 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(
         archive_dir=archive_dir,
         config=GenerationConfig(
             repo_root=tmp_path,
-            current_tag="v0.4.3",
-            baseline_tag="v0.4.2",
+            current_tag="v0.4.6",
+            baseline_tag="v0.4.5",
             worktree_ref="HEAD",
             apply_current_diff=True,
         ),
     )
 
-    assert report_id.archive_name == "v0.4.3-vs-v0.4.2.md"
+    assert report_id.archive_name == "v0.4.6-vs-v0.4.5.md"
     assert current.read_text(encoding="utf-8") == _retained_report(tmp_path)
     assert output.read_text(encoding="utf-8") == current.read_text(encoding="utf-8")
-    assert (archive_dir / "v0.4.2-vs-v0.4.1.md").exists()
+    assert (archive_dir / "v0.4.5-vs-v0.4.4.md").exists()
     assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "HEAD" for kind, args, _ in calls)
     assert any(kind == "git-stdin" and args == ("apply", "--binary") for kind, args, _ in calls)
     assert any(kind == "just" and args == ("bench-latest",) for kind, args, _ in calls)
@@ -2364,13 +2602,13 @@ def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append((command, tuple(args), cwd))
-        if command == "just" and args == ["bench-save-baseline", "v0.4.1"]:
+        if command == "just" and args == ["bench-save-baseline", "v0.4.4"]:
             assert cwd is not None
             criterion_dir = cwd / "target" / "criterion"
             criterion_dir.mkdir(parents=True)
             (criterion_dir / "baseline.txt").write_text("baseline\n", encoding="utf-8")
         if command == "uv":
-            _write_fake_rendered_artifacts(args, version="0.4.2", baseline="v0.4.1")
+            _write_fake_rendered_artifacts(args, version="0.4.5", baseline="v0.4.4")
         return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
@@ -2383,17 +2621,17 @@ def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path
         archive_dir=archive_dir,
         config=GenerationConfig(
             repo_root=tmp_path,
-            current_tag="v0.4.2",
-            baseline_tag="v0.4.1",
-            worktree_ref="v0.4.2",
+            current_tag="v0.4.5",
+            baseline_tag="v0.4.4",
+            worktree_ref="v0.4.5",
             apply_current_diff=False,
         ),
     )
 
-    assert report_id.archive_name == "v0.4.2-vs-v0.4.1.md"
+    assert report_id.archive_name == "v0.4.5-vs-v0.4.4.md"
     assert current.read_text(encoding="utf-8") == _retained_report(tmp_path)
     assert output.read_text(encoding="utf-8") == current.read_text(encoding="utf-8")
-    assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.2" for kind, args, _ in calls)
+    assert any(kind == "git" and args[:3] == ("worktree", "add", "--detach") and args[4] == "v0.4.5" for kind, args, _ in calls)
     assert any(kind == "cargo" and args == ("bench", "--locked", "--features", "bench,exact") for kind, args, _ in calls)
     assert not any(kind == "just" and args == ("bench-exact",) for kind, args, _ in calls)
     assert not any(kind == "just" and args == ("bench-latest",) for kind, args, _ in calls)

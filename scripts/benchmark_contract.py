@@ -14,7 +14,6 @@ BENCHMARK_CONTRACT_FILES: Final[tuple[str, ...]] = (
     "justfile",
     "rust-toolchain.toml",
     "tests/exact_bench_config.rs",
-    "tests/vs_linalg_inputs.rs",
 )
 
 

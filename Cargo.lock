@@ -645,18 +645,27 @@ dependencies = [
 
 [[package]]
 name = "la-stack"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "allocation-counter",
  "approx",
  "criterion",
- "faer",
- "nalgebra",
  "num-bigint",
  "num-rational",
  "num-traits",
  "pastey",
  "proptest",
+]
+
+[[package]]
+name = "la-stack-comparison"
+version = "0.0.0"
+dependencies = [
+ "approx",
+ "criterion",
+ "faer",
+ "la-stack",
+ "nalgebra",
 ]
 
 [[package]]

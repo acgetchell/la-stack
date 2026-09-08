@@ -52,7 +52,7 @@ do not establish performance for all exact-input workloads.
 
 ## Allocation evidence
 
-The [complete allocation CSV](../assets/rational-row-clearing-allocations.csv)
+The [complete allocation CSV](../../../assets/rational-row-clearing-allocations.csv)
 retains total allocation counts and requested bytes for both implementations.
 `det`, `det_sign`, and `solve` rows measure complete public calls, including
 dropping their results. The remaining rows isolate component cloning and
@@ -95,7 +95,7 @@ guarantees or fixed cross-version test expectations.
 
 ## Timing evidence
 
-The [complete timing CSV](../assets/rational-row-clearing-timings.csv) retains
+The [complete timing CSV](../../../assets/rational-row-clearing-timings.csv) retains
 all 63 initial comparisons and two repeats, including Criterion mean estimates
 and their marginal 95% confidence intervals in nanoseconds. Percentage change
 is `100 × (borrowed mean / cloned mean - 1)`; negative values mean less time.

@@ -13,7 +13,7 @@ This supports keeping the simpler implementation; it does not prove that
 finalization has zero cost in every compiler or calling context.
 
 The retained tests in
-[`tests/solve_finalization.rs`](../../tests/solve_finalization.rs) exercise
+[`tests/solve_finalization.rs`](../../../../tests/solve_finalization.rs) exercise
 division, forward-substitution, and back-substitution overflow across all eight
 dimensions, preserving the exact typed error and failing-step order.
 

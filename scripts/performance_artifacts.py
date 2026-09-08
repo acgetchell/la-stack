@@ -24,10 +24,9 @@ SCOPES = ("release-signal", "all-benches")
 COVERAGE_STATES = ("comparable", "current-only", "baseline-only")
 
 type CoverageState = Literal["comparable", "current-only", "baseline-only"]
-type ReleaseApiCapability = Literal["legacy-v0.4.3", "pre-rational-input", "rational-input", "unknown"]
+type ReleaseApiCapability = Literal["pre-rational-input", "rational-input", "unknown"]
 type RationalInputCoverage = Literal["excluded", "current-only", "comparable"]
 
-V0_4_3_API_COMPATIBILITY = "la_stack_v0_4_3_api"
 PRE_RATIONAL_INPUT_API_COMPATIBILITY = "la_stack_pre_rational_input_api"
 NO_API_COMPATIBILITY = "none"
 
@@ -55,7 +54,8 @@ def _release_api_capability(release: str) -> ReleaseApiCapability:
         return "unknown"
     version = tuple(int(match.group(part)) for part in ("major", "minor", "patch"))
     if version <= (0, 4, 3):
-        return "legacy-v0.4.3"
+        msg = f"unsupported performance comparison release {release!r}; comparisons require v0.4.4 or newer (v0.4.3 and older are excluded)"
+        raise ValueError(msg)
     if version <= (0, 4, 5):
         return "pre-rational-input"
     return "rational-input"
@@ -71,14 +71,13 @@ def resolve_shared_harness_compatibility(
     current_capability = _release_api_capability(current)
     baseline_capability = _release_api_capability(baseline)
     baseline_adapter = {
-        "legacy-v0.4.3": V0_4_3_API_COMPATIBILITY,
         "pre-rational-input": PRE_RATIONAL_INPUT_API_COMPATIBILITY,
         "rational-input": NO_API_COMPATIBILITY,
         "unknown": NO_API_COMPATIBILITY,
     }[baseline_capability]
     if not shared_harness_rational_inputs:
         rational_coverage: RationalInputCoverage = "excluded"
-    elif baseline_capability in {"legacy-v0.4.3", "pre-rational-input"}:
+    elif baseline_capability == "pre-rational-input":
         rational_coverage = "current-only"
     else:
         rational_coverage = "comparable"

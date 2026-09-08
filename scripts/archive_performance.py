@@ -1,13 +1,15 @@
 #!/usr/bin/env -S uv run --locked
 """Generate, retain, render, and promote benchmark comparison reports.
 
-Release performance docs have two different lifetimes:
+Release performance outputs have distinct lifetimes:
 
   - ``target/bench-reports/performance.md`` is local scratch output for the
     current machine and branch.
   - ``target/bench-reports/performance.csv`` and the adjacent provenance JSON
     are validated, reproducible performance-comparison inputs.
   - ``docs/performance.md`` is the latest curated release-to-release comparison.
+  - ``docs/performance/<release-pair>/<run-digest>/`` preserves complete local
+    summaries and the selected report inputs across target cleanup.
   - ``docs/archive/performance/*.md`` stores older curated comparisons.
 
 This script renders from a validated artifact reload, copies the result into
@@ -28,14 +30,15 @@ import tarfile
 import tempfile
 import tomllib
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
-from dataclasses import dataclass
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
 from bench_compare import HOW_TO_UPDATE_SECTION, render_release_artifacts
 from benchmark_contract import benchmark_contract_digest
+from benchmark_summaries import report_input_paths, resolve_report_paths, retained_outputs, summary_outputs
 from performance_artifacts import (
     NO_API_COMPATIBILITY,
     ArtifactPaths,
@@ -75,7 +78,8 @@ _SUPPORTED_SCOPES = ("release-signal", "all-benches")
 _BENCH_TIMEOUT_SECONDS = 7200
 _COMMAND_TIMEOUT_SECONDS = 600
 _HOW_TO_UPDATE_RE = re.compile(r"(?ms)^## How to Update\n.*\Z")
-_BENCHMARK_HARNESS_DIRS = ("benches",)
+# Cargo validates declared example paths even when only benchmark tests are selected.
+_BENCHMARK_HARNESS_DIRS = ("benches", "examples")
 _BENCHMARK_HARNESS_FILES = (
     ".config/nextest.toml",
     "Cargo.toml",
@@ -83,7 +87,6 @@ _BENCHMARK_HARNESS_FILES = (
     "rust-toolchain.toml",
     "justfile",
     "tests/exact_bench_config.rs",
-    "tests/vs_linalg_inputs.rs",
 )
 _BENCHMARK_HARNESS_METADATA = ".la-stack-benchmark-harness.json"
 _BENCHMARK_INPUT_GATE = ("just", "test-bench-inputs")
@@ -116,6 +119,7 @@ class PromotionRequest:
     source_path: Path | None = None
     output: Path | None = None
     reserved_paths: Mapping[str, Path] | None = None
+    retained_outputs: Mapping[Path, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -139,6 +143,11 @@ class GenerationConfig:
         if self.scope not in _SUPPORTED_SCOPES:
             msg = f"unsupported comparison scope: {self.scope}"
             raise ValueError(msg)
+        resolve_shared_harness_compatibility(
+            current=self.current_tag,
+            baseline=self.baseline_tag,
+            shared_harness_rational_inputs=False,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -436,8 +445,7 @@ def _replace_file(src: Path, dst: Path) -> None:
 
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path: Path | None = None
-    try:
+    with ExitStack() as cleanup:
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",
@@ -448,13 +456,11 @@ def _write_text(path: Path, text: str) -> None:
             delete=False,
         ) as tmp:
             tmp_path = Path(tmp.name)
+            cleanup.callback(tmp_path.unlink, missing_ok=True)
             tmp.write(text)
             tmp.flush()
             os.fsync(tmp.fileno())
         _replace_file(tmp_path, path)
-    finally:
-        if tmp_path is not None and tmp_path.exists():
-            tmp_path.unlink()
 
 
 def _restore_file(path: Path, payload: bytes | None) -> None:
@@ -463,8 +469,7 @@ def _restore_file(path: Path, payload: bytes | None) -> None:
         path.unlink(missing_ok=True)
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    restore_path: Path | None = None
-    try:
+    with ExitStack() as cleanup:
         with tempfile.NamedTemporaryFile(
             "wb",
             dir=path.parent,
@@ -473,13 +478,11 @@ def _restore_file(path: Path, payload: bytes | None) -> None:
             delete=False,
         ) as tmp:
             restore_path = Path(tmp.name)
+            cleanup.callback(restore_path.unlink, missing_ok=True)
             tmp.write(payload)
             tmp.flush()
             os.fsync(tmp.fileno())
         restore_path.replace(path)
-    finally:
-        if restore_path is not None:
-            restore_path.unlink(missing_ok=True)
 
 
 def _snapshot_regular_file(path: Path, *, label: str) -> bytes | None:
@@ -511,6 +514,22 @@ def _restore_snapshots(snapshots: tuple[tuple[Path, bytes | None], ...]) -> tupl
     return tuple(errors)
 
 
+@contextmanager
+def _publish_text_outputs(outputs: Mapping[Path, str]) -> Iterator[None]:
+    """Retain complete scratch summaries with the report's rollback boundary."""
+    snapshots = tuple((path, _snapshot_regular_file(path, label="benchmark summary")) for path in outputs)
+    try:
+        for path, text in outputs.items():
+            _write_text(path, text)
+        yield
+    except BaseException as error:
+        failures = _restore_snapshots(snapshots)
+        if failures:
+            msg = "benchmark summary publication and rollback failed"
+            raise BaseExceptionGroup(msg, [error, *failures]) from None
+        raise
+
+
 def _archive_readme(archive_dir: Path) -> str:
     reports = sorted(path.name for path in archive_dir.glob("*.md") if path.name != "README.md")
     lines = [
@@ -524,6 +543,8 @@ def _archive_readme(archive_dir: Path) -> str:
         lines.extend(f"- [{name.removesuffix('.md')}]({name})" for name in reports)
     else:
         lines.append("- No archived performance reports yet.")
+    if (archive_dir / "studies").is_dir():
+        lines.extend(("", "Completed optimization investigations are in [archived studies](studies/README.md)."))
     return "\n".join(lines) + "\n"
 
 
@@ -1035,9 +1056,9 @@ def _selected_criterion_groups(criterion_dir: Path, *, suite: str) -> list[Path]
     for child in criterion_dir.iterdir():
         if not child.is_dir():
             continue
-        is_exact = child.name.startswith("exact_") or re.fullmatch(r"rational_input_d[0-9]+", child.name) is not None
-        is_vs_linalg = re.fullmatch(r"d[0-9]+", child.name) is not None
-        if (suite in {"all", "exact"} and is_exact) or (suite in {"all", "vs_linalg"} and is_vs_linalg):
+        is_exact = child.name.startswith(("exact_", "rational_input_", "canonical_conversion_", "det4_diagnostic_"))
+        is_vs_linalg = re.fullmatch(r"d[0-9]+", child.name) is not None or child.name.startswith("lu_solve_")
+        if suite == "all" or (suite == "exact" and is_exact) or (suite == "vs_linalg" and is_vs_linalg):
             groups.append(child)
     return sorted(groups, key=lambda path: path.name)
 
@@ -1046,7 +1067,7 @@ def _purge_criterion_new_samples(*, criterion_dir: Path, suite: str) -> list[Pat
     """Remove stale selected-suite `new` samples while preserving named baselines."""
     removed: list[Path] = []
     for group in _selected_criterion_groups(criterion_dir, suite=suite):
-        for sample in sorted(group.glob("*/new")):
+        for sample in sorted(group.rglob("new")):
             if sample.is_dir():
                 shutil.rmtree(sample)
                 removed.append(sample)
@@ -1087,6 +1108,10 @@ def _benchmark_harness_digest(checkout: Path) -> str:
 def _install_shared_benchmark_harness(*, source: Path, destination: Path) -> str:
     """Replace a baseline checkout's harness with the current harness."""
     source_files = _benchmark_harness_files(source)
+    # The comparison test moved into its own package; historical copies would
+    # otherwise still compile as a library test without the peer dependencies.
+    if (source / "benches/comparison/Cargo.toml").is_file():
+        (destination / "tests/vs_linalg_inputs.rs").unlink(missing_ok=True)
     for relative in _BENCHMARK_HARNESS_DIRS:
         source_dir = source / relative
         destination_dir = destination / relative
@@ -1189,7 +1214,8 @@ def _generate_release_baseline(  # noqa: PLR0913
         )
         benchmark_env = _comparison_benchmark_env(repo_root, api_compatibility=api_compatibility)
         _run_benchmark_input_gate(baseline_worktree, env=benchmark_env)
-        _progress(f"running {suite} baseline benchmarks for {baseline_tag}")
+        peers = "; includes nalgebra/faer measurements" if suite != "exact" else ""
+        _progress(f"running {suite} baseline benchmarks for {baseline_tag}{peers}")
         _run_tool(
             baseline_command,
             baseline_args,
@@ -1391,11 +1417,14 @@ def _run_benchmarks_and_render_report(
         criterion_dir=worktree / "target" / "criterion",
         suite=config.suite,
     )
+    peers = ""
     if _has_current_release_signal_tooling(worktree):
         current_command = ("just", *_latest_recipe_args(suite=config.suite))
+        if config.suite != "exact":
+            peers = "; la-stack only, reusing baseline nalgebra/faer measurements"
     else:
         current_command = _fallback_current_command(suite=config.suite)
-    _progress(f"running current {config.suite} benchmarks")
+    _progress(f"running current {config.suite} benchmarks for {config.current_tag}{peers}")
     _run_tool(
         current_command[0],
         list(current_command[1:]),
@@ -1499,7 +1528,14 @@ def _generated_report_in_temp_worktree(
                 )
             report_text = _read_text(report)
             bundle = load_bundle(temporary_artifacts)
-            with publish_bundle(published_artifacts, bundle):
+            summaries = {}
+            if config.baseline_source == "local":
+                temporary_summaries = summary_outputs(worktree / "target/criterion", config.baseline_tag, temporary_artifacts)
+                summaries = {
+                    published_artifacts.csv.with_suffix(".full.csv" if path.suffix == ".csv" else ".full.provenance.json"): text
+                    for path, text in temporary_summaries.items()
+                }
+            with _publish_text_outputs(summaries), publish_bundle(published_artifacts, bundle):
                 durable_text = render_release_artifacts(published_artifacts)
                 if durable_text != report_text:
                     msg = "durable performance-comparison artifacts did not reproduce the generated Markdown"
@@ -1537,8 +1573,12 @@ def _validate_promotion_paths(request: PromotionRequest, *, index_path: Path, ar
             raise ValueError(msg)
     if archive_path is not None:
         named_paths["archived report"] = archive_path
-    if request.reserved_paths is not None:
-        named_paths.update(request.reserved_paths)
+    ensure_distinct_paths({**named_paths, **(request.reserved_paths or {})})
+    if request.retained_outputs:
+        # Retained inputs may already occupy their own immutable destinations.
+        # Check destinations separately so this valid overlap cannot conceal an
+        # alias between a report output and either set of protected paths.
+        named_paths.update({f"retained summary {index}": path for index, path in enumerate(request.retained_outputs)})
     ensure_distinct_paths(named_paths)
 
 
@@ -1584,6 +1624,8 @@ def _promotion_snapshots(
     )
     if request.output is not None:
         snapshots.append((request.output, _snapshot_regular_file(request.output, label="rendered output")))
+    if request.retained_outputs:
+        snapshots.extend((path, _snapshot_regular_file(path, label="retained benchmark summary")) for path in request.retained_outputs)
     return tuple(snapshots)
 
 
@@ -1621,6 +1663,9 @@ def _promote_report_text(*, source_text: str, request: PromotionRequest) -> Repo
         archive_exists=archive_exists,
     )
     try:
+        for path, text in (request.retained_outputs or {}).items():
+            if not path.exists() or _read_text(path) != text:
+                _write_text(path, text)
         if archive_path is not None and not archive_exists:
             if current_text is None:
                 msg = "archive promotion invariant violated"
@@ -1688,10 +1733,7 @@ def generate_and_promote_worktree_report(
     )
     published_artifacts = artifacts or _default_artifact_paths(config.repo_root)
     expected = ReportId(current_tag=current_tag, baseline_tag=baseline_tag)
-    reserved_paths = {
-        "artifact CSV": published_artifacts.csv,
-        "artifact provenance": published_artifacts.provenance,
-    }
+    reserved_paths = report_input_paths(published_artifacts)
     request = PromotionRequest(
         current=current,
         archive_dir=archive_dir,
@@ -1715,7 +1757,10 @@ def generate_and_promote_worktree_report(
     ) as generated:
         return _promote_report_text(
             source_text=generated.text,
-            request=request,
+            request=replace(
+                request,
+                retained_outputs=retained_outputs(current.parent / "performance", published_artifacts) if config.baseline_source == "local" else {},
+            ),
         )
 
 
@@ -1745,8 +1790,7 @@ def generate_worktree_report(
     ensure_distinct_paths(
         {
             "rendered output": output,
-            "artifact CSV": published_artifacts.csv,
-            "artifact provenance": published_artifacts.provenance,
+            **report_input_paths(published_artifacts),
         }
     )
     with _generated_report_in_temp_worktree(
@@ -1799,10 +1843,8 @@ def render_and_promote_artifacts(
             archive_dir=archive_dir,
             expected=expected,
             output=output,
-            reserved_paths={
-                "artifact CSV": artifacts.csv,
-                "artifact provenance": artifacts.provenance,
-            },
+            retained_outputs=retained_outputs(current.parent / "performance", artifacts),
+            reserved_paths=report_input_paths(artifacts),
         ),
     )
 
@@ -1877,8 +1919,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Generate local benchmark comparisons or promote validated comparison artifacts into release documentation.",
     )
-    parser.add_argument("current_tag", nargs="?", help="Current package-version label, e.g. v0.4.3")
-    parser.add_argument("baseline_tag", nargs="?", help="Previous release tag used as the comparison baseline, e.g. v0.4.2")
+    parser.add_argument("current_tag", nargs="?", help="Current package-version label, e.g. v0.4.6; new comparisons require v0.4.4 or newer")
+    parser.add_argument(
+        "baseline_tag", nargs="?", help="Previous release tag used as the comparison baseline, e.g. v0.4.5; new comparisons require v0.4.4 or newer"
+    )
     parser.add_argument(
         "--source",
         default=_DEFAULT_SOURCE,
@@ -2050,8 +2094,8 @@ def _validate_generation_request(
 def _run_archive_request(*, args: argparse.Namespace, paths: ArchivePaths, request: ResolvedArchiveRequest, repo_root: Path) -> ArchiveResult:
     _validate_generation_request(args=args, request=request, repo_root=repo_root)
     if args.generate_in_temp_worktree:
-        _fetch_required_tags(request=request, repo_root=repo_root, include_current=args.github_assets)
         config = _generation_config(args=args, request=request, repo_root=repo_root)
+        _fetch_required_tags(request=request, repo_root=repo_root, include_current=args.github_assets)
         if args.output_only:
             return ArchiveResult(
                 report_id=generate_worktree_report(
@@ -2133,6 +2177,7 @@ def main(argv: list[str] | None = None) -> int:
         _validate_cli_preflight(args)
         paths = _resolve_cli_paths(root, args)
         if args.promote_artifacts:
+            paths = replace(paths, artifacts=resolve_report_paths(root, paths.artifacts))
             result = ArchiveResult(
                 report_id=render_and_promote_artifacts(
                     artifacts=paths.artifacts,

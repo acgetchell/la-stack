@@ -111,13 +111,17 @@ just performance-release
 
 The no-argument form compares the current package version with the previous
 stable published release. Review `docs/performance.md`, any archived comparison
-under `docs/archive/performance/`, and the retained CSV and provenance JSON under
-`target/bench-reports/`.
+under `docs/archive/performance/`, and the complete versioned local summary
+snapshot and `latest.json` under `docs/performance/`. Include those CSV and JSON
+files in the release commit; they preserve every recorded case, including the
+measurements outside the readable report's selection.
 
 The temporary current worktree includes staged and unstaged changes to tracked
 files, but excludes untracked files. Stage any new benchmark-relevant file before
-running the comparison. Do not run `just clean` or `cargo clean` until the
-retained report inputs have been reviewed.
+running the comparison. Successful release promotion preserves the selected
+report inputs and complete summaries under `docs/performance/`, so cleanup no
+longer removes the data needed to regenerate the reports. Local experiments
+from `performance-local` remain scratch until explicitly promoted.
 
 ### 5. Refresh the README benchmark comparison
 
@@ -130,6 +134,8 @@ This consumes the validated CSV and provenance JSON retained by
 updates the table and tag-pinned benchmark links in `README.md` with the CSV,
 SVG, and provenance JSON under `docs/assets/bench/`. Until it succeeds, those
 README links continue to reference the previous published artifacts.
+If scratch inputs were cleaned, it uses the committed local snapshot. Existing
+partial or corrupt scratch inputs remain errors and never trigger a fallback.
 
 See `docs/BENCHMARKING.md` for repair commands, local comparison modes, artifact
 ownership, and provenance details.

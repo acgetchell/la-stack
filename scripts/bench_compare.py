@@ -31,6 +31,7 @@ import sys
 import tempfile
 import tomllib
 from collections.abc import Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,7 +40,6 @@ from typing import Literal, Protocol, cast
 from criterion_dim_plot import METRICS
 from performance_artifacts import (
     PRE_RATIONAL_INPUT_API_COMPATIBILITY,
-    V0_4_3_API_COMPATIBILITY,
     ArtifactContext,
     ArtifactPaths,
     PerformanceBundle,
@@ -120,23 +120,6 @@ EXACT_GROUPS: dict[str, list[str]] = {
 
 EXACT_RELEASE_SIGNAL_GROUPS: frozenset[str] = frozenset(EXACT_GROUPS)
 
-# v0.4.2 and earlier named the lossy exact-to-f64 benches after the public
-# `*_exact_f64` API. Current benches split that behavior into strict `*_result`
-# and lossy `*_rounded_f64` variants. Use the old baseline when present so
-# release reports show both compatibility-successor performance and strict
-# conversion overhead instead of silently dropping the new rows.
-EXACT_LEGACY_BASELINE_BENCHES: dict[str, str] = {
-    "det_exact_f64_result": "det_exact_f64",
-    "det_exact_rounded_f64": "det_exact_f64",
-    "solve_exact_f64_result": "solve_exact_f64",
-    "solve_exact_rounded_f64": "solve_exact_f64",
-}
-
-_EXACT_LEGACY_PREFIX_BASELINE_BENCHES: tuple[tuple[str, str], ...] = (
-    ("solve_exact_f64_result_", "solve_exact_f64_"),
-    ("solve_exact_rounded_f64_", "solve_exact_f64_"),
-)
-
 VS_LINALG_LA_STACK_ONLY_BENCHES_BY_METRIC: dict[str, list[str]] = {
     "det_via_lu": ["la_stack_det"],
 }
@@ -167,23 +150,10 @@ VS_LINALG_D8_RELEASE_SIGNAL_BENCHES: list[str] = [
     "la_stack_det_from_lu_balanced_range",
     "la_stack_det_from_ldlt_balanced_range",
 ]
-_V0_4_3_API_COMPATIBILITY = V0_4_3_API_COMPATIBILITY
 _PRE_RATIONAL_INPUT_API_COMPATIBILITY = PRE_RATIONAL_INPUT_API_COMPATIBILITY
 _RATIONAL_INPUT_ROWS: frozenset[tuple[str, str]] = frozenset(
     (group, bench) for group, benches in EXACT_GROUPS.items() if group.startswith("rational_input_d") for bench in benches
 )
-_V0_4_3_UNAVAILABLE_BASELINE_ROWS: frozenset[tuple[str, str]] = frozenset(
-    {
-        ("exact_d2", "det_direct_with_errbound"),
-        ("exact_d3", "det_direct_with_errbound"),
-        ("exact_d4", "det_direct_with_errbound"),
-        ("d8", "la_stack_det_from_lu_balanced_range"),
-        ("d8", "la_stack_det_from_ldlt_balanced_range"),
-    }
-)
-_UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY: dict[str, frozenset[tuple[str, str]]] = {
-    _V0_4_3_API_COMPATIBILITY: _V0_4_3_UNAVAILABLE_BASELINE_ROWS,
-}
 VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM: dict[int, list[str]] = {
     8: VS_LINALG_D8_RELEASE_SIGNAL_BENCHES,
 }
@@ -231,10 +201,14 @@ just performance-release <current-tag> <previous-tag>
 `performance.provenance.json` comparison inputs under `target/bench-reports/` without promoting documentation.
 It applies staged and unstaged tracked changes; untracked files are excluded.
 `just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.
-`just performance-release` performs the same measurement and retention work, then promotes distinct-release documentation.
+`just performance-release` also preserves every recorded local benchmark summary and the report inputs under
+`docs/performance/<current>-vs-<baseline>/<run-digest>/`, then promotes distinct-release documentation.
 `just performance-doc` consumes the retained pair from either workflow without benchmarking and promotes it when the package versions differ.
+After `just clean`, `performance-doc` and `performance-readme` use the latest complete snapshot in `docs/performance/`.
 For a distinct pair, `performance-local` followed by `performance-doc` is equivalent to the atomic `performance-release` workflow.
 
+See the [local summary index](https://github.com/acgetchell/la-stack/tree/main/docs/performance)
+for the saved-data schema, provenance, and historical availability.
 Older curated release-to-release reports are archived in `docs/archive/performance/`.
 
 See `docs/BENCHMARKING.md` for the full comparison workflow.
@@ -923,36 +897,6 @@ def _collect_exact_results(criterion_dir: Path, sample: str, stat: str) -> list[
     return results
 
 
-def _legacy_exact_baseline_bench(bench: str) -> str | None:
-    """Return the legacy exact benchmark name for renamed rows."""
-    legacy_bench = EXACT_LEGACY_BASELINE_BENCHES.get(bench)
-    if legacy_bench is not None:
-        return legacy_bench
-
-    for current_prefix, legacy_prefix in _EXACT_LEGACY_PREFIX_BASELINE_BENCHES:
-        if bench.startswith(current_prefix):
-            return f"{legacy_prefix}{bench.removeprefix(current_prefix)}"
-
-    return None
-
-
-def _exact_baseline_path(group_dir: Path, bench: str, baseline_name: str) -> tuple[str, Path]:
-    """Return the exact benchmark baseline path, falling back to legacy names."""
-    base_path = group_dir / bench / baseline_name / "estimates.json"
-    if base_path.exists():
-        return (bench, base_path)
-
-    legacy_bench = _legacy_exact_baseline_bench(bench)
-    if legacy_bench is None:
-        return (bench, base_path)
-
-    legacy_path = group_dir / legacy_bench / baseline_name / "estimates.json"
-    if legacy_path.exists():
-        return (legacy_bench, legacy_path)
-
-    return (bench, base_path)
-
-
 def _ordered_vs_linalg_benches(group_dir: Path, sample: str) -> list[str]:
     """Return present vs_linalg benches in a stable, metric-aware order."""
     present = {child.name for child in group_dir.iterdir() if child.is_dir() and (child / sample / "estimates.json").exists()}
@@ -995,13 +939,9 @@ def _collect_results(criterion_dir: Path, sample: str, stat: str, suite: str = "
 
 def _unavailable_baseline_rows(policy: ComparisonPolicy) -> frozenset[tuple[str, str]]:
     """Return rows excluded by the baseline API under the installed shared harness."""
-    unavailable: frozenset[tuple[str, str]] = _UNAVAILABLE_BASELINE_ROWS_BY_COMPATIBILITY.get(
-        policy.baseline_api_compatibility or "",
-        frozenset[tuple[str, str]](),
-    )
-    if policy.shared_harness_rational_inputs and policy.baseline_api_compatibility in {_V0_4_3_API_COMPATIBILITY, _PRE_RATIONAL_INPUT_API_COMPATIBILITY}:
-        unavailable |= _RATIONAL_INPUT_ROWS
-    return unavailable
+    if policy.shared_harness_rational_inputs and policy.baseline_api_compatibility == _PRE_RATIONAL_INPUT_API_COMPATIBILITY:
+        return _RATIONAL_INPUT_ROWS
+    return frozenset[tuple[str, str]]()
 
 
 def _collect_exact_comparisons(
@@ -1028,7 +968,7 @@ def _collect_exact_comparisons(
         group_dir = criterion_dir / group
         for bench in selected_benches:
             new_path = group_dir / bench / "new" / "estimates.json"
-            baseline_bench, base_path = _exact_baseline_path(group_dir, bench, baseline_name)
+            base_path = group_dir / bench / baseline_name / "estimates.json"
             missing_current = not new_path.exists()
             missing_baseline = not base_path.exists()
             baseline_unavailable = (group, bench) in unavailable_baseline_rows
@@ -1040,7 +980,7 @@ def _collect_exact_comparisons(
                             suite="exact",
                             group=group,
                             bench=bench,
-                            baseline_bench=baseline_bench,
+                            baseline_bench=bench,
                             missing_current=True,
                             missing_baseline=False,
                         )
@@ -1055,7 +995,7 @@ def _collect_exact_comparisons(
                         suite="exact",
                         group=group,
                         bench=bench,
-                        baseline_bench=baseline_bench,
+                        baseline_bench=bench,
                         missing_current=missing_current,
                         missing_baseline=missing_baseline,
                     )
@@ -1073,7 +1013,6 @@ def _collect_exact_comparisons(
                     baseline=baseline,
                     current=current,
                     assessment=_assess_change(baseline, current),
-                    baseline_bench=baseline_bench if baseline_bench != bench else None,
                 )
             )
 
@@ -1165,7 +1104,6 @@ def _collect_vs_linalg_comparisons(
     """Compare vs_linalg results while retaining one-sided rows."""
     comparisons: list[Comparison] = []
     gaps: list[CoverageGap] = []
-    unavailable_baseline_rows = _unavailable_baseline_rows(policy)
     dim_groups = _vs_linalg_dimension_groups(criterion_dir, policy.scope)
 
     for _dim, group_dir in sorted(dim_groups, key=lambda item: item[0]):
@@ -1180,24 +1118,6 @@ def _collect_vs_linalg_comparisons(
             base_path = group_dir / bench / baseline_name / "estimates.json"
             missing_current = not new_path.exists()
             missing_baseline = not base_path.exists()
-            baseline_unavailable = (group_dir.name, bench) in unavailable_baseline_rows
-
-            if baseline_unavailable:
-                if missing_current:
-                    gaps.append(
-                        CoverageGap(
-                            suite="vs_linalg",
-                            group=group_dir.name,
-                            bench=bench,
-                            baseline_bench=bench,
-                            missing_current=True,
-                            missing_baseline=False,
-                        )
-                    )
-                else:
-                    _read_estimate(new_path, stat)
-                continue
-
             if missing_current or missing_baseline:
                 gaps.append(
                     CoverageGap(
@@ -1911,25 +1831,9 @@ def _provenance_markdown(
                 "  one-sided rows outside the baseline's correctness domain are identified by the retained CSV coverage status and note.",
             ]
         )
-        if include_compatibility_rows and compatibility == _V0_4_3_API_COMPATIBILITY and criterion.suite in {"all", "vs_linalg"}:
-            lines.extend(
-                [
-                    "- Baseline-unavailable rows: `d8/la_stack_det_from_lu_balanced_range` and",
-                    "  `d8/la_stack_det_from_ldlt_balanced_range` were not timed because v0.4.3 returns zero for a",
-                    "  fixture whose exact determinant is one; current samples remain required, but no speedup is claimed.",
-                ]
-            )
-        if include_compatibility_rows and compatibility == _V0_4_3_API_COMPATIBILITY and criterion.suite in {"all", "exact"}:
-            lines.extend(
-                [
-                    "- Baseline-unavailable rows: `exact_d2/det_direct_with_errbound`,",
-                    "  `exact_d3/det_direct_with_errbound`, and `exact_d4/det_direct_with_errbound` were not timed",
-                    "  because v0.4.3 predates the paired API; the comparable `det_errbound` baselines remain required.",
-                ]
-            )
         if (
             include_compatibility_rows
-            and compatibility in {_V0_4_3_API_COMPATIBILITY, _PRE_RATIONAL_INPUT_API_COMPATIBILITY}
+            and compatibility == _PRE_RATIONAL_INPUT_API_COMPATIBILITY
             and criterion.suite in {"all", "exact"}
             and validation.get("shared_harness_rational_inputs") is True
         ):
@@ -2190,8 +2094,7 @@ def _write_and_render_artifacts(  # noqa: PLR0913
 def _write_text_atomic(path: Path, text: str) -> None:
     """Replace a UTF-8 text file only after its complete payload is durable."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    staged: Path | None = None
-    try:
+    with ExitStack() as cleanup:
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",
@@ -2202,13 +2105,11 @@ def _write_text_atomic(path: Path, text: str) -> None:
             delete=False,
         ) as handle:
             staged = Path(handle.name)
+            cleanup.callback(staged.unlink, missing_ok=True)
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
         staged.replace(path)
-    finally:
-        if staged is not None:
-            staged.unlink(missing_ok=True)
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912, PLR0915

@@ -7,10 +7,11 @@ is tracked as GitHub issues; keep this document focused on release direction,
 ordering, and non-goals.
 
 Until v1.0, API breaks are acceptable when they improve correctness,
-performance, or orthogonality. The `v0.4.x` line should stay on stable Rust and
-focus on documentation, downstream ergonomics, API-contract cleanup, validation,
-invariant audits, benchmark coverage, and release/tooling hardening. The
-`v0.5.0` line is reserved for work that depends on stabilized
+performance, or orthogonality. The `v0.4.x` line stays on stable Rust and includes
+focused robustness APIs, downstream ergonomics, API-contract cleanup,
+documentation, validation, invariant audits, benchmark coverage, and
+release/tooling hardening. The current release is `v0.4.6`.
+The `v0.5.0` line is reserved for work that depends on stabilized
 `generic_const_exprs` or equivalent const-generic expressiveness.
 
 ## Scalar Scope
@@ -173,6 +174,65 @@ The existing IEEE 754 operations, deterministic accumulation order, error
 bounds, exact fallbacks, and typed non-finite behavior remain authoritative.
 Any future approximate or fast-math API requires a separate opt-in design and
 correctness analysis.
+
+### v0.4.6 Exact Inputs and Certified Bounds (released)
+
+This milestone extends robustness-sensitive workflows on stable Rust while
+preserving fixed dimensions, `f64` floating-point storage, and feature-isolated
+exact arithmetic.
+
+Completed capability work:
+
+- Certified dot-product and affine-difference bounds
+  ([#220](https://github.com/acgetchell/la-stack/issues/220)) support sign and
+  threshold decisions over stored coordinates, with explicit inconclusive
+  outcomes when a certificate is unavailable or overlaps the threshold.
+- Exact rational matrix and vector inputs
+  ([#216](https://github.com/acgetchell/la-stack/issues/216)) preserve rational
+  expressions before `f64` rounding and provide exact determinants and solves
+  with explicit strict or rounded output conversion.
+- Gram matrix construction
+  ([#219](https://github.com/acgetchell/la-stack/issues/219)) accepts fixed
+  vectors with independent const-generic input and output dimensions. The
+  floating-point result is symmetric but is not a definiteness certificate.
+- Interval expressions and determinant signs
+  ([#218](https://github.com/acgetchell/la-stack/issues/218)) preserve outward
+  bounds through determinant evaluation up to D=7, distinguish exact zero from
+  inconclusive overlap, and report range exhaustion explicitly.
+- Overflow-safe Euclidean norms
+  ([#217](https://github.com/acgetchell/la-stack/issues/217)) avoid unnecessary
+  overflow and underflow from squaring coordinates. Norm results remain
+  approximate, without a certified error bound.
+
+Performance and tooling outcomes:
+
+- Benchmark release budgets and baseline validation
+  ([#224](https://github.com/acgetchell/la-stack/issues/224)), attachment before
+  immutable publication ([#225](https://github.com/acgetchell/la-stack/issues/225)),
+  and cache isolation ([#226](https://github.com/acgetchell/la-stack/issues/226))
+  now form one documented release workflow.
+- Exact rational conversion and dense 4D determinant paths avoid redundant
+  arithmetic while preserving exact results and typed conversion errors.
+- Rational row-clearing measurements
+  ([#233](https://github.com/acgetchell/la-stack/issues/233)) support retaining
+  the existing borrowed component access; see the
+  [allocation study](archive/performance/studies/rational-row-clearing.md). LU/LDLT solve
+  finalization remains unchanged because its proposed replacement showed no
+  repeatable speedup ([#234](https://github.com/acgetchell/la-stack/issues/234));
+  see the [decision report](archive/performance/studies/solve-finalization.md).
+- Tooling uses Rust 1.98.1 and Python 3.14, reconciles managed tool pins, rejects
+  ambiguous updater output, and verifies the installed Cargo upgrade tool
+  through its supported version command during setup.
+
+Intentional compatibility changes include requiring Rust 1.98.1,
+`Vector::norm2_sq()` becoming `Vector::norm_squared()`,
+`Matrix::inf_norm()` becoming `Matrix::norm_inf()`,
+and `Matrix::solve_exact()` returning `RationalVector<D>` instead of a raw
+rational array. `Vector::norm()` names the new Euclidean norm; raw exact solution
+storage remains available through `as_array()` and `into_array()`.
+
+Further stable-Rust maintenance can remain in `v0.4.x`; it does not depend on
+the language stabilization reserved for `v0.5.0`.
 
 ### v0.5.0 Generic Const Expressions
 

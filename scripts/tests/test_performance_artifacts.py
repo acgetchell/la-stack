@@ -12,6 +12,8 @@ from typing import cast
 import pytest
 
 import performance_artifacts
+from archive_performance import render_and_promote_artifacts
+from benchmark_summaries import full_summary_paths, resolve_report_paths, retained_outputs, summary_outputs
 from performance_artifacts import (
     ArtifactContext,
     ArtifactPaths,
@@ -49,15 +51,6 @@ def _timing(value: float) -> TimingEstimate:
             "excluded",
         ),
         (
-            "v0.4.4",
-            "v0.4.3",
-            False,
-            "pre-rational-input",
-            "legacy-v0.4.3",
-            "la_stack_v0_4_3_api",
-            "excluded",
-        ),
-        (
             "v0.4.5",
             "v0.4.5",
             True,
@@ -68,20 +61,20 @@ def _timing(value: float) -> TimingEstimate:
         ),
         (
             "v0.4.6-rc.1",
-            "v0.4.2",
+            "v0.4.4",
             True,
             "rational-input",
-            "legacy-v0.4.3",
-            "la_stack_v0_4_3_api",
+            "pre-rational-input",
+            "la_stack_pre_rational_input_api",
             "current-only",
         ),
         (
             "v1.0.0-alpha.1",
-            "v0.3.9-beta.2",
+            "v0.4.5-beta.2",
             True,
             "rational-input",
-            "legacy-v0.4.3",
-            "la_stack_v0_4_3_api",
+            "pre-rational-input",
+            "la_stack_pre_rational_input_api",
             "current-only",
         ),
         (
@@ -111,18 +104,21 @@ def test_shared_harness_compatibility_uses_literal_release_capability_oracle(
     assert resolved.rational_input_coverage == coverage
 
 
+@pytest.mark.parametrize("release", ["v0.4.3", "0.4.3", "v0.4.3-rc.1", "v0.4.2", "v0.3.9"])
+@pytest.mark.parametrize("side", ["current", "baseline"])
+def test_shared_harness_rejects_unsupported_releases(release: str, side: str) -> None:
+    pair = {"current": "v0.4.6", "baseline": "v0.4.5", side: release}
+    with pytest.raises(ValueError, match=r"comparisons require v0\.4\.4 or newer"):
+        performance_artifacts.resolve_shared_harness_compatibility(**pair, shared_harness_rational_inputs=True)
+
+
 def _context(
     *,
-    current: str = "v0.4.4",
-    baseline: str = "v0.4.3",
+    current: str = "v0.4.6",
+    baseline: str = "v0.4.5",
     shared_harness_rational_inputs: bool = True,
 ) -> ArtifactContext:
-    if baseline in {"v0.4.2", "v0.4.3"}:
-        compatibility = "la_stack_v0_4_3_api"
-    elif baseline in {"v0.4.4", "v0.4.5"}:
-        compatibility = "la_stack_pre_rational_input_api"
-    else:
-        compatibility = "none"
+    compatibility = "la_stack_pre_rational_input_api" if baseline in {"v0.4.4", "v0.4.5"} else "none"
     return ArtifactContext(
         release=ReleasePair(current=current, baseline=baseline),
         statistic="median",
@@ -244,6 +240,139 @@ def _simulate_promotion_failure(paths: ArtifactPaths) -> None:
     with publish_bundle(paths, _bundle(current_value=7.0)):
         msg = "simulated promotion failure"
         raise RuntimeError(msg)
+
+
+def _write_outputs(outputs: dict[Path, str]) -> None:
+    for path, payload in outputs.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(payload, encoding="utf-8", newline="\n")
+
+
+def _complete_local_artifacts(root: Path, *, current_value: float = 8.0) -> ArtifactPaths:
+    bundle = _bundle(current_value=current_value)
+    paths = ArtifactPaths(csv=root / "target/bench-reports/performance.csv", provenance=root / "target/bench-reports/performance.provenance.json")
+    write_bundle(paths, bundle)
+    criterion = root / "raw"
+    for row in bundle.rows:
+        for sample, timing in ((bundle.context.release.baseline, row.baseline), ("new", row.current)):
+            if timing is None:
+                continue
+            directory = criterion / row.benchmark_id / sample
+            estimate = {
+                "point_estimate": timing.median_ns,
+                "confidence_interval": {"confidence_level": 0.95, "lower_bound": timing.ci_lower_ns, "upper_bound": timing.ci_upper_ns},
+            }
+            _write_outputs(
+                {
+                    directory / "benchmark.json": json.dumps({"full_id": row.benchmark_id}),
+                    directory / "estimates.json": json.dumps({"mean": estimate, "median": estimate}),
+                    directory / "sample.json": json.dumps({"iters": [1.0] * 100, "times": [timing.median_ns] * 100}),
+                }
+            )
+    _write_outputs(summary_outputs(criterion, bundle.context.release.baseline, paths))
+    return paths
+
+
+def test_complete_local_snapshots_are_idempotent_and_preserve_previous_runs(tmp_path: Path) -> None:
+    report = _complete_local_artifacts(tmp_path)
+    directory = tmp_path / "docs/performance"
+    first = retained_outputs(directory, report)
+    _write_outputs(first)
+    assert retained_outputs(directory, report) == first
+
+    _complete_local_artifacts(tmp_path, current_value=7.123456789012345)
+    second = retained_outputs(directory, report)
+    _write_outputs(second)
+
+    assert len(list(directory.rglob("performance.full.csv"))) == 2
+    for path, payload in first.items():
+        if path.name != "latest.json":
+            assert path.read_text(encoding="utf-8") == payload
+    assert json.loads(first[directory / "latest.json"])["run"] != json.loads(second[directory / "latest.json"])["run"]
+    assert retained_outputs(directory, report) == second
+
+
+@pytest.mark.parametrize("corruption", ["digest", "columns", "samples", "counts", "schema", "provenance", "missing"])
+def test_complete_local_snapshots_reject_corrupt_or_mismatched_inputs(tmp_path: Path, corruption: str) -> None:
+    report = _complete_local_artifacts(tmp_path)
+    full = full_summary_paths(report)
+    if corruption in {"digest", "columns", "samples"}:
+        old, new = {"digest": ("8.0", "8.01"), "columns": ("mean_ns", "unknown_ns"), "samples": (",100,", ",10,")}[corruption]
+        full.csv.write_text(full.csv.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+    elif corruption == "missing":
+        full.provenance.unlink()
+    else:
+        metadata = json.loads(full.provenance.read_text(encoding="utf-8"))
+        if corruption == "counts":
+            metadata["measurements"]["counts"]["current"] += 1
+        elif corruption == "schema":
+            metadata["measurements"]["schema_version"] = True
+        else:
+            metadata["benchmark_provenance"]["measurement"]["cpu"] = "Different CPU"
+        full.provenance.write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises((ValueError, FileNotFoundError)):
+        retained_outputs(tmp_path / "docs/performance", report)
+    assert not (tmp_path / "docs/performance").exists()
+
+
+@pytest.mark.parametrize(
+    "destination",
+    ["latest.json", "performance.csv", "performance.provenance.json", "performance.full.csv", "performance.full.provenance.json"],
+)
+def test_repeat_promotion_protects_unchanged_retained_destinations(tmp_path: Path, destination: str) -> None:
+    report = _complete_local_artifacts(tmp_path)
+    directory = tmp_path / "docs/performance"
+    output = tmp_path / "target/bench-reports/performance.md"
+    current = tmp_path / "docs/performance.md"
+    archive = tmp_path / "docs/archive/performance"
+    render_and_promote_artifacts(artifacts=report, output=output, current=current, archive_dir=archive)
+    retained = retained_outputs(directory, report)
+    protected = {path: path.read_bytes() for path in (*retained, output, current, archive / "README.md")}
+    alias = next(path for path in retained if path.name == destination)
+
+    with pytest.raises(ValueError, match="distinct"):
+        render_and_promote_artifacts(artifacts=report, output=alias, current=current, archive_dir=archive)
+
+    assert {path: path.read_bytes() for path in protected} == protected
+
+
+@pytest.mark.parametrize("requested", ["partial-csv", "partial-json", "full-csv", "full-json", "full-pair", "custom-csv", "custom-json"])
+def test_saved_summary_fallback_does_not_hide_explicit_or_partial_inputs(tmp_path: Path, requested: str) -> None:
+    report = _complete_local_artifacts(tmp_path)
+    _write_outputs(retained_outputs(tmp_path / "docs/performance", report))
+    if requested != "partial-csv":
+        report.csv.unlink()
+    if requested != "partial-json":
+        report.provenance.unlink()
+    full = full_summary_paths(report)
+    if requested not in {"full-csv", "full-pair"}:
+        full.csv.unlink()
+    if requested not in {"full-json", "full-pair"}:
+        full.provenance.unlink()
+    if requested == "custom-csv":
+        report = ArtifactPaths(csv=report.csv.with_name("custom.csv"), provenance=report.provenance)
+    elif requested == "custom-json":
+        report = ArtifactPaths(csv=report.csv, provenance=report.provenance.with_name("custom.json"))
+
+    assert resolve_report_paths(tmp_path, report) == report
+    with pytest.raises(FileNotFoundError, match="incomplete"):
+        render_and_promote_artifacts(
+            artifacts=resolve_report_paths(tmp_path, report),
+            output=tmp_path / "target/bench-reports/performance.md",
+            current=tmp_path / "docs/performance.md",
+            archive_dir=tmp_path / "docs/archive/performance",
+        )
+    assert not (tmp_path / "docs/performance.md").exists()
+
+
+@pytest.mark.parametrize("run", ["../outside", "/outside", "v0.4.4-vs-v0.4.3/../../outside"])
+def test_saved_summary_pointer_cannot_escape_its_directory(tmp_path: Path, run: str) -> None:
+    report = ArtifactPaths(csv=tmp_path / "target/bench-reports/performance.csv", provenance=tmp_path / "target/bench-reports/performance.provenance.json")
+    _write_outputs({tmp_path / "docs/performance/latest.json": json.dumps({"schema_version": 1, "run": run})})
+
+    with pytest.raises(ValueError, match="escapes"):
+        resolve_report_paths(tmp_path, report)
 
 
 def test_artifact_round_trip_preserves_comparable_and_one_sided_rows() -> None:

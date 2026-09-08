@@ -3,7 +3,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18158926.svg)](https://doi.org/10.5281/zenodo.18158926)
 [![Crates.io](https://badgen.net/crates/v/la-stack)](https://crates.io/crates/la-stack)
 [![Downloads](https://badgen.net/crates/d/la-stack)](https://crates.io/crates/la-stack)
-[![License](https://badgen.net/github/license/acgetchell/la-stack)](https://github.com/acgetchell/la-stack/blob/v0.4.5/LICENSE)
+[![License](https://badgen.net/github/license/acgetchell/la-stack)](https://github.com/acgetchell/la-stack/blob/v0.4.6/LICENSE)
 [![Docs.rs](https://docs.rs/la-stack/badge.svg)](https://docs.rs/la-stack)
 [![CI](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml)
 [![rust-clippy analyze][clippy-badge]][clippy-workflow]
@@ -92,7 +92,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-la-stack = "0.4.5"
+la-stack = "0.4.6"
 ```
 
 ### Solve a 5×5 system
@@ -229,7 +229,7 @@ Enable exact determinant signs, determinant values, and solves:
 
 ```toml
 [dependencies]
-la-stack = { version = "0.4.5", features = ["exact"] }
+la-stack = { version = "0.4.6", features = ["exact"] }
 ```
 
 `Matrix` / `Vector` exact methods preserve stored `f64` values;
@@ -338,9 +338,9 @@ for the algorithms, validity boundaries, and supporting references.
 - ✅ No runtime dependencies by default (optional features may add deps)
 - ✅ `unsafe` forbidden
 
-See [CHANGELOG.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/CHANGELOG.md)
+See [CHANGELOG.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/CHANGELOG.md)
 for release history and
-[docs/roadmap.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/roadmap.md)
+[docs/roadmap.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/roadmap.md)
 for current release planning.
 
 ## 🚫 Anti-goals
@@ -361,12 +361,12 @@ for current release planning.
 ## 🗺️ Documentation Map
 
 - [API guide][api-guide] — worked examples, API selection, storage, and error contracts.
-- [Benchmarking](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/BENCHMARKING.md) — benchmark suites, comparison workflows, and measurement methodology.
+- [Benchmarking](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/BENCHMARKING.md) — benchmark suites, comparison workflows, and measurement methodology.
 - [Coverage](https://github.com/acgetchell/la-stack/blob/main/docs/MEASURING_COVERAGE.md) — local and CI coverage commands and report locations.
 - [Mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md) — algorithms, numerical guarantees, and limitations.
 - [Performance reports](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md) — release-to-release measurement results and provenance.
-- [Releasing](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/RELEASING.md) — release preparation, validation, and publication.
-- [Roadmap](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/roadmap.md) — release planning, future directions, and non-goals.
+- [Releasing](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/RELEASING.md) — release preparation, validation, and publication.
+- [Roadmap](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/roadmap.md) — release planning, future directions, and non-goals.
 
 ## 📋 Examples
 
@@ -399,7 +399,7 @@ cargo run --example solve_5x5
 ![LU solve (factor + solve): median time vs dimension][lu-solve-benchmark]
 
 Raw data:
-[docs/assets/bench/vs_linalg_lu_solve_median.csv](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/assets/bench/vs_linalg_lu_solve_median.csv)
+[docs/assets/bench/vs_linalg_lu_solve_median.csv](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/assets/bench/vs_linalg_lu_solve_median.csv)
 Measurement provenance:
 [docs/assets/bench/vs_linalg_lu_solve_median.provenance.json][benchmark-provenance]
 
@@ -421,7 +421,7 @@ README table, and provenance together.
 
 For the full per-kernel comparison methodology, algorithm citations, input
 construction, and release-comparison workflow details, see
-[docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/BENCHMARKING.md).
+[docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/BENCHMARKING.md).
 For the current release-to-release performance snapshot, see
 [docs/performance.md](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md).
 The exact release suite includes the already-exact rational-input groups for
@@ -445,14 +445,14 @@ expectations are validated outside the timed closures.
 
 | D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | reduction vs nalgebra (point est.) | reduction vs faer (point est.) |
 |---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|
-| 2 | 2.044 | 4.601 | 151.939 | +55.6% | +98.7% |
-| 3 | 9.989 | 23.513 | 196.357 | +57.5% | +94.9% |
-| 4 | 21.865 | 54.716 | 223.910 | +60.0% | +90.2% |
-| 5 | 44.510 | 71.219 | 293.420 | +37.5% | +84.8% |
-| 8 | 145.405 | 188.352 | 381.872 | +22.8% | +61.9% |
-| 16 | 672.491 | 585.261 | 897.236 | -14.9% | +25.0% |
-| 32 | 2,777.707 | 2,501.361 | 2,952.778 | -11.0% | +5.9% |
-| 64 | 17,357.785 | 13,878.401 | 12,199.761 | -25.1% | -42.3% |
+| 2 | 2.021 | 4.479 | 182.532 | +54.9% | +98.9% |
+| 3 | 9.977 | 22.795 | 217.567 | +56.2% | +95.4% |
+| 4 | 22.101 | 51.739 | 241.525 | +57.3% | +90.8% |
+| 5 | 46.070 | 69.003 | 326.848 | +33.2% | +85.9% |
+| 8 | 128.364 | 165.933 | 401.400 | +22.6% | +68.0% |
+| 16 | 643.532 | 569.446 | 903.140 | -13.0% | +28.7% |
+| 32 | 2,755.773 | 2,710.235 | 2,919.290 | -1.7% | +5.6% |
+| 64 | 17,518.634 | 14,313.979 | 12,108.783 | -22.4% | -44.7% |
 
 <!-- BENCH_TABLE:lu_solve:median:new:END -->
 
@@ -486,12 +486,12 @@ aligned with the local comprehensive validation path.
 For coverage commands and report locations, see
 [`docs/MEASURING_COVERAGE.md`](https://github.com/acgetchell/la-stack/blob/main/docs/MEASURING_COVERAGE.md).
 For the full contributor workflow, see
-[CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/CONTRIBUTING.md).
 
 ## 📚 Citation
 
 If you use this library in academic work, please cite it using
-[CITATION.cff](https://github.com/acgetchell/la-stack/blob/v0.4.5/CITATION.cff)
+[CITATION.cff](https://github.com/acgetchell/la-stack/blob/v0.4.6/CITATION.cff)
 (or GitHub's "Cite this repository" feature). Tagged releases are archived on
 Zenodo under the
 [all-versions concept DOI](https://doi.org/10.5281/zenodo.18158926).
@@ -499,26 +499,26 @@ Zenodo under the
 ## 🔎 References
 
 For canonical references to the algorithms used by this crate, see
-[REFERENCES.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/REFERENCES.md).
+[REFERENCES.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/REFERENCES.md).
 
 ## 🤖 AI Agents
 
 AI coding assistants should read
-[AGENTS.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/AGENTS.md)
+[AGENTS.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/AGENTS.md)
 before proposing or applying changes. See
-[CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.5/CONTRIBUTING.md)
+[CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/CONTRIBUTING.md)
 for the repository's AI-assisted development note.
 
 ## 📜 License
 
-BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/v0.4.5/LICENSE).
+BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/v0.4.6/LICENSE).
 
 [audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml
-[benchmark-provenance]: https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json
+[benchmark-provenance]: https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json
 [clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg
 [clippy-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml
-[lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/v0.4.5/docs/assets/bench/vs_linalg_lu_solve_median.svg
+[lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/v0.4.6/docs/assets/bench/vs_linalg_lu_solve_median.svg
 [refs-det-bound]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#absolute-error-bound-for-closed-form-determinants
 [refs-exact-sign]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-determinant-sign-adaptive-precision-integer-arithmetic
 [refs-exact-solve]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-linear-system-solve-hybrid-bareiss--bigrational

@@ -1,0 +1,112 @@
+{
+  "benchmark_provenance": {
+    "baseline": "v0.4.5",
+    "criterion": {
+      "baseline_command": [
+        "just",
+        "bench-save-baseline",
+        "v0.4.5"
+      ],
+      "criterion_version": "0.8.2",
+      "current_command": [
+        "just",
+        "bench-latest"
+      ],
+      "sample": "new",
+      "scope": "release-signal",
+      "statistic": "median",
+      "suite": "all"
+    },
+    "current": "v0.4.6",
+    "measurement": {
+      "baseline_api_compatibility": "la_stack_pre_rational_input_api",
+      "baseline_commit": "78ba1c25beaed7321e175113e0876aac6d763a59",
+      "baseline_git_clean": false,
+      "baseline_source_state_sha256": "7d72086128b12e2a89d5ca78f0e8cc0cb393a44f1062d027a069722ff9dae007",
+      "benchmark_contract_sha256": "02a2228e7c2150d4c9c2dc125063a6e3eec03be82e8f7262c341099f2517132d",
+      "cargo_lock_sha256": "37c6f3339dc4eedcc5587e44133a7d0299fef2bd9da52fc0464e2ceeb0138edb",
+      "cpu": "Apple M4 Max (arm64)",
+      "current_commit": "d36a9e99ec223c4cbbf8a9191818f186159c27f7",
+      "current_git_clean": false,
+      "current_source_state_sha256": "b8fcf706fa6e287ca6682a1ecef5a69576413b9c88040184a9b1ecb8f6e92336",
+      "harness_sha256": "27acd15e854e46899ff1c1f8e1b399ff240b0b9732e56a36cf8edb39c4a58db3",
+      "os": "Darwin 25.6.0 arm64",
+      "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "status": "recorded"
+    },
+    "mode": "shared-current-harness",
+    "publication": {
+      "benchmark_contract_sha256": "02a2228e7c2150d4c9c2dc125063a6e3eec03be82e8f7262c341099f2517132d",
+      "cargo_lock_sha256": "37c6f3339dc4eedcc5587e44133a7d0299fef2bd9da52fc0464e2ceeb0138edb",
+      "commit": "d36a9e99ec223c4cbbf8a9191818f186159c27f7",
+      "correctness_gate": "passed",
+      "cpu": "Apple M4 Max (arm64)",
+      "git_clean": false,
+      "harness_sha256": "27acd15e854e46899ff1c1f8e1b399ff240b0b9732e56a36cf8edb39c4a58db3",
+      "os": "Darwin 25.6.0 arm64",
+      "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "source_state_sha256": "b8fcf706fa6e287ca6682a1ecef5a69576413b9c88040184a9b1ecb8f6e92336"
+    },
+    "schema": 2,
+    "validation": {
+      "baseline_api_compatibility": "la_stack_pre_rational_input_api",
+      "baseline_commit": "78ba1c25beaed7321e175113e0876aac6d763a59",
+      "baseline_git_clean": false,
+      "baseline_revision": "passed",
+      "baseline_source_state_sha256": "7d72086128b12e2a89d5ca78f0e8cc0cb393a44f1062d027a069722ff9dae007",
+      "command": [
+        "just",
+        "test-bench-inputs"
+      ],
+      "current_commit": "d36a9e99ec223c4cbbf8a9191818f186159c27f7",
+      "current_git_clean": false,
+      "current_revision": "passed",
+      "current_source_state_sha256": "b8fcf706fa6e287ca6682a1ecef5a69576413b9c88040184a9b1ecb8f6e92336",
+      "harness": "shared-current",
+      "shared_harness_rational_inputs": true
+    }
+  },
+  "csv": {
+    "columns": [
+      "schema_version",
+      "suite",
+      "scope",
+      "benchmark_id",
+      "group",
+      "benchmark",
+      "baseline_benchmark",
+      "coverage_status",
+      "coverage_note",
+      "baseline_median_ns",
+      "baseline_ci_lower_ns",
+      "baseline_ci_upper_ns",
+      "current_median_ns",
+      "current_ci_lower_ns",
+      "current_ci_upper_ns",
+      "baseline_nalgebra_median_ns",
+      "baseline_nalgebra_ci_lower_ns",
+      "baseline_nalgebra_ci_upper_ns",
+      "baseline_faer_median_ns",
+      "baseline_faer_ci_lower_ns",
+      "baseline_faer_ci_upper_ns"
+    ],
+    "row_count": 225,
+    "sha256": "b263bb34bcfd43b8fc8109110db9f2e908516aef6c01ce16f70f5ac18dc7ef2d"
+  },
+  "release": {
+    "baseline": "v0.4.5",
+    "current": "v0.4.6"
+  },
+  "report": {
+    "scope": "release-signal",
+    "source": {
+      "commit": "d36a9e9",
+      "ref": "HEAD",
+      "revision_timestamp": "2026-09-08 01:59:08 UTC",
+      "version": "0.4.6"
+    },
+    "statistic": "median",
+    "suite": "all"
+  },
+  "schema_version": 1
+}

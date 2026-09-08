@@ -10,41 +10,14 @@ use nalgebra::SMatrix;
 
 use la_stack::{LaError, Matrix, Tolerance, Vector};
 
-#[cfg(not(la_stack_v0_4_3_api))]
 use crate::bench_utils::OrAbort;
-
-/// Evaluate la-stack's dot product through the ownership contract used by the
-/// selected library revision.
-///
-/// # Errors
-///
-/// Returns the selected revision's typed error if finite inputs overflow during
-/// dot-product accumulation.
-#[cfg(not(la_stack_v0_4_3_api))]
-#[inline]
-pub fn la_stack_dot<const D: usize>(left: &Vector<D>, right: &Vector<D>) -> Result<f64, LaError> {
-    left.dot(right)
-}
-
-/// Evaluate the v0.4.3 by-value dot-product API without changing benchmark
-/// inputs or the mathematical operation.
-///
-/// # Errors
-///
-/// Returns v0.4.3's typed error if finite inputs overflow during dot-product
-/// accumulation.
-#[cfg(la_stack_v0_4_3_api)]
-#[inline]
-pub fn la_stack_dot<const D: usize>(left: &Vector<D>, right: &Vector<D>) -> Result<f64, LaError> {
-    (*left).dot(*right)
-}
 
 /// Evaluate the squared norm through the current public API.
 ///
 /// # Errors
 ///
 /// Returns the library's typed error if squared-norm accumulation overflows.
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 #[inline]
 pub const fn la_stack_norm_squared<const D: usize>(vector: &Vector<D>) -> Result<f64, LaError> {
     vector.norm_squared()
@@ -57,7 +30,7 @@ pub const fn la_stack_norm_squared<const D: usize>(vector: &Vector<D>) -> Result
 /// # Errors
 ///
 /// Returns the selected revision's typed error if squared-norm accumulation overflows.
-#[cfg(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api))]
+#[cfg(la_stack_pre_rational_input_api)]
 #[inline]
 pub const fn la_stack_norm_squared<const D: usize>(vector: &Vector<D>) -> Result<f64, LaError> {
     vector.norm2_sq()
@@ -68,7 +41,7 @@ pub const fn la_stack_norm_squared<const D: usize>(vector: &Vector<D>) -> Result
 /// # Errors
 ///
 /// Returns the library's typed error if an absolute row sum overflows.
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 #[inline]
 pub const fn la_stack_norm_inf<const D: usize>(matrix: &Matrix<D>) -> Result<f64, LaError> {
     matrix.norm_inf()
@@ -81,33 +54,10 @@ pub const fn la_stack_norm_inf<const D: usize>(matrix: &Matrix<D>) -> Result<f64
 /// # Errors
 ///
 /// Returns the selected revision's typed error if an absolute row sum overflows.
-#[cfg(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api))]
+#[cfg(la_stack_pre_rational_input_api)]
 #[inline]
 pub const fn la_stack_norm_inf<const D: usize>(matrix: &Matrix<D>) -> Result<f64, LaError> {
     matrix.inf_norm()
-}
-
-/// Parse a tolerance through the constructor exposed by the selected library
-/// revision.
-///
-/// # Errors
-///
-/// Returns a typed error when `value` is negative or non-finite.
-#[cfg(not(la_stack_v0_4_3_api))]
-#[inline]
-pub const fn la_stack_tolerance(value: f64) -> Result<Tolerance, LaError> {
-    Tolerance::try_new(value)
-}
-
-/// Parse a tolerance through v0.4.3's pre-`try_` constructor name.
-///
-/// # Errors
-///
-/// Returns a typed error when `value` is negative or non-finite.
-#[cfg(la_stack_v0_4_3_api)]
-#[inline]
-pub const fn la_stack_tolerance(value: f64) -> Result<Tolerance, LaError> {
-    Tolerance::new(value)
 }
 
 /// Return `det(P)` for faer's permutation representation.
@@ -251,7 +201,6 @@ pub fn make_pivoting_matrix_rows<const D: usize>() -> [[f64; D]; D] {
 
 /// Diagnostic solve families, separate from the headline comparison matrix.
 #[derive(Clone, Copy, Debug)]
-#[cfg(not(la_stack_v0_4_3_api))]
 pub enum LuSolveScenario {
     /// Rotate the well-conditioned rows, requiring repeated LU row swaps.
     Pivoting,
@@ -259,7 +208,6 @@ pub enum LuSolveScenario {
     DenseIllConditioned,
 }
 
-#[cfg(not(la_stack_v0_4_3_api))]
 impl LuSolveScenario {
     /// Stable diagnostic group label.
     #[must_use]
@@ -273,14 +221,12 @@ impl LuSolveScenario {
 
 /// A diagnostic system checked against a known solution and a scaled residual.
 #[must_use]
-#[cfg(not(la_stack_v0_4_3_api))]
 pub struct ValidatedLuSolveInput<const D: usize> {
     matrix: Matrix<D>,
     rhs: Vector<D>,
     expected: [f64; D],
 }
 
-#[cfg(not(la_stack_v0_4_3_api))]
 impl<const D: usize> ValidatedLuSolveInput<D> {
     /// Borrow the finite matrix.
     pub const fn matrix(&self) -> &Matrix<D> {
@@ -326,7 +272,6 @@ impl<const D: usize> ValidatedLuSolveInput<D> {
 ///
 /// # Panics
 /// Panics for dimensions outside the diagnostic domain or a failed oracle check.
-#[cfg(not(la_stack_v0_4_3_api))]
 pub fn validated_lu_solve_input<const D: usize>(
     scenario: LuSolveScenario,
 ) -> ValidatedLuSolveInput<D> {
@@ -354,7 +299,7 @@ pub fn validated_lu_solve_input<const D: usize>(
     };
     let solution = input
         .matrix
-        .lu(la_stack_tolerance(0.0).or_abort("diagnostic tolerance"))
+        .lu(Tolerance::try_new(0.0).or_abort("diagnostic tolerance"))
         .or_abort("diagnostic LU")
         .solve(input.rhs)
         .or_abort("diagnostic solve");
