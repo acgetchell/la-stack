@@ -23,6 +23,8 @@ const DET: Result<Option<f64>, LaError> = match MAT {
 
 fn main() -> Result<(), LaError> {
     let mat = MAT?;
+    // Integer cofactor expansion gives 72, without runtime factorization.
+    assert_eq!(DET?, Some(72.0));
 
     println!("4×4 matrix:");
     for row in mat.as_rows() {

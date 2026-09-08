@@ -165,13 +165,13 @@ to combine operations.
 
 | Capability | Main entry points |
 |---|---|
-| Vector operations and norms | [`Vector<D>`][api-vector] |
+| Certified dot, affine-difference, and determinant estimates | [`ScalarWithErrorBound`][api-scalar-bound], [`DeterminantWithErrorBound`][api-det-bound] |
+| Exact signs, determinants, solves, and output conversion¹ | [Exact arithmetic examples][api-exact] |
 | Floating-point determinants and solves | [`Matrix<D>`][api-matrix], [`Lu<D>`][api-lu], [`Ldlt<D>`][api-ldlt] |
 | Gram matrix construction | [`gram_matrix`][api-gram] |
-| Certified dot, affine-difference, and determinant estimates | [`ScalarWithErrorBound`][api-scalar-bound], [`DeterminantWithErrorBound`][api-det-bound] |
 | Interval expressions and determinant signs | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
-| Exact signs, determinants, solves, and output conversion¹ | [Exact arithmetic examples][api-exact] |
 | Runtime selection of a const-generic matrix dimension | [Dimension dispatch examples][api-dispatch] |
+| Vector operations and norms | [`Vector<D>`][api-vector] |
 
 [`Tolerance`][api-tolerance] validates numerical rejection thresholds.
 [`LaError`][api-error] and its reason/location enums preserve structured

@@ -286,6 +286,24 @@ mod tests {
     }
 
     #[test]
+    fn non_finite_factors_remain_unrepresentable_before_or_after_zero() {
+        for non_finite in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+            for zero in [0.0, -0.0] {
+                for middle_factors in [[non_finite, zero], [zero, non_finite]] {
+                    let mut product = ScaledProduct::new(false);
+                    product.multiply(1.5);
+                    for factor in middle_factors {
+                        product.multiply(factor);
+                    }
+                    product.multiply(-2.0);
+
+                    assert_eq!(product.finish(), None);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn balanced_extreme_factors_do_not_depend_on_storage_order() {
         let mut forward = ScaledProduct::new(false);
         for factor in [TWO_NEG_800, TWO_NEG_800, TWO_POS_800, TWO_POS_800] {

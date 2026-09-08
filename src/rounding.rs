@@ -7,18 +7,21 @@
 
 /// Return the exact error in a rounded binary64 sum.
 ///
-/// This is Knuth's `TwoSum` transform. With IEEE-754 round-to-nearest and
-/// gradual underflow, `rounded + error` equals the exact-real sum whenever the
-/// rounded sum is finite.
-/// See `REFERENCES.md` \[8\] for the transform and its error-free arithmetic
-/// analysis. Callers supply finite operands and their rounded sum.
+/// This is `FastTwoSum` with operands ordered by magnitude. With IEEE-754
+/// round-to-nearest and gradual underflow, `rounded + error` equals the
+/// exact-real sum whenever the rounded sum is finite. Ordering prevents an
+/// intermediate overflow even at the finite range boundary; see
+/// `REFERENCES.md` \[17\], Theorem 5.1. Callers supply finite operands and their
+/// rounded sum.
 #[inline]
 pub(crate) const fn two_sum_error(left: f64, right: f64, rounded: f64) -> f64 {
-    let virtual_right = rounded - left;
-    let virtual_left = rounded - virtual_right;
-    let right_error = right - virtual_right;
-    let left_error = left - virtual_left;
-    left_error + right_error
+    let (large, small) = if left.abs() >= right.abs() {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    let virtual_small = rounded - large;
+    small - virtual_small
 }
 
 /// Decompose a nonzero finite binary64 magnitude as `significand × 2^exponent`.

@@ -67,7 +67,7 @@ promotion in one command.
 
 ## Benchmark Suites
 
-`la-stack` has four Criterion benchmark suites.
+`la-stack` has five Criterion benchmark suites.
 
 Newly rendered reports use one table per selected suite. Dimension and
 adversarial-input group appear in a `Case` column instead of creating a separate
@@ -91,6 +91,13 @@ paired `det_direct_with_errbound`, and the bound-only `det_errbound`. The same
 suite compares row-cleared Bareiss operations with direct `BigRational` Gaussian
 operations over already-exact rational inputs across D=2-8. Use it to understand
 exact-arithmetic cost and track optimization progress.
+
+**`gram`** (`benches/gram.rs`) compares `gram_matrix` with checked hand-written
+assembly for square and embedded vector sets with coordinate dimensions 2-8.
+The orthogonal, dependent, near-dependent, and mixed-scale fixtures are checked
+against an independent integer matrix-product oracle before timing. Run it with
+`cargo bench --locked --features bench --bench gram`. This focused construction
+signal is not part of the release-to-release report schema.
 
 **`interval`** (`benches/interval.rs`) measures the default-feature,
 division-free interval determinant sign filter. Its fixtures cover a conclusive

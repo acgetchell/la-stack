@@ -194,9 +194,11 @@ Favor the invariant over a convenient edit or faster implementation.
 
 ## Validation
 
-- Select validators proportionally to the changed surfaces. Compose each
-  relevant focused validator once for mixed changes; core Rust or public
-  behavior changes require final `just ci`.
+- Use `just check` during iterative review and fixes. Reserve `just ci` for
+  final validation once those iterations are complete; core Rust or public
+  behavior changes require that final comprehensive pass.
+- Select additional focused validators proportionally to the changed surfaces.
+  Compose each relevant focused validator once for mixed changes.
 - Use [Contributor validation guidance](CONTRIBUTING.md#validation-workflow)
   for the surface-to-command mapping. The [justfile](justfile) and
   `just --list` own the full command catalog.

@@ -7,7 +7,7 @@
 use std::array::from_fn;
 
 use pastey::paste;
-use proptest::prelude::*;
+use proptest::{collection, prelude::*};
 
 use la_stack::prelude::*;
 
@@ -52,11 +52,12 @@ fn rational_determinant_gaussian<const D: usize>(mut rows: [[BigRational; D]; D]
             odd_swaps = !odd_swaps;
         }
 
-        let pivot = rows[pivot_col][pivot_col].clone();
-        let pivot_entries = rows[pivot_col].clone();
-        determinant *= &pivot;
-        for row_entries in rows.iter_mut().skip(pivot_col + 1) {
-            let factor = &row_entries[pivot_col] / &pivot;
+        let (pivot_rows, rows_below) = rows.split_at_mut(pivot_col + 1);
+        let pivot_entries = &pivot_rows[pivot_col];
+        let pivot = &pivot_entries[pivot_col];
+        determinant *= pivot;
+        for row_entries in rows_below {
+            let factor = &row_entries[pivot_col] / pivot;
             for (entry, pivot_entry) in row_entries
                 .iter_mut()
                 .zip(pivot_entries.iter())
@@ -92,8 +93,8 @@ macro_rules! gen_rational_properties {
 
                 #[test]
                 fn [<rational_det_sign_value_and_solve_agree_with_reference_ $d d>](
-                    entries in proptest::collection::vec((-5_i16..=5_i16, 1_u8..=9_u8), $d * $d),
-                    solution_entries in proptest::collection::vec((-5_i16..=5_i16, 1_u8..=9_u8), $d),
+                    entries in collection::vec((-5_i16..=5_i16, 1_u8..=9_u8), $d * $d),
+                    solution_entries in collection::vec((-5_i16..=5_i16, 1_u8..=9_u8), $d),
                 ) {
                     let rows: [[BigRational; $d]; $d] = from_fn(|row| {
                         from_fn(|col| {
@@ -121,7 +122,7 @@ macro_rules! gen_rational_properties {
 
                 #[test]
                 fn [<rational_duplicate_row_is_singular_ $d d>](
-                    entries in proptest::collection::vec((-5_i16..=5_i16, 1_u8..=9_u8), $d * $d),
+                    entries in collection::vec((-5_i16..=5_i16, 1_u8..=9_u8), $d * $d),
                 ) {
                     let mut rows: [[BigRational; $d]; $d] = from_fn(|row| {
                         from_fn(|col| {

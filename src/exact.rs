@@ -90,8 +90,9 @@
 //!
 //! Public `Matrix` / `Vector` values are finite by construction before exact
 //! methods reach the integer-scaled exact core. The decomposition helpers consume
-//! that proof without repeating stored-entry validation; a fallible raw-f64
-//! decomposition remains only to test rejection at the primitive boundary.
+//! that proof without repeating stored-entry validation. Tests verify rejection
+//! at the owning constructors and check decomposition against independent
+//! `BigRational::from_f64` conversions.
 
 use core::hint::cold_path;
 use core::mem::take;
@@ -257,28 +258,6 @@ const fn decompose_proven_finite_f64(x: f64) -> Component {
         exponent: raw_exp + tz.cast_signed(),
         is_negative: bits >> 63 != 0,
     }
-}
-
-/// Parse an arbitrary `f64` into its exact IEEE 754 components.
-///
-/// Returns [`Component::Zero`] for ±0.0, or [`Component::NonZero`] with a
-/// non-zero mantissa where the value is exactly
-/// `(-1)^is_negative × mantissa × 2^exponent` and `mantissa` is odd (trailing
-/// zeros stripped).  See `REFERENCES.md` \[9-10\].
-///
-/// # Errors
-/// Returns [`LaError::NonFinite`] if `x` is NaN or infinite.
-#[cfg(test)]
-const fn decompose_f64(x: f64) -> Result<Component, LaError> {
-    let bits = x.to_bits();
-    let biased_exp = ((bits >> 52) & 0x7FF) as i32;
-
-    if biased_exp == 0x7FF {
-        cold_path();
-        return Err(LaError::non_finite_input_scalar());
-    }
-
-    Ok(decompose_proven_finite_f64(x))
 }
 
 /// Convert a [`BigInt`] × `2^exp` pair to a reduced [`BigRational`].
@@ -1197,8 +1176,11 @@ enum BareissResult {
 ///
 /// When `rhs` is `Some`, row swaps and the inner-loop Bareiss update are
 /// mirrored on the RHS (treating it as column `D+1` of an augmented
-/// system).  On return, `a` is upper triangular and the last pivot lives
-/// in `a[D-1][D-1]`.
+/// system). On [`BareissResult::Upper`], `a` is upper triangular with non-zero
+/// diagonal entries; for D>0, the last pivot lives in `a[D-1][D-1]`.
+/// [`BareissResult::Singular`] may leave `a` and `rhs` partially eliminated.
+/// Callers own these scratch arrays and discard them on failure; no rollback
+/// is performed.
 ///
 /// First-non-zero pivoting is used: since all arithmetic is exact, any
 /// non-zero pivot is valid — no tolerance is required.
@@ -1818,7 +1800,7 @@ mod tests {
     use core::assert_matches;
     use std::array::from_fn;
 
-    use num_traits::Signed;
+    use num_traits::{FromPrimitive, Signed};
     use pastey::paste;
     use proptest::prelude::*;
 
@@ -1877,57 +1859,15 @@ mod tests {
 
     // Test helpers
 
-    /// Build an exact `BigRational` from an `f64` via IEEE 754 bit decomposition.
+    /// Lift binary64 inputs independently of production decomposition and scaling.
     ///
-    /// Thin wrapper over [`decompose_f64`] that packs the mantissa/exponent
-    /// pair into a fully-formed `BigRational` of the form `±m · 2^e`.  The
-    /// production code paths (`exact_det_int_finite`, `bareiss_solve_finite`) instead
-    /// decompose entries into scaled `BigInt` collections, which avoids
-    /// per-entry GCD work in the elimination loops — so this helper
-    /// is not used by them and lives here to keep test assertions concise
-    /// (e.g. `assert_eq!(x.as_array()[0], f64_to_big_rational(3.0))`).
-    ///
-    /// See `REFERENCES.md` \[9-10\] for the IEEE 754 standard and Goldberg's
-    /// survey of floating-point representation.
+    /// Expected solutions and residuals must not inherit a decomposition bug
+    /// from the implementation they check.
     ///
     /// # Panics
     /// Panics if `x` is NaN or infinite.
     fn f64_to_big_rational(x: f64) -> BigRational {
-        let component = decompose_f64(x).expect("test helper requires finite f64 input");
-        let Component::NonZero {
-            mantissa,
-            exponent,
-            is_negative,
-        } = component
-        else {
-            return BigRational::from_integer(BigInt::from(0));
-        };
-
-        let numer = if is_negative {
-            -BigInt::from(mantissa.get())
-        } else {
-            BigInt::from(mantissa.get())
-        };
-
-        if exponent >= 0 {
-            BigRational::new_raw(numer << exponent.cast_unsigned(), BigInt::from(1u32))
-        } else {
-            BigRational::new_raw(numer, BigInt::from(1u32) << (-exponent).cast_unsigned())
-        }
-    }
-
-    fn assert_non_finite_input_scalar<T>(result: &Result<T, LaError>) {
-        let Err(error) = result else {
-            panic!("expected a non-finite scalar-input error");
-        };
-        assert!(matches!(
-            *error,
-            LaError::NonFinite {
-                location: NonFiniteLocation::Scalar,
-                origin: NonFiniteOrigin::Input,
-                ..
-            }
-        ));
+        BigRational::from_f64(x).expect("test oracle requires finite f64 input")
     }
 
     fn assert_unrepresentable<T>(
@@ -2207,76 +2147,37 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Direct tests for internal helpers (coverage of private functions)
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn det_errbound_d0_is_zero() {
-        assert_eq!(Matrix::<0>::zero().det_errbound(), Ok(Some(0.0)));
-    }
-
-    #[test]
-    fn det_errbound_d1_is_zero() {
-        assert_eq!(
-            Matrix::<1>::try_from_rows([[42.0]]).unwrap().det_errbound(),
-            Ok(Some(0.0))
-        );
-    }
-
-    #[test]
-    fn det_errbound_d3_non_identity() {
-        // Non-identity matrix to exercise all code paths in D=3 case
-        let m = Matrix::<3>::try_from_rows([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 10.0]])
-            .unwrap();
-        let bound = m.det_errbound().unwrap().unwrap();
-        assert!(bound > 0.0);
-    }
-
-    #[test]
-    fn det_errbound_d4_non_identity() {
-        // Non-identity matrix to exercise all code paths in D=4 case
-        let m = Matrix::<4>::try_from_rows([
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 2.0, 0.0, 0.0],
-            [0.0, 0.0, 3.0, 0.0],
-            [0.0, 0.0, 0.0, 4.0],
-        ])
-        .unwrap();
-        let bound = m.det_errbound().unwrap().unwrap();
-        assert!(bound > 0.0);
-    }
-
-    // -----------------------------------------------------------------------
-    // decompose_f64 tests
+    // Finite binary64 decomposition tests. Matrix/Vector constructor tests own
+    // rejection of non-finite inputs before they can reach this helper.
     // -----------------------------------------------------------------------
 
     #[test]
     fn decompose_f64_zero() {
-        assert_eq!(decompose_f64(0.0), Ok(Component::Zero));
-        assert_eq!(decompose_f64(-0.0), Ok(Component::Zero));
+        assert_eq!(decompose_proven_finite_f64(0.0), Component::Zero);
+        assert_eq!(decompose_proven_finite_f64(-0.0), Component::Zero);
     }
 
     #[test]
     fn decompose_f64_one() {
         assert_eq!(
-            decompose_f64(1.0),
-            Ok(Component::NonZero {
+            decompose_proven_finite_f64(1.0),
+            Component::NonZero {
                 mantissa: NonZeroU64::new(1).unwrap(),
                 exponent: 0,
                 is_negative: false,
-            })
+            }
         );
     }
 
     #[test]
     fn decompose_f64_negative() {
         assert_eq!(
-            decompose_f64(-3.5),
-            Ok(Component::NonZero {
+            decompose_proven_finite_f64(-3.5),
+            Component::NonZero {
                 mantissa: NonZeroU64::new(7).unwrap(),
                 exponent: -1,
                 is_negative: true,
-            })
+            }
         );
     }
 
@@ -2285,12 +2186,12 @@ mod tests {
         let tiny = f64::from_bits(1);
         assert!(tiny.is_subnormal());
         assert_eq!(
-            decompose_f64(tiny),
-            Ok(Component::NonZero {
+            decompose_proven_finite_f64(tiny),
+            Component::NonZero {
                 mantissa: NonZeroU64::new(1).unwrap(),
                 exponent: -1074,
                 is_negative: false,
-            })
+            }
         );
     }
 
@@ -2299,30 +2200,25 @@ mod tests {
         let value = f64::from_bits(0x000C_0000_0000_0000);
         assert!(value.is_subnormal());
         assert_eq!(
-            decompose_f64(value),
-            Ok(Component::NonZero {
+            decompose_proven_finite_f64(value),
+            Component::NonZero {
                 mantissa: NonZeroU64::new(3).unwrap(),
                 exponent: -1024,
                 is_negative: false,
-            })
+            }
         );
     }
 
     #[test]
     fn decompose_f64_power_of_two() {
         assert_eq!(
-            decompose_f64(1024.0),
-            Ok(Component::NonZero {
+            decompose_proven_finite_f64(1024.0),
+            Component::NonZero {
                 mantissa: NonZeroU64::new(1).unwrap(),
                 exponent: 10,
                 is_negative: false,
-            })
+            }
         );
-    }
-
-    #[test]
-    fn decompose_f64_rejects_nan() {
-        assert_non_finite_input_scalar(&decompose_f64(f64::NAN));
     }
 
     proptest! {
@@ -2331,11 +2227,25 @@ mod tests {
             let value = f64::from_bits(bits);
             prop_assume!(value.is_finite());
 
-            if let Ok(Component::NonZero { mantissa, .. }) = decompose_f64(value) {
-                prop_assert_eq!(mantissa.get() & 1, 1);
-            }
-
             let exact = f64_to_big_rational(value);
+            let decomposed = match decompose_proven_finite_f64(value) {
+                Component::Zero => BigRational::from_integer(BigInt::from(0)),
+                Component::NonZero { mantissa, exponent, is_negative } => {
+                    prop_assert_eq!(mantissa.get() & 1, 1);
+                    prop_assert!((-1074..=1023).contains(&exponent));
+                    let numerator = if is_negative {
+                        -BigInt::from(mantissa.get())
+                    } else {
+                        BigInt::from(mantissa.get())
+                    };
+                    if exponent >= 0 {
+                        BigRational::from_integer(numerator << exponent.cast_unsigned())
+                    } else {
+                        BigRational::new(numerator, BigInt::from(1) << exponent.unsigned_abs())
+                    }
+                }
+            };
+            prop_assert_eq!(&decomposed, &exact);
             let reconstructed = exact_rational_to_finite_f64(&exact, None);
 
             prop_assert_eq!(reconstructed, Ok(value));
@@ -2373,17 +2283,7 @@ mod tests {
             let exact = big_int_exp_to_big_rational(value, exp);
             let oracle = exact_rational_to_rounded_f64(&exact, None);
 
-            match (direct, oracle) {
-                (Ok(actual), Ok(expected)) => {
-                    prop_assert_eq!(actual.to_bits(), expected.to_bits());
-                }
-                (Err(actual), Err(expected)) => {
-                    prop_assert_eq!(actual, expected);
-                }
-                (actual, expected) => {
-                    prop_assert_eq!(actual, expected);
-                }
-            }
+            prop_assert_eq!(direct.map(f64::to_bits), oracle.map(f64::to_bits));
         }
     }
 
@@ -3732,7 +3632,7 @@ mod tests {
     #[test]
     fn f64_to_big_rational_round_trip() {
         // -0.0 is excluded: it maps to BigRational(0) which round-trips
-        // to +0.0 (correct; tested separately in f64_to_big_rational_negative_zero).
+        // to +0.0 (covered by the negative-zero case in f64_to_big_rational_scalar_cases).
         let values = [
             0.0,
             1.0,
@@ -3756,13 +3656,6 @@ mod tests {
                 back.to_bits(),
                 "round-trip failed for {v}: got {back}"
             );
-        }
-    }
-
-    #[test]
-    fn decompose_f64_rejects_non_finite_inputs() {
-        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            assert_non_finite_input_scalar(&decompose_f64(value));
         }
     }
 }

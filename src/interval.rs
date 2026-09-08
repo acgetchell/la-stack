@@ -2,7 +2,7 @@
 
 //! Outward-rounded intervals and fixed-size interval determinant signs.
 //!
-//! See `REFERENCES.md` \[8\] for `TwoSum`, \[9-11\] for the binary64 arithmetic
+//! See `REFERENCES.md` \[17\] for `FastTwoSum`, \[9-11\] for the binary64 arithmetic
 //! model, and \[12\] for the Leibniz determinant identity. The column-subset
 //! evaluation is specialized to this crate's small dimensions. Reference
 //! \[14\] describes the broader interval standard; this module does not claim
@@ -34,7 +34,7 @@ pub const MAX_INTERVAL_MATRIX_DIM: usize = 7;
 ///
 /// # Examples
 /// ```
-/// use la_stack::{Interval, LaError};
+/// use la_stack::prelude::*;
 ///
 /// # fn main() -> Result<(), LaError> {
 /// let difference = Interval::try_from_subtraction(1.0, 0.1)?;
@@ -78,7 +78,7 @@ pub enum IntervalDeterminantSign {
 ///
 /// # Examples
 /// ```
-/// use la_stack::{IntervalDeterminantSign, IntervalMatrix, LaError};
+/// use la_stack::prelude::*;
 ///
 /// # fn main() -> Result<(), LaError> {
 /// let matrix = IntervalMatrix::<3>::try_from_point_rows([
@@ -103,7 +103,7 @@ const fn canonical_zero(value: f64) -> f64 {
 }
 
 /// Turn a finite rounded sum into the tight adjacent-float enclosure implied by
-/// its exact `TwoSum` residual.
+/// its exact `FastTwoSum` residual.
 #[inline]
 const fn rounded_add_bounds(
     left: f64,
@@ -182,6 +182,23 @@ impl Interval {
     ///
     /// Signed zero endpoints are canonicalized to `+0.0`.
     ///
+    /// # Examples
+    /// ```
+    /// use core::assert_matches;
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let range = Interval::try_new(-2.0, 3.0)?;
+    /// assert!(range.contains(1.0));
+    /// assert!(!range.contains(4.0));
+    /// assert_matches!(
+    ///     Interval::try_new(3.0, -2.0),
+    ///     Err(LaError::InvertedInterval { lower: 3.0, upper: -2.0, .. })
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     /// Returns [`LaError::NonFinite`] when either endpoint is NaN or infinity.
     /// Returns [`LaError::InvertedInterval`] when `lower > upper`.
@@ -205,6 +222,22 @@ impl Interval {
 
     /// Construct a point interval from a finite binary64 value.
     ///
+    /// This preserves the supplied value, including any earlier rounding.
+    /// Use [`try_from_subtraction`](Self::try_from_subtraction) to enclose a
+    /// subtraction before its rounding uncertainty is lost.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let half = Interval::point(0.5)?;
+    /// assert_eq!((half.lower(), half.upper()), (0.5, 0.5));
+    /// assert_eq!(half.try_add(&half)?, Interval::ONE);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     /// Returns [`LaError::NonFinite`] when `value` is NaN or infinity.
     #[inline]
@@ -220,6 +253,23 @@ impl Interval {
     ///
     /// Unlike subtracting first and then calling [`point`](Self::point), this
     /// method preserves the rounding uncertainty introduced by the subtraction.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// // The exact difference 1 - 2^-54 lies between adjacent binary64 values.
+    /// let difference = Interval::try_from_subtraction(1.0, f64::EPSILON / 4.0)?;
+    /// assert_eq!(difference.lower(), 1.0_f64.next_down());
+    /// assert_eq!(difference.upper(), 1.0);
+    ///
+    /// // Subtracting first loses that uncertainty and produces a point at 1.
+    /// let rounded = Interval::point(1.0 - f64::EPSILON / 4.0)?;
+    /// assert_eq!(rounded, Interval::ONE);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// Returns [`LaError::NonFinite`] for a non-finite input, preserving whether
@@ -267,6 +317,18 @@ impl Interval {
 
     /// Add two intervals with outward rounding.
     ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let left = Interval::try_new(1.0, 2.0)?;
+    /// let right = Interval::try_new(0.5, 1.0)?;
+    /// assert_eq!(left.try_add(&right)?, Interval::try_new(1.5, 3.0)?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     /// Returns [`LaError::IntervalRangeExhausted`] when the exact result range
     /// has no finite binary64 enclosure.
@@ -277,6 +339,21 @@ impl Interval {
 
     /// Multiply two intervals with outward rounding.
     ///
+    /// For a square of the same represented value, prefer
+    /// [`try_square`](Self::try_square), which can give a tighter enclosure.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let left = Interval::try_new(-2.0, 3.0)?;
+    /// let right = Interval::try_new(-4.0, -1.0)?;
+    /// assert_eq!(left.try_mul(&right)?, Interval::try_new(-12.0, 8.0)?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     /// Returns [`LaError::IntervalRangeExhausted`] when the exact result range
     /// has no finite binary64 enclosure.
@@ -286,6 +363,17 @@ impl Interval {
     }
 
     /// Negate an interval exactly by swapping and negating its endpoints.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let range = Interval::try_new(-2.0, 3.0)?;
+    /// assert_eq!(range.negate(), Interval::try_new(-3.0, 2.0)?);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     pub const fn negate(&self) -> Self {
         Self::new_unchecked(-self.upper, -self.lower)
@@ -295,6 +383,19 @@ impl Interval {
     ///
     /// An interval spanning zero has exact lower bound zero. The upper bound is
     /// the outward-rounded square of the endpoint with greatest magnitude.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let range = Interval::try_new(-2.0, 3.0)?;
+    /// assert_eq!(range.try_square()?, Interval::try_new(0.0, 9.0)?);
+    /// // Multiplication treats its two operands independently and is wider.
+    /// assert_eq!(range.try_mul(&range)?, Interval::try_new(-6.0, 9.0)?);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// Returns [`LaError::IntervalRangeExhausted`] when the exact square range
@@ -529,6 +630,8 @@ impl Default for Interval {
 
 impl<const D: usize> IntervalMatrix<D> {
     /// Construct an interval matrix from already-validated interval rows.
+    ///
+    /// See [`det`](Self::det) for an example with non-point entries.
     #[inline]
     pub const fn from_rows(rows: [[Interval; D]; D]) -> Self {
         Self { rows }
@@ -538,6 +641,7 @@ impl<const D: usize> IntervalMatrix<D> {
     ///
     /// This preserves the stored binary64 values exactly; it does not recover
     /// uncertainty from arithmetic performed before this call.
+    /// See [`IntervalMatrix`] for a determinant-sign example using this constructor.
     ///
     /// # Errors
     /// Returns [`LaError::NonFinite`] with matrix coordinates for the first NaN
@@ -566,6 +670,18 @@ impl<const D: usize> IntervalMatrix<D> {
     /// Earlier rounded expression construction is not enclosed; use interval
     /// operations while constructing derived coefficients when that uncertainty
     /// belongs in the proof.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let matrix = Matrix::<2>::try_from_rows([[2.0, 0.0], [0.0, 3.0]])?;
+    /// let intervals = IntervalMatrix::from_matrix(&matrix);
+    /// assert_eq!(intervals.det()?, Interval::point(6.0)?);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     pub const fn from_matrix(matrix: &Matrix<D>) -> Self {
         let matrix_rows = matrix.as_rows();
@@ -626,6 +742,8 @@ impl<const D: usize> IntervalMatrix<D> {
 
     /// Get an interval entry while preserving index context on failure.
     ///
+    /// See [`set`](Self::set) for an example of mutation and checked access.
+    ///
     /// # Errors
     /// Returns [`LaError::IndexOutOfBounds`] when either index is not `< D`.
     #[inline]
@@ -640,7 +758,28 @@ impl<const D: usize> IntervalMatrix<D> {
     /// Set an interval entry with bounds checking.
     ///
     /// Validation is unnecessary for the value because [`Interval`] already
-    /// carries the finite ordered-bound proof.
+    /// carries the finite ordered-bound proof. An invalid index leaves the
+    /// matrix unchanged.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::assert_matches;
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let mut matrix = IntervalMatrix::<2>::identity();
+    /// let range = Interval::try_new(2.0, 3.0)?;
+    /// matrix.set(0, 0, range)?;
+    /// assert_eq!(matrix.try_get(0, 0)?, range);
+    /// let before = matrix;
+    /// assert_matches!(
+    ///     matrix.set(2, 0, Interval::ZERO),
+    ///     Err(LaError::IndexOutOfBounds { row: 2, col: 0, dim: 2, .. })
+    /// );
+    /// assert_eq!(matrix, before);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// Returns [`LaError::IndexOutOfBounds`] when either index is not `< D`.
@@ -663,6 +802,23 @@ impl<const D: usize> IntervalMatrix<D> {
     /// explicit range failure.
     ///
     /// The D=0 determinant follows the empty-product convention and is `[1, 1]`.
+    ///
+    /// Use [`det_sign`](Self::det_sign) when only sign evidence is needed.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// // Every represented diagonal matrix has a determinant in [8, 15].
+    /// let matrix = IntervalMatrix::<2>::from_rows([
+    ///     [Interval::try_new(2.0, 3.0)?, Interval::ZERO],
+    ///     [Interval::ZERO, Interval::try_new(4.0, 5.0)?],
+    /// ]);
+    /// assert_eq!(matrix.det()?, Interval::try_new(8.0, 15.0)?);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// Returns [`LaError::UnsupportedDimension`] for D>7. Returns
@@ -717,6 +873,25 @@ impl<const D: usize> IntervalMatrix<D> {
     /// An interval strictly on one side of zero proves that sign. Only the
     /// singleton interval `[0, 0]` proves `Zero`; every other overlap with zero
     /// is [`IntervalDeterminantSign::Inconclusive`].
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let mut matrix = IntervalMatrix::<2>::identity();
+    /// assert_eq!(matrix.det_sign()?, IntervalDeterminantSign::Positive);
+    ///
+    /// matrix.set(0, 0, Interval::try_new(-1.0, 1.0)?)?;
+    /// // This range includes nonsingular matrices of both signs; a caller
+    /// // needs tighter or exact input before it can decide singularity.
+    /// assert_eq!(matrix.det_sign()?, IntervalDeterminantSign::Inconclusive);
+    ///
+    /// matrix.set(0, 0, Interval::ZERO)?;
+    /// assert_eq!(matrix.det_sign()?, IntervalDeterminantSign::Zero);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     /// Propagates the dimension and arithmetic range failures from
@@ -864,13 +1039,18 @@ mod tests {
     #[test]
     fn inexact_operations_expand_only_in_the_required_direction() -> Result<(), LaError> {
         let subtraction = Interval::try_from_subtraction(1.0, 0.1)?;
-        let rounded_subtraction = 1.0 - 0.1;
-        assert!(subtraction.contains(rounded_subtraction));
-        assert!(subtraction.lower() < subtraction.upper());
+        let rounded_subtraction = 1.0_f64 - 0.1;
+        assert_eq!(
+            subtraction,
+            Interval::try_new(rounded_subtraction.next_down(), rounded_subtraction)?
+        );
 
         let product = Interval::point(0.1)?.try_mul(&Interval::point(0.2)?)?;
-        assert!(product.contains(0.1 * 0.2));
-        assert!(product.lower() < product.upper());
+        let rounded_product = 0.1_f64 * 0.2;
+        assert_eq!(
+            product,
+            Interval::try_new(rounded_product.next_down(), rounded_product)?
+        );
 
         let below_one = 1.0 - f64::EPSILON;
         let above_one = 1.0 + f64::EPSILON;

@@ -17,6 +17,7 @@ use std::array::from_fn;
 
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
+use num_traits::One;
 
 use crate::exact::{det_big_int, solve_big_int};
 use crate::{DeterminantSign, LaError};
@@ -163,6 +164,35 @@ impl<const D: usize> RationalMatrix<D> {
     /// Replace one exact entry while preserving the canonical non-zero-
     /// denominator invariant.
     ///
+    /// As with [`try_from_rows`](Self::try_from_rows), non-reduced values and
+    /// negative denominators are accepted and canonicalized. Rejected indices
+    /// or denominators leave the matrix unchanged.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::assert_matches;
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let mut matrix = RationalMatrix::<2>::zero();
+    /// matrix.set(0, 1, BigRational::new_raw((-2).into(), (-4).into()))?;
+    /// let half = BigRational::new(1.into(), 2.into());
+    /// assert_eq!(matrix.get(0, 1), Some(&half));
+    ///
+    /// let before = matrix.clone();
+    /// assert_matches!(
+    ///     matrix.set(0, 1, BigRational::new_raw(1.into(), 0.into())),
+    ///     Err(LaError::NonFinite {
+    ///         location: NonFiniteLocation::MatrixCell { row: 0, col: 1, .. },
+    ///         origin: NonFiniteOrigin::Input,
+    ///         ..
+    ///     })
+    /// );
+    /// assert_eq!(matrix, before);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     /// Returns [`LaError::IndexOutOfBounds`] when `(row, col)` lies outside the
     /// matrix, or [`LaError::NonFinite`] when `value` has a raw zero
@@ -183,6 +213,22 @@ impl<const D: usize> RationalMatrix<D> {
     /// This path clears denominators and reads the sign of the resulting
     /// integer determinant. It does not construct a rational determinant.
     /// For D=0, the empty-product determinant has positive sign.
+    /// Use [`det`](Self::det) when the determinant value is also needed.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let mut matrix = RationalMatrix::<2>::zero();
+    /// assert_eq!(matrix.det_sign(), DeterminantSign::Zero);
+    /// matrix.set(0, 1, BigRational::new(1.into(), 3.into()))?;
+    /// matrix.set(1, 0, BigRational::new(1.into(), 2.into()))?;
+    /// // The exact determinant is -1/6, so its sign is negative.
+    /// assert_eq!(matrix.det_sign(), DeterminantSign::Negative);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn det_sign(&self) -> DeterminantSign {
         let (integer_rows, _) = self.integer_rows();
         match det_big_int(integer_rows).sign() {
@@ -197,6 +243,25 @@ impl<const D: usize> RationalMatrix<D> {
     /// Denominators are cleared independently per row. If row `i` uses
     /// positive scale `sᵢ`, the integer determinant is divided by `∏ᵢ sᵢ`.
     /// For D=0, this returns the empty-product determinant `1`.
+    /// Use [`det_sign`](Self::det_sign) when only the sign is needed, or
+    /// [`ExactF64Conversion`](crate::ExactF64Conversion) to convert this result
+    /// under an explicit strict or rounded binary64 contract.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let mut matrix = RationalMatrix::<2>::zero();
+    /// matrix.set(0, 0, BigRational::new(1.into(), 3.into()))?;
+    /// matrix.set(1, 1, BigRational::from_integer(2.into()))?;
+    /// let determinant = matrix.det();
+    /// assert_eq!(determinant, BigRational::new(2.into(), 3.into()));
+    /// // Conversion rounds only after the exact determinant has been computed.
+    /// assert_eq!(determinant.to_rounded_f64()?, 2.0 / 3.0);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn det(&self) -> BigRational {
         let (integer_rows, row_scales) = self.integer_rows();
@@ -298,6 +363,24 @@ impl<const D: usize> RationalVector<D> {
 
     /// Try to create an exact vector by evaluating a function at every index.
     ///
+    /// The function is evaluated once per entry in increasing index order.
+    /// All entries are generated before validation and canonicalization, as
+    /// in [`try_new`](Self::try_new).
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let numerators = [1, 2, 3];
+    /// let rhs = RationalVector::<3>::try_from_fn(|index| {
+    ///     BigRational::new(numerators[index].into(), 2.into())
+    /// })?;
+    /// assert_eq!(rhs.try_to_f64()?.into_array(), [0.5, 1.0, 1.5]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     /// Returns [`LaError::NonFinite`] at the first generated entry whose raw
     /// rational denominator is zero.
@@ -358,6 +441,14 @@ fn integer_at_scale(value: &BigRational, scale: &BigInt) -> BigInt {
 /// forming the larger intermediate `a × b`. The resulting positive scale
 /// clears both denominators without changing determinant sign.
 fn least_common_multiple(lhs: BigInt, rhs: &BigInt) -> BigInt {
+    // Integer entries and repeated denominators leave the current scale unchanged.
+    if rhs.is_one() || lhs == *rhs {
+        return lhs;
+    }
+    // The first non-integer entry establishes the scale without a GCD.
+    if lhs.is_one() {
+        return rhs.clone();
+    }
     let gcd = greatest_common_divisor(lhs.clone(), rhs.clone());
     (lhs / gcd) * rhs
 }

@@ -39,6 +39,26 @@ macro_rules! gen_vector_proptests {
                 }
 
                 #[test]
+                fn [<vector_dot_and_squared_norm_match_integer_oracles_ $d d>](
+                    left in array::[<uniform $d>](-1000i16..=1000),
+                    right in array::[<uniform $d>](-1000i16..=1000),
+                ) {
+                    // At D<=8 these integer products and sums fit in i32 and
+                    // are exact in binary64, independently of the FMA kernel.
+                    let dot: i32 = left.iter().zip(&right)
+                        .map(|(&a, &b)| i32::from(a) * i32::from(b))
+                        .sum();
+                    let squared_norm: i32 = left.iter()
+                        .map(|&value| i32::from(value).pow(2))
+                        .sum();
+                    let a = Vector::<$d>::try_new(left.map(f64::from)).unwrap();
+                    let b = Vector::<$d>::try_new(right.map(f64::from)).unwrap();
+
+                    prop_assert_eq!(a.dot(&b), Ok(f64::from(dot)));
+                    prop_assert_eq!(a.norm_squared(), Ok(f64::from(squared_norm)));
+                }
+
+                #[test]
                 fn [<vector_dot_commutes_and_norm_squared_matches_dot_self_ $d d>](
                     a_arr in array::[<uniform $d>](small_f64()),
                     b_arr in array::[<uniform $d>](small_f64()),

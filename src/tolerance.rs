@@ -99,6 +99,7 @@ mod tests {
     use approx::assert_abs_diff_eq;
 
     use super::*;
+    use crate::InvalidToleranceReason;
 
     #[test]
     fn default_singular_tol_is_expected() {
@@ -135,7 +136,7 @@ mod tests {
             Tolerance::try_new(-1.0),
             Err(LaError::InvalidTolerance {
                 value: -1.0,
-                reason: crate::InvalidToleranceReason::Negative,
+                reason: InvalidToleranceReason::Negative,
             })
         );
     }
@@ -147,7 +148,7 @@ mod tests {
                 Tolerance::try_new(value),
                 Err(LaError::InvalidTolerance {
                     value: observed,
-                    reason: crate::InvalidToleranceReason::NotFinite,
+                    reason: InvalidToleranceReason::NotFinite,
                 }) if observed.to_bits() == value.to_bits()
             );
         }

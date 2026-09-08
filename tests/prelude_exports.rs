@@ -11,6 +11,85 @@ use la_stack::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};
 
 const _: [f64; 3] = [ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4];
 
+// No Clone, Copy, or Debug: dispatch must accept an ordinary consuming closure.
+struct MoveOnly(usize);
+
+macro_rules! gen_dispatch_capture_tests {
+    ($name:ident, $dispatch:ident, $entry:expr, $max:expr) => {
+        #[test]
+        fn $name() -> Result<(), LaError> {
+            for dimension in 2..=5 {
+                let mut visited = Vec::new();
+                let count = $dispatch!(dimension, |matrix| -> Result<usize, LaError> {
+                    visited.push(matrix.as_rows().len());
+                    Ok(visited.len())
+                })?;
+                assert_eq!(count, 1);
+                assert_eq!(visited, [dimension]);
+
+                let count = $dispatch!(dimension, |mut matrix| -> Result<usize, LaError> {
+                    matrix.set(0, 0, $entry)?;
+                    visited.push(matrix.as_rows().len());
+                    Ok(visited.len())
+                })?;
+                assert_eq!(count, 2);
+                assert_eq!(visited, [dimension, dimension]);
+
+                let captured = MoveOnly(dimension);
+                let moved = $dispatch!(dimension, |matrix| -> Result<MoveOnly, LaError> {
+                    assert_eq!(matrix.as_rows().len(), dimension);
+                    Ok(captured)
+                })?;
+                assert_eq!(moved.0, dimension);
+
+                let captured = MoveOnly(dimension);
+                let moved = $dispatch!(dimension, |mut matrix| -> Result<MoveOnly, LaError> {
+                    matrix.set(0, 0, $entry)?;
+                    assert_eq!(matrix.as_rows().len(), dimension);
+                    Ok(captured)
+                })?;
+                assert_eq!(moved.0, dimension);
+            }
+
+            let mut visited = Vec::new();
+            let rejected = $dispatch!(99usize, |matrix| -> Result<(), LaError> {
+                visited.push(matrix.as_rows().len());
+                Ok(())
+            });
+            assert_eq!(rejected, Err(LaError::unsupported_dimension(99, $max)));
+            assert!(visited.is_empty());
+            let rejected = $dispatch!(99usize, |mut matrix| -> Result<(), LaError> {
+                matrix.set(0, 0, $entry)?;
+                visited.push(matrix.as_rows().len());
+                Ok(())
+            });
+            assert_eq!(rejected, Err(LaError::unsupported_dimension(99, $max)));
+            assert!(visited.is_empty());
+            Ok(())
+        }
+    };
+}
+
+gen_dispatch_capture_tests!(
+    stack_dispatch_accepts_borrowed_and_consuming_captures,
+    try_with_stack_matrix,
+    1.0,
+    MAX_STACK_MATRIX_DISPATCH_DIM
+);
+gen_dispatch_capture_tests!(
+    interval_dispatch_accepts_borrowed_and_consuming_captures,
+    try_with_interval_matrix,
+    Interval::ONE,
+    MAX_INTERVAL_MATRIX_DIM
+);
+#[cfg(feature = "exact")]
+gen_dispatch_capture_tests!(
+    rational_dispatch_accepts_borrowed_and_consuming_captures,
+    try_with_rational_matrix,
+    BigRational::from_integer(1.into()),
+    MAX_RATIONAL_MATRIX_DISPATCH_DIM
+);
+
 #[test]
 fn common_prelude_supports_downstream_composition() -> Result<(), LaError> {
     let matrix = Matrix::<2>::identity();

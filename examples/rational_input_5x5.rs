@@ -24,6 +24,12 @@ fn main() -> Result<(), LaError> {
     ])?;
 
     let exact_solution = matrix.solve(&rhs)?;
+    assert_eq!(matrix.det(), epsilon);
+    assert_eq!(matrix.det_sign(), DeterminantSign::Positive);
+    assert_eq!(
+        exact_solution.as_array(),
+        &[1, -1, 2, 3, 4].map(|value| BigRational::from_integer(value.into())),
+    );
     println!("exact determinant: {}", matrix.det());
     println!("exact determinant sign: {:?}", matrix.det_sign());
     println!("exact solution: {:?}", exact_solution.as_array());
@@ -41,7 +47,15 @@ fn main() -> Result<(), LaError> {
     let f64_solve = f64_matrix
         .lu(DEFAULT_SINGULAR_TOL)
         .and_then(|lu| lu.solve(f64_rhs));
-    assert!(matches!(&f64_solve, Err(LaError::Singular { .. })));
+    assert_eq!(
+        f64_solve,
+        Err(LaError::singular_numerical(
+            1,
+            FactorizationKind::Lu,
+            0.0,
+            DEFAULT_SINGULAR_TOL.get(),
+        )),
+    );
 
     println!("1.0 + 2^-60 supplied as f64: {}", 1.0 + epsilon_f64);
     println!("solve from f64 inputs: {f64_solve:?}");

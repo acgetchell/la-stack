@@ -68,9 +68,9 @@ intermediates stay normal or are exact zeros, the standard
 `gamma_n = n·u / (1 - n·u)` model, with `u = 2^-53`, `n = D` for the dot
 product, and `n = 2D` for the affine difference, bounds the absolute forward error by
 `gamma_n Σ |a_i b_i|` \[[9], [10], [11]\]. The magnitude sum and final bound are
-rounded upward, while `TwoSum` supplies outward endpoints. Gradual underflow or
-proof-only range exhaustion makes the filter unavailable rather than turning an
-inconclusive result into equality. The affine form evaluates alternating
+rounded upward, while magnitude-ordered `FastTwoSum` supplies outward endpoints
+\[[17]\]. Gradual underflow or proof-only range exhaustion makes the filter
+unavailable rather than turning an inconclusive result into equality. The affine form evaluates alternating
 `axis_i × left_i` and `-axis_i × right_i` FMAs, so its certificate covers the
 original coordinates rather than an already-rounded difference vector.
 
@@ -131,11 +131,11 @@ and significand \[[9]\]. For nonzero `x`, it strips trailing zeros from the
 significand so `|x| = m · 2^e` with `m` odd; signed zeros use a separate zero
 component. The integer matrix is then assembled by shifting each mantissa left by
 `exp − e_min`, giving a GCD-free exact-integer starting point. Solves and D ≥ 5 determinants
-then apply Bareiss elimination; D ≤ 4 determinants use direct expansions. The test-only
-fallible wrapper `decompose_f64` verifies rejection of non-finite raw scalars, while the
-test-only `f64_to_big_rational` helper packages the same decomposition into a single
-`BigRational`. See Goldberg \[[10]\] for background on floating-point representation and
-conversion.
+then apply Bareiss elimination; D ≤ 4 determinants use direct expansions. Tests verify
+non-finite input rejection at the `Matrix` and `Vector` constructors. The test-only
+`f64_to_big_rational` helper uses `BigRational::from_f64` as an independent oracle for
+the production decomposition. See Goldberg \[[10]\] for background on floating-point
+representation and conversion.
 
 ### Gram matrices and geometric measures
 
@@ -183,7 +183,9 @@ algorithmic background.
 `Interval` uses IEEE-754 round-to-nearest binary64 operations plus adjacent
 representable values to enclose exact-real addition, subtraction,
 multiplication, and square results \[[9], [10], [11]\]. Addition and subtraction
-use an error-free `TwoSum` residual \[[8]\]; multiplication independently compares
+use a magnitude-ordered `FastTwoSum` residual \[[17]\]. This ordering prevents
+internal overflow when the rounded sum is finite, including opposite-sign inputs
+at the maximum finite magnitude. Multiplication independently compares
 the exact integer-significand product with the rounded binary64 result,
 including gradual underflow to zero. Results whose exact range cannot fit
 between finite binary64 endpoints return a typed range failure rather than
@@ -292,6 +294,12 @@ alphabetized for navigation without renumbering citations.
 16. <a name="ref-16"></a> Kock, Anders. "Square-densities, and volume forms." Notes, December 10, 2020.
     Introduction and §1.2 (Gram's formula).
     [Author's PDF](https://math.au.dk/~kock/heron4.pdf)
+17. <a name="ref-17"></a> Boldo, Sylvie, Stef Graillat, and Jean-Michel Muller.
+    "On the Robustness of the 2Sum and Fast2Sum Algorithms."
+    *ACM Transactions on Mathematical Software* 44.1 (2017), Article 4: 1–14.
+    Algorithms 1–2 and Theorems 5.1, 6.2 (magnitude ordering and overflow).
+    [DOI](https://doi.org/10.1145/3054947) ·
+    [Authors' PDF](https://perso.lip6.fr/Stef.Graillat/papers/a4-boldo.pdf)
 
 [1]: #ref-1
 [2]: #ref-2
@@ -308,3 +316,4 @@ alphabetized for navigation without renumbering citations.
 [14]: #ref-14
 [15]: #ref-15
 [16]: #ref-16
+[17]: #ref-17
