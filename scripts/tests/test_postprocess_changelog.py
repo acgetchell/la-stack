@@ -1,7 +1,8 @@
 """Tests for postprocess_changelog.py — trailing blanks, reflow, code blocks, summaries."""
 
 import os
-from typing import TYPE_CHECKING, Never
+from pathlib import Path
+from typing import Never
 
 import pytest
 
@@ -27,9 +28,7 @@ from postprocess_changelog import (
     postprocess,
     postprocess_text,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from subprocess_utils import run_safe_command
 
 
 class TestStripTrailingBlanks:
@@ -543,6 +542,61 @@ class TestSummarySections:
         result = _inject_summary_sections(content)
         summary_block = _merged_pr_summary_block(result)
         assert summary_block.count(f"- Feature A {_pr(10)}") == 1
+
+    @pytest.mark.parametrize(
+        ("message", "expected_summary"),
+        [
+            (
+                "perf!: tune kernels\n\nKeep arithmetic unchanged.\n\nBREAKING CHANGE: la-stack now requires Rust 1.98.1.",
+                "- la-stack now requires Rust 1.98.1.",
+            ),
+            (
+                "fix: change result storage\n\nBREAKING CHANGE: Return `Vector<T>`.\nUse `into_array()` for raw storage.\n\nKeep explicit conversions.",
+                "- Return `Vector<T>`.\n  Use `into_array()` for raw storage.\n\n  Keep explicit conversions.",
+            ),
+            ("refactor!: remove legacy API", "- Remove legacy API"),
+            (
+                "refactor!: change generic API\n\nBREAKING CHANGE: Replace <Old> with ``Vector<T>`` and `Result<T, E>`.",
+                "- Replace &lt;Old&gt; with ``Vector<T>`` and `Result<T, E>`.",
+            ),
+            (
+                "refactor!: change generic API\n\nBREAKING CHANGE: Use this signature:\n\n```rust\nfn solve<T>() -> Result<T, Error>;\n```",
+                "- Use this signature:\n\n  ```rust\n  fn solve<T>() -> Result<T, Error>;\n  ```",
+            ),
+            (
+                "chore(deps): bump toolkit\n\nBREAKING CHANGE: Require a newer runtime.",
+                "- Require a newer runtime.",
+            ),
+        ],
+        ids=["msrv-footer", "multiline-footer", "bang-only", "code-spans", "fenced-code", "dependency-footer"],
+    )
+    def test_template_preserves_breaking_descriptions(self, message: str, expected_summary: str) -> None:
+        """Render actual conventional footers without mutating Git history."""
+        repo_root = Path(__file__).resolve().parents[2]
+        raw = run_safe_command(
+            "git-cliff",
+            [
+                "--offline",
+                "--config",
+                str(repo_root / "cliff.toml"),
+                "--strip",
+                "footer",
+                "--with-commit",
+                message,
+                "--with-commit",
+                "fix: retain linked entry (#987)",
+                "HEAD..HEAD",
+            ],
+            cwd=repo_root,
+        ).stdout
+
+        result = postprocess_text(raw)
+
+        summary = result.split("### ⚠️ Breaking Changes\n\n", 1)[1].split("\n### ", 1)[0].strip()
+        assert summary == expected_summary
+        assert result.index("### ⚠️ Breaking Changes") < result.index("### Merged Pull Requests")
+        assert "- Retain linked entry [#987](https://github.com/acgetchell/la-stack/pull/987)" in _merged_pr_summary_block(result)
+        assert postprocess_text(result) == result
 
 
 class TestListMarkerNormalization:

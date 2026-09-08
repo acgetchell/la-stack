@@ -35,7 +35,7 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkGroup, Criterion, Throughput, measurement::WallTime};
 
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 use la_stack::ExactF64Conversion;
 use la_stack::{Matrix, Vector};
 
@@ -44,11 +44,11 @@ mod bench_utils;
 #[path = "common/exact.rs"]
 pub mod exact_bench;
 
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 #[path = "common/rational.rs"]
 pub mod rational_bench;
 
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 #[path = "common/exact_diagnostics.rs"]
 pub mod exact_diagnostics;
 
@@ -58,9 +58,9 @@ use exact_bench::{
     large_entries_3x3_input, make_matrix_rows, make_random_input_corpus, make_vector_array,
     near_singular_3x3_input, validate_exact_fixture, validate_f64_determinant_benchmarks,
 };
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 use exact_diagnostics::{ConversionKind, Det4Kind, canonical_conversion_input, exact_det4_input};
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 use rational_bench::{
     RationalInputKind, rational_determinant_gaussian, rational_input, rational_solve_gaussian,
 };
@@ -116,7 +116,7 @@ const CORPUS_AND_EXTREME_OPERATIONS: &[ExactOperation] = &[
 /// Both algorithms measure a complete operation on borrowed, accepted input.
 /// The consuming Gaussian references therefore make their required working
 /// copies inside the timed closure, just as row clearing builds its workspace.
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 fn bench_rational_input<const D: usize>(criterion: &mut Criterion, kind: RationalInputKind) {
     let input = rational_input::<D>(kind);
     let group_name = match kind {
@@ -299,7 +299,6 @@ fn bench_det_errbound<const D: usize>(
 }
 
 /// Add the paired direct-determinant and certified-bound baseline.
-#[cfg(not(la_stack_v0_4_3_api))]
 fn bench_det_direct_with_errbound<const D: usize>(
     group: &mut BenchmarkGroup<'_, WallTime>,
     input: &ValidatedExactInput<D>,
@@ -324,7 +323,6 @@ fn bench_det_direct_with_errbound<const D: usize>(
 macro_rules! register_det_filter_benchmarks {
     ($group:expr, $input:expr, supported) => {{
         bench_det_direct(&mut $group, &$input);
-        #[cfg(not(la_stack_v0_4_3_api))]
         bench_det_direct_with_errbound(&mut $group, &$input);
         bench_det_errbound(&mut $group, &$input);
     }};
@@ -378,7 +376,7 @@ macro_rules! gen_random_corpus_benches_for_dim {
     }};
 }
 
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 fn bench_canonical_conversion<const D: usize>(c: &mut Criterion) {
     for kind in ConversionKind::ALL {
         let input = canonical_conversion_input::<D>(kind);
@@ -393,7 +391,7 @@ fn bench_canonical_conversion<const D: usize>(c: &mut Criterion) {
     }
 }
 
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 fn bench_det4_diagnostics(c: &mut Criterion) {
     for kind in Det4Kind::ALL {
         let input = exact_det4_input(kind);
@@ -436,7 +434,7 @@ fn main() {
         gen_random_corpus_benches_for_dim!(&mut c, 5);
     }
 
-    #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+    #[cfg(not(la_stack_pre_rational_input_api))]
     {
         bench_canonical_conversion::<2>(&mut c);
         bench_canonical_conversion::<3>(&mut c);

@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 import update_cargo_tool_pins
+from subprocess_utils import run_cargo_command, run_safe_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -41,6 +42,50 @@ def just_recipes() -> dict[str, dict[str, Any]]:
     recipes = json.loads(result.stdout)["recipes"]
     assert isinstance(recipes, dict)
     return recipes
+
+
+def test_exact_benchmark_package_excludes_peer_libraries() -> None:
+    # No dependency resolution: this also runs before Cargo caches exist in CI.
+    metadata = json.loads(
+        run_cargo_command(
+            ["metadata", "--locked", "--offline", "--no-deps", "--format-version", "1"],
+            cwd=REPO_ROOT,
+        ).stdout
+    )
+    packages = {package["name"]: package for package in metadata["packages"]}
+    library = packages["la-stack"]
+    comparison = packages["la-stack-comparison"]
+    dependencies = {dependency["name"] for dependency in library["dependencies"]}
+
+    assert metadata["workspace_default_members"] == [library["id"]]
+    assert {"criterion", "num-rational"} <= dependencies
+    assert not {"nalgebra", "faer", "la-stack-comparison"} & dependencies
+    assert "exact" in {target["name"] for target in library["targets"]}
+    assert "vs_linalg" not in {target["name"] for target in library["targets"]}
+    assert {"nalgebra", "faer"} <= {dependency["name"] for dependency in comparison["dependencies"]}
+    assert "vs_linalg" in {target["name"] for target in comparison["targets"]}
+
+
+def test_release_runs_each_suite_once_and_reuses_peer_measurements() -> None:
+    baseline = run_just("--dry-run", "bench-save-baseline", "v0.4.5", "all")
+    # Execute the real recipe's shell branching while replacing only Cargo.
+    script = 'cargo() { printf "%s\\n" "$*"; }\n' + baseline.stderr
+    baseline_run = run_safe_command("bash", ["--noprofile", "--norc", "-euc", script], cwd=REPO_ROOT)
+    baseline_commands = [shlex.split(line) for line in baseline_run.stdout.splitlines()]
+    current = run_just("--dry-run", "bench-latest")
+    current_commands = [shlex.split(line) for line in current.stderr.splitlines() if line.startswith("cargo bench ")]
+
+    assert len(baseline_commands) == len(current_commands) == 2
+    baseline_comparison, baseline_exact = baseline_commands
+    current_comparison, current_exact = current_commands
+    for command in (baseline_comparison, current_comparison):
+        assert command[command.index("-p") + 1] == "la-stack-comparison"
+        assert command[command.index("--bench") + 1] == "vs_linalg"
+    for command in (baseline_exact, current_exact):
+        assert "-p" not in command
+        assert command[command.index("--bench") + 1] == "exact"
+    assert baseline_comparison[baseline_comparison.index("--") + 1 :] == ["--noplot", "--save-baseline", "v0.4.5"]
+    assert current_comparison[current_comparison.index("--") + 1 :] == ["la_stack", "--noplot"]
 
 
 def write_fake_uv(directory: Path, version_output: str, *, windows_lookup_output: str | None = None) -> None:

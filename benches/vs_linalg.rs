@@ -15,12 +15,13 @@ use std::hint::black_box;
 
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion};
+use faer::linalg::matmul::dot::inner_prod;
 use faer::linalg::solvers::Solve;
 use faer::mat::AsMatRef;
-use faer::{Mat, Side};
+use faer::{Conj, Mat, Side};
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 
-use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
+use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Tolerance, Vector};
 
 #[path = "common/bench_utils.rs"]
 mod bench_utils;
@@ -28,13 +29,12 @@ mod bench_utils;
 pub mod vs_linalg_common;
 
 use bench_utils::OrAbort;
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 use vs_linalg_common::norm_scenarios;
-#[cfg(not(la_stack_v0_4_3_api))]
 use vs_linalg_common::{LuSolveScenario, validated_lu_solve_input};
 use vs_linalg_common::{
-    PreparedFaerLuDet, delaunay_scaled_norm, faer_det_from_ldlt, iterative_hypot, la_stack_dot,
-    la_stack_norm_inf, la_stack_norm_squared, la_stack_tolerance, make_balanced_dynamic_range_rows,
+    PreparedFaerLuDet, delaunay_scaled_norm, faer_det_from_ldlt, iterative_hypot,
+    la_stack_norm_inf, la_stack_norm_squared, make_balanced_dynamic_range_rows,
     make_ill_conditioned_matrix_rows, make_matrix_rows, make_pivoting_matrix_rows,
     make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
 };
@@ -423,7 +423,7 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
 
     group.bench_function("la_stack_dot", |bencher| {
         bencher.iter(|| {
-            let result = la_stack_dot(black_box(&v1), black_box(&v2)).or_abort("la_stack dot");
+            let result = black_box(&v1).dot(black_box(&v2)).or_abort("la_stack dot");
             black_box(result);
         });
     });
@@ -435,15 +435,13 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
         });
     });
 
-    group.bench_function("faer_dot", |bencher| {
+    // Keep the native kernel distinct from historical scalar-loop measurements.
+    group.bench_function("faer_dot_native", |bencher| {
         bencher.iter(|| {
-            let mut sum = 0.0;
             let a = black_box(&fv1);
             let b = black_box(&fv2);
-            for i in 0..D {
-                sum = a[(i, 0)].mul_add(b[(i, 0)], sum);
-            }
-            black_box(sum);
+            let result = inner_prod(a.col(0).transpose(), Conj::No, b.col(0), Conj::No);
+            black_box(result);
         });
     });
 
@@ -469,7 +467,7 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
         });
     });
 
-    #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+    #[cfg(not(la_stack_pre_rational_input_api))]
     {
         group.bench_function("la_stack_norm2", |bencher| {
             bencher.iter(|| {
@@ -509,7 +507,7 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
 }
 
 /// Validate and register safe Euclidean-norm kernels across branch and range profiles.
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 fn register_norm_scenario_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, WallTime>) {
     for (scenario, values) in norm_scenarios::<D>() {
         let vector = Vector::try_new(values).or_abort("norm scenario vector construction");
@@ -598,12 +596,11 @@ fn register_matrix_norm_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_
 
 /// Register D=8 stress cases that exercise pivoting, conditioning, and scaled products.
 fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
-    let zero_tolerance = la_stack_tolerance(0.0).or_abort("zero benchmark tolerance");
+    let zero_tolerance = Tolerance::try_new(0.0).or_abort("zero benchmark tolerance");
     let pivoting = Matrix::<8>::try_from_rows(make_pivoting_matrix_rows())
         .or_abort("pivoting benchmark matrix construction");
     let ill_conditioned = Matrix::<8>::try_from_rows(make_ill_conditioned_matrix_rows())
         .or_abort("ill-conditioned benchmark matrix construction");
-    #[cfg(not(la_stack_v0_4_3_api))]
     let balanced = Matrix::<8>::try_from_rows(make_balanced_dynamic_range_rows())
         .or_abort("balanced-range benchmark matrix construction");
 
@@ -634,16 +631,13 @@ fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
         });
     });
 
-    #[cfg(not(la_stack_v0_4_3_api))]
     let balanced_lu = balanced
         .lu(zero_tolerance)
         .or_abort("balanced-range LU factorization");
-    #[cfg(not(la_stack_v0_4_3_api))]
     let balanced_ldlt = balanced
         .ldlt(zero_tolerance)
         .or_abort("balanced-range LDLT factorization");
 
-    #[cfg(not(la_stack_v0_4_3_api))]
     group.bench_function("la_stack_det_from_lu_balanced_range", |bencher| {
         bencher.iter(|| {
             let det = black_box(&balanced_lu)
@@ -653,7 +647,6 @@ fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
         });
     });
 
-    #[cfg(not(la_stack_v0_4_3_api))]
     group.bench_function("la_stack_det_from_ldlt_balanced_range", |bencher| {
         bencher.iter(|| {
             let det = black_box(&balanced_ldlt)
@@ -665,7 +658,6 @@ fn register_stress_benchmarks(group: &mut BenchmarkGroup<'_, WallTime>) {
 }
 
 /// Complete and reusable-factor solves on validated diagnostic systems.
-#[cfg(not(la_stack_v0_4_3_api))]
 fn register_lu_solve_diagnostics<const D: usize>(c: &mut Criterion)
 where
     Const<D>: DimMin<Const<D>, Output = Const<D>>,
@@ -677,7 +669,7 @@ where
         let input = validated_lu_solve_input::<D>(scenario);
         let a = *input.matrix();
         let rhs = input.rhs();
-        let zero = la_stack_tolerance(0.0).or_abort("diagnostic tolerance");
+        let zero = Tolerance::try_new(0.0).or_abort("diagnostic tolerance");
         let lu = a.lu(zero).or_abort("diagnostic LU");
         let na = SMatrix::<f64, D, D>::from_fn(|i, j| a.as_rows()[i][j]);
         let nrhs = SVector::<f64, D>::from_fn(|i, _| rhs.as_array()[i]);
@@ -754,7 +746,7 @@ macro_rules! define_vs_linalg_benches_for_dim {
                 register_precomputed_lu_determinant_benchmarks::<$d>(&mut group);
                 register_precomputed_ldlt_determinant_benchmarks::<$d>(&mut group);
                 register_vector_benchmarks::<$d>(&mut group);
-                #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+                #[cfg(not(la_stack_pre_rational_input_api))]
                 register_norm_scenario_benchmarks::<$d>(&mut group);
                 register_matrix_norm_benchmarks::<$d>(&mut group);
                 $(
@@ -762,7 +754,6 @@ macro_rules! define_vs_linalg_benches_for_dim {
                 )?
                 group.finish();
             }
-            #[cfg(not(la_stack_v0_4_3_api))]
             register_lu_solve_diagnostics::<$d>(c);
         }
     };

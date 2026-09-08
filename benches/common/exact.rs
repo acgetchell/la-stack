@@ -149,26 +149,11 @@ impl<const D: usize> ValidatedExactInput<D> {
     }
 }
 
-/// Return one matrix entry through the bounds-checked API shared by current and
-/// v0.4.3 releases.
+/// Return one matrix entry through the bounds-checked API.
 fn stored_matrix_entry<const D: usize>(matrix: &Matrix<D>, row: usize, col: usize) -> f64 {
     matrix
         .get(row, col)
         .unwrap_or_else(|| panic!("matrix entry ({row}, {col}) is outside dimension {D}"))
-}
-
-/// Normalize the exact determinant-sign API across the v0.4.3 compatibility
-/// boundary used only by historical benchmark worktrees.
-#[cfg(not(la_stack_v0_4_3_api))]
-fn checked_det_sign<const D: usize>(matrix: &Matrix<D>) -> i8 {
-    matrix.det_sign_exact().as_i8()
-}
-
-#[cfg(la_stack_v0_4_3_api)]
-fn checked_det_sign<const D: usize>(matrix: &Matrix<D>) -> i8 {
-    matrix
-        .det_sign_exact()
-        .or_abort("exact determinant sign oracle check")
 }
 
 /// Return a deterministic, strictly diagonally-dominant matrix entry.
@@ -532,7 +517,6 @@ pub fn validate_f64_determinant_benchmarks<const D: usize>(input: &ValidatedExac
             "direct determinant error {observed_error} exceeds standalone certified bound {certified_bound}",
         );
 
-        #[cfg(not(la_stack_v0_4_3_api))]
         {
             let estimate = input
                 .matrix()
@@ -558,7 +542,6 @@ pub fn validate_f64_determinant_benchmarks<const D: usize>(input: &ValidatedExac
             "det_errbound unexpectedly supports D={D}",
         );
 
-        #[cfg(not(la_stack_v0_4_3_api))]
         assert!(
             input
                 .matrix()
@@ -603,7 +586,7 @@ pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> Validated
         determinant
     );
     assert_eq!(
-        checked_det_sign(&input.matrix),
+        input.matrix.det_sign_exact().as_i8(),
         determinant_sign(&determinant)
     );
     assert_strict_scalar(input.matrix.det_exact_f64(), &determinant, None);
@@ -613,21 +596,22 @@ pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> Validated
         .matrix
         .solve_exact(input.rhs)
         .or_abort("exact solve oracle check");
-    assert_exact_residual(&input, solution.as_array());
+    // Historical releases return the rational array directly instead of a wrapper.
+    #[cfg(la_stack_pre_rational_input_api)]
+    let solution = &solution;
+    #[cfg(not(la_stack_pre_rational_input_api))]
+    let solution = solution.as_array();
+    assert_exact_residual(&input, solution);
 
     let strict_solution = input.matrix.solve_exact_f64(input.rhs);
-    let first_failure = solution
-        .as_array()
-        .iter()
-        .enumerate()
-        .find_map(|(index, value)| {
-            expected_strict_f64(value)
-                .err()
-                .map(|reason| (index, reason))
-        });
+    let first_failure = solution.iter().enumerate().find_map(|(index, value)| {
+        expected_strict_f64(value)
+            .err()
+            .map(|reason| (index, reason))
+    });
     match (strict_solution, first_failure) {
         (Ok(actual), None) => {
-            for (index, exact) in solution.as_array().iter().enumerate() {
+            for (index, exact) in solution.iter().enumerate() {
                 let Ok(expected) = expected_strict_f64(exact) else {
                     panic!("strict solution component {index} unexpectedly requires rounding");
                 };
@@ -654,7 +638,6 @@ pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> Validated
 
     let rounding_limit = finite_rounding_limit();
     let first_rounded_failure = solution
-        .as_array()
         .iter()
         .position(|exact| exact.abs() >= rounding_limit);
     match (
@@ -662,7 +645,7 @@ pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> Validated
         first_rounded_failure,
     ) {
         (Ok(rounded), None) => {
-            for (actual, exact) in rounded.as_array().iter().copied().zip(solution.as_array()) {
+            for (actual, exact) in rounded.as_array().iter().copied().zip(solution) {
                 assert_nearest_even_f64(actual, exact);
             }
         }

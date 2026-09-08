@@ -4,7 +4,7 @@
     "baseline_command": [
       "just",
       "bench-save-baseline",
-      "v0.4.4"
+      "v0.4.5"
     ],
     "criterion_dependency": "0.8.2",
     "current_command": [
@@ -27,40 +27,41 @@
     "statistic": "median"
   },
   "measurement": {
-    "baseline_api_compatibility": "none",
-    "baseline_commit": "03a6dc751b7bf7c69b833aeb4e20e2acb6da2e4c",
+    "baseline_api_compatibility": "la_stack_pre_rational_input_api",
+    "baseline_commit": "78ba1c25beaed7321e175113e0876aac6d763a59",
     "baseline_git_clean": false,
-    "baseline_source_state_sha256": "227a2780c989352be2eacf3f32ca67032cc69fc843e596acc386a7c4f7d459f0",
-    "cargo_lock_sha256": "72b99b4f7f3917d668bb71448198d5d496334684097eac282c859d08d8cf4492",
+    "baseline_source_state_sha256": "7d72086128b12e2a89d5ca78f0e8cc0cb393a44f1062d027a069722ff9dae007",
+    "benchmark_contract_sha256": "02a2228e7c2150d4c9c2dc125063a6e3eec03be82e8f7262c341099f2517132d",
+    "cargo_lock_sha256": "37c6f3339dc4eedcc5587e44133a7d0299fef2bd9da52fc0464e2ceeb0138edb",
     "cpu": "Apple M4 Max (arm64)",
-    "current_commit": "99d33927e389018c599c009603a7eafffcc25089",
+    "current_commit": "d36a9e99ec223c4cbbf8a9191818f186159c27f7",
     "current_git_clean": false,
-    "current_source_state_sha256": "7d72086128b12e2a89d5ca78f0e8cc0cb393a44f1062d027a069722ff9dae007",
-    "harness_sha256": "164d6bbac2e6cb19b85c81677e4ab4428c3abb130dcfd38a2f5f162a5dd8a905",
+    "current_source_state_sha256": "b8fcf706fa6e287ca6682a1ecef5a69576413b9c88040184a9b1ecb8f6e92336",
+    "harness_sha256": "27acd15e854e46899ff1c1f8e1b399ff240b0b9732e56a36cf8edb39c4a58db3",
     "la_stack_sample": "current",
     "os": "Darwin 25.6.0 arm64",
-    "peer_release_context": "v0.4.4",
+    "peer_release_context": "v0.4.5",
     "peer_sample": "baseline phase under shared current harness",
-    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
     "source": "retained performance-release artifact",
     "status": "recorded"
   },
   "performance_artifact": {
     "csv": "target/bench-reports/performance.csv",
-    "csv_sha256": "4d4f02188ce78414d6018fe0ce23dcc7da07a23b05026843698c2ad32be7d0c8",
+    "csv_sha256": "b263bb34bcfd43b8fc8109110db9f2e908516aef6c01ce16f70f5ac18dc7ef2d",
     "provenance": "target/bench-reports/performance.provenance.json",
-    "provenance_sha256": "fec902d3b444dd3be67255637f56bdb53b7b6a5368a8b2410c963a4e40b6ba5c",
+    "provenance_sha256": "89144a2899ba73f55d009da4fa20b4e6477600902b93cde469383f719c497508",
     "release": {
-      "baseline": "v0.4.4",
-      "current": "v0.4.5"
+      "baseline": "v0.4.5",
+      "current": "v0.4.6"
     }
   },
   "publication": {
-    "benchmark_contract": "legacy-retained-artifact",
-    "cargo_lock_sha256": "72b99b4f7f3917d668bb71448198d5d496334684097eac282c859d08d8cf4492",
-    "commit": "99d33927e389018c599c009603a7eafffcc25089",
+    "benchmark_contract": "matched",
+    "cargo_lock_sha256": "37c6f3339dc4eedcc5587e44133a7d0299fef2bd9da52fc0464e2ceeb0138edb",
+    "commit": "d36a9e99ec223c4cbbf8a9191818f186159c27f7",
     "correctness_gate": "validated-performance-release-artifact",
-    "source_state_sha256": "7d72086128b12e2a89d5ca78f0e8cc0cb393a44f1062d027a069722ff9dae007"
+    "source_state_sha256": "b8fcf706fa6e287ca6682a1ecef5a69576413b9c88040184a9b1ecb8f6e92336"
   },
   "schema": 2
 }

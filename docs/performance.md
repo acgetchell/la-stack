@@ -1,7 +1,7 @@
 # Benchmark Performance
 
-**la-stack** v0.4.5 · `99d3392` (HEAD)
-**Source revision timestamp**: 2026-08-20 21:16:55 UTC (deterministic report metadata; not the benchmark measurement time)
+**la-stack** v0.4.6 · `d36a9e9` (HEAD)
+**Source revision timestamp**: 2026-09-08 01:59:08 UTC (deterministic report metadata; not the benchmark measurement time)
 **Benchmark measurement timestamp**: not recorded by Criterion; use the provenance below to identify the measured revisions and environment.
 **Statistic**: median
 **Suite**: all
@@ -9,7 +9,7 @@
 
 ## Benchmark Results
 
-Comparison against baseline **v0.4.4**:
+Comparison against baseline **v0.4.5**:
 
 Negative point-estimate change means the current point estimate is smaller; a baseline/current point-estimate ratio above 1.00 has the same meaning.
 The CI-relation column reports only whether the two marginal Criterion intervals overlap. These are not paired confidence intervals
@@ -21,236 +21,280 @@ for the change, so the report makes no statistical-significance or performance-i
 
 - CPU: `Apple M4 Max (arm64)`
 - OS: `Darwin 25.6.0 arm64`
-- rustc: `rustc 1.98.0 (88d9e12ae 2026-08-18)`
-- Current commit: `99d33927e389018c599c009603a7eafffcc25089`
+- rustc: `rustc 1.98.1 (48a229cea 2026-09-01)`
+- Current commit: `d36a9e99ec223c4cbbf8a9191818f186159c27f7`
 - Current Git clean: `false`
-- Current source-state SHA-256: `7d72086128b12e2a89d5ca78f0e8cc0cb393a44f1062d027a069722ff9dae007`
-- Baseline commit: `03a6dc751b7bf7c69b833aeb4e20e2acb6da2e4c`
+- Current source-state SHA-256: `b8fcf706fa6e287ca6682a1ecef5a69576413b9c88040184a9b1ecb8f6e92336`
+- Baseline commit: `78ba1c25beaed7321e175113e0876aac6d763a59`
 - Baseline Git clean: `false`
-- Baseline source-state SHA-256: `227a2780c989352be2eacf3f32ca67032cc69fc843e596acc386a7c4f7d459f0`
-- Cargo.lock SHA-256: `72b99b4f7f3917d668bb71448198d5d496334684097eac282c859d08d8cf4492`
-- Benchmark harness SHA-256: `164d6bbac2e6cb19b85c81677e4ab4428c3abb130dcfd38a2f5f162a5dd8a905`
+- Baseline source-state SHA-256: `7d72086128b12e2a89d5ca78f0e8cc0cb393a44f1062d027a069722ff9dae007`
+- Cargo.lock SHA-256: `37c6f3339dc4eedcc5587e44133a7d0299fef2bd9da52fc0464e2ceeb0138edb`
+- Benchmark harness SHA-256: `27acd15e854e46899ff1c1f8e1b399ff240b0b9732e56a36cf8edb39c4a58db3`
 
 **Publication and validation environment**:
 
 - Publication CPU: `Apple M4 Max (arm64)`
 - Publication OS: `Darwin 25.6.0 arm64`
-- Publication rustc: `rustc 1.98.0 (88d9e12ae 2026-08-18)`
-- Publication commit: `99d33927e389018c599c009603a7eafffcc25089`
+- Publication rustc: `rustc 1.98.1 (48a229cea 2026-09-01)`
+- Publication commit: `d36a9e99ec223c4cbbf8a9191818f186159c27f7`
 - Publication Git clean: `false`
-- Publication source-state SHA-256: `7d72086128b12e2a89d5ca78f0e8cc0cb393a44f1062d027a069722ff9dae007`
-- Publication Cargo.lock SHA-256: `72b99b4f7f3917d668bb71448198d5d496334684097eac282c859d08d8cf4492`
-- Publication harness SHA-256: `164d6bbac2e6cb19b85c81677e4ab4428c3abb130dcfd38a2f5f162a5dd8a905`
+- Publication source-state SHA-256: `b8fcf706fa6e287ca6682a1ecef5a69576413b9c88040184a9b1ecb8f6e92336`
+- Publication Cargo.lock SHA-256: `37c6f3339dc4eedcc5587e44133a7d0299fef2bd9da52fc0464e2ceeb0138edb`
+- Publication harness SHA-256: `27acd15e854e46899ff1c1f8e1b399ff240b0b9732e56a36cf8edb39c4a58db3`
 - Criterion suite/scope: `all` / `release-signal`
 - Criterion statistic/sample: `median` / `new`
 - Criterion dependency version: `0.8.2`
-- Baseline command: `just bench-save-baseline v0.4.4`
+- Baseline command: `just bench-save-baseline v0.4.5`
 - Current command: `just bench-latest`
 - Correctness gate: `just test-bench-inputs` passed against both the current and baseline revisions using the shared current fixture harness.
-- Validated current revision: `99d33927e389018c599c009603a7eafffcc25089` (Git clean: `false`;
+- Validated current revision: `d36a9e99ec223c4cbbf8a9191818f186159c27f7` (Git clean: `false`;
+  source-state SHA-256: `b8fcf706fa6e287ca6682a1ecef5a69576413b9c88040184a9b1ecb8f6e92336`)
+- Validated baseline revision: `78ba1c25beaed7321e175113e0876aac6d763a59` (Git clean: `false`;
   source-state SHA-256: `7d72086128b12e2a89d5ca78f0e8cc0cb393a44f1062d027a069722ff9dae007`)
-- Validated baseline revision: `03a6dc751b7bf7c69b833aeb4e20e2acb6da2e4c` (Git clean: `false`;
-  source-state SHA-256: `227a2780c989352be2eacf3f32ca67032cc69fc843e596acc386a7c4f7d459f0`)
+- Baseline API compatibility: `la_stack_pre_rational_input_api` selects only source-compatible benchmark calls;
+  one-sided rows outside the baseline's correctness domain are identified by the retained CSV coverage status and note.
 
 ## Exact arithmetic
 
-| Case | Benchmark | v0.4.4 (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | Point-estimate ratio |
+| Case | Benchmark | v0.4.5 (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | Point-estimate ratio |
 |:-----|:----------|-------:|-------:|-------:|:-----------|--------:|
-| D=2 | det | 0.4 ns [0.4 ns, 0.4 ns] | 0.4 ns [0.4 ns, 0.4 ns] | -1.4% | faster point estimate; marginal CIs separated | 1.01x |
-| D=2 | det_direct | 0.4 ns [0.4 ns, 0.4 ns] | 0.4 ns [0.4 ns, 0.4 ns] | -1.5% | marginal CIs overlap | 1.02x |
-| D=2 | det_direct_with_errbound | 1.7 ns [1.7 ns, 1.7 ns] | 1.7 ns [1.7 ns, 1.7 ns] | -0.7% | faster point estimate; marginal CIs separated | 1.01x |
-| D=2 | det_errbound | 1.6 ns [1.6 ns, 1.6 ns] | 1.6 ns [1.6 ns, 1.6 ns] | -0.9% | faster point estimate; marginal CIs separated | 1.01x |
-| D=2 | det_exact | 91.7 ns [91.6 ns, 91.9 ns] | 91.3 ns [91.2 ns, 91.5 ns] | -0.4% | faster point estimate; marginal CIs separated | 1.00x |
-| D=2 | det_exact_f64_result | 65.6 ns [65.3 ns, 65.8 ns] | 64.7 ns [64.6 ns, 64.7 ns] | -1.3% | faster point estimate; marginal CIs separated | 1.01x |
-| D=2 | det_exact_rounded_f64 | 66.7 ns [66.6 ns, 66.8 ns] | 66.6 ns [66.5 ns, 66.7 ns] | -0.1% | marginal CIs overlap | 1.00x |
-| D=2 | det_sign_exact | 2.8 ns [2.7 ns, 2.8 ns] | 2.7 ns [2.7 ns, 2.7 ns] | -1.1% | faster point estimate; marginal CIs separated | 1.01x |
-| D=2 | solve_exact | 6.90 µs [6.88 µs, 6.91 µs] | 6.78 µs [6.77 µs, 6.79 µs] | -1.8% | faster point estimate; marginal CIs separated | 1.02x |
-| D=2 | solve_exact_f64_result | 8.14 µs [8.13 µs, 8.16 µs] | 7.91 µs [7.89 µs, 7.92 µs] | -2.9% | faster point estimate; marginal CIs separated | 1.03x |
-| D=2 | solve_exact_rounded_f64 | 7.25 µs [7.23 µs, 7.27 µs] | 7.10 µs [7.10 µs, 7.11 µs] | -2.1% | faster point estimate; marginal CIs separated | 1.02x |
-| D=3 | det | 0.8 ns [0.8 ns, 0.8 ns] | 0.8 ns [0.8 ns, 0.8 ns] | -1.1% | faster point estimate; marginal CIs separated | 1.01x |
-| D=3 | det_direct | 0.8 ns [0.8 ns, 0.8 ns] | 0.8 ns [0.8 ns, 0.8 ns] | -0.9% | faster point estimate; marginal CIs separated | 1.01x |
-| D=3 | det_direct_with_errbound | 3.3 ns [3.3 ns, 3.4 ns] | 3.3 ns [3.3 ns, 3.3 ns] | -0.0% | marginal CIs overlap | 1.00x |
-| D=3 | det_errbound | 3.3 ns [3.3 ns, 3.3 ns] | 3.3 ns [3.3 ns, 3.3 ns] | -0.6% | faster point estimate; marginal CIs separated | 1.01x |
-| D=3 | det_exact | 341.9 ns [340.5 ns, 343.5 ns] | 323.7 ns [323.2 ns, 324.3 ns] | -5.3% | faster point estimate; marginal CIs separated | 1.06x |
-| D=3 | det_exact_f64_result | 300.9 ns [300.5 ns, 301.6 ns] | 293.7 ns [293.2 ns, 293.9 ns] | -2.4% | faster point estimate; marginal CIs separated | 1.02x |
-| D=3 | det_exact_rounded_f64 | 300.5 ns [300.1 ns, 301.0 ns] | 293.7 ns [293.5 ns, 294.0 ns] | -2.2% | faster point estimate; marginal CIs separated | 1.02x |
-| D=3 | det_sign_exact | 4.7 ns [4.7 ns, 4.7 ns] | 4.7 ns [4.7 ns, 4.7 ns] | -0.6% | faster point estimate; marginal CIs separated | 1.01x |
-| D=3 | solve_exact | 30.23 µs [30.12 µs, 30.31 µs] | 29.93 µs [29.89 µs, 29.97 µs] | -1.0% | faster point estimate; marginal CIs separated | 1.01x |
-| D=3 | solve_exact_f64_result | 32.20 µs [32.13 µs, 32.26 µs] | 31.88 µs [31.83 µs, 31.95 µs] | -1.0% | faster point estimate; marginal CIs separated | 1.01x |
-| D=3 | solve_exact_rounded_f64 | 31.46 µs [31.19 µs, 31.53 µs] | 30.49 µs [30.44 µs, 30.52 µs] | -3.1% | faster point estimate; marginal CIs separated | 1.03x |
-| D=4 | det | 3.3 ns [3.3 ns, 3.3 ns] | 3.2 ns [3.2 ns, 3.2 ns] | -2.1% | faster point estimate; marginal CIs separated | 1.02x |
-| D=4 | det_direct | 2.4 ns [2.4 ns, 2.4 ns] | 2.4 ns [2.4 ns, 2.4 ns] | -1.4% | faster point estimate; marginal CIs separated | 1.01x |
-| D=4 | det_direct_with_errbound | 6.9 ns [6.9 ns, 6.9 ns] | 6.8 ns [6.8 ns, 6.8 ns] | -1.4% | faster point estimate; marginal CIs separated | 1.01x |
-| D=4 | det_errbound | 6.8 ns [6.8 ns, 6.8 ns] | 6.7 ns [6.7 ns, 6.7 ns] | -1.3% | faster point estimate; marginal CIs separated | 1.01x |
-| D=4 | det_exact | 1.02 µs [1.02 µs, 1.03 µs] | 1.01 µs [1.01 µs, 1.01 µs] | -1.1% | faster point estimate; marginal CIs separated | 1.01x |
-| D=4 | det_exact_f64_result | 993.0 ns [990.5 ns, 996.0 ns] | 976.7 ns [974.5 ns, 978.7 ns] | -1.6% | faster point estimate; marginal CIs separated | 1.02x |
-| D=4 | det_exact_rounded_f64 | 991.3 ns [989.1 ns, 993.3 ns] | 973.8 ns [973.0 ns, 976.3 ns] | -1.8% | faster point estimate; marginal CIs separated | 1.02x |
-| D=4 | det_sign_exact | 7.8 ns [7.8 ns, 7.8 ns] | 7.7 ns [7.7 ns, 7.7 ns] | -1.2% | faster point estimate; marginal CIs separated | 1.01x |
-| D=4 | solve_exact | 78.81 µs [78.73 µs, 78.97 µs] | 77.91 µs [77.80 µs, 77.99 µs] | -1.1% | faster point estimate; marginal CIs separated | 1.01x |
-| D=4 | solve_exact_f64_result | 81.82 µs [81.72 µs, 81.92 µs] | 80.71 µs [80.62 µs, 80.79 µs] | -1.4% | faster point estimate; marginal CIs separated | 1.01x |
-| D=4 | solve_exact_rounded_f64 | 79.66 µs [79.57 µs, 79.83 µs] | 78.66 µs [78.57 µs, 78.76 µs] | -1.3% | faster point estimate; marginal CIs separated | 1.01x |
-| D=5 | det | 25.1 ns [25.1 ns, 25.2 ns] | 25.0 ns [24.9 ns, 25.1 ns] | -0.6% | marginal CIs overlap | 1.01x |
-| D=5 | det_exact | 3.08 µs [3.06 µs, 3.12 µs] | 2.94 µs [2.94 µs, 2.95 µs] | -4.4% | faster point estimate; marginal CIs separated | 1.05x |
-| D=5 | det_exact_f64_result | 3.02 µs [3.01 µs, 3.03 µs] | 2.91 µs [2.90 µs, 2.91 µs] | -3.7% | faster point estimate; marginal CIs separated | 1.04x |
-| D=5 | det_exact_rounded_f64 | 2.98 µs [2.98 µs, 2.99 µs] | 2.96 µs [2.95 µs, 2.97 µs] | -0.6% | faster point estimate; marginal CIs separated | 1.01x |
-| D=5 | det_sign_exact | 3.15 µs [3.14 µs, 3.17 µs] | 3.05 µs [3.04 µs, 3.05 µs] | -3.4% | faster point estimate; marginal CIs separated | 1.04x |
-| D=5 | solve_exact | 156.87 µs [156.58 µs, 157.10 µs] | 155.34 µs [155.10 µs, 155.58 µs] | -1.0% | faster point estimate; marginal CIs separated | 1.01x |
-| D=5 | solve_exact_f64_result | 159.75 µs [159.55 µs, 160.17 µs] | 158.29 µs [158.09 µs, 158.43 µs] | -0.9% | faster point estimate; marginal CIs separated | 1.01x |
-| D=5 | solve_exact_rounded_f64 | 159.08 µs [158.45 µs, 160.00 µs] | 156.37 µs [156.22 µs, 156.57 µs] | -1.7% | faster point estimate; marginal CIs separated | 1.02x |
-| Hilbert 4x4 | det_exact | 1.13 µs [1.12 µs, 1.13 µs] | 1.10 µs [1.09 µs, 1.10 µs] | -2.8% | faster point estimate; marginal CIs separated | 1.03x |
-| Hilbert 4x4 | det_sign_exact | 8.0 ns [7.9 ns, 8.0 ns] | 7.7 ns [7.7 ns, 7.7 ns] | -3.2% | faster point estimate; marginal CIs separated | 1.03x |
-| Hilbert 4x4 | solve_exact | 59.49 µs [59.37 µs, 59.59 µs] | 58.24 µs [58.12 µs, 58.35 µs] | -2.1% | faster point estimate; marginal CIs separated | 1.02x |
-| Hilbert 4x4 | solve_exact_f64_result | 61.76 µs [61.70 µs, 61.84 µs] | 60.89 µs [60.80 µs, 60.95 µs] | -1.4% | faster point estimate; marginal CIs separated | 1.01x |
-| Hilbert 4x4 | solve_exact_rounded_f64 | 60.17 µs [60.12 µs, 60.28 µs] | 58.88 µs [58.75 µs, 59.03 µs] | -2.1% | faster point estimate; marginal CIs separated | 1.02x |
-| Hilbert 5x5 | det_exact | 3.13 µs [3.12 µs, 3.13 µs] | 3.05 µs [3.03 µs, 3.05 µs] | -2.6% | faster point estimate; marginal CIs separated | 1.03x |
-| Hilbert 5x5 | det_sign_exact | 3.33 µs [3.32 µs, 3.34 µs] | 3.27 µs [3.26 µs, 3.28 µs] | -1.9% | faster point estimate; marginal CIs separated | 1.02x |
-| Hilbert 5x5 | solve_exact | 122.74 µs [122.59 µs, 122.86 µs] | 120.11 µs [119.87 µs, 120.28 µs] | -2.1% | faster point estimate; marginal CIs separated | 1.02x |
-| Hilbert 5x5 | solve_exact_f64_result | 125.85 µs [125.61 µs, 126.01 µs] | 123.42 µs [123.24 µs, 123.55 µs] | -1.9% | faster point estimate; marginal CIs separated | 1.02x |
-| Hilbert 5x5 | solve_exact_rounded_f64 | 124.06 µs [123.87 µs, 124.28 µs] | 122.12 µs [121.79 µs, 122.49 µs] | -1.6% | faster point estimate; marginal CIs separated | 1.02x |
-| Large entries 3x3 | det_exact | 309.9 ns [308.3 ns, 310.7 ns] | 290.4 ns [290.0 ns, 291.4 ns] | -6.3% | faster point estimate; marginal CIs separated | 1.07x |
-| Large entries 3x3 | det_sign_exact | 291.0 ns [289.7 ns, 292.2 ns] | 282.1 ns [281.0 ns, 283.3 ns] | -3.0% | faster point estimate; marginal CIs separated | 1.03x |
-| Large entries 3x3 | solve_exact | 95.06 µs [94.85 µs, 95.29 µs] | 92.60 µs [92.46 µs, 92.76 µs] | -2.6% | faster point estimate; marginal CIs separated | 1.03x |
-| Large entries 3x3 | solve_exact_f64_result | 96.49 µs [96.09 µs, 97.15 µs] | 93.61 µs [93.42 µs, 93.81 µs] | -3.0% | faster point estimate; marginal CIs separated | 1.03x |
-| Large entries 3x3 | solve_exact_rounded_f64 | 95.16 µs [94.97 µs, 95.34 µs] | 93.36 µs [93.20 µs, 93.55 µs] | -1.9% | faster point estimate; marginal CIs separated | 1.02x |
-| Near-singular 3x3 | det_exact | 322.6 ns [321.3 ns, 325.5 ns] | 303.0 ns [302.2 ns, 303.5 ns] | -6.1% | faster point estimate; marginal CIs separated | 1.06x |
-| Near-singular 3x3 | det_sign_exact | 372.6 ns [370.5 ns, 374.2 ns] | 345.8 ns [344.2 ns, 347.4 ns] | -7.2% | faster point estimate; marginal CIs separated | 1.08x |
-| Near-singular 3x3 | solve_exact | 2.42 µs [2.41 µs, 2.43 µs] | 2.34 µs [2.34 µs, 2.35 µs] | -3.0% | faster point estimate; marginal CIs separated | 1.03x |
-| Near-singular 3x3 | solve_exact_f64_result | 2.51 µs [2.49 µs, 2.52 µs] | 2.46 µs [2.45 µs, 2.47 µs] | -1.9% | faster point estimate; marginal CIs separated | 1.02x |
-| Near-singular 3x3 | solve_exact_rounded_f64 | 2.42 µs [2.42 µs, 2.43 µs] | 2.35 µs [2.35 µs, 2.36 µs] | -2.9% | faster point estimate; marginal CIs separated | 1.03x |
-| Random corpus D=2 | det_exact | 3.20 µs [3.19 µs, 3.20 µs] | 3.13 µs [3.13 µs, 3.13 µs] | -2.0% | faster point estimate; marginal CIs separated | 1.02x |
-| Random corpus D=2 | det_sign_exact | 141.6 ns [140.8 ns, 143.3 ns] | 136.5 ns [135.7 ns, 137.2 ns] | -3.6% | faster point estimate; marginal CIs separated | 1.04x |
-| Random corpus D=2 | solve_exact | 69.25 µs [69.09 µs, 69.50 µs] | 68.00 µs [67.75 µs, 68.99 µs] | -1.8% | faster point estimate; marginal CIs separated | 1.02x |
-| Random corpus D=2 | solve_exact_f64_result | 80.02 µs [79.86 µs, 80.24 µs] | 78.04 µs [77.88 µs, 78.24 µs] | -2.5% | faster point estimate; marginal CIs separated | 1.03x |
-| Random corpus D=2 | solve_exact_rounded_f64 | 70.51 µs [70.05 µs, 70.90 µs] | 67.94 µs [67.89 µs, 68.00 µs] | -3.6% | faster point estimate; marginal CIs separated | 1.04x |
-| Random corpus D=3 | det_exact | 9.03 µs [8.95 µs, 9.10 µs] | 8.81 µs [8.24 µs, 8.89 µs] | -2.5% | faster point estimate; marginal CIs separated | 1.03x |
-| Random corpus D=3 | det_sign_exact | 228.6 ns [228.3 ns, 228.8 ns] | 225.0 ns [224.8 ns, 225.1 ns] | -1.6% | faster point estimate; marginal CIs separated | 1.02x |
-| Random corpus D=3 | solve_exact | 219.99 µs [219.73 µs, 220.21 µs] | 216.21 µs [215.83 µs, 216.36 µs] | -1.7% | faster point estimate; marginal CIs separated | 1.02x |
-| Random corpus D=3 | solve_exact_f64_result | 235.73 µs [234.74 µs, 236.39 µs] | 230.14 µs [229.96 µs, 230.31 µs] | -2.4% | faster point estimate; marginal CIs separated | 1.02x |
-| Random corpus D=3 | solve_exact_rounded_f64 | 222.81 µs [222.46 µs, 223.31 µs] | 217.76 µs [217.35 µs, 218.01 µs] | -2.3% | faster point estimate; marginal CIs separated | 1.02x |
-| Random corpus D=4 | det_exact | 25.74 µs [25.66 µs, 25.87 µs] | 24.87 µs [24.84 µs, 24.98 µs] | -3.4% | faster point estimate; marginal CIs separated | 1.03x |
-| Random corpus D=4 | det_sign_exact | 434.0 ns [432.4 ns, 435.8 ns] | 424.5 ns [423.9 ns, 425.6 ns] | -2.2% | faster point estimate; marginal CIs separated | 1.02x |
-| Random corpus D=4 | solve_exact | 511.24 µs [509.70 µs, 513.54 µs] | 493.20 µs [492.65 µs, 493.60 µs] | -3.5% | faster point estimate; marginal CIs separated | 1.04x |
-| Random corpus D=4 | solve_exact_f64_result | 531.44 µs [528.39 µs, 535.08 µs] | 513.06 µs [512.52 µs, 513.31 µs] | -3.5% | faster point estimate; marginal CIs separated | 1.04x |
-| Random corpus D=4 | solve_exact_rounded_f64 | 502.60 µs [502.00 µs, 503.33 µs] | 494.39 µs [493.41 µs, 495.23 µs] | -1.6% | faster point estimate; marginal CIs separated | 1.02x |
-| Random corpus D=5 | det_exact | 47.95 µs [47.47 µs, 48.29 µs] | 46.58 µs [46.42 µs, 46.65 µs] | -2.9% | faster point estimate; marginal CIs separated | 1.03x |
-| Random corpus D=5 | det_sign_exact | 48.52 µs [47.83 µs, 48.94 µs] | 51.72 µs [50.78 µs, 52.35 µs] | +6.6% | slower point estimate; marginal CIs separated | 0.94x |
-| Random corpus D=5 | solve_exact | 994.36 µs [993.76 µs, 995.50 µs] | 972.74 µs [971.25 µs, 974.13 µs] | -2.2% | faster point estimate; marginal CIs separated | 1.02x |
-| Random corpus D=5 | solve_exact_f64_result | 1.02 ms [1.02 ms, 1.02 ms] | 992.23 µs [990.24 µs, 993.69 µs] | -2.9% | faster point estimate; marginal CIs separated | 1.03x |
-| Random corpus D=5 | solve_exact_rounded_f64 | 1.03 ms [1.03 ms, 1.04 ms] | 972.11 µs [970.46 µs, 973.74 µs] | -6.0% | faster point estimate; marginal CIs separated | 1.06x |
+| D=2 | det | 0.4 ns [0.4 ns, 0.4 ns] | 0.4 ns [0.4 ns, 0.4 ns] | -0.2% | marginal CIs overlap | 1.00x |
+| D=2 | det_direct | 0.4 ns [0.4 ns, 0.4 ns] | 0.4 ns [0.4 ns, 0.4 ns] | -0.3% | marginal CIs overlap | 1.00x |
+| D=2 | det_direct_with_errbound | 1.7 ns [1.7 ns, 1.7 ns] | 1.7 ns [1.7 ns, 1.7 ns] | -0.0% | marginal CIs overlap | 1.00x |
+| D=2 | det_errbound | 1.7 ns [1.6 ns, 1.7 ns] | 1.6 ns [1.6 ns, 1.6 ns] | -2.5% | faster point estimate; marginal CIs separated | 1.03x |
+| D=2 | det_exact | 110.5 ns [110.4 ns, 110.7 ns] | 100.4 ns [100.3 ns, 100.5 ns] | -9.2% | faster point estimate; marginal CIs separated | 1.10x |
+| D=2 | det_exact_f64_result | 71.3 ns [71.2 ns, 71.5 ns] | 73.1 ns [72.9 ns, 73.2 ns] | +2.5% | slower point estimate; marginal CIs separated | 0.98x |
+| D=2 | det_exact_rounded_f64 | 72.7 ns [72.6 ns, 72.7 ns] | 73.3 ns [73.2 ns, 73.4 ns] | +0.8% | slower point estimate; marginal CIs separated | 0.99x |
+| D=2 | det_sign_exact | 2.7 ns [2.7 ns, 2.7 ns] | 3.0 ns [3.0 ns, 3.0 ns] | +9.1% | slower point estimate; marginal CIs separated | 0.92x |
+| D=2 | solve_exact | 7.06 µs [7.05 µs, 7.07 µs] | 7.10 µs [7.09 µs, 7.12 µs] | +0.7% | slower point estimate; marginal CIs separated | 0.99x |
+| D=2 | solve_exact_f64_result | 8.28 µs [8.26 µs, 8.28 µs] | 7.33 µs [7.32 µs, 7.34 µs] | -11.5% | faster point estimate; marginal CIs separated | 1.13x |
+| D=2 | solve_exact_rounded_f64 | 7.48 µs [7.47 µs, 7.49 µs] | 7.55 µs [7.54 µs, 7.56 µs] | +0.8% | slower point estimate; marginal CIs separated | 0.99x |
+| D=3 | det | 0.8 ns [0.8 ns, 0.8 ns] | 0.8 ns [0.8 ns, 0.8 ns] | +0.1% | marginal CIs overlap | 1.00x |
+| D=3 | det_direct | 0.8 ns [0.8 ns, 0.8 ns] | 0.8 ns [0.8 ns, 0.8 ns] | +2.9% | slower point estimate; marginal CIs separated | 0.97x |
+| D=3 | det_direct_with_errbound | 3.4 ns [3.3 ns, 3.4 ns] | 3.3 ns [3.3 ns, 3.3 ns] | -0.5% | faster point estimate; marginal CIs separated | 1.01x |
+| D=3 | det_errbound | 3.3 ns [3.3 ns, 3.3 ns] | 3.3 ns [3.3 ns, 3.3 ns] | +0.1% | slower point estimate; marginal CIs separated | 1.00x |
+| D=3 | det_exact | 370.6 ns [369.9 ns, 371.5 ns] | 338.9 ns [338.5 ns, 339.4 ns] | -8.6% | faster point estimate; marginal CIs separated | 1.09x |
+| D=3 | det_exact_f64_result | 338.5 ns [338.0 ns, 339.2 ns] | 313.9 ns [313.2 ns, 314.4 ns] | -7.3% | faster point estimate; marginal CIs separated | 1.08x |
+| D=3 | det_exact_rounded_f64 | 340.1 ns [338.8 ns, 341.2 ns] | 317.2 ns [316.0 ns, 318.2 ns] | -6.7% | faster point estimate; marginal CIs separated | 1.07x |
+| D=3 | det_sign_exact | 4.7 ns [4.7 ns, 4.7 ns] | 4.7 ns [4.7 ns, 4.7 ns] | -0.0% | marginal CIs overlap | 1.00x |
+| D=3 | solve_exact | 30.84 µs [30.78 µs, 30.89 µs] | 30.60 µs [30.51 µs, 30.67 µs] | -0.8% | faster point estimate; marginal CIs separated | 1.01x |
+| D=3 | solve_exact_f64_result | 32.80 µs [32.76 µs, 32.87 µs] | 30.92 µs [30.86 µs, 30.96 µs] | -5.7% | faster point estimate; marginal CIs separated | 1.06x |
+| D=3 | solve_exact_rounded_f64 | 31.46 µs [31.35 µs, 31.60 µs] | 31.60 µs [31.55 µs, 31.72 µs] | +0.5% | marginal CIs overlap | 1.00x |
+| D=4 | det | 3.2 ns [3.2 ns, 3.2 ns] | 3.2 ns [3.2 ns, 3.2 ns] | -0.1% | marginal CIs overlap | 1.00x |
+| D=4 | det_direct | 2.4 ns [2.4 ns, 2.4 ns] | 2.4 ns [2.4 ns, 2.4 ns] | -0.0% | marginal CIs overlap | 1.00x |
+| D=4 | det_direct_with_errbound | 6.8 ns [6.8 ns, 6.8 ns] | 6.8 ns [6.8 ns, 6.8 ns] | +0.2% | slower point estimate; marginal CIs separated | 1.00x |
+| D=4 | det_errbound | 6.7 ns [6.7 ns, 6.7 ns] | 6.7 ns [6.7 ns, 6.7 ns] | +0.1% | slower point estimate; marginal CIs separated | 1.00x |
+| D=4 | det_exact | 1.22 µs [1.21 µs, 1.22 µs] | 1.01 µs [1.01 µs, 1.01 µs] | -17.0% | faster point estimate; marginal CIs separated | 1.20x |
+| D=4 | det_exact_f64_result | 1.17 µs [1.16 µs, 1.17 µs] | 1.06 µs [1.05 µs, 1.06 µs] | -9.6% | faster point estimate; marginal CIs separated | 1.11x |
+| D=4 | det_exact_rounded_f64 | 1.17 µs [1.17 µs, 1.17 µs] | 1.01 µs [1.01 µs, 1.01 µs] | -13.8% | faster point estimate; marginal CIs separated | 1.16x |
+| D=4 | det_sign_exact | 7.7 ns [7.7 ns, 7.7 ns] | 8.0 ns [8.0 ns, 8.0 ns] | +3.6% | slower point estimate; marginal CIs separated | 0.97x |
+| D=4 | solve_exact | 80.39 µs [80.27 µs, 80.49 µs] | 79.18 µs [79.08 µs, 79.34 µs] | -1.5% | faster point estimate; marginal CIs separated | 1.02x |
+| D=4 | solve_exact_f64_result | 83.39 µs [83.24 µs, 83.63 µs] | 79.34 µs [79.13 µs, 79.50 µs] | -4.9% | faster point estimate; marginal CIs separated | 1.05x |
+| D=4 | solve_exact_rounded_f64 | 81.02 µs [80.74 µs, 81.52 µs] | 79.86 µs [79.66 µs, 80.05 µs] | -1.4% | faster point estimate; marginal CIs separated | 1.01x |
+| D=5 | det | 24.7 ns [24.7 ns, 24.8 ns] | 25.0 ns [25.0 ns, 25.1 ns] | +1.4% | slower point estimate; marginal CIs separated | 0.99x |
+| D=5 | det_exact | 3.54 µs [3.52 µs, 3.54 µs] | 3.74 µs [3.71 µs, 3.79 µs] | +5.7% | slower point estimate; marginal CIs separated | 0.95x |
+| D=5 | det_exact_f64_result | 3.49 µs [3.48 µs, 3.50 µs] | 3.54 µs [3.54 µs, 3.55 µs] | +1.7% | slower point estimate; marginal CIs separated | 0.98x |
+| D=5 | det_exact_rounded_f64 | 3.47 µs [3.46 µs, 3.48 µs] | 3.61 µs [3.60 µs, 3.61 µs] | +3.8% | slower point estimate; marginal CIs separated | 0.96x |
+| D=5 | det_sign_exact | 3.58 µs [3.57 µs, 3.59 µs] | 3.70 µs [3.70 µs, 3.71 µs] | +3.5% | slower point estimate; marginal CIs separated | 0.97x |
+| D=5 | solve_exact | 159.88 µs [159.63 µs, 160.24 µs] | 157.60 µs [157.28 µs, 157.89 µs] | -1.4% | faster point estimate; marginal CIs separated | 1.01x |
+| D=5 | solve_exact_f64_result | 163.37 µs [162.91 µs, 163.71 µs] | 157.72 µs [157.38 µs, 157.93 µs] | -3.5% | faster point estimate; marginal CIs separated | 1.04x |
+| D=5 | solve_exact_rounded_f64 | 161.50 µs [161.20 µs, 161.73 µs] | 164.26 µs [163.54 µs, 164.87 µs] | +1.7% | slower point estimate; marginal CIs separated | 0.98x |
+| Hilbert 4x4 | det_exact | 1.34 µs [1.33 µs, 1.35 µs] | 1.04 µs [1.04 µs, 1.05 µs] | -22.3% | faster point estimate; marginal CIs separated | 1.29x |
+| Hilbert 4x4 | det_sign_exact | 7.7 ns [7.7 ns, 7.7 ns] | 8.0 ns [8.0 ns, 8.0 ns] | +3.4% | slower point estimate; marginal CIs separated | 0.97x |
+| Hilbert 4x4 | solve_exact | 60.21 µs [60.13 µs, 60.29 µs] | 59.56 µs [59.47 µs, 59.63 µs] | -1.1% | faster point estimate; marginal CIs separated | 1.01x |
+| Hilbert 4x4 | solve_exact_f64_result | 62.75 µs [62.65 µs, 62.89 µs] | 59.74 µs [59.59 µs, 59.79 µs] | -4.8% | faster point estimate; marginal CIs separated | 1.05x |
+| Hilbert 4x4 | solve_exact_rounded_f64 | 61.09 µs [60.95 µs, 61.18 µs] | 60.47 µs [60.26 µs, 60.62 µs] | -1.0% | faster point estimate; marginal CIs separated | 1.01x |
+| Hilbert 5x5 | det_exact | 3.68 µs [3.66 µs, 3.69 µs] | 3.75 µs [3.74 µs, 3.76 µs] | +1.9% | slower point estimate; marginal CIs separated | 0.98x |
+| Hilbert 5x5 | det_sign_exact | 3.87 µs [3.87 µs, 3.88 µs] | 3.92 µs [3.92 µs, 3.93 µs] | +1.1% | slower point estimate; marginal CIs separated | 0.99x |
+| Hilbert 5x5 | solve_exact | 124.69 µs [124.44 µs, 124.97 µs] | 122.82 µs [122.53 µs, 122.95 µs] | -1.5% | faster point estimate; marginal CIs separated | 1.02x |
+| Hilbert 5x5 | solve_exact_f64_result | 127.73 µs [127.44 µs, 128.19 µs] | 122.06 µs [121.91 µs, 122.40 µs] | -4.4% | faster point estimate; marginal CIs separated | 1.05x |
+| Hilbert 5x5 | solve_exact_rounded_f64 | 126.57 µs [126.11 µs, 126.93 µs] | 124.52 µs [124.21 µs, 124.64 µs] | -1.6% | faster point estimate; marginal CIs separated | 1.02x |
+| Large entries 3x3 | det_exact | 338.5 ns [337.7 ns, 339.5 ns] | 341.6 ns [340.6 ns, 343.9 ns] | +0.9% | slower point estimate; marginal CIs separated | 0.99x |
+| Large entries 3x3 | det_sign_exact | 320.8 ns [319.6 ns, 323.0 ns] | 334.9 ns [334.1 ns, 337.0 ns] | +4.4% | slower point estimate; marginal CIs separated | 0.96x |
+| Large entries 3x3 | solve_exact | 93.99 µs [93.81 µs, 94.26 µs] | 93.14 µs [92.93 µs, 93.30 µs] | -0.9% | faster point estimate; marginal CIs separated | 1.01x |
+| Large entries 3x3 | solve_exact_f64_result | 94.71 µs [94.65 µs, 94.80 µs] | 93.37 µs [93.24 µs, 93.46 µs] | -1.4% | faster point estimate; marginal CIs separated | 1.01x |
+| Large entries 3x3 | solve_exact_rounded_f64 | 94.49 µs [94.43 µs, 94.61 µs] | 93.32 µs [93.20 µs, 93.38 µs] | -1.2% | faster point estimate; marginal CIs separated | 1.01x |
+| Near-singular 3x3 | det_exact | 342.0 ns [341.2 ns, 342.8 ns] | 334.5 ns [333.8 ns, 336.3 ns] | -2.2% | faster point estimate; marginal CIs separated | 1.02x |
+| Near-singular 3x3 | det_sign_exact | 398.3 ns [394.8 ns, 401.2 ns] | 360.9 ns [360.5 ns, 361.6 ns] | -9.4% | faster point estimate; marginal CIs separated | 1.10x |
+| Near-singular 3x3 | solve_exact | 2.60 µs [2.60 µs, 2.61 µs] | 2.81 µs [2.80 µs, 2.81 µs] | +7.9% | slower point estimate; marginal CIs separated | 0.93x |
+| Near-singular 3x3 | solve_exact_f64_result | 2.70 µs [2.70 µs, 2.71 µs] | 2.81 µs [2.80 µs, 2.81 µs] | +3.8% | slower point estimate; marginal CIs separated | 0.96x |
+| Near-singular 3x3 | solve_exact_rounded_f64 | 2.60 µs [2.60 µs, 2.61 µs] | 2.78 µs [2.77 µs, 2.80 µs] | +6.9% | slower point estimate; marginal CIs separated | 0.94x |
+| Random corpus D=2 | det_exact | 3.12 µs [3.12 µs, 3.12 µs] | 3.16 µs [3.14 µs, 3.18 µs] | +1.2% | slower point estimate; marginal CIs separated | 0.99x |
+| Random corpus D=2 | det_sign_exact | 136.4 ns [135.6 ns, 137.0 ns] | 149.9 ns [148.9 ns, 150.9 ns] | +9.9% | slower point estimate; marginal CIs separated | 0.91x |
+| Random corpus D=2 | solve_exact | 67.47 µs [67.33 µs, 67.59 µs] | 78.46 µs [78.37 µs, 78.65 µs] | +16.3% | slower point estimate; marginal CIs separated | 0.86x |
+| Random corpus D=2 | solve_exact_f64_result | 78.30 µs [77.84 µs, 78.74 µs] | 79.81 µs [79.67 µs, 79.96 µs] | +1.9% | slower point estimate; marginal CIs separated | 0.98x |
+| Random corpus D=2 | solve_exact_rounded_f64 | 68.56 µs [68.41 µs, 68.68 µs] | 82.23 µs [82.02 µs, 82.37 µs] | +19.9% | slower point estimate; marginal CIs separated | 0.83x |
+| Random corpus D=3 | det_exact | 8.35 µs [8.08 µs, 8.64 µs] | 8.47 µs [8.44 µs, 8.49 µs] | +1.5% | marginal CIs overlap | 0.99x |
+| Random corpus D=3 | det_sign_exact | 225.1 ns [225.0 ns, 225.2 ns] | 227.9 ns [227.4 ns, 228.3 ns] | +1.2% | slower point estimate; marginal CIs separated | 0.99x |
+| Random corpus D=3 | solve_exact | 214.24 µs [213.80 µs, 214.55 µs] | 239.62 µs [239.14 µs, 240.19 µs] | +11.9% | slower point estimate; marginal CIs separated | 0.89x |
+| Random corpus D=3 | solve_exact_f64_result | 229.92 µs [229.52 µs, 230.51 µs] | 240.54 µs [240.00 µs, 241.28 µs] | +4.6% | slower point estimate; marginal CIs separated | 0.96x |
+| Random corpus D=3 | solve_exact_rounded_f64 | 217.63 µs [217.29 µs, 217.94 µs] | 242.67 µs [242.06 µs, 243.32 µs] | +11.5% | slower point estimate; marginal CIs separated | 0.90x |
+| Random corpus D=4 | det_exact | 25.26 µs [25.21 µs, 25.30 µs] | 21.20 µs [21.16 µs, 21.27 µs] | -16.1% | faster point estimate; marginal CIs separated | 1.19x |
+| Random corpus D=4 | det_sign_exact | 424.5 ns [423.1 ns, 425.6 ns] | 454.6 ns [452.7 ns, 456.0 ns] | +7.1% | slower point estimate; marginal CIs separated | 0.93x |
+| Random corpus D=4 | solve_exact | 489.45 µs [488.84 µs, 490.29 µs] | 535.37 µs [533.84 µs, 537.11 µs] | +9.4% | slower point estimate; marginal CIs separated | 0.91x |
+| Random corpus D=4 | solve_exact_f64_result | 507.75 µs [507.05 µs, 508.51 µs] | 534.53 µs [533.89 µs, 535.33 µs] | +5.3% | slower point estimate; marginal CIs separated | 0.95x |
+| Random corpus D=4 | solve_exact_rounded_f64 | 491.51 µs [490.45 µs, 491.98 µs] | 535.39 µs [535.09 µs, 535.96 µs] | +8.9% | slower point estimate; marginal CIs separated | 0.92x |
+| Random corpus D=5 | det_exact | 47.41 µs [47.34 µs, 47.50 µs] | 55.99 µs [55.88 µs, 56.13 µs] | +18.1% | slower point estimate; marginal CIs separated | 0.85x |
+| Random corpus D=5 | det_sign_exact | 49.54 µs [48.76 µs, 50.88 µs] | 61.93 µs [61.88 µs, 62.04 µs] | +25.0% | slower point estimate; marginal CIs separated | 0.80x |
+| Random corpus D=5 | solve_exact | 965.82 µs [964.45 µs, 966.73 µs] | 1.04 ms [1.04 ms, 1.04 ms] | +8.1% | slower point estimate; marginal CIs separated | 0.92x |
+| Random corpus D=5 | solve_exact_f64_result | 987.58 µs [986.29 µs, 989.22 µs] | 1.04 ms [1.04 ms, 1.04 ms] | +5.5% | slower point estimate; marginal CIs separated | 0.95x |
+| Random corpus D=5 | solve_exact_rounded_f64 | 966.85 µs [965.47 µs, 968.31 µs] | 1.04 ms [1.04 ms, 1.05 ms] | +8.1% | slower point estimate; marginal CIs separated | 0.93x |
 
 ## vs_linalg
 
-| Case | Benchmark | v0.4.4 (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | Point-estimate ratio | v0.4.4 nalgebra | v0.4.4 faer |
+| Case | Benchmark | v0.4.5 (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | Point-estimate ratio | v0.4.5 nalgebra | v0.4.5 faer |
 |:-----|:----------|-------:|-------:|-------:|:-----------|--------:|-------:|-------:|
-| D=16 | la_stack_det | 432.1 ns [428.1 ns, 433.9 ns] | 436.8 ns [435.3 ns, 438.7 ns] | +1.1% | slower point estimate; marginal CIs separated | 0.99x | — | — |
-| D=16 | la_stack_det_from_ldlt | 3.5 ns [3.4 ns, 3.6 ns] | 2.9 ns [2.9 ns, 2.9 ns] | -17.7% | faster point estimate; marginal CIs separated | 1.21x | 1.7 ns [1.7 ns, 1.7 ns] | 4.5 ns [4.5 ns, 4.6 ns] |
-| D=16 | la_stack_det_from_lu | 4.2 ns [4.1 ns, 4.3 ns] | 3.3 ns [3.3 ns, 3.3 ns] | -22.4% | faster point estimate; marginal CIs separated | 1.29x | 1.8 ns [1.8 ns, 1.8 ns] | 5.0 ns [4.9 ns, 5.0 ns] |
-| D=16 | la_stack_det_via_lu | 423.2 ns [418.2 ns, 427.0 ns] | 422.8 ns [420.8 ns, 424.7 ns] | -0.1% | marginal CIs overlap | 1.00x | 458.2 ns [457.0 ns, 458.6 ns] | 679.3 ns [672.2 ns, 683.9 ns] |
-| D=16 | la_stack_dot | 2.4 ns [2.4 ns, 2.4 ns] | 2.3 ns [2.3 ns, 2.3 ns] | -1.0% | faster point estimate; marginal CIs separated | 1.01x | 1.9 ns [1.9 ns, 1.9 ns] | 4.6 ns [4.6 ns, 4.6 ns] |
-| D=16 | la_stack_inf_norm | 33.5 ns [33.3 ns, 33.6 ns] | 32.7 ns [32.7 ns, 32.7 ns] | -2.4% | faster point estimate; marginal CIs separated | 1.02x | 33.4 ns [33.2 ns, 33.6 ns] | 33.4 ns [33.3 ns, 33.5 ns] |
-| D=16 | la_stack_ldlt | 394.2 ns [392.7 ns, 395.9 ns] | 390.6 ns [389.5 ns, 391.2 ns] | -0.9% | faster point estimate; marginal CIs separated | 1.01x | 408.4 ns [407.3 ns, 410.1 ns] | 446.8 ns [443.5 ns, 448.3 ns] |
-| D=16 | la_stack_ldlt_solve | 433.6 ns [432.5 ns, 434.6 ns] | 436.1 ns [435.2 ns, 437.4 ns] | +0.6% | slower point estimate; marginal CIs separated | 0.99x | 638.5 ns [637.9 ns, 640.1 ns] | 624.6 ns [623.7 ns, 626.6 ns] |
-| D=16 | la_stack_lu | 398.6 ns [397.3 ns, 400.9 ns] | 403.5 ns [401.3 ns, 405.9 ns] | +1.2% | slower point estimate; marginal CIs separated | 0.99x | 465.6 ns [464.7 ns, 466.9 ns] | 658.8 ns [654.2 ns, 665.1 ns] |
-| D=16 | la_stack_lu_solve | 667.8 ns [665.2 ns, 672.5 ns] | 672.5 ns [670.9 ns, 674.0 ns] | +0.7% | marginal CIs overlap | 0.99x | 585.3 ns [584.6 ns, 586.3 ns] | 897.2 ns [895.5 ns, 900.9 ns] |
-| D=16 | la_stack_norm2_sq | 2.1 ns [2.1 ns, 2.1 ns] | 2.1 ns [2.1 ns, 2.1 ns] | -3.5% | faster point estimate; marginal CIs separated | 1.04x | 1.5 ns [1.5 ns, 1.5 ns] | 4.2 ns [4.2 ns, 4.2 ns] |
-| D=16 | la_stack_solve_from_ldlt | 28.0 ns [28.0 ns, 28.1 ns] | 27.7 ns [27.7 ns, 27.8 ns] | -1.0% | faster point estimate; marginal CIs separated | 1.01x | 126.5 ns [126.1 ns, 127.1 ns] | 179.6 ns [178.8 ns, 180.2 ns] |
-| D=16 | la_stack_solve_from_lu | 204.7 ns [204.0 ns, 205.2 ns] | 203.1 ns [202.5 ns, 204.0 ns] | -0.8% | faster point estimate; marginal CIs separated | 1.01x | 95.3 ns [95.2 ns, 95.5 ns] | 245.0 ns [244.1 ns, 247.1 ns] |
-| D=2 | la_stack_det | 0.6 ns [0.6 ns, 0.6 ns] | 0.6 ns [0.6 ns, 0.6 ns] | +2.3% | slower point estimate; marginal CIs separated | 0.98x | — | — |
-| D=2 | la_stack_det_from_ldlt | 0.5 ns [0.5 ns, 0.5 ns] | 0.5 ns [0.5 ns, 0.5 ns] | -0.4% | faster point estimate; marginal CIs separated | 1.00x | 0.4 ns [0.4 ns, 0.4 ns] | 0.6 ns [0.6 ns, 0.6 ns] |
-| D=2 | la_stack_det_from_lu | 0.5 ns [0.5 ns, 0.5 ns] | 0.5 ns [0.5 ns, 0.5 ns] | -0.1% | marginal CIs overlap | 1.00x | 0.5 ns [0.5 ns, 0.5 ns] | 0.8 ns [0.8 ns, 0.8 ns] |
-| D=2 | la_stack_det_via_lu | 1.8 ns [1.8 ns, 1.8 ns] | 1.8 ns [1.8 ns, 1.8 ns] | +0.6% | slower point estimate; marginal CIs separated | 0.99x | 0.8 ns [0.8 ns, 0.8 ns] | 98.3 ns [97.9 ns, 99.0 ns] |
-| D=2 | la_stack_dot | 0.6 ns [0.6 ns, 0.6 ns] | 0.6 ns [0.6 ns, 0.6 ns] | +5.3% | slower point estimate; marginal CIs separated | 0.95x | 0.6 ns [0.6 ns, 0.6 ns] | 0.7 ns [0.7 ns, 0.7 ns] |
-| D=2 | la_stack_inf_norm | 0.7 ns [0.7 ns, 0.7 ns] | 0.6 ns [0.6 ns, 0.6 ns] | -8.9% | faster point estimate; marginal CIs separated | 1.10x | 0.5 ns [0.5 ns, 0.5 ns] | 0.7 ns [0.7 ns, 0.7 ns] |
-| D=2 | la_stack_ldlt | 6.8 ns [6.8 ns, 6.9 ns] | 7.1 ns [7.1 ns, 7.1 ns] | +3.7% | slower point estimate; marginal CIs separated | 0.96x | 1.7 ns [1.7 ns, 1.7 ns] | 81.6 ns [81.4 ns, 81.8 ns] |
-| D=2 | la_stack_ldlt_solve | 9.9 ns [9.9 ns, 9.9 ns] | 10.1 ns [10.0 ns, 10.1 ns] | +2.1% | slower point estimate; marginal CIs separated | 0.98x | 2.7 ns [2.7 ns, 2.7 ns] | 124.6 ns [124.2 ns, 125.1 ns] |
-| D=2 | la_stack_lu | 1.6 ns [1.6 ns, 1.6 ns] | 1.6 ns [1.6 ns, 1.6 ns] | +2.4% | slower point estimate; marginal CIs separated | 0.98x | 1.6 ns [1.6 ns, 1.6 ns] | 95.9 ns [95.2 ns, 96.3 ns] |
-| D=2 | la_stack_lu_solve | 2.1 ns [2.0 ns, 2.1 ns] | 2.0 ns [2.0 ns, 2.0 ns] | -0.6% | marginal CIs overlap | 1.01x | 4.6 ns [4.6 ns, 4.6 ns] | 151.9 ns [151.7 ns, 152.5 ns] |
-| D=2 | la_stack_norm2_sq | 0.4 ns [0.4 ns, 0.4 ns] | 0.4 ns [0.4 ns, 0.4 ns] | +1.0% | slower point estimate; marginal CIs separated | 0.99x | 0.4 ns [0.4 ns, 0.4 ns] | 4.2 ns [4.2 ns, 4.2 ns] |
-| D=2 | la_stack_solve_from_ldlt | 1.2 ns [1.2 ns, 1.2 ns] | 1.3 ns [1.3 ns, 1.3 ns] | +1.3% | slower point estimate; marginal CIs separated | 0.99x | 1.3 ns [1.3 ns, 1.3 ns] | 37.6 ns [37.4 ns, 37.9 ns] |
-| D=2 | la_stack_solve_from_lu | 1.3 ns [1.3 ns, 1.3 ns] | 1.3 ns [1.3 ns, 1.3 ns] | +2.6% | slower point estimate; marginal CIs separated | 0.98x | 2.9 ns [2.9 ns, 2.9 ns] | 48.8 ns [48.6 ns, 49.1 ns] |
-| D=3 | la_stack_det | 1.4 ns [1.3 ns, 1.4 ns] | 1.3 ns [1.3 ns, 1.3 ns] | -0.8% | faster point estimate; marginal CIs separated | 1.01x | — | — |
-| D=3 | la_stack_det_from_ldlt | 0.7 ns [0.7 ns, 0.7 ns] | 0.6 ns [0.6 ns, 0.6 ns] | -19.6% | faster point estimate; marginal CIs separated | 1.24x | 0.5 ns [0.5 ns, 0.5 ns] | 0.8 ns [0.8 ns, 0.8 ns] |
-| D=3 | la_stack_det_from_lu | 0.7 ns [0.7 ns, 0.7 ns] | 0.7 ns [0.7 ns, 0.7 ns] | -6.0% | faster point estimate; marginal CIs separated | 1.06x | 0.5 ns [0.5 ns, 0.5 ns] | 1.0 ns [1.0 ns, 1.0 ns] |
-| D=3 | la_stack_det_via_lu | 8.8 ns [8.7 ns, 8.8 ns] | 8.8 ns [8.8 ns, 8.9 ns] | +0.7% | slower point estimate; marginal CIs separated | 0.99x | 16.9 ns [16.8 ns, 17.0 ns] | 141.6 ns [140.9 ns, 142.3 ns] |
-| D=3 | la_stack_dot | 0.7 ns [0.7 ns, 0.7 ns] | 0.7 ns [0.7 ns, 0.7 ns] | +0.1% | marginal CIs overlap | 1.00x | 0.7 ns [0.7 ns, 0.7 ns] | 0.9 ns [0.9 ns, 0.9 ns] |
-| D=3 | la_stack_inf_norm | 1.3 ns [1.3 ns, 1.3 ns] | 1.3 ns [1.3 ns, 1.3 ns] | -0.4% | faster point estimate; marginal CIs separated | 1.00x | 1.1 ns [1.1 ns, 1.1 ns] | 1.3 ns [1.3 ns, 1.3 ns] |
-| D=3 | la_stack_ldlt | 14.8 ns [14.5 ns, 15.1 ns] | 14.1 ns [14.1 ns, 14.2 ns] | -4.5% | faster point estimate; marginal CIs separated | 1.05x | 4.0 ns [4.0 ns, 4.0 ns] | 97.8 ns [97.6 ns, 98.2 ns] |
-| D=3 | la_stack_ldlt_solve | 11.6 ns [11.6 ns, 11.7 ns] | 11.7 ns [11.7 ns, 11.8 ns] | +0.9% | slower point estimate; marginal CIs separated | 0.99x | 6.0 ns [6.0 ns, 6.0 ns] | 142.4 ns [141.9 ns, 143.0 ns] |
-| D=3 | la_stack_lu | 8.5 ns [8.4 ns, 8.5 ns] | 8.4 ns [8.4 ns, 8.4 ns] | -1.2% | faster point estimate; marginal CIs separated | 1.01x | 15.4 ns [15.3 ns, 15.5 ns] | 138.0 ns [137.4 ns, 138.6 ns] |
-| D=3 | la_stack_lu_solve | 9.9 ns [9.9 ns, 10.0 ns] | 10.0 ns [10.0 ns, 10.0 ns] | +0.5% | marginal CIs overlap | 1.00x | 23.5 ns [23.4 ns, 23.6 ns] | 196.4 ns [194.9 ns, 198.8 ns] |
-| D=3 | la_stack_norm2_sq | 0.5 ns [0.5 ns, 0.5 ns] | 0.4 ns [0.4 ns, 0.4 ns] | -1.5% | faster point estimate; marginal CIs separated | 1.01x | 0.4 ns [0.4 ns, 0.4 ns] | 4.2 ns [4.1 ns, 4.2 ns] |
-| D=3 | la_stack_solve_from_ldlt | 1.8 ns [1.8 ns, 1.8 ns] | 1.8 ns [1.8 ns, 1.8 ns] | +0.8% | slower point estimate; marginal CIs separated | 0.99x | 2.9 ns [2.9 ns, 2.9 ns] | 40.6 ns [40.1 ns, 41.0 ns] |
-| D=3 | la_stack_solve_from_lu | 2.1 ns [2.1 ns, 2.1 ns] | 2.1 ns [2.1 ns, 2.1 ns] | +0.5% | marginal CIs overlap | 1.00x | 4.6 ns [4.6 ns, 4.6 ns] | 48.6 ns [48.5 ns, 48.7 ns] |
-| D=32 | la_stack_det | 2.22 µs [2.21 µs, 2.23 µs] | 2.17 µs [2.17 µs, 2.18 µs] | -2.3% | faster point estimate; marginal CIs separated | 1.02x | — | — |
-| D=32 | la_stack_det_from_ldlt | 14.1 ns [14.1 ns, 14.1 ns] | 7.9 ns [7.9 ns, 7.9 ns] | -44.0% | faster point estimate; marginal CIs separated | 1.79x | 3.0 ns [3.0 ns, 3.0 ns] | 8.7 ns [8.7 ns, 8.8 ns] |
-| D=32 | la_stack_det_from_lu | 14.1 ns [14.0 ns, 14.1 ns] | 9.1 ns [9.1 ns, 9.1 ns] | -35.2% | faster point estimate; marginal CIs separated | 1.54x | 3.1 ns [3.1 ns, 3.1 ns] | 9.0 ns [8.9 ns, 9.0 ns] |
-| D=32 | la_stack_det_via_lu | 2.23 µs [2.21 µs, 2.23 µs] | 2.04 µs [2.03 µs, 2.04 µs] | -8.4% | faster point estimate; marginal CIs separated | 1.09x | 2.53 µs [2.52 µs, 2.54 µs] | 2.37 µs [2.36 µs, 2.38 µs] |
-| D=32 | la_stack_dot | 4.1 ns [4.1 ns, 4.1 ns] | 4.0 ns [4.0 ns, 4.0 ns] | -1.2% | faster point estimate; marginal CIs separated | 1.01x | 4.8 ns [4.8 ns, 4.8 ns] | 15.2 ns [15.2 ns, 15.2 ns] |
-| D=32 | la_stack_inf_norm | 131.6 ns [131.4 ns, 131.8 ns] | 130.4 ns [130.0 ns, 130.7 ns] | -0.9% | faster point estimate; marginal CIs separated | 1.01x | 157.7 ns [157.2 ns, 158.1 ns] | 167.1 ns [166.9 ns, 167.3 ns] |
-| D=32 | la_stack_ldlt | 2.47 µs [2.46 µs, 2.47 µs] | 2.52 µs [2.51 µs, 2.52 µs] | +2.0% | slower point estimate; marginal CIs separated | 0.98x | 2.13 µs [2.12 µs, 2.13 µs] | 1.50 µs [1.49 µs, 1.51 µs] |
-| D=32 | la_stack_ldlt_solve | 2.83 µs [2.82 µs, 2.84 µs] | 2.84 µs [2.83 µs, 2.86 µs] | +0.4% | marginal CIs overlap | 1.00x | 2.78 µs [2.77 µs, 2.79 µs] | 1.97 µs [1.97 µs, 1.98 µs] |
-| D=32 | la_stack_lu | 2.15 µs [2.14 µs, 2.15 µs] | 2.07 µs [2.07 µs, 2.08 µs] | -3.6% | faster point estimate; marginal CIs separated | 1.04x | 2.21 µs [2.20 µs, 2.22 µs] | 2.30 µs [2.29 µs, 2.30 µs] |
-| D=32 | la_stack_lu_solve | 2.87 µs [2.85 µs, 2.89 µs] | 2.78 µs [2.77 µs, 2.78 µs] | -3.3% | faster point estimate; marginal CIs separated | 1.03x | 2.50 µs [2.49 µs, 2.51 µs] | 2.95 µs [2.95 µs, 2.96 µs] |
-| D=32 | la_stack_norm2_sq | 4.0 ns [4.0 ns, 4.1 ns] | 4.0 ns [4.0 ns, 4.0 ns] | -1.2% | faster point estimate; marginal CIs separated | 1.01x | 3.9 ns [3.9 ns, 3.9 ns] | 4.3 ns [4.3 ns, 4.3 ns] |
-| D=32 | la_stack_solve_from_ldlt | 316.1 ns [315.9 ns, 316.5 ns] | 313.6 ns [313.2 ns, 314.1 ns] | -0.8% | faster point estimate; marginal CIs separated | 1.01x | 568.0 ns [566.1 ns, 569.7 ns] | 466.2 ns [464.8 ns, 467.1 ns] |
-| D=32 | la_stack_solve_from_lu | 728.4 ns [724.4 ns, 732.7 ns] | 686.0 ns [684.4 ns, 687.3 ns] | -5.8% | faster point estimate; marginal CIs separated | 1.06x | 335.2 ns [334.7 ns, 336.0 ns] | 620.9 ns [619.3 ns, 621.8 ns] |
-| D=4 | la_stack_det | 2.6 ns [2.5 ns, 2.6 ns] | 2.6 ns [2.6 ns, 2.6 ns] | +1.3% | slower point estimate; marginal CIs separated | 0.99x | — | — |
-| D=4 | la_stack_det_from_ldlt | 1.0 ns [1.0 ns, 1.0 ns] | 0.8 ns [0.8 ns, 0.8 ns] | -20.3% | faster point estimate; marginal CIs separated | 1.25x | 0.5 ns [0.5 ns, 0.5 ns] | 1.0 ns [1.0 ns, 1.0 ns] |
-| D=4 | la_stack_det_from_lu | 1.0 ns [1.0 ns, 1.0 ns] | 0.9 ns [0.9 ns, 0.9 ns] | -13.1% | faster point estimate; marginal CIs separated | 1.15x | 0.6 ns [0.6 ns, 0.6 ns] | 1.3 ns [1.3 ns, 1.3 ns] |
-| D=4 | la_stack_det_via_lu | 14.3 ns [14.2 ns, 14.3 ns] | 14.4 ns [14.4 ns, 14.4 ns] | +0.8% | slower point estimate; marginal CIs separated | 0.99x | 31.3 ns [31.2 ns, 31.4 ns] | 172.0 ns [169.9 ns, 177.8 ns] |
-| D=4 | la_stack_dot | 0.7 ns [0.7 ns, 0.7 ns] | 0.7 ns [0.7 ns, 0.7 ns] | -0.2% | marginal CIs overlap | 1.00x | 0.6 ns [0.6 ns, 0.6 ns] | 1.2 ns [1.2 ns, 1.2 ns] |
-| D=4 | la_stack_inf_norm | 2.3 ns [2.2 ns, 2.3 ns] | 2.3 ns [2.3 ns, 2.3 ns] | +0.3% | slower point estimate; marginal CIs separated | 1.00x | 2.0 ns [2.0 ns, 2.0 ns] | 2.0 ns [2.0 ns, 2.0 ns] |
-| D=4 | la_stack_ldlt | 22.2 ns [22.2 ns, 22.2 ns] | 22.0 ns [22.0 ns, 22.1 ns] | -0.7% | faster point estimate; marginal CIs separated | 1.01x | 8.0 ns [8.0 ns, 8.0 ns] | 121.3 ns [121.0 ns, 122.0 ns] |
-| D=4 | la_stack_ldlt_solve | 24.1 ns [24.1 ns, 24.2 ns] | 24.0 ns [24.0 ns, 24.1 ns] | -0.4% | marginal CIs overlap | 1.00x | 11.6 ns [11.6 ns, 11.6 ns] | 169.0 ns [168.3 ns, 169.4 ns] |
-| D=4 | la_stack_lu | 14.0 ns [13.9 ns, 14.0 ns] | 13.9 ns [13.8 ns, 13.9 ns] | -0.8% | faster point estimate; marginal CIs separated | 1.01x | 30.0 ns [29.9 ns, 30.1 ns] | 165.5 ns [164.6 ns, 168.1 ns] |
-| D=4 | la_stack_lu_solve | 22.0 ns [21.9 ns, 22.0 ns] | 21.9 ns [21.8 ns, 21.9 ns] | -0.5% | faster point estimate; marginal CIs separated | 1.00x | 54.7 ns [54.6 ns, 54.9 ns] | 223.9 ns [222.6 ns, 225.8 ns] |
-| D=4 | la_stack_norm2_sq | 0.5 ns [0.5 ns, 0.5 ns] | 0.5 ns [0.5 ns, 0.5 ns] | +0.5% | marginal CIs overlap | 1.00x | 0.5 ns [0.5 ns, 0.5 ns] | 4.2 ns [4.2 ns, 4.2 ns] |
-| D=4 | la_stack_solve_from_ldlt | 2.6 ns [2.5 ns, 2.6 ns] | 2.5 ns [2.5 ns, 2.5 ns] | -2.5% | faster point estimate; marginal CIs separated | 1.03x | 5.9 ns [5.9 ns, 5.9 ns] | 41.5 ns [41.0 ns, 41.9 ns] |
-| D=4 | la_stack_solve_from_lu | 4.0 ns [4.0 ns, 4.1 ns] | 4.0 ns [4.0 ns, 4.0 ns] | -1.9% | faster point estimate; marginal CIs separated | 1.02x | 5.9 ns [5.9 ns, 5.9 ns] | 59.5 ns [57.6 ns, 61.1 ns] |
-| D=5 | la_stack_det | 41.0 ns [40.8 ns, 41.2 ns] | 62.2 ns [41.0 ns, 62.6 ns] | +51.6% | marginal CIs overlap | 0.66x | — | — |
-| D=5 | la_stack_det_from_ldlt | 1.3 ns [1.3 ns, 1.3 ns] | 1.0 ns [1.0 ns, 1.0 ns] | -24.3% | faster point estimate; marginal CIs separated | 1.32x | 0.6 ns [0.6 ns, 0.6 ns] | 1.3 ns [1.3 ns, 1.3 ns] |
-| D=5 | la_stack_det_from_lu | 2.0 ns [1.9 ns, 2.0 ns] | 1.1 ns [1.1 ns, 1.1 ns] | -42.9% | faster point estimate; marginal CIs separated | 1.75x | 0.7 ns [0.7 ns, 0.7 ns] | 1.5 ns [1.5 ns, 1.5 ns] |
-| D=5 | la_stack_det_via_lu | 33.3 ns [33.2 ns, 33.5 ns] | 32.6 ns [32.6 ns, 32.8 ns] | -2.0% | faster point estimate; marginal CIs separated | 1.02x | 57.6 ns [57.5 ns, 57.8 ns] | 206.8 ns [206.4 ns, 207.7 ns] |
-| D=5 | la_stack_dot | 0.9 ns [0.8 ns, 0.9 ns] | 0.8 ns [0.8 ns, 0.8 ns] | -0.9% | faster point estimate; marginal CIs separated | 1.01x | 0.7 ns [0.7 ns, 0.8 ns] | 1.5 ns [1.5 ns, 1.5 ns] |
-| D=5 | la_stack_inf_norm | 3.5 ns [3.5 ns, 3.5 ns] | 3.5 ns [3.5 ns, 3.5 ns] | +1.1% | slower point estimate; marginal CIs separated | 0.99x | 3.3 ns [3.3 ns, 3.3 ns] | 3.2 ns [3.2 ns, 3.2 ns] |
-| D=5 | la_stack_ldlt | 43.8 ns [43.7 ns, 43.9 ns] | 43.5 ns [43.4 ns, 43.5 ns] | -0.8% | faster point estimate; marginal CIs separated | 1.01x | 27.7 ns [26.9 ns, 28.7 ns] | 150.0 ns [149.1 ns, 150.8 ns] |
-| D=5 | la_stack_ldlt_solve | 47.2 ns [47.1 ns, 47.3 ns] | 47.1 ns [47.0 ns, 47.1 ns] | -0.2% | marginal CIs overlap | 1.00x | 42.3 ns [42.1 ns, 42.4 ns] | 210.3 ns [209.8 ns, 210.9 ns] |
-| D=5 | la_stack_lu | 32.8 ns [32.7 ns, 32.9 ns] | 33.0 ns [32.6 ns, 33.2 ns] | +0.6% | marginal CIs overlap | 0.99x | 57.7 ns [57.5 ns, 57.9 ns] | 199.0 ns [198.0 ns, 200.1 ns] |
-| D=5 | la_stack_lu_solve | 44.9 ns [44.4 ns, 45.9 ns] | 44.5 ns [44.3 ns, 44.7 ns] | -0.8% | marginal CIs overlap | 1.01x | 71.2 ns [71.1 ns, 71.3 ns] | 293.4 ns [290.1 ns, 306.4 ns] |
-| D=5 | la_stack_norm2_sq | 0.5 ns [0.5 ns, 0.5 ns] | 0.5 ns [0.5 ns, 0.5 ns] | -1.1% | faster point estimate; marginal CIs separated | 1.01x | 0.6 ns [0.6 ns, 0.6 ns] | 4.2 ns [4.2 ns, 4.2 ns] |
-| D=5 | la_stack_solve_from_ldlt | 3.9 ns [3.9 ns, 3.9 ns] | 4.0 ns [3.9 ns, 4.0 ns] | +1.2% | slower point estimate; marginal CIs separated | 0.99x | 9.7 ns [9.7 ns, 9.8 ns] | 66.3 ns [63.8 ns, 67.5 ns] |
-| D=5 | la_stack_solve_from_lu | 6.1 ns [6.1 ns, 6.1 ns] | 6.1 ns [6.1 ns, 6.1 ns] | -0.0% | marginal CIs overlap | 1.00x | 9.4 ns [9.4 ns, 9.4 ns] | 89.2 ns [88.9 ns, 89.5 ns] |
-| D=64 | la_stack_det | 14.99 µs [14.95 µs, 15.03 µs] | 14.95 µs [14.88 µs, 14.98 µs] | -0.3% | marginal CIs overlap | 1.00x | — | — |
-| D=64 | la_stack_det_from_ldlt | 32.5 ns [32.4 ns, 32.5 ns] | 23.4 ns [23.4 ns, 23.4 ns] | -27.9% | faster point estimate; marginal CIs separated | 1.39x | 8.7 ns [8.7 ns, 8.7 ns] | 21.6 ns [21.5 ns, 21.6 ns] |
-| D=64 | la_stack_det_from_lu | 33.5 ns [33.1 ns, 33.5 ns] | 23.6 ns [23.6 ns, 23.7 ns] | -29.3% | faster point estimate; marginal CIs separated | 1.41x | 8.9 ns [8.9 ns, 9.0 ns] | 22.4 ns [22.4 ns, 22.5 ns] |
-| D=64 | la_stack_det_via_lu | 15.03 µs [15.01 µs, 15.06 µs] | 14.86 µs [14.84 µs, 14.88 µs] | -1.1% | faster point estimate; marginal CIs separated | 1.01x | 13.17 µs [13.14 µs, 13.19 µs] | 10.70 µs [10.68 µs, 10.71 µs] |
-| D=64 | la_stack_dot | 11.2 ns [11.2 ns, 11.3 ns] | 11.0 ns [11.0 ns, 11.0 ns] | -2.1% | faster point estimate; marginal CIs separated | 1.02x | 9.1 ns [9.1 ns, 9.1 ns] | 38.2 ns [38.1 ns, 38.3 ns] |
-| D=64 | la_stack_inf_norm | 643.8 ns [642.5 ns, 645.5 ns] | 630.3 ns [628.7 ns, 631.3 ns] | -2.1% | faster point estimate; marginal CIs separated | 1.02x | 1.31 µs [1.30 µs, 1.31 µs] | 1.59 µs [1.58 µs, 1.59 µs] |
-| D=64 | la_stack_ldlt | 21.88 µs [21.82 µs, 22.01 µs] | 19.83 µs [19.80 µs, 19.85 µs] | -9.3% | faster point estimate; marginal CIs separated | 1.10x | 10.93 µs [10.92 µs, 10.94 µs] | 9.03 µs [9.02 µs, 9.04 µs] |
-| D=64 | la_stack_ldlt_solve | 24.52 µs [24.39 µs, 24.60 µs] | 22.45 µs [22.22 µs, 22.49 µs] | -8.5% | faster point estimate; marginal CIs separated | 1.09x | 12.91 µs [12.89 µs, 12.94 µs] | 10.37 µs [10.35 µs, 10.40 µs] |
-| D=64 | la_stack_lu | 14.45 µs [14.42 µs, 14.52 µs] | 14.75 µs [14.74 µs, 14.76 µs] | +2.1% | slower point estimate; marginal CIs separated | 0.98x | 12.98 µs [12.94 µs, 13.01 µs] | 10.56 µs [10.55 µs, 10.58 µs] |
-| D=64 | la_stack_lu_solve | 17.51 µs [17.47 µs, 17.55 µs] | 17.36 µs [17.26 µs, 17.41 µs] | -0.9% | faster point estimate; marginal CIs separated | 1.01x | 13.88 µs [13.85 µs, 13.90 µs] | 12.20 µs [12.18 µs, 12.22 µs] |
-| D=64 | la_stack_norm2_sq | 11.2 ns [11.2 ns, 11.3 ns] | 11.0 ns [10.9 ns, 11.0 ns] | -2.2% | faster point estimate; marginal CIs separated | 1.02x | 7.4 ns [7.4 ns, 7.4 ns] | 6.3 ns [6.3 ns, 6.3 ns] |
-| D=64 | la_stack_solve_from_ldlt | 1.11 µs [1.11 µs, 1.12 µs] | 1.09 µs [1.09 µs, 1.10 µs] | -1.8% | faster point estimate; marginal CIs separated | 1.02x | 1.32 µs [1.31 µs, 1.32 µs] | 1.24 µs [1.24 µs, 1.24 µs] |
-| D=64 | la_stack_solve_from_lu | 2.72 µs [2.72 µs, 2.74 µs] | 2.76 µs [2.70 µs, 2.79 µs] | +1.3% | marginal CIs overlap | 0.99x | 796.6 ns [795.2 ns, 797.9 ns] | 1.65 µs [1.65 µs, 1.66 µs] |
-| D=8 | la_stack_det | 94.9 ns [94.2 ns, 95.9 ns] | 94.7 ns [94.4 ns, 95.1 ns] | -0.2% | marginal CIs overlap | 1.00x | — | — |
-| D=8 | la_stack_det_from_ldlt | 2.7 ns [2.7 ns, 2.7 ns] | 1.3 ns [1.3 ns, 1.3 ns] | -51.7% | faster point estimate; marginal CIs separated | 2.07x | 0.9 ns [0.9 ns, 0.9 ns] | 2.0 ns [2.0 ns, 2.0 ns] |
-| D=8 | la_stack_det_from_ldlt_balanced_range | 9.3 ns [9.3 ns, 9.4 ns] | 8.8 ns [8.8 ns, 8.8 ns] | -6.0% | faster point estimate; marginal CIs separated | 1.06x | — | — |
-| D=8 | la_stack_det_from_lu | 2.8 ns [2.8 ns, 2.9 ns] | 1.5 ns [1.5 ns, 1.5 ns] | -47.4% | faster point estimate; marginal CIs separated | 1.90x | 1.0 ns [1.0 ns, 1.0 ns] | 2.3 ns [2.3 ns, 2.3 ns] |
-| D=8 | la_stack_det_from_lu_balanced_range | 9.3 ns [9.3 ns, 9.3 ns] | 9.3 ns [9.3 ns, 9.4 ns] | +0.3% | marginal CIs overlap | 1.00x | — | — |
-| D=8 | la_stack_det_via_lu | 88.0 ns [87.4 ns, 88.7 ns] | 85.2 ns [84.9 ns, 85.3 ns] | -3.2% | faster point estimate; marginal CIs separated | 1.03x | 143.3 ns [143.0 ns, 143.7 ns] | 295.2 ns [293.3 ns, 297.7 ns] |
-| D=8 | la_stack_dot | 1.0 ns [1.0 ns, 1.0 ns] | 0.9 ns [0.9 ns, 0.9 ns] | -0.9% | faster point estimate; marginal CIs separated | 1.01x | 1.1 ns [1.1 ns, 1.1 ns] | 2.3 ns [2.3 ns, 2.3 ns] |
-| D=8 | la_stack_inf_norm | 8.5 ns [8.5 ns, 8.5 ns] | 8.5 ns [8.5 ns, 8.5 ns] | -0.3% | faster point estimate; marginal CIs separated | 1.00x | 8.1 ns [8.1 ns, 8.1 ns] | 8.2 ns [8.1 ns, 8.2 ns] |
-| D=8 | la_stack_ldlt | 94.1 ns [93.1 ns, 94.7 ns] | 92.3 ns [91.4 ns, 93.2 ns] | -1.8% | marginal CIs overlap | 1.02x | 107.4 ns [106.7 ns, 107.9 ns] | 230.5 ns [226.0 ns, 233.4 ns] |
-| D=8 | la_stack_ldlt_ill_conditioned | 93.3 ns [91.8 ns, 94.6 ns] | 91.9 ns [90.9 ns, 92.7 ns] | -1.5% | marginal CIs overlap | 1.02x | — | — |
-| D=8 | la_stack_ldlt_solve | 103.4 ns [103.1 ns, 103.8 ns] | 100.8 ns [100.6 ns, 101.1 ns] | -2.4% | faster point estimate; marginal CIs separated | 1.02x | 147.7 ns [141.5 ns, 150.9 ns] | 289.2 ns [288.4 ns, 290.9 ns] |
-| D=8 | la_stack_lu | 85.6 ns [85.3 ns, 86.0 ns] | 83.5 ns [83.1 ns, 83.7 ns] | -2.5% | faster point estimate; marginal CIs separated | 1.03x | 143.1 ns [141.4 ns, 145.1 ns] | 278.4 ns [277.5 ns, 280.4 ns] |
-| D=8 | la_stack_lu_ill_conditioned | 86.4 ns [85.9 ns, 87.0 ns] | 83.1 ns [82.9 ns, 83.2 ns] | -3.9% | faster point estimate; marginal CIs separated | 1.04x | — | — |
-| D=8 | la_stack_lu_pivoting | 94.6 ns [94.4 ns, 94.8 ns] | 90.5 ns [90.4 ns, 90.7 ns] | -4.3% | faster point estimate; marginal CIs separated | 1.05x | — | — |
-| D=8 | la_stack_lu_solve | 149.5 ns [149.1 ns, 150.1 ns] | 145.4 ns [138.0 ns, 146.6 ns] | -2.7% | faster point estimate; marginal CIs separated | 1.03x | 188.4 ns [187.4 ns, 189.0 ns] | 381.9 ns [380.5 ns, 383.1 ns] |
-| D=8 | la_stack_norm2_sq | 0.7 ns [0.7 ns, 0.7 ns] | 0.7 ns [0.7 ns, 0.7 ns] | +0.1% | marginal CIs overlap | 1.00x | 0.7 ns [0.7 ns, 0.7 ns] | 4.2 ns [4.2 ns, 4.2 ns] |
-| D=8 | la_stack_solve_from_ldlt | 8.1 ns [8.1 ns, 8.2 ns] | 8.1 ns [8.1 ns, 8.2 ns] | +0.3% | marginal CIs overlap | 1.00x | 23.5 ns [23.4 ns, 23.7 ns] | 71.9 ns [71.4 ns, 72.2 ns] |
-| D=8 | la_stack_solve_from_lu | 13.8 ns [13.7 ns, 13.8 ns] | 13.7 ns [13.6 ns, 13.7 ns] | -0.9% | faster point estimate; marginal CIs separated | 1.01x | 16.8 ns [16.8 ns, 16.8 ns] | 96.9 ns [96.7 ns, 97.4 ns] |
+| D=16 | la_stack_det | 433.3 ns [431.0 ns, 435.4 ns] | 463.8 ns [460.4 ns, 472.3 ns] | +7.0% | slower point estimate; marginal CIs separated | 0.93x | — | — |
+| D=16 | la_stack_det_from_ldlt | 2.9 ns [2.9 ns, 2.9 ns] | 2.9 ns [2.9 ns, 2.9 ns] | -0.1% | marginal CIs overlap | 1.00x | 1.7 ns [1.7 ns, 1.7 ns] | 4.3 ns [4.3 ns, 4.4 ns] |
+| D=16 | la_stack_det_from_lu | 3.3 ns [3.3 ns, 3.3 ns] | 3.3 ns [3.3 ns, 3.3 ns] | +0.2% | marginal CIs overlap | 1.00x | 1.8 ns [1.8 ns, 1.8 ns] | 4.8 ns [4.7 ns, 4.8 ns] |
+| D=16 | la_stack_det_via_lu | 403.1 ns [402.1 ns, 405.0 ns] | 405.2 ns [403.8 ns, 406.9 ns] | +0.5% | marginal CIs overlap | 0.99x | 449.5 ns [448.4 ns, 450.3 ns] | 671.6 ns [665.6 ns, 677.2 ns] |
+| D=16 | la_stack_dot | 2.3 ns [2.3 ns, 2.3 ns] | 2.3 ns [2.3 ns, 2.3 ns] | +0.5% | slower point estimate; marginal CIs separated | 1.00x | 1.9 ns [1.9 ns, 1.9 ns] | 3.3 ns [3.3 ns, 3.3 ns] |
+| D=16 | la_stack_inf_norm | 32.2 ns [32.2 ns, 32.3 ns] | 32.2 ns [32.1 ns, 32.2 ns] | -0.3% | marginal CIs overlap | 1.00x | 31.4 ns [31.3 ns, 31.4 ns] | 32.7 ns [32.5 ns, 32.7 ns] |
+| D=16 | la_stack_ldlt | 383.4 ns [382.4 ns, 383.9 ns] | 403.8 ns [403.4 ns, 404.5 ns] | +5.3% | slower point estimate; marginal CIs separated | 0.95x | 397.0 ns [396.6 ns, 397.6 ns] | 428.2 ns [426.1 ns, 430.8 ns] |
+| D=16 | la_stack_ldlt_solve | 425.4 ns [424.9 ns, 425.8 ns] | 447.6 ns [446.3 ns, 448.1 ns] | +5.2% | slower point estimate; marginal CIs separated | 0.95x | 607.4 ns [606.6 ns, 608.8 ns] | 626.1 ns [624.9 ns, 627.1 ns] |
+| D=16 | la_stack_lu | 393.8 ns [392.8 ns, 395.0 ns] | 395.6 ns [394.4 ns, 397.1 ns] | +0.5% | marginal CIs overlap | 1.00x | 453.8 ns [452.9 ns, 454.1 ns] | 641.8 ns [639.4 ns, 645.7 ns] |
+| D=16 | la_stack_lu_solve | 640.8 ns [639.4 ns, 641.5 ns] | 643.5 ns [641.5 ns, 644.9 ns] | +0.4% | slower point estimate; marginal CIs separated | 1.00x | 569.4 ns [568.9 ns, 569.9 ns] | 903.1 ns [900.3 ns, 905.3 ns] |
+| D=16 | la_stack_norm2_sq | 2.1 ns [2.1 ns, 2.1 ns] | 2.1 ns [2.1 ns, 2.1 ns] | +0.0% | marginal CIs overlap | 1.00x | 1.5 ns [1.5 ns, 1.5 ns] | 4.1 ns [4.1 ns, 4.1 ns] |
+| D=16 | la_stack_solve_from_ldlt | 27.7 ns [27.7 ns, 27.8 ns] | 27.7 ns [27.7 ns, 27.7 ns] | -0.1% | marginal CIs overlap | 1.00x | 116.1 ns [115.7 ns, 116.2 ns] | 181.7 ns [181.4 ns, 182.2 ns] |
+| D=16 | la_stack_solve_from_lu | 188.0 ns [187.6 ns, 188.6 ns] | 188.8 ns [188.3 ns, 189.4 ns] | +0.4% | marginal CIs overlap | 1.00x | 92.2 ns [92.1 ns, 92.3 ns] | 258.8 ns [255.7 ns, 262.5 ns] |
+| D=2 | la_stack_det | 0.6 ns [0.6 ns, 0.6 ns] | 0.6 ns [0.6 ns, 0.6 ns] | +0.0% | marginal CIs overlap | 1.00x | — | — |
+| D=2 | la_stack_det_from_ldlt | 0.5 ns [0.5 ns, 0.5 ns] | 0.5 ns [0.5 ns, 0.5 ns] | +0.0% | marginal CIs overlap | 1.00x | 0.4 ns [0.4 ns, 0.4 ns] | 0.5 ns [0.5 ns, 0.6 ns] |
+| D=2 | la_stack_det_from_lu | 0.5 ns [0.5 ns, 0.5 ns] | 0.5 ns [0.5 ns, 0.5 ns] | -0.1% | marginal CIs overlap | 1.00x | 0.4 ns [0.4 ns, 0.4 ns] | 0.7 ns [0.7 ns, 0.7 ns] |
+| D=2 | la_stack_det_via_lu | 1.8 ns [1.8 ns, 1.8 ns] | 1.8 ns [1.8 ns, 1.8 ns] | +0.3% | slower point estimate; marginal CIs separated | 1.00x | 0.8 ns [0.8 ns, 0.8 ns] | 131.7 ns [131.1 ns, 132.0 ns] |
+| D=2 | la_stack_dot | 0.6 ns [0.6 ns, 0.6 ns] | 0.6 ns [0.6 ns, 0.6 ns] | -0.2% | marginal CIs overlap | 1.00x | 0.6 ns [0.6 ns, 0.6 ns] | 2.5 ns [2.5 ns, 2.7 ns] |
+| D=2 | la_stack_inf_norm | 0.6 ns [0.6 ns, 0.6 ns] | 0.6 ns [0.6 ns, 0.6 ns] | -0.0% | marginal CIs overlap | 1.00x | 0.5 ns [0.5 ns, 0.5 ns] | 0.7 ns [0.7 ns, 0.7 ns] |
+| D=2 | la_stack_ldlt | 6.5 ns [6.5 ns, 6.5 ns] | 6.6 ns [6.6 ns, 6.6 ns] | +2.6% | slower point estimate; marginal CIs separated | 0.97x | 1.7 ns [1.7 ns, 1.7 ns] | 98.0 ns [97.6 ns, 98.4 ns] |
+| D=2 | la_stack_ldlt_solve | 9.3 ns [9.3 ns, 9.3 ns] | 9.4 ns [9.4 ns, 9.5 ns] | +1.2% | slower point estimate; marginal CIs separated | 0.99x | 2.5 ns [2.5 ns, 2.5 ns] | 145.9 ns [143.5 ns, 147.3 ns] |
+| D=2 | la_stack_lu | 1.6 ns [1.6 ns, 1.6 ns] | 1.6 ns [1.6 ns, 1.6 ns] | -0.3% | faster point estimate; marginal CIs separated | 1.00x | 1.6 ns [1.6 ns, 1.6 ns] | 120.9 ns [120.0 ns, 121.7 ns] |
+| D=2 | la_stack_lu_solve | 2.0 ns [2.0 ns, 2.0 ns] | 2.0 ns [2.0 ns, 2.0 ns] | -0.5% | marginal CIs overlap | 1.01x | 4.5 ns [4.5 ns, 4.5 ns] | 182.5 ns [182.1 ns, 183.0 ns] |
+| D=2 | la_stack_norm2_sq | 0.4 ns [0.4 ns, 0.4 ns] | 0.4 ns [0.4 ns, 0.4 ns] | -0.0% | marginal CIs overlap | 1.00x | 0.4 ns [0.4 ns, 0.4 ns] | 4.1 ns [4.1 ns, 4.1 ns] |
+| D=2 | la_stack_solve_from_ldlt | 1.2 ns [1.2 ns, 1.2 ns] | 1.2 ns [1.2 ns, 1.2 ns] | +1.6% | slower point estimate; marginal CIs separated | 0.98x | 1.2 ns [1.2 ns, 1.2 ns] | 44.0 ns [43.7 ns, 44.2 ns] |
+| D=2 | la_stack_solve_from_lu | 1.2 ns [1.2 ns, 1.2 ns] | 1.2 ns [1.2 ns, 1.2 ns] | -0.0% | marginal CIs overlap | 1.00x | 2.9 ns [2.9 ns, 2.9 ns] | 54.8 ns [54.6 ns, 54.9 ns] |
+| D=3 | la_stack_det | 1.3 ns [1.3 ns, 1.3 ns] | 1.3 ns [1.3 ns, 1.3 ns] | -0.2% | marginal CIs overlap | 1.00x | — | — |
+| D=3 | la_stack_det_from_ldlt | 0.6 ns [0.6 ns, 0.6 ns] | 0.6 ns [0.6 ns, 0.6 ns] | +0.0% | marginal CIs overlap | 1.00x | 0.5 ns [0.5 ns, 0.5 ns] | 0.7 ns [0.7 ns, 0.7 ns] |
+| D=3 | la_stack_det_from_lu | 0.7 ns [0.7 ns, 0.7 ns] | 0.7 ns [0.7 ns, 0.7 ns] | +0.0% | marginal CIs overlap | 1.00x | 0.5 ns [0.5 ns, 0.5 ns] | 1.0 ns [1.0 ns, 1.0 ns] |
+| D=3 | la_stack_det_via_lu | 8.7 ns [8.7 ns, 8.7 ns] | 8.7 ns [8.7 ns, 8.8 ns] | +0.4% | marginal CIs overlap | 1.00x | 17.8 ns [17.7 ns, 17.9 ns] | 162.9 ns [161.8 ns, 164.2 ns] |
+| D=3 | la_stack_dot | 0.7 ns [0.7 ns, 0.7 ns] | 0.7 ns [0.7 ns, 0.7 ns] | +0.1% | marginal CIs overlap | 1.00x | 0.7 ns [0.7 ns, 0.7 ns] | 3.0 ns [3.0 ns, 3.0 ns] |
+| D=3 | la_stack_inf_norm | 1.3 ns [1.3 ns, 1.3 ns] | 1.3 ns [1.3 ns, 1.3 ns] | +0.0% | marginal CIs overlap | 1.00x | 1.1 ns [1.1 ns, 1.1 ns] | 1.3 ns [1.2 ns, 1.3 ns] |
+| D=3 | la_stack_ldlt | 13.4 ns [13.3 ns, 13.4 ns] | 13.6 ns [13.5 ns, 13.7 ns] | +1.6% | slower point estimate; marginal CIs separated | 0.98x | 3.9 ns [3.8 ns, 3.9 ns] | 108.2 ns [107.8 ns, 109.1 ns] |
+| D=3 | la_stack_ldlt_solve | 12.5 ns [12.5 ns, 12.6 ns] | 18.3 ns [17.8 ns, 20.3 ns] | +45.7% | slower point estimate; marginal CIs separated | 0.69x | 5.6 ns [5.6 ns, 5.6 ns] | 155.4 ns [154.6 ns, 155.9 ns] |
+| D=3 | la_stack_lu | 8.3 ns [8.3 ns, 8.3 ns] | 17.7 ns [16.7 ns, 18.4 ns] | +114.1% | slower point estimate; marginal CIs separated | 0.47x | 14.8 ns [14.7 ns, 14.8 ns] | 156.6 ns [155.4 ns, 158.0 ns] |
+| D=3 | la_stack_lu_solve | 10.1 ns [10.0 ns, 10.2 ns] | 10.0 ns [9.9 ns, 10.0 ns] | -1.1% | faster point estimate; marginal CIs separated | 1.01x | 22.8 ns [22.7 ns, 23.0 ns] | 217.6 ns [216.2 ns, 219.0 ns] |
+| D=3 | la_stack_norm2_sq | 0.4 ns [0.4 ns, 0.4 ns] | 0.4 ns [0.4 ns, 0.4 ns] | +0.1% | marginal CIs overlap | 1.00x | 0.4 ns [0.4 ns, 0.4 ns] | 4.1 ns [4.1 ns, 4.1 ns] |
+| D=3 | la_stack_solve_from_ldlt | 1.8 ns [1.8 ns, 1.8 ns] | 1.8 ns [1.8 ns, 1.8 ns] | +0.0% | marginal CIs overlap | 1.00x | 2.7 ns [2.7 ns, 2.8 ns] | 45.8 ns [45.4 ns, 46.5 ns] |
+| D=3 | la_stack_solve_from_lu | 2.1 ns [2.1 ns, 2.1 ns] | 2.1 ns [2.1 ns, 2.1 ns] | +0.1% | marginal CIs overlap | 1.00x | 4.5 ns [4.5 ns, 4.5 ns] | 56.7 ns [56.5 ns, 57.0 ns] |
+| D=32 | la_stack_det | 2.18 µs [2.17 µs, 2.18 µs] | 2.17 µs [2.16 µs, 2.18 µs] | -0.5% | marginal CIs overlap | 1.01x | — | — |
+| D=32 | la_stack_det_from_ldlt | 7.7 ns [7.7 ns, 7.7 ns] | 7.8 ns [7.7 ns, 7.8 ns] | +0.6% | slower point estimate; marginal CIs separated | 0.99x | 3.0 ns [3.0 ns, 3.0 ns] | 8.3 ns [8.2 ns, 8.3 ns] |
+| D=32 | la_stack_det_from_lu | 9.1 ns [9.0 ns, 9.1 ns] | 9.0 ns [9.0 ns, 9.0 ns] | -0.1% | marginal CIs overlap | 1.00x | 3.1 ns [3.1 ns, 3.1 ns] | 8.6 ns [8.6 ns, 8.7 ns] |
+| D=32 | la_stack_det_via_lu | 2.05 µs [2.04 µs, 2.05 µs] | 2.05 µs [2.04 µs, 2.06 µs] | +0.3% | marginal CIs overlap | 1.00x | 2.19 µs [2.19 µs, 2.20 µs] | 2.31 µs [2.30 µs, 2.32 µs] |
+| D=32 | la_stack_dot | 4.0 ns [4.0 ns, 4.0 ns] | 4.0 ns [4.0 ns, 4.0 ns] | -0.1% | marginal CIs overlap | 1.00x | 4.7 ns [4.7 ns, 4.7 ns] | 4.9 ns [4.9 ns, 4.9 ns] |
+| D=32 | la_stack_inf_norm | 127.0 ns [126.9 ns, 127.2 ns] | 127.6 ns [127.4 ns, 127.7 ns] | +0.5% | slower point estimate; marginal CIs separated | 0.99x | 158.5 ns [154.9 ns, 159.6 ns] | 163.6 ns [163.4 ns, 164.2 ns] |
+| D=32 | la_stack_ldlt | 2.44 µs [2.43 µs, 2.44 µs] | 2.45 µs [2.45 µs, 2.45 µs] | +0.5% | slower point estimate; marginal CIs separated | 0.99x | 2.06 µs [2.05 µs, 2.06 µs] | 1.45 µs [1.45 µs, 1.46 µs] |
+| D=32 | la_stack_ldlt_solve | 2.78 µs [2.77 µs, 2.79 µs] | 2.77 µs [2.76 µs, 2.79 µs] | -0.4% | marginal CIs overlap | 1.00x | 2.69 µs [2.69 µs, 2.69 µs] | 1.94 µs [1.94 µs, 1.94 µs] |
+| D=32 | la_stack_lu | 2.11 µs [2.10 µs, 2.12 µs] | 2.12 µs [2.11 µs, 2.13 µs] | +0.4% | marginal CIs overlap | 1.00x | 2.14 µs [2.13 µs, 2.14 µs] | 2.26 µs [2.26 µs, 2.27 µs] |
+| D=32 | la_stack_lu_solve | 2.78 µs [2.77 µs, 2.80 µs] | 2.76 µs [2.75 µs, 2.76 µs] | -1.0% | faster point estimate; marginal CIs separated | 1.01x | 2.71 µs [2.70 µs, 2.72 µs] | 2.92 µs [2.91 µs, 2.93 µs] |
+| D=32 | la_stack_norm2_sq | 4.0 ns [4.0 ns, 4.0 ns] | 4.0 ns [4.0 ns, 4.0 ns] | +0.0% | marginal CIs overlap | 1.00x | 3.8 ns [3.8 ns, 3.8 ns] | 4.2 ns [4.2 ns, 4.2 ns] |
+| D=32 | la_stack_solve_from_ldlt | 307.5 ns [307.0 ns, 307.8 ns] | 310.4 ns [309.5 ns, 311.1 ns] | +0.9% | slower point estimate; marginal CIs separated | 0.99x | 533.2 ns [531.2 ns, 534.3 ns] | 466.9 ns [466.3 ns, 467.6 ns] |
+| D=32 | la_stack_solve_from_lu | 661.0 ns [660.0 ns, 662.2 ns] | 652.5 ns [650.7 ns, 653.7 ns] | -1.3% | faster point estimate; marginal CIs separated | 1.01x | 327.4 ns [327.0 ns, 327.8 ns] | 631.0 ns [629.5 ns, 632.5 ns] |
+| D=4 | la_stack_det | 2.6 ns [2.6 ns, 2.6 ns] | 2.6 ns [2.6 ns, 2.6 ns] | +0.1% | slower point estimate; marginal CIs separated | 1.00x | — | — |
+| D=4 | la_stack_det_from_ldlt | 0.8 ns [0.8 ns, 0.8 ns] | 0.8 ns [0.8 ns, 0.8 ns] | +0.0% | marginal CIs overlap | 1.00x | 0.5 ns [0.5 ns, 0.5 ns] | 1.0 ns [1.0 ns, 1.0 ns] |
+| D=4 | la_stack_det_from_lu | 0.9 ns [0.9 ns, 0.9 ns] | 0.9 ns [0.9 ns, 0.9 ns] | +0.0% | marginal CIs overlap | 1.00x | 0.6 ns [0.6 ns, 0.6 ns] | 1.2 ns [1.2 ns, 1.2 ns] |
+| D=4 | la_stack_det_via_lu | 14.4 ns [14.4 ns, 14.5 ns] | 14.5 ns [14.4 ns, 14.5 ns] | +0.1% | marginal CIs overlap | 1.00x | 30.0 ns [30.0 ns, 30.0 ns] | 179.5 ns [179.0 ns, 180.9 ns] |
+| D=4 | la_stack_dot | 0.7 ns [0.7 ns, 0.7 ns] | 0.7 ns [0.7 ns, 0.7 ns] | +0.0% | marginal CIs overlap | 1.00x | 0.6 ns [0.6 ns, 0.6 ns] | 2.6 ns [2.6 ns, 2.7 ns] |
+| D=4 | la_stack_inf_norm | 2.2 ns [2.2 ns, 2.2 ns] | 2.2 ns [2.2 ns, 2.2 ns] | +0.1% | marginal CIs overlap | 1.00x | 2.0 ns [2.0 ns, 2.0 ns] | 2.0 ns [2.0 ns, 2.0 ns] |
+| D=4 | la_stack_ldlt | 21.1 ns [21.1 ns, 21.2 ns] | 21.3 ns [21.3 ns, 21.4 ns] | +0.8% | slower point estimate; marginal CIs separated | 0.99x | 7.5 ns [7.4 ns, 7.5 ns] | 126.4 ns [126.1 ns, 126.9 ns] |
+| D=4 | la_stack_ldlt_solve | 22.9 ns [22.9 ns, 23.0 ns] | 38.6 ns [38.0 ns, 39.7 ns] | +68.2% | slower point estimate; marginal CIs separated | 0.59x | 10.4 ns [10.4 ns, 10.4 ns] | 172.6 ns [172.4 ns, 173.2 ns] |
+| D=4 | la_stack_lu | 14.0 ns [13.9 ns, 14.0 ns] | 13.9 ns [13.8 ns, 13.9 ns] | -0.9% | faster point estimate; marginal CIs separated | 1.01x | 29.1 ns [29.1 ns, 29.2 ns] | 175.5 ns [174.3 ns, 176.3 ns] |
+| D=4 | la_stack_lu_solve | 21.9 ns [21.9 ns, 22.0 ns] | 22.1 ns [22.1 ns, 22.1 ns] | +0.8% | slower point estimate; marginal CIs separated | 0.99x | 51.7 ns [51.5 ns, 51.9 ns] | 241.5 ns [239.3 ns, 243.2 ns] |
+| D=4 | la_stack_norm2_sq | 0.5 ns [0.5 ns, 0.5 ns] | 0.5 ns [0.5 ns, 0.5 ns] | +0.1% | marginal CIs overlap | 1.00x | 0.5 ns [0.5 ns, 0.5 ns] | 4.1 ns [4.1 ns, 4.1 ns] |
+| D=4 | la_stack_solve_from_ldlt | 2.5 ns [2.5 ns, 2.5 ns] | 2.5 ns [2.5 ns, 2.5 ns] | -0.0% | marginal CIs overlap | 1.00x | 5.3 ns [5.2 ns, 5.3 ns] | 44.8 ns [44.6 ns, 44.9 ns] |
+| D=4 | la_stack_solve_from_lu | 4.0 ns [4.0 ns, 4.0 ns] | 3.9 ns [3.9 ns, 3.9 ns] | -1.8% | faster point estimate; marginal CIs separated | 1.02x | 5.7 ns [5.6 ns, 5.7 ns] | 59.9 ns [59.5 ns, 60.2 ns] |
+| D=5 | la_stack_det | 39.4 ns [39.3 ns, 39.6 ns] | 40.6 ns [40.0 ns, 58.5 ns] | +2.9% | slower point estimate; marginal CIs separated | 0.97x | — | — |
+| D=5 | la_stack_det_from_ldlt | 0.9 ns [0.9 ns, 0.9 ns] | 0.9 ns [0.9 ns, 0.9 ns] | +0.1% | marginal CIs overlap | 1.00x | 0.6 ns [0.6 ns, 0.6 ns] | 1.2 ns [1.2 ns, 1.2 ns] |
+| D=5 | la_stack_det_from_lu | 1.1 ns [1.1 ns, 1.1 ns] | 1.1 ns [1.1 ns, 1.1 ns] | +0.1% | marginal CIs overlap | 1.00x | 0.7 ns [0.7 ns, 0.7 ns] | 1.5 ns [1.5 ns, 1.5 ns] |
+| D=5 | la_stack_det_via_lu | 32.1 ns [32.0 ns, 32.3 ns] | 32.7 ns [32.6 ns, 32.7 ns] | +1.7% | slower point estimate; marginal CIs separated | 0.98x | 54.8 ns [54.7 ns, 54.9 ns] | 223.3 ns [221.9 ns, 224.9 ns] |
+| D=5 | la_stack_dot | 0.8 ns [0.8 ns, 0.8 ns] | 0.8 ns [0.8 ns, 0.8 ns] | +5.2% | slower point estimate; marginal CIs separated | 0.95x | 0.7 ns [0.7 ns, 0.8 ns] | 2.8 ns [2.8 ns, 2.8 ns] |
+| D=5 | la_stack_inf_norm | 3.4 ns [3.4 ns, 3.4 ns] | 3.5 ns [3.5 ns, 3.5 ns] | +1.9% | slower point estimate; marginal CIs separated | 0.98x | 3.2 ns [3.2 ns, 3.2 ns] | 3.2 ns [3.2 ns, 3.2 ns] |
+| D=5 | la_stack_ldlt | 40.5 ns [40.4 ns, 40.6 ns] | 41.9 ns [41.6 ns, 42.3 ns] | +3.6% | slower point estimate; marginal CIs separated | 0.97x | 26.1 ns [25.1 ns, 26.5 ns] | 144.0 ns [143.6 ns, 144.6 ns] |
+| D=5 | la_stack_ldlt_solve | 52.3 ns [51.9 ns, 52.5 ns] | 45.4 ns [45.3 ns, 45.5 ns] | -13.3% | faster point estimate; marginal CIs separated | 1.15x | 40.4 ns [40.3 ns, 40.4 ns] | 234.3 ns [231.2 ns, 246.0 ns] |
+| D=5 | la_stack_lu | 32.0 ns [31.9 ns, 32.1 ns] | 32.3 ns [32.3 ns, 32.4 ns] | +1.0% | slower point estimate; marginal CIs separated | 0.99x | 55.1 ns [54.9 ns, 55.2 ns] | 217.7 ns [214.6 ns, 220.0 ns] |
+| D=5 | la_stack_lu_solve | 44.3 ns [43.9 ns, 44.8 ns] | 46.1 ns [46.0 ns, 46.1 ns] | +4.0% | slower point estimate; marginal CIs separated | 0.96x | 69.0 ns [68.9 ns, 69.2 ns] | 326.8 ns [324.0 ns, 361.6 ns] |
+| D=5 | la_stack_norm2_sq | 0.5 ns [0.5 ns, 0.5 ns] | 0.5 ns [0.5 ns, 0.5 ns] | +0.1% | slower point estimate; marginal CIs separated | 1.00x | 0.6 ns [0.6 ns, 0.6 ns] | 4.1 ns [4.1 ns, 4.1 ns] |
+| D=5 | la_stack_solve_from_ldlt | 3.9 ns [3.9 ns, 3.9 ns] | 3.9 ns [3.9 ns, 3.9 ns] | +0.9% | slower point estimate; marginal CIs separated | 0.99x | 8.9 ns [8.8 ns, 8.9 ns] | 63.4 ns [63.3 ns, 63.6 ns] |
+| D=5 | la_stack_solve_from_lu | 6.0 ns [6.0 ns, 6.0 ns] | 6.0 ns [6.0 ns, 6.0 ns] | -0.7% | faster point estimate; marginal CIs separated | 1.01x | 8.8 ns [8.8 ns, 8.8 ns] | 93.6 ns [91.6 ns, 95.0 ns] |
+| D=64 | la_stack_det | 15.21 µs [15.17 µs, 15.25 µs] | 15.11 µs [15.05 µs, 15.16 µs] | -0.7% | faster point estimate; marginal CIs separated | 1.01x | — | — |
+| D=64 | la_stack_det_from_ldlt | 22.6 ns [22.5 ns, 22.6 ns] | 22.8 ns [22.8 ns, 22.8 ns] | +1.0% | slower point estimate; marginal CIs separated | 0.99x | 8.2 ns [8.2 ns, 8.3 ns] | 20.2 ns [20.2 ns, 20.3 ns] |
+| D=64 | la_stack_det_from_lu | 23.0 ns [22.9 ns, 23.0 ns] | 22.9 ns [22.9 ns, 23.0 ns] | -0.2% | marginal CIs overlap | 1.00x | 8.5 ns [8.5 ns, 8.6 ns] | 21.1 ns [21.1 ns, 21.2 ns] |
+| D=64 | la_stack_det_via_lu | 15.21 µs [15.17 µs, 15.23 µs] | 15.03 µs [14.99 µs, 15.06 µs] | -1.1% | faster point estimate; marginal CIs separated | 1.01x | 13.41 µs [13.40 µs, 13.43 µs] | 10.55 µs [10.55 µs, 10.56 µs] |
+| D=64 | la_stack_dot | 10.7 ns [10.6 ns, 10.7 ns] | 10.8 ns [10.8 ns, 10.8 ns] | +1.4% | slower point estimate; marginal CIs separated | 0.99x | 8.9 ns [8.9 ns, 8.9 ns] | 8.3 ns [8.3 ns, 8.3 ns] |
+| D=64 | la_stack_inf_norm | 612.7 ns [612.2 ns, 614.1 ns] | 611.1 ns [610.2 ns, 613.2 ns] | -0.3% | marginal CIs overlap | 1.00x | 1.09 µs [1.08 µs, 1.09 µs] | 1.54 µs [1.54 µs, 1.54 µs] |
+| D=64 | la_stack_ldlt | 19.64 µs [19.60 µs, 19.65 µs] | 20.87 µs [20.81 µs, 20.91 µs] | +6.3% | slower point estimate; marginal CIs separated | 0.94x | 11.48 µs [11.46 µs, 11.50 µs] | 8.81 µs [8.79 µs, 8.82 µs] |
+| D=64 | la_stack_ldlt_solve | 21.85 µs [21.79 µs, 21.90 µs] | 23.16 µs [23.08 µs, 23.26 µs] | +6.0% | slower point estimate; marginal CIs separated | 0.94x | 12.12 µs [12.09 µs, 12.14 µs] | 10.15 µs [10.13 µs, 10.16 µs] |
+| D=64 | la_stack_lu | 15.02 µs [14.99 µs, 15.03 µs] | 14.42 µs [14.40 µs, 14.44 µs] | -4.0% | faster point estimate; marginal CIs separated | 1.04x | 12.93 µs [12.91 µs, 12.94 µs] | 10.41 µs [10.40 µs, 10.43 µs] |
+| D=64 | la_stack_lu_solve | 17.22 µs [17.16 µs, 17.44 µs] | 17.52 µs [17.36 µs, 17.56 µs] | +1.7% | marginal CIs overlap | 0.98x | 14.31 µs [14.30 µs, 14.35 µs] | 12.11 µs [12.09 µs, 12.12 µs] |
+| D=64 | la_stack_norm2_sq | 10.6 ns [10.6 ns, 10.7 ns] | 10.8 ns [10.7 ns, 10.8 ns] | +1.3% | slower point estimate; marginal CIs separated | 0.99x | 7.5 ns [7.5 ns, 7.5 ns] | 6.2 ns [6.2 ns, 6.2 ns] |
+| D=64 | la_stack_solve_from_ldlt | 1.46 µs [1.45 µs, 1.46 µs] | 1.08 µs [1.07 µs, 1.08 µs] | -26.1% | faster point estimate; marginal CIs separated | 1.35x | 1.25 µs [1.24 µs, 1.25 µs] | 1.26 µs [1.26 µs, 1.27 µs] |
+| D=64 | la_stack_solve_from_lu | 2.52 µs [2.51 µs, 2.52 µs] | 2.47 µs [2.47 µs, 2.48 µs] | -1.7% | faster point estimate; marginal CIs separated | 1.02x | 793.3 ns [792.9 ns, 793.9 ns] | 1.67 µs [1.67 µs, 1.68 µs] |
+| D=8 | la_stack_det | 90.7 ns [90.5 ns, 91.0 ns] | 90.5 ns [90.3 ns, 90.6 ns] | -0.3% | marginal CIs overlap | 1.00x | — | — |
+| D=8 | la_stack_det_from_ldlt | 1.3 ns [1.3 ns, 1.3 ns] | 1.3 ns [1.3 ns, 1.3 ns] | -0.0% | marginal CIs overlap | 1.00x | 0.9 ns [0.9 ns, 0.9 ns] | 1.9 ns [1.9 ns, 1.9 ns] |
+| D=8 | la_stack_det_from_ldlt_balanced_range | 8.9 ns [8.9 ns, 8.9 ns] | 8.9 ns [8.9 ns, 9.0 ns] | +0.4% | slower point estimate; marginal CIs separated | 1.00x | — | — |
+| D=8 | la_stack_det_from_lu | 1.5 ns [1.5 ns, 1.5 ns] | 1.5 ns [1.5 ns, 1.5 ns] | +0.3% | slower point estimate; marginal CIs separated | 1.00x | 1.0 ns [1.0 ns, 1.0 ns] | 2.2 ns [2.2 ns, 2.2 ns] |
+| D=8 | la_stack_det_from_lu_balanced_range | 9.7 ns [9.7 ns, 9.8 ns] | 9.1 ns [9.0 ns, 9.2 ns] | -6.4% | faster point estimate; marginal CIs separated | 1.07x | — | — |
+| D=8 | la_stack_det_via_lu | 84.1 ns [83.9 ns, 84.4 ns] | 84.6 ns [84.3 ns, 85.0 ns] | +0.6% | marginal CIs overlap | 0.99x | 144.2 ns [143.9 ns, 144.6 ns] | 294.0 ns [292.1 ns, 294.7 ns] |
+| D=8 | la_stack_dot | 0.9 ns [0.9 ns, 0.9 ns] | 1.0 ns [1.0 ns, 1.0 ns] | +3.2% | slower point estimate; marginal CIs separated | 0.97x | 1.1 ns [1.1 ns, 1.1 ns] | 2.6 ns [2.6 ns, 2.7 ns] |
+| D=8 | la_stack_inf_norm | 8.4 ns [8.4 ns, 8.4 ns] | 8.4 ns [8.4 ns, 8.4 ns] | -0.1% | marginal CIs overlap | 1.00x | 8.0 ns [8.0 ns, 8.0 ns] | 8.0 ns [8.0 ns, 8.1 ns] |
+| D=8 | la_stack_ldlt | 90.7 ns [89.7 ns, 92.3 ns] | 90.5 ns [88.6 ns, 91.4 ns] | -0.2% | marginal CIs overlap | 1.00x | 97.7 ns [97.3 ns, 98.1 ns] | 215.2 ns [214.5 ns, 216.1 ns] |
+| D=8 | la_stack_ldlt_ill_conditioned | 91.2 ns [89.9 ns, 92.6 ns] | 90.3 ns [88.8 ns, 91.4 ns] | -1.0% | marginal CIs overlap | 1.01x | — | — |
+| D=8 | la_stack_ldlt_solve | 100.9 ns [100.6 ns, 101.1 ns] | 99.3 ns [98.9 ns, 99.5 ns] | -1.6% | faster point estimate; marginal CIs separated | 1.02x | 142.0 ns [134.5 ns, 144.4 ns] | 296.7 ns [291.9 ns, 300.7 ns] |
+| D=8 | la_stack_lu | 82.2 ns [82.0 ns, 82.4 ns] | 82.9 ns [82.6 ns, 83.3 ns] | +0.9% | slower point estimate; marginal CIs separated | 0.99x | 144.0 ns [143.7 ns, 144.5 ns] | 275.8 ns [273.4 ns, 277.3 ns] |
+| D=8 | la_stack_lu_ill_conditioned | 81.9 ns [81.5 ns, 82.1 ns] | 82.3 ns [82.2 ns, 82.6 ns] | +0.6% | slower point estimate; marginal CIs separated | 0.99x | — | — |
+| D=8 | la_stack_lu_pivoting | 90.8 ns [90.6 ns, 90.9 ns] | 90.4 ns [90.2 ns, 90.7 ns] | -0.4% | marginal CIs overlap | 1.00x | — | — |
+| D=8 | la_stack_lu_solve | 137.4 ns [135.7 ns, 143.1 ns] | 128.4 ns [128.2 ns, 128.7 ns] | -6.5% | faster point estimate; marginal CIs separated | 1.07x | 165.9 ns [164.8 ns, 168.9 ns] | 401.4 ns [396.0 ns, 407.1 ns] |
+| D=8 | la_stack_norm2_sq | 0.7 ns [0.7 ns, 0.7 ns] | 0.7 ns [0.7 ns, 0.7 ns] | +0.4% | marginal CIs overlap | 1.00x | 0.7 ns [0.7 ns, 0.7 ns] | 4.2 ns [4.2 ns, 4.2 ns] |
+| D=8 | la_stack_solve_from_ldlt | 8.1 ns [8.1 ns, 8.1 ns] | 8.0 ns [8.0 ns, 8.1 ns] | -0.4% | faster point estimate; marginal CIs separated | 1.00x | 21.0 ns [21.0 ns, 21.0 ns] | 71.1 ns [70.8 ns, 71.1 ns] |
+| D=8 | la_stack_solve_from_lu | 13.3 ns [13.3 ns, 13.3 ns] | 13.5 ns [13.5 ns, 13.5 ns] | +1.2% | slower point estimate; marginal CIs separated | 0.99x | 16.0 ns [15.9 ns, 16.0 ns] | 99.5 ns [99.0 ns, 99.6 ns] |
+
+## Coverage Notes
+
+One-sided rows retain the available measurement but are excluded from point-estimate change and ratio calculations.
+
+| Benchmark | Coverage | v0.4.5 (point + CI) | Latest (point + CI) | Note |
+|:----------|:---------|-----------------------------:|--------------------:|:-----|
+| rational_input_d2/det_big_rational_gaussian | current-only | — | 1.18 µs [1.18 µs, 1.18 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d2/det_row_cleared_bareiss | current-only | — | 191.3 ns [190.9 ns, 192.0 ns] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d2/det_sign_row_cleared_bareiss | current-only | — | 82.3 ns [82.2 ns, 82.4 ns] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d2/solve_big_rational_gaussian | current-only | — | 2.22 µs [2.22 µs, 2.22 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d2/solve_row_cleared_bareiss | current-only | — | 967.5 ns [966.5 ns, 968.2 ns] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d3/det_big_rational_gaussian | current-only | — | 4.89 µs [4.88 µs, 4.90 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d3/det_row_cleared_bareiss | current-only | — | 578.6 ns [578.0 ns, 579.1 ns] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d3/det_sign_row_cleared_bareiss | current-only | — | 368.6 ns [367.8 ns, 369.6 ns] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d3/solve_big_rational_gaussian | current-only | — | 8.44 µs [8.43 µs, 8.46 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d3/solve_row_cleared_bareiss | current-only | — | 2.50 µs [2.49 µs, 2.51 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d4/det_big_rational_gaussian | current-only | — | 14.16 µs [14.14 µs, 14.19 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d4/det_row_cleared_bareiss | current-only | — | 1.17 µs [1.16 µs, 1.17 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d4/det_sign_row_cleared_bareiss | current-only | — | 769.1 ns [767.2 ns, 770.7 ns] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d4/solve_big_rational_gaussian | current-only | — | 24.94 µs [24.90 µs, 24.98 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d4/solve_row_cleared_bareiss | current-only | — | 5.51 µs [5.51 µs, 5.52 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d5/det_big_rational_gaussian | current-only | — | 24.97 µs [24.55 µs, 25.75 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d5/det_row_cleared_bareiss | current-only | — | 2.15 µs [2.15 µs, 2.16 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d5/det_sign_row_cleared_bareiss | current-only | — | 1.58 µs [1.58 µs, 1.59 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d5/solve_big_rational_gaussian | current-only | — | 41.11 µs [41.07 µs, 41.14 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d5/solve_row_cleared_bareiss | current-only | — | 9.67 µs [9.64 µs, 9.72 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d6/det_big_rational_gaussian | current-only | — | 57.91 µs [57.84 µs, 58.02 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d6/det_row_cleared_bareiss | current-only | — | 3.75 µs [3.75 µs, 3.76 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d6/det_sign_row_cleared_bareiss | current-only | — | 3.10 µs [3.09 µs, 3.10 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d6/solve_big_rational_gaussian | current-only | — | 92.50 µs [92.35 µs, 92.60 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d6/solve_row_cleared_bareiss | current-only | — | 18.03 µs [18.01 µs, 18.05 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d7/det_big_rational_gaussian | current-only | — | 112.35 µs [112.25 µs, 112.50 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d7/det_row_cleared_bareiss | current-only | — | 6.15 µs [6.14 µs, 6.16 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d7/det_sign_row_cleared_bareiss | current-only | — | 5.30 µs [5.29 µs, 5.31 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d7/solve_big_rational_gaussian | current-only | — | 165.07 µs [164.88 µs, 165.48 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d7/solve_row_cleared_bareiss | current-only | — | 29.46 µs [29.44 µs, 29.50 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d8/det_big_rational_gaussian | current-only | — | 194.98 µs [193.24 µs, 197.90 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d8/det_row_cleared_bareiss | current-only | — | 9.31 µs [9.29 µs, 9.33 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d8/det_sign_row_cleared_bareiss | current-only | — | 8.47 µs [8.46 µs, 8.48 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d8/solve_big_rational_gaussian | current-only | — | 272.40 µs [272.07 µs, 272.65 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
+| rational_input_d8/solve_row_cleared_bareiss | current-only | — | 43.37 µs [43.31 µs, 43.43 µs] | Baseline v0.4.5 has no correctness-compatible benchmark row under la_stack_pre_rational_input_api. |
 
 ## How to Update
 
@@ -277,10 +321,14 @@ just performance-release <current-tag> <previous-tag>
 `performance.provenance.json` comparison inputs under `target/bench-reports/` without promoting documentation.
 It applies staged and unstaged tracked changes; untracked files are excluded.
 `just performance-github-assets` writes `target/bench-reports/github-assets-performance.md`.
-`just performance-release` performs the same measurement and retention work, then promotes distinct-release documentation.
+`just performance-release` also preserves every recorded local benchmark summary and the report inputs under
+`docs/performance/<current>-vs-<baseline>/<run-digest>/`, then promotes distinct-release documentation.
 `just performance-doc` consumes the retained pair from either workflow without benchmarking and promotes it when the package versions differ.
+After `just clean`, `performance-doc` and `performance-readme` use the latest complete snapshot in `docs/performance/`.
 For a distinct pair, `performance-local` followed by `performance-doc` is equivalent to the atomic `performance-release` workflow.
 
+See the [local summary index](https://github.com/acgetchell/la-stack/tree/main/docs/performance)
+for the saved-data schema, provenance, and historical availability.
 Older curated release-to-release reports are archived in `docs/archive/performance/`.
 
 See `docs/BENCHMARKING.md` for the full comparison workflow.

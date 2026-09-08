@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import tomllib
 from dataclasses import replace
@@ -13,6 +14,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 import criterion_dim_plot
+from benchmark_summaries import retained_outputs, summary_outputs
 from performance_artifacts import (
     ArtifactContext,
     ArtifactPaths,
@@ -21,6 +23,7 @@ from performance_artifacts import (
     ReleasePair,
     ReportSource,
     TimingEstimate,
+    load_bundle,
     write_bundle,
 )
 
@@ -63,8 +66,9 @@ def test_detect_versions_matches_cargo_toml() -> None:
             package_version = version
 
     expected_la = package_version or "unknown"
-    expected_na = _toml_dependency_version(data, "nalgebra") or "unknown"
-    expected_fa = _toml_dependency_version(data, "faer") or "unknown"
+    comparison = tomllib.loads((root / "benches/comparison/Cargo.toml").read_text(encoding="utf-8"))
+    expected_na = _toml_dependency_version(comparison, "nalgebra") or "unknown"
+    expected_fa = _toml_dependency_version(comparison, "faer") or "unknown"
 
     versions = criterion_dim_plot._detect_versions(root)
 
@@ -233,7 +237,7 @@ def test_update_readme_table_errors_on_non_unique_markers(tmp_path: Path) -> Non
 def _canonical_benchmark_readme(version: str) -> str:
     begin, end = criterion_dim_plot._readme_table_markers("lu_solve", "median", "new")
     return (
-        "[docs](https://github.com/acgetchell/la-stack/blob/v0.0.9/README.md)\n"
+        "[docs](https://github.com/acgetchell/la-stack/blob/v0.4.5/README.md)\n"
         f"[csv](https://github.com/acgetchell/la-stack/blob/v{version}/docs/assets/bench/vs_linalg_lu_solve_median.csv)\n"
         f"[provenance](https://github.com/acgetchell/la-stack/blob/v{version}/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json)\n"
         f"[svg](https://raw.githubusercontent.com/acgetchell/la-stack/v{version}/docs/assets/bench/vs_linalg_lu_solve_median.svg)\n"
@@ -250,7 +254,7 @@ def test_replace_readme_benchmark_asset_versions_updates_only_complete_selected_
     )
 
     assert updated.count("v1.2.3/docs/assets/bench/") == 3
-    assert "blob/v0.0.9/README.md" in updated
+    assert "blob/v0.4.5/README.md" in updated
     assert "old table" in updated
 
 
@@ -370,7 +374,7 @@ def _timing(value: float) -> TimingEstimate:
     return TimingEstimate(median_ns=value, ci_lower_ns=value * 0.9, ci_upper_ns=value * 1.1)
 
 
-def _write_benchmark_checkout(root: Path, *, version: str = "0.1.0") -> None:
+def _write_benchmark_checkout(root: Path, *, version: str = "0.4.6") -> None:
     (root / "Cargo.toml").write_text(
         f'[package]\nname = "fixture"\nversion = "{version}"\n[dev-dependencies]\ncriterion = "0.7"\nnalgebra = "0.34"\nfaer = "0.22"\n',
         encoding="utf-8",
@@ -381,7 +385,7 @@ def _write_benchmark_checkout(root: Path, *, version: str = "0.1.0") -> None:
     for relative in (
         ".config/nextest.toml",
         "tests/exact_bench_config.rs",
-        "tests/vs_linalg_inputs.rs",
+        "benches/comparison/tests/vs_linalg_inputs.rs",
         "benches/vs_linalg.rs",
         "src/lib.rs",
     ):
@@ -393,7 +397,7 @@ def _write_benchmark_checkout(root: Path, *, version: str = "0.1.0") -> None:
 def _write_performance_bundle(
     root: Path,
     *,
-    version: str = "0.1.0",
+    version: str = "0.4.6",
     omit_dim: int | None = None,
     omit_peer_dim: int | None = None,
     include_contract: bool = True,
@@ -419,7 +423,7 @@ def _write_performance_bundle(
     if include_contract:
         environment["benchmark_contract_sha256"] = criterion_dim_plot.benchmark_contract_digest(root)
     current_tag = f"v{version}"
-    baseline_tag = "v0.0.9"
+    baseline_tag = "v0.4.5"
     bundle = PerformanceBundle(
         context=ArtifactContext(
             release=ReleasePair(current=current_tag, baseline=baseline_tag),
@@ -445,7 +449,7 @@ def _write_performance_bundle(
                     "suite": "all",
                 },
                 "measurement": {
-                    "baseline_api_compatibility": "la_stack_v0_4_3_api",
+                    "baseline_api_compatibility": "la_stack_pre_rational_input_api",
                     "baseline_commit": baseline_commit,
                     "baseline_git_clean": False,
                     "baseline_source_state_sha256": baseline_source_sha256,
@@ -460,7 +464,7 @@ def _write_performance_bundle(
                 "publication": environment,
                 "schema": 2,
                 "validation": {
-                    "baseline_api_compatibility": "la_stack_v0_4_3_api",
+                    "baseline_api_compatibility": "la_stack_pre_rational_input_api",
                     "baseline_commit": baseline_commit,
                     "baseline_git_clean": False,
                     "baseline_revision": "passed",
@@ -500,6 +504,34 @@ def _write_performance_bundle(
     )
     write_bundle(paths, bundle)
     return paths
+
+
+def _retain_complete_plot_inputs(root: Path, paths: ArtifactPaths) -> None:
+    bundle = load_bundle(paths)
+    baseline = bundle.context.release.baseline
+    criterion = root / "target/criterion"
+    for row in bundle.rows:
+        for sample, name, timing in (
+            (baseline, row.benchmark, row.baseline),
+            ("new", row.benchmark, row.current),
+            (baseline, "nalgebra_lu_solve", row.baseline_nalgebra),
+            (baseline, "faer_lu_solve", row.baseline_faer),
+        ):
+            assert timing is not None
+            directory = criterion / row.group / name / sample
+            directory.mkdir(parents=True)
+            estimate = {
+                "point_estimate": timing.median_ns,
+                "confidence_interval": {"confidence_level": 0.95, "lower_bound": timing.ci_lower_ns, "upper_bound": timing.ci_upper_ns},
+            }
+            (directory / "benchmark.json").write_text(json.dumps({"full_id": f"{row.group}/{name}"}), encoding="utf-8")
+            (directory / "estimates.json").write_text(json.dumps({"mean": estimate, "median": estimate}), encoding="utf-8")
+            (directory / "sample.json").write_text(json.dumps({"iters": [1.0] * 100, "times": [timing.median_ns] * 100}), encoding="utf-8")
+    for path, payload in summary_outputs(criterion, baseline, paths).items():
+        path.write_text(payload, encoding="utf-8")
+    for path, payload in retained_outputs(root / "docs/performance", paths).items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(payload, encoding="utf-8")
 
 
 def test_main_update_readme_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -547,14 +579,14 @@ def test_main_update_readme_happy_path(tmp_path: Path, monkeypatch: pytest.Monke
     assert "old table" not in readme_text
     assert "| 2 | 10.000 | 20.000 | 40.000 | +50.0% | +75.0% |" in readme_text
     assert "| 64 | 320.000 | 640.000 | 1,280.000 | +50.0% | +75.0% |" in readme_text
-    assert readme_text.count("v0.1.0/docs/assets/bench/") == 3
-    assert "blob/v0.0.9/README.md" in readme_text
+    assert readme_text.count("v0.4.6/docs/assets/bench/") == 3
+    assert "blob/v0.4.5/README.md" in readme_text
 
     provenance = json.loads(out_csv.with_suffix(".provenance.json").read_text(encoding="utf-8"))
     assert provenance["measurement"]["status"] == "recorded"
     assert provenance["measurement"]["source"] == "retained performance-release artifact"
     assert provenance["measurement"]["la_stack_sample"] == "current"
-    assert provenance["measurement"]["peer_release_context"] == "v0.0.9"
+    assert provenance["measurement"]["peer_release_context"] == "v0.4.5"
     assert provenance["measurement"]["peer_sample"] == "baseline phase under shared current harness"
     assert provenance["publication"]["correctness_gate"] == "validated-performance-release-artifact"
     assert provenance["publication"]["benchmark_contract"] == "matched"
@@ -568,6 +600,33 @@ def test_main_update_readme_happy_path(tmp_path: Path, monkeypatch: pytest.Monke
     first = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in published}
     assert criterion_dim_plot.main(["--metric", "lu_solve", "--stat", "median", "--sample", "new", "--update-readme"]) == 0
     assert {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in published} == first
+
+
+def test_main_readme_replays_saved_measurements_after_artifact_commit_and_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_benchmark_checkout(tmp_path)
+    performance_paths = _write_performance_bundle(tmp_path)
+    readme = tmp_path / "README.md"
+    readme.write_text(_canonical_benchmark_readme("0.0.8"), encoding="utf-8")
+    _mock_publication_environment(tmp_path, monkeypatch)
+    monkeypatch.setattr(criterion_dim_plot, "_render_svg_with_gnuplot", lambda request: request.out_svg.write_text("<svg/>\n", encoding="utf-8"))
+    assert criterion_dim_plot.main(["--update-readme"]) == 0
+    out_csv = tmp_path / "docs/assets/bench/vs_linalg_lu_solve_median.csv"
+    out_svg = out_csv.with_suffix(".svg")
+    first = {path: path.read_bytes() for path in (readme, out_csv, out_svg)}
+    provenance = json.loads(out_csv.with_suffix(".provenance.json").read_text(encoding="utf-8"))
+    _retain_complete_plot_inputs(tmp_path, performance_paths)
+    shutil.rmtree(tmp_path / "target")
+    # Committing only the saved results advances HEAD without changing the
+    # measured source, lockfile, release, or benchmark contract.
+    publication_commit = "b" * 40
+    monkeypatch.setattr(criterion_dim_plot, "run_git_command", lambda *_args, **_kwargs: SimpleNamespace(stdout=f"{publication_commit}\n"))
+    assert criterion_dim_plot.main(["--update-readme"]) == 0
+    assert {path: path.read_bytes() for path in first} == first
+    saved_provenance = json.loads(out_csv.with_suffix(".provenance.json").read_text(encoding="utf-8"))
+    assert saved_provenance["performance_artifact"]["csv"].startswith("docs/performance/v0.4.6-vs-v0.4.5/")
+    assert saved_provenance["performance_artifact"]["csv_sha256"] == provenance["performance_artifact"]["csv_sha256"]
+    assert saved_provenance["measurement"]["current_commit"] == _TEST_COMMIT
+    assert saved_provenance["publication"]["commit"] == publication_commit
 
 
 def test_dim_parsing_and_discovery(tmp_path: Path) -> None:
@@ -608,7 +667,7 @@ def test_toml_helpers_read_versions(tmp_path: Path) -> None:
 
 
 def test_format_legend_label() -> None:
-    assert criterion_dim_plot._format_legend_label("la-stack", "0.1.0") == "la-stack v0.1.0"
+    assert criterion_dim_plot._format_legend_label("la-stack", "0.4.6") == "la-stack v0.4.6"
     assert criterion_dim_plot._format_legend_label("faer", "unknown") == "faer"
 
 
@@ -1235,6 +1294,34 @@ def test_main_publication_labels_legacy_artifact_without_contract(
     assert provenance["publication"]["benchmark_contract"] == "legacy-retained-artifact"
 
 
+@pytest.mark.parametrize("changed", ["source", "lockfile", "release", "legacy-commit"])
+def test_main_publication_rejects_stale_measurement_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    changed: str,
+) -> None:
+    _write_benchmark_checkout(tmp_path)
+    _write_performance_bundle(tmp_path, include_contract=changed != "legacy-commit")
+    readme = tmp_path / "README.md"
+    original = _canonical_benchmark_readme("0.0.8")
+    readme.write_text(original, encoding="utf-8")
+    _mock_publication_environment(tmp_path, monkeypatch)
+    if changed == "source":
+        (tmp_path / "src/lib.rs").write_text("// changed source\n", encoding="utf-8")
+    elif changed == "lockfile":
+        with (tmp_path / "Cargo.lock").open("a", encoding="utf-8") as lock:
+            lock.write("\n# changed lock\n")
+    elif changed == "release":
+        manifest = tmp_path / "Cargo.toml"
+        manifest.write_text(manifest.read_text(encoding="utf-8").replace("0.4.6", "0.4.7"), encoding="utf-8")
+    else:
+        monkeypatch.setattr(criterion_dim_plot, "run_git_command", lambda *_args, **_kwargs: SimpleNamespace(stdout="b" * 40))
+
+    assert criterion_dim_plot.main(["--update-readme"]) == 2
+    assert readme.read_text(encoding="utf-8") == original
+    assert not (tmp_path / "docs/assets/bench/vs_linalg_lu_solve_median.csv").exists()
+
+
 def test_main_publication_rejects_tampered_performance_csv(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1353,6 +1440,65 @@ def test_artifact_rollback_failure_preserves_backups(
     assert (backup_dir / "backup-0").read_text(encoding="utf-8") == "old one\n"
     assert destination_one.read_text(encoding="utf-8") == "new one\n"
     assert destination_two.read_text(encoding="utf-8") == "old two\n"
+
+
+@pytest.mark.parametrize("failure_point", [None, "replace", "rollback"])
+def test_publication_keeps_backups_only_when_rollback_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failure_point: str | None,
+) -> None:
+    destination_one = tmp_path / "one.txt"
+    destination_two = tmp_path / "two.txt"
+    staged_one = tmp_path / "staged-one.txt"
+    staged_two = tmp_path / "staged-two.txt"
+    for path, text in (
+        (destination_one, "old one\n"),
+        (destination_two, "old two\n"),
+        (staged_one, "new one\n"),
+        (staged_two, "new two\n"),
+    ):
+        path.write_text(text, encoding="utf-8")
+    original_replace = criterion_dim_plot.Path.replace
+
+    def replace(source: Path, destination: Path) -> Path:
+        if failure_point is not None and source == staged_two:
+            msg = "simulated publish failure"
+            raise OSError(msg)
+        if failure_point == "rollback" and source.name == "backup-0":
+            msg = "simulated rollback failure"
+            raise OSError(msg)
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(criterion_dim_plot.Path, "replace", replace)
+
+    published = criterion_dim_plot._publish_staged_files(
+        [(staged_one, destination_one), (staged_two, destination_two)],
+        tmp_path,
+    )
+
+    assert published is (failure_point is None)
+    backups = list(tmp_path.glob(".criterion-dim-plot-backup-*"))
+    stderr = capsys.readouterr().err
+    if failure_point == "rollback":
+        assert len(backups) == 1
+        assert (backups[0] / "backup-0").read_text(encoding="utf-8") == "old one\n"
+        assert (backups[0] / "backup-1").read_text(encoding="utf-8") == "old two\n"
+        assert destination_one.read_text(encoding="utf-8") == "new one\n"
+        assert destination_two.read_text(encoding="utf-8") == "old two\n"
+        assert "simulated publish failure" in stderr
+        assert "simulated rollback failure" in stderr
+        assert f"backups preserved at {backups[0]}" in stderr
+    else:
+        assert backups == []
+        expected = "new" if published else "old"
+        assert destination_one.read_text(encoding="utf-8") == f"{expected} one\n"
+        assert destination_two.read_text(encoding="utf-8") == f"{expected} two\n"
+        if published:
+            assert stderr == ""
+        else:
+            assert "simulated publish failure" in stderr
 
 
 def test_repo_root_resolution_uses_working_checkout_for_installed_entrypoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

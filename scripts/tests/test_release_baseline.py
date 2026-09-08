@@ -168,6 +168,8 @@ def test_invalid_baseline_is_rejected(dataset: tuple[Path, Path], baseline: str)
 def test_inventory_includes_release_consumers_and_peers() -> None:
     expected = release_baseline.required_report_ids()
     assert {"d64/faer_lu_solve", "d64/nalgebra_lu_solve", "exact_hilbert_5x5/solve_exact", "rational_input_d8/solve_big_rational_gaussian"} <= expected
+    assert "d64/faer_dot_native" in expected
+    assert "d64/faer_dot" not in expected
     with pytest.raises(ValueError, match="inventory omits report consumers"):
         release_baseline.inventory_ids(IDS)
 
@@ -200,7 +202,7 @@ def test_discovery_uses_full_suites_and_never_times_inputs(tmp_path: Path, monke
     release_baseline.discover(tmp_path, manifest, tmp_path / "criterion")
     assert manifest.read_bytes() == (json.dumps(IDS, indent=2) + "\n").encode("utf-8")
     assert calls == [
-        ["bench", "--locked", "--features", "bench", "--bench", "vs_linalg", "--", "--list"],
+        ["bench", "--locked", "-p", "la-stack-comparison", "--features", "bench", "--bench", "vs_linalg", "--", "--list"],
         ["bench", "--locked", "--features", "bench,exact", "--bench", "exact", "--", "--list"],
     ]
 

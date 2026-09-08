@@ -2,13 +2,11 @@
 
 import argparse
 import json
-import math
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import cast
 
 from bench_compare import (
     EXACT_GROUPS,
@@ -16,7 +14,7 @@ from bench_compare import (
     VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM,
     VS_LINALG_STANDARD_BENCH_ORDER,
 )
-from performance_artifacts import TimingEstimate
+from criterion_measurements import read_object, validate_measurement
 from subprocess_utils import ExecutableNotFoundError, format_exception_diagnostics, run_cargo_command
 
 SUITES = {"vs_linalg": "bench", "exact": "bench,exact"}
@@ -69,8 +67,9 @@ def discover(root: Path, manifest: Path, criterion: Path) -> None:
     inventory: dict[str, list[str]] = {}
     for suite, features in SUITES.items():
         print(f"[release-baseline] Discovering {suite}", flush=True)
+        package = ["-p", "la-stack-comparison"] if suite == "vs_linalg" else []
         result = run_cargo_command(
-            ["bench", "--locked", "--features", features, "--bench", suite, "--", "--list"],
+            ["bench", "--locked", *package, "--features", features, "--bench", suite, "--", "--list"],
             cwd=root,
             capture_output=False,
             stdout=subprocess.PIPE,
@@ -87,44 +86,6 @@ def discover(root: Path, manifest: Path, criterion: Path) -> None:
     inventory_ids(inventory)
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(json.dumps(inventory, indent=2) + "\n", encoding="utf-8", newline="\n")
-
-
-def read_object(path: Path) -> dict[str, object]:
-    """Require a JSON object at the raw artifact boundary."""
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise TypeError(f"expected a JSON object in {path}")
-    return cast("dict[str, object]", data)  # JSON objects always have string keys.
-
-
-def positive_number(value: object) -> float:
-    """Reject booleans, nonnumeric values, and invalid timing numbers."""
-    if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or value <= 0:
-        raise ValueError(f"expected a finite positive timing value, got {value!r}")
-    return float(value)
-
-
-def validate_measurement(directory: Path) -> None:
-    """Check full default sampling and the estimates used by report consumers."""
-    samples = read_object(directory / "sample.json")
-    for field in ("iters", "times"):
-        values = samples.get(field)
-        if not isinstance(values, list) or len(values) != 100:
-            raise ValueError(f"{directory}: {field} must contain 100 samples")
-        for value in values:
-            positive_number(value)
-    estimates = read_object(directory / "estimates.json")
-    for statistic in ("mean", "median"):
-        estimate = estimates.get(statistic)
-        if not isinstance(estimate, dict) or not isinstance(interval := estimate.get("confidence_interval"), dict):
-            raise TypeError(f"{directory}: missing {statistic} estimate or confidence interval")
-        if interval.get("confidence_level") != 0.95:
-            raise ValueError(f"{directory}: expected a 95% confidence interval")
-        TimingEstimate(
-            median_ns=positive_number(estimate.get("point_estimate")),
-            ci_lower_ns=positive_number(interval.get("lower_bound")),
-            ci_upper_ns=positive_number(interval.get("upper_bound")),
-        )
 
 
 def validate(criterion: Path, manifest: Path, baseline: str) -> int:

@@ -1,6 +1,7 @@
 # Code Organization
 
-Module, feature, and file-placement guidance for the single Rust library crate.
+Module, feature, and file-placement guidance for the published Rust library and
+its unpublished comparison-benchmark package.
 Read [AGENTS.md](../AGENTS.md) for agent rules and use the
 [contributor workflow](../CONTRIBUTING.md) for setup and validation commands.
 
@@ -65,8 +66,10 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
   filter for D≤4. Exact solves use fraction-free forward elimination with
   first-non-zero pivoting and `BigRational` back-substitution. Rational inputs
   clear denominators before reusing the integer backend.
-- **`bench`** is a cfg-only gate for benchmark targets and
-  `tests/vs_linalg_inputs.rs`; benchmark libraries remain dev-dependencies.
+- **`bench`** is a cfg-only gate for benchmark targets. Benchmark libraries
+  remain dev-dependencies. Nalgebra and faer belong only to the unpublished
+  `la-stack-comparison` package under `benches/comparison`, so exact benchmark
+  builds do not compile either peer library.
 
 ## Tests and examples
 
@@ -76,6 +79,9 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
 - Other `tests/*.rs` suites cover regressions, API contracts, allocation
   behavior, conversion boundaries, and benchmark inputs. Shared property-test
   configuration lives in `tests/common/`.
+- `benches/comparison/tests/vs_linalg_inputs.rs` checks the shared comparison
+  fixtures. `just test-bench-inputs` and the full CI test pass include both
+  workspace packages.
 - `tests/semgrep/` contains deliberate static-analysis fixtures, not ordinary
   runnable API examples.
 - Python tests live under `scripts/tests/` and run with pytest through
@@ -94,6 +100,11 @@ intervals, linear forms, and nalgebra/faer comparisons. Helpers under
 accept only `ValidatedExactInput`, after independent validation outside timing.
 Adversarial groups include near-singular, large-entry, and Hilbert inputs.
 
+The root package is the default workspace member. `benches/comparison/Cargo.toml`
+owns the `vs_linalg` target at `benches/vs_linalg.rs` and its input test. Select
+it with `just bench-vs-linalg` or Cargo's `-p la-stack-comparison`. Both packages
+inherit the root workspace lints and share the lockfile and target directory.
+
 The [Benchmarking guide](BENCHMARKING.md) owns benchmark commands, methodology,
 baselines, output locations, and report promotion. The [Scripts guide](../scripts/README.md)
 owns the Python script inventory and entry points for comparisons, plotting,
@@ -104,6 +115,10 @@ The [justfile](../justfile) owns executable development workflows.
 Criterion validation. The release workflow packages only datasets that pass
 that gate; its regression and archive tests live in
 `scripts/tests/test_release_baseline.py`.
+
+`scripts/criterion_measurements.py` owns raw sample validation shared by hosted
+archives and local summaries. `scripts/benchmark_summaries.py` owns complete
+local summary serialization, snapshot identity, and lookup after cleanup.
 
 `.github/actions/prepare-release-benchmarks/action.yml` groups tool installation,
 input validation, and inventory under the release workflow's shared setup timeout.
@@ -120,6 +135,9 @@ live in `docs/dev/`; human setup and validation guidance lives in
 [Measuring coverage](MEASURING_COVERAGE.md) owns local and CI coverage execution.
 The generated [performance report](performance.md) records measured results;
 [Benchmarking](BENCHMARKING.md) owns the commands that produce and compare them.
+[Local benchmark summaries](performance/README.md) owns complete versioned local
+datasets. Completed optimization studies belong under
+[archived performance studies](archive/performance/studies/README.md).
 
 When adding, removing, renaming, or moving files, update the applicable ownership
 rows here. Prefer links to the detailed owner over copying its procedure into

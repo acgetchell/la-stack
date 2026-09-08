@@ -4,31 +4,32 @@
 
 #![cfg(feature = "bench")]
 
+use approx::assert_abs_diff_eq;
+use faer::linalg::matmul::dot::inner_prod;
 use faer::linalg::solvers::Solve;
 use faer::mat::AsMatRef;
 use faer::perm::PermRef;
-use faer::{Mat, Side};
+use faer::{Conj, Mat, Side};
 use nalgebra::{Const, DimMin, SMatrix, SVector};
 
-#[cfg(all(feature = "exact", not(la_stack_v0_4_3_api)))]
+#[cfg(feature = "exact")]
 use la_stack::ExactF64Conversion;
-use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Vector};
+use la_stack::{DEFAULT_SINGULAR_TOL, Matrix, Tolerance, Vector};
 
-#[path = "../benches/common/bench_utils.rs"]
+#[path = "../../common/bench_utils.rs"]
 mod bench_utils;
-#[path = "../benches/common/vs_linalg.rs"]
+#[path = "../../common/vs_linalg.rs"]
 pub mod vs_linalg_common;
 
-#[cfg(not(la_stack_v0_4_3_api))]
 use vs_linalg_common::{
     LuSolveScenario, make_balanced_dynamic_range_rows, validated_lu_solve_input,
 };
 use vs_linalg_common::{
-    PreparedFaerLuDet, faer_det_from_ldlt, faer_perm_sign, la_stack_dot, la_stack_norm_inf,
-    la_stack_norm_squared, la_stack_tolerance, make_ill_conditioned_matrix_rows, make_matrix_rows,
+    PreparedFaerLuDet, faer_det_from_ldlt, faer_perm_sign, la_stack_norm_inf,
+    la_stack_norm_squared, make_ill_conditioned_matrix_rows, make_matrix_rows,
     make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
 };
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 use vs_linalg_common::{
     delaunay_scaled_norm, iterative_hypot, make_norm_descending_array,
     make_norm_repeated_scale_array, make_norm_sparse_array, make_norm_wide_dynamic_range_array,
@@ -77,7 +78,6 @@ fn assert_lu_agreement<const D: usize>()
 where
     Const<D>: DimMin<Const<D>, Output = Const<D>>,
 {
-    #[cfg(not(la_stack_v0_4_3_api))]
     for scenario in [
         LuSolveScenario::Pivoting,
         LuSolveScenario::DenseIllConditioned,
@@ -208,13 +208,18 @@ fn assert_vector_operation_agreement<const D: usize>() {
     let fv1 = Mat::<f64>::from_fn(D, 1, |i, _| vector_entry(i, 0.0));
     let fv2 = Mat::<f64>::from_fn(D, 1, |i, _| vector_entry(i, 1.0));
 
-    let la_dot = la_stack_dot(&v1, &v2).unwrap_or_else(|err| panic!("la_stack dot failed: {err}"));
-    assert_close("nalgebra_dot", nv1.dot(&nv2), la_dot);
-    let mut fa_dot = 0.0;
-    for i in 0..D {
-        fa_dot = fv1[(i, 0)].mul_add(fv2[(i, 0)], fa_dot);
-    }
-    assert_close("faer_dot", fa_dot, la_dot);
+    // The fixture is (1, ..., D) dotted with (2, ..., D + 1).
+    // Its exact integer value is sum k(k + 1) = D(D + 1)(D + 2)/3.
+    // All products and partial sums are exactly representable at D <= 64.
+    let dimension = i32::try_from(D).unwrap();
+    let expected_dot = f64::from(dimension * (dimension + 1) * (dimension + 2) / 3);
+    let la_dot = v1
+        .dot(&v2)
+        .unwrap_or_else(|err| panic!("la_stack dot failed: {err}"));
+    let fa_dot = inner_prod(fv1.col(0).transpose(), Conj::No, fv2.col(0), Conj::No);
+    assert_abs_diff_eq!(la_dot, expected_dot, epsilon = 0.0);
+    assert_abs_diff_eq!(nv1.dot(&nv2), expected_dot, epsilon = 0.0);
+    assert_abs_diff_eq!(fa_dot, expected_dot, epsilon = 0.0);
 
     let la_norm_squared = la_stack_norm_squared(&v1)
         .unwrap_or_else(|err| panic!("la_stack norm_squared failed: {err}"));
@@ -222,7 +227,7 @@ fn assert_vector_operation_agreement<const D: usize>() {
     let fa_norm_squared = fv1.as_mat_ref().squared_norm_l2();
     assert_close("faer_norm2_sq", fa_norm_squared, la_norm_squared);
 
-    #[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+    #[cfg(not(la_stack_pre_rational_input_api))]
     {
         let la_norm = v1
             .norm()
@@ -253,7 +258,7 @@ fn assert_vector_operation_agreement<const D: usize>() {
     }
 }
 
-#[cfg(not(any(la_stack_pre_rational_input_api, la_stack_v0_4_3_api)))]
+#[cfg(not(la_stack_pre_rational_input_api))]
 #[test]
 fn norm_scenario_inputs_cover_distinct_branch_and_range_profiles() {
     let descending = make_norm_descending_array::<8>();
@@ -366,7 +371,7 @@ fn ill_conditioned_fixture_is_fixed_positive_definite_d8() {
 
 #[test]
 fn stress_inputs_exercise_pivoting_conditioning_and_scaled_products() {
-    let zero_tolerance = la_stack_tolerance(0.0).unwrap();
+    let zero_tolerance = Tolerance::try_new(0.0).unwrap();
 
     let pivoting_rows = make_pivoting_matrix_rows::<8>();
     assert!(pivoting_rows[1][0].abs() > pivoting_rows[0][0].abs());
@@ -382,9 +387,6 @@ fn stress_inputs_exercise_pivoting_conditioning_and_scaled_products() {
         // Bareiss-backed oracle is independent of the timed floating LU path.
         let baseline = Matrix::<8>::try_from_rows(make_matrix_rows::<8>()).unwrap();
         let expected = -baseline.det_exact().unwrap();
-        #[cfg(la_stack_v0_4_3_api)]
-        let expected_f64 = num_traits::ToPrimitive::to_f64(&expected).unwrap();
-        #[cfg(not(la_stack_v0_4_3_api))]
         let expected_f64 = expected.to_rounded_f64().unwrap();
         assert_close(
             "pivoting LU determinant against exact row-swap oracle",
@@ -414,7 +416,6 @@ fn stress_inputs_exercise_pivoting_conditioning_and_scaled_products() {
         expected_ill_conditioned_det.to_bits()
     );
 
-    #[cfg(not(la_stack_v0_4_3_api))]
     {
         let balanced = Matrix::<8>::try_from_rows(make_balanced_dynamic_range_rows()).unwrap();
         assert_eq!(balanced.lu(zero_tolerance).unwrap().det(), Ok(1.0));

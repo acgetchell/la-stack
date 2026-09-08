@@ -60,6 +60,9 @@ Use the top-level `just` workflows for routine release and local comparisons:
 for the repository because it downloads release assets. Local-generation
 recipes require `gh` only when discovering published release tags.
 
+New release comparisons require v0.4.4 or newer on both sides. v0.4.3 and older
+are excluded; historical Markdown reports remain available in the archive.
+
 ```bash
 # Local development: compare the current tree with the latest release
 just performance-local
@@ -88,16 +91,28 @@ harness. Reports record source-state, environment, toolchain, dependency,
 Criterion, harness, and validation provenance and fail on incomplete selected
 coverage. `performance-local` writes Markdown plus schema-versioned
 `performance.csv` and `performance.provenance.json` inputs under
-`target/bench-reports/` without promoting documentation. `performance-release`
-does the same measurement and retention work, requires distinct releases, and
-promotes the validated result. `performance-doc` consumes the retained pair
+`target/bench-reports/`, plus `performance.full.csv` and its provenance JSON
+containing every recorded case from both measurement phases.
+`performance-release` does the same measurement work, requires distinct releases,
+and preserves all four files under `docs/performance/<release-pair>/<run-digest>/`
+when promoting the validated result. `performance-doc` consumes the retained pair
 from either workflow without Cargo or temporary worktrees, then promotes the
 result into `docs/performance.md` and the archive. Same-version local artifacts
 remain valid comparison evidence but cannot be promoted as a release report.
-These files are reproducible scratch and may be removed with `target/`; native
-Criterion release archives remain the durable raw baselines. Direct comparisons
+Scratch files may be removed with `target/`. After cleanup, `performance-doc` and
+`performance-readme` resolve `docs/performance/latest.json` to the most recently
+promoted complete snapshot. Existing partial scratch inputs fail validation.
+The [local summary index](../docs/performance/README.md) owns the saved-data
+schema and retention contract. Native Criterion release archives remain the
+durable raw baselines from the GitHub runner. Direct comparisons
 of separately published artifacts retain their original per-release harnesses
 and label unavailable historical measurement metadata explicitly.
+
+The comparison suite lives in the unpublished `benches/comparison` package, so
+exact benchmark builds do not compile nalgebra/faer. Local release comparisons
+measure la-stack on each revision and reuse peer measurements from the baseline
+phase. The filtered current run skips Criterion HTML generation to avoid reading
+missing `new` samples for peers that were not rerun.
 
 Operationally, `performance-release` is the atomic composition of
 `performance-local` and `performance-doc`: measure, retain the common
@@ -156,7 +171,8 @@ just performance-readme lu_solve median new true
 ```
 
 The README recipe consumes `target/bench-reports/performance.csv` and its
-adjacent provenance JSON; it does not run the benchmark-input gate or Criterion
+adjacent provenance JSON, or the latest committed snapshot after cleanup;
+it does not run the benchmark-input gate or Criterion
 again. It uses the current la-stack timing and retained same-current-harness
 nalgebra/faer timings, requires all three at every canonical dimension, and then
 publishes CSV, SVG, derived JSON provenance, the README table, and its tag-pinned
@@ -262,7 +278,12 @@ just changelog-unreleased vX.Y.Z
 
 `just changelog` runs `git-cliff -o CHANGELOG.md`, strips trailing blank
 lines, archives completed changelog series, and formats the generated Markdown.
-Configuration lives in `cliff.toml` at the repo root.
+Configuration lives in `cliff.toml` at the repo root. The Breaking Changes
+summary preserves full `BREAKING CHANGE` footer descriptions, including compiler
+requirements and migration instructions; commits marked only with `!` fall back
+to their subject. Post-processing escapes HTML in breaking-description prose
+while preserving literal Rust syntax in Markdown code spans and fenced blocks,
+and adds merged-PR summaries without replacing those descriptions.
 
 ### Creating a release tag
 
@@ -283,8 +304,10 @@ validates SemVer, and handles GitHub's 125KB tag-annotation size limit.
 | `archive_performance.py` | Promote release performance docs and archive older comparisons |
 | `performance_artifacts.py` | Validate and publish schema-versioned performance-comparison CSV/JSON inputs |
 | `bench_compare.py` | Compare Criterion benchmark baselines and render Markdown reports |
+| `benchmark_summaries.py` | Preserve every local case summary, bind provenance, and resolve saved report inputs after cleanup |
 | `check_docs_version_sync.py` | Verify versioned documentation links and snippets stay synchronized |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
+| `criterion_measurements.py` | Validate full Criterion sampling and estimates for local summaries and hosted archives |
 | `tag_release.py` | Create annotated git tags from CHANGELOG.md sections |
 | `postprocess_changelog.py` | Normalize and reflow generated git-cliff Markdown safely |
 | `release_baseline.py` | Inventory full Criterion suites and validate complete raw release baselines before packaging |

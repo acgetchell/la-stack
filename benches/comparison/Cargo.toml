@@ -1,0 +1,27 @@
+[package]
+name = "la-stack-comparison"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98.1"
+publish = false
+autobenches = false
+
+[dev-dependencies]
+approx = "0.5.1"
+criterion = { version = "0.8.2", features = [ "html_reports" ] }
+faer = { version = "0.24.4", default-features = false, features = [ "std", "linalg" ] }
+la-stack = { path = "../.." }
+nalgebra = { version = "0.35.0", default-features = false, features = [ "std" ] }
+
+[features]
+bench = [  ]
+exact = [ "la-stack/exact" ]
+
+[[bench]]
+name = "vs_linalg"
+path = "../vs_linalg.rs"
+harness = false
+required-features = [ "bench" ]
+
+[lints]
+workspace = true

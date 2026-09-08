@@ -220,11 +220,12 @@ Favor the invariant over a convenient edit or faster implementation.
 
 ## Project Context
 
-This is one Rust library crate, rooted at `src/lib.rs`. Core dimensions are
-compile-time constants. The `exact` feature enables arbitrary-precision
-arithmetic; `bench` gates benchmark targets while their dependencies remain
-dev-only. The [Code organization guide](docs/code_organization.md) maps
-modules, features, tests, and tooling. Update that guide when file ownership
+The published Rust library is rooted at `src/lib.rs`. The unpublished
+`benches/comparison` workspace member owns nalgebra/faer benchmark dependencies
+and input tests. Core dimensions are compile-time constants. The `exact` feature
+enables arbitrary-precision arithmetic; `bench` gates benchmark targets while
+their dependencies remain dev-only. The [Code organization guide](docs/code_organization.md)
+maps modules, features, tests, and tooling. Update that guide when file ownership
 or layout changes.
 
 ## Agent Expectations

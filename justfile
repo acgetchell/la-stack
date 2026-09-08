@@ -249,7 +249,7 @@ action-lint: _ensure-actionlint
 
 # Benchmarks
 bench:
-    cargo bench --locked --features bench
+    cargo bench --locked --workspace --features bench
 
 # Compare latest measurements against a saved baseline.
 # Defaults to the `last` full-release baseline.
@@ -263,7 +263,7 @@ bench-compare baseline="last" suite="all" scope="release-signal": python-sync
 # Cargo so warning policy does not create separate rustc cache artifacts.
 # This catches bench/release-profile-only warnings that won't show up in normal debug-profile runs.
 bench-compile:
-    CARGO_BUILD_WARNINGS=deny cargo bench --locked --no-run --features bench
+    CARGO_BUILD_WARNINGS=deny cargo bench --locked --workspace --no-run --features bench
     CARGO_BUILD_WARNINGS=deny cargo bench --locked --no-run --features bench,exact --bench exact
 
 # Run the exact-arithmetic benchmark suite.
@@ -300,14 +300,14 @@ bench-save-baseline tag suite="all":
     suite={{ quote(suite) }}
     case "$suite" in
         all)
-            cargo bench --locked --features bench --bench vs_linalg -- --save-baseline {{ quote(tag) }}
-            cargo bench --locked --features bench,exact --bench exact -- --save-baseline {{ quote(tag) }}
+            cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --noplot --save-baseline {{ quote(tag) }}
+            cargo bench --locked --features bench,exact --bench exact -- --noplot --save-baseline {{ quote(tag) }}
             ;;
         exact)
-            cargo bench --locked --features bench,exact --bench exact -- --save-baseline {{ quote(tag) }}
+            cargo bench --locked --features bench,exact --bench exact -- --noplot --save-baseline {{ quote(tag) }}
             ;;
         vs_linalg)
-            cargo bench --locked --features bench --bench vs_linalg -- --save-baseline {{ quote(tag) }}
+            cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --noplot --save-baseline {{ quote(tag) }}
             ;;
         *)
             echo "unknown benchmark suite: $suite" >&2
@@ -325,14 +325,15 @@ bench-vs-linalg filter="":
     set -euo pipefail
     filter={{ quote(filter) }}
     if [ -n "$filter" ]; then
-        cargo bench --locked --features bench --bench vs_linalg -- "$filter"
+        cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- "$filter"
     else
-        cargo bench --locked --features bench --bench vs_linalg
+        cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg
     fi
 
 # Bench only la-stack rows from the vs_linalg suite for cheap latest-vs-last comparisons.
+# Filtered runs omit peer samples, so disable Criterion's complete-group HTML reports.
 bench-vs-linalg-la-stack:
-    cargo bench --locked --features bench --bench vs_linalg -- la_stack
+    cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- la_stack --noplot
 
 # Run only la-stack vs_linalg measurements and render a non-exact performance report.
 bench-vs-linalg-latest-vs baseline="last": bench-vs-linalg-la-stack python-sync
@@ -344,9 +345,9 @@ bench-vs-linalg-quick filter="":
     set -euo pipefail
     filter={{ quote(filter) }}
     if [ -n "$filter" ]; then
-        cargo bench --locked --features bench --bench vs_linalg -- "$filter" --quick --noplot
+        cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- "$filter" --quick --noplot
     else
-        cargo bench --locked --features bench --bench vs_linalg -- --quick --noplot
+        cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --quick --noplot
     fi
 
 # Build commands
@@ -622,7 +623,7 @@ markdown-fix: _ensure-rumdl
 
 markdown-lint: markdown-check
 
-# Build and promote release performance docs from retained report inputs.
+# Build release docs from retained scratch inputs or the latest docs/performance snapshot.
 performance-doc: python-sync
     uv run --locked archive-performance --promote-artifacts
 
@@ -662,7 +663,7 @@ performance-local-non-exact current_tag="" baseline_tag="": _ensure-gh python-sy
         uv run --locked archive-performance --current-vs-latest --suite vs_linalg --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance-non-exact.md --artifact-csv target/bench-reports/performance-non-exact.csv --artifact-provenance target/bench-reports/performance-non-exact.provenance.json
     fi
 
-# Validate retained release measurements and atomically publish the canonical README assets/table.
+# Publish README assets/table from retained measurements, including after target cleanup.
 performance-readme metric="lu_solve" stat="median" sample="new" log_y="true": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
@@ -672,7 +673,7 @@ performance-readme metric="lu_solve" stat="median" sample="new" log_y="true": py
     fi
     uv run --locked criterion-dim-plot "${args[@]}"
 
-# Generate local release-signal measurements in a temp worktree, then promote/archive docs.
+# Measure locally, preserve complete summaries in docs/performance, and promote/archive docs.
 performance-release current_tag="" baseline_tag="": _ensure-gh python-sync
     #!/usr/bin/env bash
     set -euo pipefail
@@ -777,6 +778,9 @@ setup-tools:
                 ;;
             cargo-nextest)
                 cargo nextest --version 2>/dev/null
+                ;;
+            cargo-upgrade)
+                cargo upgrade --version 2>/dev/null
                 ;;
             *)
                 "$1" --version 2>/dev/null
@@ -982,7 +986,7 @@ test-all: test-rust test-python
 
 # Smoke-test deterministic inputs and configuration shared with benchmark suites.
 test-bench-inputs: _ensure-cargo-nextest
-    cargo nextest run --profile ci --features bench,exact --test vs_linalg_inputs --test exact_bench_config --verbose
+    cargo nextest run --workspace --profile ci --features bench,exact --test vs_linalg_inputs --test exact_bench_config --verbose
 
 test-doc:
     cargo test --doc --verbose
@@ -1012,7 +1016,7 @@ test-rust: test-rust-ci test-doc test-doc-exact
 
 # CI Rust bucket: all runnable unit/integration targets in one nextest pass.
 test-rust-ci: _ensure-cargo-nextest
-    cargo nextest run --release --profile ci --all-features --lib --tests --verbose
+    cargo nextest run --workspace --release --profile ci --all-features --lib --tests --verbose
 
 test-unit: test-lib
 
