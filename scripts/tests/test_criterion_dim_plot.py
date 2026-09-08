@@ -528,10 +528,10 @@ def _retain_complete_plot_inputs(root: Path, paths: ArtifactPaths) -> None:
             (directory / "estimates.json").write_text(json.dumps({"mean": estimate, "median": estimate}), encoding="utf-8")
             (directory / "sample.json").write_text(json.dumps({"iters": [1.0] * 100, "times": [timing.median_ns] * 100}), encoding="utf-8")
     for path, payload in summary_outputs(criterion, baseline, paths).items():
-        path.write_text(payload, encoding="utf-8")
+        path.write_text(payload, encoding="utf-8", newline="\n")
     for path, payload in retained_outputs(root / "docs/performance", paths).items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(payload, encoding="utf-8")
+        path.write_text(payload, encoding="utf-8", newline="\n")
 
 
 def test_main_update_readme_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

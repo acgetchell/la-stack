@@ -91,6 +91,7 @@ jobs:
           cargo_machete_version="$(resolve_version cargo_machete_version)"
           cargo_nextest_version="$(resolve_version cargo_nextest_version)"
           dprint_version="$(resolve_version dprint_version)"
+          git_cliff_version="$(resolve_version git_cliff_version)"
           rumdl_version="$(resolve_version rumdl_version)"
           taplo_version="$(resolve_version taplo_version)"
           typos_version="$(resolve_version typos_version)"
@@ -101,6 +102,7 @@ jobs:
             echo "CARGO_MACHETE_VERSION=$cargo_machete_version"
             echo "CARGO_NEXTEST_VERSION=$cargo_nextest_version"
             echo "DPRINT_VERSION=$dprint_version"
+            echo "GIT_CLIFF_VERSION=$git_cliff_version"
             echo "RUMDL_VERSION=$rumdl_version"
             echo "TAPLO_VERSION=$taplo_version"
             echo "TYPOS_VERSION=$typos_version"
@@ -165,6 +167,11 @@ jobs:
         uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
         with:
           tool: cargo-nextest@${{ steps.tool_versions.outputs.CARGO_NEXTEST_VERSION }}
+
+      - name: Install git-cliff
+        uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
+        with:
+          tool: git-cliff@${{ steps.tool_versions.outputs.GIT_CLIFF_VERSION }}
 
       - name: Run CI checks
         run: just ci

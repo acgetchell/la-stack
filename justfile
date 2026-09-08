@@ -1008,7 +1008,7 @@ test-integration-compile: _ensure-cargo-nextest
 test-lib: _ensure-cargo-nextest
     cargo nextest run --profile ci --lib --verbose
 
-test-python: python-sync
+test-python: _ensure-git-cliff python-sync
     uv run --locked pytest -q
 
 test-rust: test-rust-ci test-doc test-doc-exact

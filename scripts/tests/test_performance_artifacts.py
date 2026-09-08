@@ -245,7 +245,7 @@ def _simulate_promotion_failure(paths: ArtifactPaths) -> None:
 def _write_outputs(outputs: dict[Path, str]) -> None:
     for path, payload in outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(payload, encoding="utf-8")
+        path.write_text(payload, encoding="utf-8", newline="\n")
 
 
 def _complete_local_artifacts(root: Path, *, current_value: float = 8.0) -> ArtifactPaths:

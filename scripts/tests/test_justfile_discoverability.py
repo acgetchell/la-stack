@@ -72,8 +72,14 @@ def test_release_runs_each_suite_once_and_reuses_peer_measurements() -> None:
     script = 'cargo() { printf "%s\\n" "$*"; }\n' + baseline.stderr
     baseline_run = run_safe_command("bash", ["--noprofile", "--norc", "-euc", script], cwd=REPO_ROOT)
     baseline_commands = [shlex.split(line) for line in baseline_run.stdout.splitlines()]
-    current = run_just("--dry-run", "bench-latest")
-    current_commands = [shlex.split(line) for line in current.stderr.splitlines() if line.startswith("cargo bench ")]
+    recipes = just_recipes()
+    current = recipes["bench-latest"]
+    assert not current["body"]
+    current_commands = []
+    for dependency in current["dependencies"]:
+        recipe = recipes[dependency["recipe"]]
+        assert not recipe["dependencies"]
+        current_commands.extend(shlex.split("".join(line)) for line in recipe["body"])
 
     assert len(baseline_commands) == len(current_commands) == 2
     baseline_comparison, baseline_exact = baseline_commands
