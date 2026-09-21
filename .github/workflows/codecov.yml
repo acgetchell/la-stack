@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
         with:
           cache: true # toolchain/components are specified in rust-toolchain.toml
           cache-bin: false
@@ -106,7 +106,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: ${{ success() && hashFiles('coverage/cobertura.xml') != '' }}
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
         with:
           files: coverage/cobertura.xml
           flags: unittests
@@ -117,7 +117,7 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ success() && hashFiles('target/nextest/coverage/test-results/junit.xml') != '' }}
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
         with:
           files: target/nextest/coverage/test-results/junit.xml
           flags: unittests
