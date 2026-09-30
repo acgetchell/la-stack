@@ -378,6 +378,7 @@ changelog-check: _ensure-rumdl python-sync
     rumdl check --no-cache --config pyproject.toml CHANGELOG.md docs/archives/changelog/*.md
 
 # Validate generation and print the root changelog without publishing candidates.
+[positional-arguments]
 changelog-preview *args: _ensure-git-cliff _ensure-rumdl python-sync
     #!/usr/bin/env bash
     set -euo pipefail
@@ -580,7 +581,7 @@ markdown-check: _ensure-rumdl _ensure-uv
     files=()
     while IFS= read -r -d '' file; do
         case "$file" in
-            CHANGELOG.md|docs/archive/*) continue ;;
+            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*) continue ;;
         esac
         if [ -f "$file" ]; then
             files+=("$file")
@@ -602,7 +603,7 @@ markdown-fix: _ensure-rumdl
     files=()
     while IFS= read -r -d '' file; do
         case "$file" in
-            CHANGELOG.md|docs/archive/*) continue ;;
+            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*) continue ;;
         esac
         if [ -f "$file" ]; then
             files+=("$file")

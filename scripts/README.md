@@ -293,6 +293,11 @@ common regressions belong to the shared package; this repository owns the
 configuration, recipes, and `scripts/tests/test_changelog_integration.py`.
 Internal shared modules are not a supported consumer API.
 
+The consumer-owned `update-python` helper advances only exact requirements
+declared directly in `dev`. Included groups retain their own upgrade policy;
+the shared `tooling` pin and its lockfile change together through an intentional
+dependency upgrade.
+
 `just changelog` generates, normalizes, formats, and rotates completed minor
 series in one operation. It retains Unreleased and the newest minor series in
 `CHANGELOG.md`, with older releases in `docs/archives/changelog/MAJOR.MINOR.md`.
@@ -334,8 +339,9 @@ just tag-force vX.Y.Z    # replace that tag only when explicitly repairing it
 
 These recipes call `research-repo-tools changelog tag`. It searches the root
 and canonical archives, validates the entire history, and requires the
-`v`-prefixed tag to match the Cargo package version. The dated release heading
-must equal today's UTC date and any `CITATION.cff` date. Oversized annotations
+`v`-prefixed tag to match the Cargo package version. The consumer's `declared`
+date policy requires the dated release heading to match any `CITATION.cff` date,
+so a release prepared before merge can be tagged on a later UTC day. Oversized annotations
 link to the full notes to respect GitHub's 125KB limit. `--force` replaces an
 existing local ref only after validation; it does not first delete the old tag.
 Tagging never pushes or publishes a release. Use the CLI's `--dry-run` to

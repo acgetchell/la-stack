@@ -1,14 +1,12 @@
 """Tests for resolver-backed Python development-tool pin updates."""
 
 import subprocess
-from typing import TYPE_CHECKING
+import tomllib
+from pathlib import Path
 
 import pytest
 
 import update_python_dev_pins
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def project_text(*requirements: str) -> str:
@@ -36,6 +34,33 @@ def test_parse_project_accepts_exact_simple_dev_pins() -> None:
     ]
 
 
+def test_actual_project_keeps_included_tooling_outside_direct_dev_updates() -> None:
+    text = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
+    python_version, pins = update_python_dev_pins.parse_project(text)
+    groups = tomllib.loads(text)["dependency-groups"]
+    assert python_version == "3.14"
+    assert groups["tooling"] == ["research-repo-tools==0.1.7"]
+    assert {"include-group": "tooling"} in groups["dev"]
+    assert "research-repo-tools" not in {pin.name for pin in pins}
+    assert [f"{pin.name}=={pin.version}" for pin in pins] == [entry for entry in groups["dev"] if isinstance(entry, str)]
+
+
+@pytest.mark.parametrize(
+    ("entry", "error", "diagnostic"),
+    [
+        ('{ include-group = "missing" }', ValueError, "existing dependency group"),
+        ("{ include-group = 42 }", ValueError, "existing dependency group"),
+        ('{ include-group = "dev" }', ValueError, "other than dev"),
+        ('{ include-group = "tooling", extra = true }', TypeError, "strings or include-group tables"),
+        ("42", TypeError, "strings or include-group tables"),
+    ],
+)
+def test_parse_project_rejects_malformed_dev_entries(entry: str, error: type[Exception], diagnostic: str) -> None:
+    text = project_text("ruff==0.16.2").replace("dev = [", f"dev = [\n    {entry},") + 'tooling = ["research-repo-tools==0.1.7"]\n'
+    with pytest.raises(error, match=diagnostic):
+        update_python_dev_pins.parse_project(text)
+
+
 def test_parse_project_rejects_non_exact_dev_requirement() -> None:
     with pytest.raises(ValueError, match=r"development-tool requirements must be exact simple pins: ruff>=0\.16"):
         update_python_dev_pins.parse_project(project_text("ruff>=0.16"))
@@ -61,12 +86,17 @@ def test_parse_resolution_rejects_missing_direct_tool() -> None:
         update_python_dev_pins.parse_resolution("mcp==1.29.0\n", pins)
 
 
+@pytest.mark.parametrize("include_tooling", [False, True])
 def test_update_dev_pins_resolves_then_applies_one_exact_transaction(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    include_tooling: bool,
 ) -> None:
     pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text(project_text("ruff==0.16.2", "semgrep==1.172.0"), encoding="utf-8")
+    text = project_text("ruff==0.16.2", "semgrep==1.172.0")
+    if include_tooling:
+        text = text.replace("dev = [", 'dev = [\n    { include-group = "tooling" },') + 'tooling = ["research-repo-tools==0.1.7"]\n'
+    pyproject.write_text(text, encoding="utf-8")
     calls: list[tuple[str, list[str], dict[str, object]]] = []
 
     def fake_run(command: str, args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:

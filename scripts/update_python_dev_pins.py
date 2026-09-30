@@ -56,7 +56,7 @@ def _python_floor(project: dict[str, object]) -> str:
 
 
 def _dev_pins(groups: dict[str, object]) -> list[DevPin]:
-    """Return validated exact pins from dependency-groups.dev."""
+    """Return direct exact dev pins, leaving included groups under their owners."""
     dev = groups.get("dev")
     if not isinstance(dev, list):
         msg = "dependency-groups.dev must be an array"
@@ -68,8 +68,14 @@ def _dev_pins(groups: dict[str, object]) -> list[DevPin]:
     pins: list[DevPin] = []
     normalized_names: set[str] = set()
     for requirement in dev:
+        if isinstance(requirement, dict) and set(requirement) == {"include-group"}:
+            included = requirement["include-group"]
+            if not isinstance(included, str) or included == "dev" or not isinstance(groups.get(included), list):
+                msg = "include-group must name an existing dependency group other than dev"
+                raise ValueError(msg)
+            continue
         if not isinstance(requirement, str):
-            msg = "dependency-groups.dev entries must be strings"
+            msg = "dependency-groups.dev entries must be strings or include-group tables"
             raise TypeError(msg)
         requirement_match = EXACT_REQUIREMENT.fullmatch(requirement)
         if requirement_match is None:
@@ -162,7 +168,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--pyproject",
         type=Path,
         default=Path("pyproject.toml"),
-        help="project manifest containing exact dependency-groups.dev pins",
+        help="project manifest containing direct exact dependency-groups.dev pins",
     )
     return parser.parse_args(argv)
 

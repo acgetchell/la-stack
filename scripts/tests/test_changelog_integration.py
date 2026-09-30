@@ -1,10 +1,12 @@
 """Consumer integration with the pinned, published changelog CLI."""
 
 import json
+import os
 import re
 import shutil
+import sys
 import tomllib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from importlib.metadata import version
 from pathlib import Path
 
@@ -227,6 +229,31 @@ def test_consumer_recipes_forward_cli_arguments_and_keep_metadata_separate() -> 
         assert "update-release-version" not in result.stderr
 
 
+def test_preview_recipe_executes_explicit_tag_and_date_without_publishing(consumer: Path) -> None:
+    """Run the imported Just adapter and installed CLI, skipping installation only."""
+    commit(consumer, "feat: initial fixture")
+    run_git_command(["tag", "v0.4.5"], cwd=consumer)
+    commit(consumer, "fix: preview target date")
+    (consumer / "CHANGELOG.md").write_text("# Changelog\n\n## [0.4.5] - 2000-01-02\n\n- Retained.\n", encoding="utf-8")
+    wrapper = consumer / "recipes.just"
+    wrapper.write_text(
+        f"set allow-duplicate-recipes\nimport '{(REPO_ROOT / 'justfile').as_posix()}'\n_ensure-git-cliff:\n\n_ensure-rumdl:\n\npython-sync:\n",
+        encoding="utf-8",
+    )
+    before = markdown_bytes(consumer)
+    metadata = {name: (consumer / name).read_bytes() for name in ("Cargo.toml", "pyproject.toml")}
+    result = run_safe_command(
+        "just",
+        ["--justfile", str(wrapper), "--working-directory", str(consumer), "changelog-preview", "--tag", "v0.5.0", "--date", "2026-09-30"],
+        cwd=consumer,
+        env=os.environ | {"UV_NO_SYNC": "1", "UV_PROJECT_ENVIRONMENT": sys.prefix},
+    )
+    assert "## [0.5.0] - 2026-09-30" in result.stdout
+    assert markdown_bytes(consumer) == before
+    assert {name: (consumer / name).read_bytes() for name in metadata} == metadata
+    assert not (consumer / "docs/archives/changelog").exists()
+
+
 def test_final_repository_links_and_archived_notes_remain_valid(capsys: pytest.CaptureFixture[str]) -> None:
     """Check consumer history, including references in every completed series."""
     assert cli(REPO_ROOT, "check") == 0
@@ -259,6 +286,19 @@ def test_tag_preview_checks_citation_date_and_handles_oversized_notes(consumer: 
     assert len(preview.encode("utf-8")) < 125000
     assert markdown_bytes(consumer) == before
     assert run_git_command(["tag", "--list"], cwd=consumer).stdout == ""
+
+
+def test_tag_accepts_a_declared_release_date_before_the_tagging_day(consumer: Path) -> None:
+    """A release prepared before merge remains taggable with matching metadata."""
+    commit(consumer, "feat: prior-day release fixture")
+    released = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
+    (consumer / "CHANGELOG.md").write_text(f"# Changelog\n\n## [0.4.6] - {released}\n\n- Prior-day release.\n", encoding="utf-8")
+    (consumer / "CITATION.cff").write_text(f"version: 0.4.6\ndate-released: {released}\n", encoding="utf-8")
+    before = markdown_bytes(consumer)
+    assert cli(consumer, "tag", "v0.4.6") == 0
+    assert run_git_command(["cat-file", "-t", "refs/tags/v0.4.6"], cwd=consumer).stdout.strip() == "tag"
+    assert "Prior-day release" in run_git_command(["cat-file", "-p", "refs/tags/v0.4.6"], cwd=consumer).stdout
+    assert markdown_bytes(consumer) == before
 
 
 def test_normalization_preserves_fenced_examples_and_prerelease_notes(consumer: Path, capsys: pytest.CaptureFixture[str]) -> None:

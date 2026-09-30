@@ -169,3 +169,7 @@ repository = "la-stack"
 formatter = "changelog-rumdl.toml"
 # Historical deps-dev bodies contain release-note links that the packaged policy omits.
 cliff-config = "cliff.toml"
+
+[tool.research-repo-tools.release]
+# Release preparation and post-merge tagging can happen on different UTC days.
+date-policy = "declared"
