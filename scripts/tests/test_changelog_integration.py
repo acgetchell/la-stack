@@ -18,15 +18,23 @@ from subprocess_utils import run_git_command, run_safe_command
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def create_consumer(root: Path, source: Path) -> Path:
+    """Use real configuration and policy with a stable synthetic package identity."""
+    for name in ("pyproject.toml", "cliff.toml", "changelog-rumdl.toml", "README.md"):
+        shutil.copyfile(source / name, root / name)
+    (root / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.4.6"\n', encoding="utf-8")
+    run_git_command(["init", "--quiet"], cwd=root)
+    run_git_command(["config", "user.name", "Changelog fixture"], cwd=root)
+    run_git_command(["config", "user.email", "fixture@example.invalid"], cwd=root)
+    run_git_command(["config", "commit.gpgsign", "false"], cwd=root)
+    run_git_command(["config", "tag.gpgsign", "false"], cwd=root)
+    return root
+
+
 @pytest.fixture
 def consumer(tmp_path: Path) -> Path:
-    """Use real consumer configuration and policy in a disposable Git repository."""
-    for name in ("pyproject.toml", "cliff.toml", "changelog-rumdl.toml", "Cargo.toml", "README.md"):
-        shutil.copyfile(REPO_ROOT / name, tmp_path / name)
-    run_git_command(["init", "--quiet"], cwd=tmp_path)
-    run_git_command(["config", "user.name", "Changelog fixture"], cwd=tmp_path)
-    run_git_command(["config", "user.email", "fixture@example.invalid"], cwd=tmp_path)
-    return tmp_path
+    """Create one disposable consumer independent of live release and signing state."""
+    return create_consumer(tmp_path, REPO_ROOT)
 
 
 def cli(root: Path, *args: str) -> int:
@@ -299,6 +307,42 @@ def test_tag_accepts_a_declared_release_date_before_the_tagging_day(consumer: Pa
     assert run_git_command(["cat-file", "-t", "refs/tags/v0.4.6"], cwd=consumer).stdout.strip() == "tag"
     assert "Prior-day release" in run_git_command(["cat-file", "-p", "refs/tags/v0.4.6"], cwd=consumer).stdout
     assert markdown_bytes(consumer) == before
+
+
+def test_fixture_isolates_commits_and_tags_from_global_signing(consumer: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Synthetic Git operations need no key when ambient signing is enabled."""
+    signing_config = consumer / "global-signing.gitconfig"
+    signing_config.write_text("[commit]\ngpgsign = true\n[tag]\ngpgsign = true\n[gpg]\nprogram = fixture-signing-must-not-run\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(signing_config))
+    commit(consumer, "feat: signing isolation fixture")
+    released = datetime.now(UTC).date().isoformat()
+    (consumer / "CHANGELOG.md").write_text(f"# Changelog\n\n## [0.4.6] - {released}\n\n- Unsigned fixture tag.\n", encoding="utf-8")
+    assert cli(consumer, "tag", "v0.4.6") == 0
+    assert run_git_command(["cat-file", "-t", "refs/tags/v0.4.6"], cwd=consumer).stdout.strip() == "tag"
+
+
+def test_fixture_tags_remain_valid_after_the_source_release_version_advances(tmp_path: Path) -> None:
+    """A release update in the checkout cannot invalidate synthetic tag scenarios."""
+    source = tmp_path / "advanced-source"
+    source.mkdir()
+    for name in ("pyproject.toml", "cliff.toml", "changelog-rumdl.toml", "README.md"):
+        shutil.copyfile(REPO_ROOT / name, source / name)
+    manifest = source / "pyproject.toml"
+    text = manifest.read_text(encoding="utf-8")
+    version_before = tomllib.loads(text)["project"]["version"]
+    manifest.write_text(text.replace(f'version = "{version_before}"', 'version = "0.4.7"', 1), encoding="utf-8")
+    (source / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.4.7"\n', encoding="utf-8")
+    root = tmp_path / "consumer"
+    root.mkdir()
+    create_consumer(root, source)
+    commit(root, "feat: next source release fixture")
+    released = datetime.now(UTC).date().isoformat()
+    (root / "CHANGELOG.md").write_text(f"# Changelog\n\n## [0.4.6] - {released}\n\n- Stable fixture identity.\n", encoding="utf-8")
+    (root / "CITATION.cff").write_text(f"version: 0.4.6\ndate-released: {released}\n", encoding="utf-8")
+    assert tomllib.loads((source / "Cargo.toml").read_text(encoding="utf-8"))["package"]["version"] == "0.4.7"
+    assert tomllib.loads(manifest.read_text(encoding="utf-8"))["project"]["version"] == "0.4.7"
+    assert cli(root, "tag", "v0.4.6") == 0
+    assert run_git_command(["cat-file", "-t", "refs/tags/v0.4.6"], cwd=root).stdout.strip() == "tag"
 
 
 def test_normalization_preserves_fenced_examples_and_prerelease_notes(consumer: Path, capsys: pytest.CaptureFixture[str]) -> None:
