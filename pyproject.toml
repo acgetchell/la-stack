@@ -167,7 +167,7 @@ schema = 1
 owner = "acgetchell"
 repository = "la-stack"
 formatter = "changelog-rumdl.toml"
-# Historical deps-dev bodies contain release-note links that the packaged policy omits.
+# Packaged 0.1.7 template plus one deps-dev body-preservation exception.
 cliff-config = "cliff.toml"
 
 [tool.research-repo-tools.release]

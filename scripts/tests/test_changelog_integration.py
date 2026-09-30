@@ -66,6 +66,20 @@ def test_published_package_is_exactly_pinned_and_included_in_dev() -> None:
     assert package["source"] == {"registry": "https://pypi.org/simple"}
 
 
+def test_consumer_template_has_only_the_documented_shared_policy_exception() -> None:
+    """Keep the installed common format, with one bounded historical-body exception."""
+    shared = run_safe_command(
+        "uv",
+        ["run", "--locked", "--group", "dev", "research-repo-tools", "templates", "cliff.toml", "--owner", "acgetchell", "--repository", "la-stack"],
+        cwd=REPO_ROOT,
+    ).stdout
+    expected = shared.replace(
+        '{%- if commit.body and group != "Dependencies" %}',
+        '{%- if commit.body and (group != "Dependencies" or commit.scope == "deps-dev") %}',
+    )
+    assert tomllib.loads((REPO_ROOT / "cliff.toml").read_text(encoding="utf-8")) == tomllib.loads(expected)
+
+
 def test_archive_rotation_preserves_notes_references_and_relative_links(consumer: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Root and archived notes remain discoverable after a minor-series rotation."""
     changelog = consumer / "CHANGELOG.md"
@@ -115,7 +129,13 @@ def test_generation_uses_consumer_policy_dates_and_transactional_preview(consume
         consumer,
         "chore(deps-dev): bump ruff from 0.16.1 to 0.16.2\n\nRead [release notes](https://github.com/astral-sh/ruff/compare/0.16.1...0.16.2).",
     )
-    commit(consumer, "fix!: preserve matrix invariants (#42)\n\nBREAKING CHANGE: preserve exact errors and migration instructions.")
+    commit(
+        consumer,
+        "fix!: preserve `Vector<D>` invariants (#42)\n\n"
+        "Keep `Matrix<T>` and literal `&lt;D&gt;`.\n\n"
+        "```rust\nfn value<T>() -> Vector<T> { todo!() }\n```\n\n"
+        "BREAKING CHANGE: preserve exact errors and migration instructions.",
+    )
     (consumer / "CHANGELOG.md").write_text("# Changelog\n\n## [0.4.5] - 2000-01-02\n\n- Authored date.\n", encoding="utf-8")
     metadata_before = {name: (consumer / name).read_bytes() for name in ("Cargo.toml", "pyproject.toml")}
     before = markdown_bytes(consumer)
@@ -125,6 +145,10 @@ def test_generation_uses_consumer_policy_dates_and_transactional_preview(consume
     assert "https://github.com/astral-sh/ruff/compare/0.16.1...0.16.2" in preview
     assert "https://github.com/acgetchell/la-stack/pull/42" in preview
     assert "preserve exact errors and migration instructions" in preview
+    assert "`Vector<D>`" in preview
+    assert "`Matrix<T>`" in preview
+    assert "`&lt;D&gt;`" in preview
+    assert "fn value<T>() -> Vector<T>" in preview
     assert markdown_bytes(consumer) == before
     assert not (consumer / "docs/archives/changelog").exists()
     assert cli(consumer, "generate", "--tag", "v0.5.0", "--date", "2026-09-30") == 0

@@ -309,11 +309,15 @@ Preview validates root and archive candidates without publishing them.
 Malformed versions/dates, duplicate releases, conflicting retained notes,
 and formatter failures stop publication with diagnostics.
 
-`cliff.toml` remains a deliberate consumer policy exception: the packaged
-policy newly groups historical `chore(deps-dev)` entries as Dependencies and
-omits their authored bodies. Those bodies contain retained Ruff, Ty, and
-setuptools release-note, changelog, and comparison links. Retaining the existing
-policy preserves this history and its original code-span representation.
+`cliff.toml` is materialized from the installed package's common 0.1.7 template.
+It adopts the shared categories, SemVer tag grammar, compare links, and
+Markdown-aware code handling. Its only semantic exception retains bodies for
+`deps-dev` commits when grouped as Dependencies, preserving historical Ruff,
+Ty, and setuptools release-note, changelog, and comparison links. A focused
+integration check compares the parsed configuration with the installed template
+plus that single condition, preventing unrelated local policy drift.
+The exception can retire after adopting a published shared solution to
+[research-repo-tools#62](https://github.com/acgetchell/research-repo-tools/issues/62).
 The shared normalizer preserves complete breaking-change descriptions, Markdown
 links, and literal code in the input while adding merged-PR summaries.
 It retains embedded conventional headings that the old normalizer deduplicated.
