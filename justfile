@@ -361,44 +361,33 @@ build-release:
 cargo-lock-check:
     cargo metadata --locked --format-version 1 --no-deps > /dev/null
 
-# Changelog generation (git-cliff + post-processing + archiving)
+# Generate, normalize, and rotate completed minor series with the pinned shared CLI.
 changelog: _ensure-git-cliff _ensure-rumdl python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    GIT_CLIFF_OFFLINE=true git-cliff -o CHANGELOG.md
-    uv run --locked postprocess-changelog
-    uv run --locked archive-changelog
-    archive_files=()
-    if [ -d docs/archive/changelog ]; then
-        while IFS= read -r -d '' file; do
-            archive_files+=("$file")
-        done < <(find docs/archive/changelog -name '*.md' -print0)
-    fi
-    if ((${#archive_files[@]})); then
-        rumdl fmt --silent CHANGELOG.md "${archive_files[@]}"
-    else
-        rumdl fmt --silent CHANGELOG.md
-    fi
+    uv run --locked --group dev research-repo-tools changelog generate
 
-# Prepend unreleased changes to CHANGELOG.md for the given version
-changelog-unreleased version: _ensure-git-cliff _ensure-rumdl python-sync
+# Rotate existing history without regenerating release notes.
+changelog-archive: python-sync
+    uv run --locked --group dev research-repo-tools changelog archive
+
+# Check release headings and all archives without writing files.
+changelog-check: _ensure-rumdl python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    GIT_CLIFF_OFFLINE=true git-cliff --tag {{ quote(version) }} -o CHANGELOG.md
-    uv run --locked postprocess-changelog
-    uv run --locked archive-changelog
-    uv run --locked update-release-version {{ quote(version) }} --sync-changelog-date
-    archive_files=()
-    if [ -d docs/archive/changelog ]; then
-        while IFS= read -r -d '' file; do
-            archive_files+=("$file")
-        done < <(find docs/archive/changelog -name '*.md' -print0)
-    fi
-    if ((${#archive_files[@]})); then
-        rumdl fmt --silent CHANGELOG.md "${archive_files[@]}"
-    else
-        rumdl fmt --silent CHANGELOG.md
-    fi
+    shopt -s nullglob
+    uv run --locked --group dev research-repo-tools changelog check
+    rumdl check --no-cache --config pyproject.toml CHANGELOG.md docs/archives/changelog/*.md
+
+# Validate generation and print the root changelog without publishing candidates.
+changelog-preview *args: _ensure-git-cliff _ensure-rumdl python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uv run --locked --group dev research-repo-tools changelog generate --dry-run "$@"
+
+# Generate a prospective release using the explicit ISO date, without updating metadata.
+changelog-release tag date: _ensure-git-cliff _ensure-rumdl python-sync
+    uv run --locked --group dev research-repo-tools changelog generate --tag {{ quote(tag) }} --date {{ quote(date) }}
+
+alias changelog-unreleased := changelog-release
 
 # Check (non-mutating): run all linters/validators
 check: lint
@@ -411,7 +400,7 @@ check-fast:
 # CI simulation: flat GitHub-equivalent union of leaf validators.
 # Keep this dependency list explicit so each validation surface runs once without
 # re-entering broad check/test bundles. All Cargo targets match the SARIF lint scope.
-ci: action-lint zizmor markdown-check spell-check docs-version-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-fixture-lint python-typecheck test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
+ci: action-lint zizmor markdown-check spell-check docs-version-check changelog-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-fixture-lint python-typecheck test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
     @echo "🎯 CI checks complete!"
 
 # Validate CITATION.cff against the Citation File Format schema.
@@ -537,7 +526,12 @@ help-workflows:
     @echo ""
     @echo "Changelog & releases:"
     @echo "  just changelog              # Regenerate CHANGELOG.md from full history"
-    @echo "  just changelog-unreleased <ver>  # Prepend unreleased changes for a version"
+    @echo "  just changelog-preview       # Preview generation without writing"
+    @echo "  just changelog-release <tag> <date>  # Generate a release with an explicit date"
+    @echo "  just changelog-unreleased <tag> <date>  # Alias for changelog-release"
+    @echo "  just changelog-archive       # Rotate existing changelog history"
+    @echo "  just changelog-check         # Validate root and archived release notes"
+    @echo "  just release-notes <tag>     # Print root or archived release notes"
     @echo "  just tag <ver>              # Create annotated tag from CHANGELOG.md"
     @echo "  just tag-force <ver>        # Recreate an existing tag"
     @echo "  just update-version <tag>       # Update release metadata and infer the previous tag"
@@ -577,7 +571,7 @@ lint-code: rust-core-check python-check shell-check
 
 lint-config: json-check toml-ci yaml-ci github-actions-check justfile-fmt-check
 
-lint-docs: markdown-ci docs-version-check
+lint-docs: markdown-ci docs-version-check changelog-check
 
 # Markdown
 markdown-check: _ensure-rumdl _ensure-uv
@@ -726,6 +720,10 @@ python-sync: _ensure-uv
 
 python-typecheck: python-sync
     uv run --locked ty check scripts/ tests/semgrep/scripts/ --error all
+
+# Print release notes from the root changelog or a completed minor archive.
+release-notes tag: python-sync
+    uv run --locked --group dev research-repo-tools changelog notes {{ quote(tag) }}
 
 rust-core-check: cargo-lock-check fmt-check clippy-core doc-check semgrep semgrep-test unused-deps
     @echo "✅ Rust core checks complete!"
@@ -972,11 +970,11 @@ spell-check: _ensure-typos
 
 # Create an annotated git tag from the CHANGELOG.md section for the given version
 tag version: python-sync
-    uv run --locked tag-release {{ quote(version) }}
+    uv run --locked --group dev research-repo-tools changelog tag {{ quote(version) }}
 
-# Recreate an existing tag (delete + recreate)
+# Replace an existing local tag only after validating the release notes.
 tag-force version: python-sync
-    uv run --locked tag-release {{ quote(version) }} --force
+    uv run --locked --group dev research-repo-tools changelog tag {{ quote(version) }} --force
 
 # Testing: runnable Rust tests use nextest; rustdoc doctests remain on cargo test.
 test: test-lib test-doc

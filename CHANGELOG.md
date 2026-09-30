@@ -119,6 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exclude static-analysis fixtures from CodeRabbit review and leave docstring policy to Ruff.
 - [**breaking**] Harden rational APIs and release comparisons
   [`d8f9897`](https://github.com/acgetchell/la-stack/commit/d8f9897f59cce0a220efdbbcbaaf9180861889e9)
+
   - canonicalize signed and unreduced rational inputs at construction boundaries
   - preserve invariant-bearing RationalVector solutions across both exact input domains
   - retain typed singularity, conversion, and runtime-dispatch diagnostics
@@ -167,6 +168,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Document runtime estimates, headroom, and pre-release verification.
 - Enforce benchmark setup limits and improve README navigation
   [`d8382ea`](https://github.com/acgetchell/la-stack/commit/d8382eac0b6b467ea390ea04a5ec04fb4600bc8a)
+
   - Limit checkout to 2 minutes and share a 28-minute timeout across tool installation, input validation, and benchmark inventory.
   - Align budget documentation with the enforced setup limits.
   - Place scalar types, API navigation, and features after Quickstart, move Examples before Benchmarks, and update the Contents list.
@@ -183,6 +185,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Update release instructions to use --ref "$TAG" instead of main.
 - Correct interval bounds and support mutable dispatch captures
   [`3fb215b`](https://github.com/acgetchell/la-stack/commit/3fb215b6dcbc17d5ed209b4b35a6038d8e0362af)
+
   - Use magnitude-ordered FastTwoSum to avoid spurious non-finite errors in interval addition and subtraction near f64::MAX.
   - Allow dimension-dispatch macro bodies to mutate captures while preserving support for consuming closures.
   - Skip redundant GCD work when clearing rational denominators.
@@ -208,6 +211,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Publish allocation and timing data with provenance and reproduction steps supporting the existing borrowed implementation.
 - [**breaking**] Optimize exact conversion and dense 4D determinants
   [`7fd6d8e`](https://github.com/acgetchell/la-stack/commit/7fd6d8efd3cf6c12be5a591d87addd6e4961fa82)
+
   - Avoid redundant fraction reduction in strict RationalVector conversion.
   - Share minors in dense exact 4×4 determinants while preserving the sparse fast path.
   - Add adversarial solve benchmarks across D=2,3,4,5,8,16,32,64 and exact-arithmetic diagnostics.
@@ -265,6 +269,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Document exact matrix/RHS scaling and the power-of-two factor that preserves linear systems.
 - [**breaking**] Unify local and release performance workflows
   [`c601c41`](https://github.com/acgetchell/la-stack/commit/c601c4146b01868a29288b7221e413706e3e01c7)
+
   - Retain local Markdown, CSV, and provenance artifacts while allowing same-version comparisons of tracked changes.
   - Exclude untracked files explicitly and isolate the narrowed non-exact comparison bundle.
   - Promote distinct-release artifacts through performance-doc and keep performance-release atomic and rollback-capable.
@@ -306,6 +311,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [setuptools](https://github.com/pypa/setuptools) to permit the latest version.
 
   Updates `ruff` from 0.16.1 to 0.16.2
+
   - [Release notes](https://github.com/astral-sh/ruff/releases)
   - [Changelog](https://github.com/astral-sh/ruff/blob/main/CHANGELOG.md)
   - [Commits](https://github.com/astral-sh/ruff/compare/0.16.1...0.16.2)
@@ -643,6 +649,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Revalidate finite proof conversions [`419a90f`](https://github.com/acgetchell/la-stack/commit/419a90f7267608051736498154ac5e6faf0909c5)
 
   Ensure internal finite proof conversions cannot accept raw Matrix or Vector storage without checking the invariant.
+
   - Revalidate TryFrom&lt;Matrix&lt;D&gt;&gt; and TryFrom&lt;Vector&lt;D&gt;&gt; before constructing finite wrappers.
   - Measure exact random percentile benchmarks over repeated corpus timings and cumulative input sets.
   - Tighten Codecov status thresholds and extend benchmark workflow timeout.
@@ -796,6 +803,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   APIs to catch tail cases that fixed well-conditioned inputs miss.
 
   Benchmarks (benches/exact.rs):
+
   - Factor out `bench_extreme_group` helper running the same four benches
     (`det_sign_exact`, `det_exact`, `solve_exact`, `solve_exact_f64`) so
     adversarial groups are directly comparable.
@@ -1066,6 +1074,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Replace `BigRational::from_float(x)` in `f64_to_bigrational` with manual
   IEEE 754 binary64 bit decomposition and `BigRational::new_raw`, bypassing
   the unnecessary GCD normalization that `from_float` performs internally.
+
   - Decompose f64 into sign, biased exponent, and significand fields
   - Strip trailing zeros from the significand so the fraction is already
     in lowest terms (odd numerator over power-of-two denominator)
@@ -1081,6 +1090,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all f64 entries are decomposed into mantissa × 2^exponent, scaled to
   a common integer base, and eliminated without any rational arithmetic.
   The result is reconstructed as BigRational only at the end.
+
   - Add f64_decompose helper (extracted from f64_to_bigrational)
   - Add bareiss_det_int: integer-only Bareiss returning (BigInt, i32)
   - Add bigint_exp_to_bigrational: reconstruction with trailing-zero
@@ -1105,9 +1115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Older releases are archived by minor series:
 
-- [0.3.x](docs/archive/changelog/0.3.md)
-- [0.2.x](docs/archive/changelog/0.2.md)
-- [0.1.x](docs/archive/changelog/0.1.md)
+- [0.3.x](docs/archives/changelog/0.3.md)
+- [0.2.x](docs/archives/changelog/0.2.md)
+- [0.1.x](docs/archives/changelog/0.1.md)
 
 [0.4.6]: https://github.com/acgetchell/la-stack/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/acgetchell/la-stack/compare/v0.4.4...v0.4.5

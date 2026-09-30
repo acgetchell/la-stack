@@ -272,18 +272,58 @@ the citation date.
 # Full regeneration from all history
 just changelog
 
-# Prepend only unreleased changes for a new version
-just changelog-unreleased vX.Y.Z
+# Preview without replacing the root or archive files
+just changelog-preview
+
+# Generate a prospective release with an explicit ISO date
+just changelog-unreleased vX.Y.Z YYYY-MM-DD
+# Equivalent name:
+just changelog-release vX.Y.Z YYYY-MM-DD
+
+# Rotate existing notes without regenerating Git history
+just changelog-archive
+just changelog-check
+just release-notes vX.Y.Z
 ```
 
-`just changelog` runs `git-cliff -o CHANGELOG.md`, strips trailing blank
-lines, archives completed changelog series, and formats the generated Markdown.
-Configuration lives in `cliff.toml` at the repo root. The Breaking Changes
-summary preserves full `BREAKING CHANGE` footer descriptions, including compiler
-requirements and migration instructions; commits marked only with `!` fall back
-to their subject. Post-processing escapes HTML in breaking-description prose
-while preserving literal Rust syntax in Markdown code spans and fenced blocks,
-and adds merged-PR summaries without replacing those descriptions.
+The exact published `research-repo-tools==0.1.7` dependency is in `tooling`,
+included by `dev`, and resolved from PyPI in `uv.lock`. Thin Just recipes use
+the documented `research-repo-tools changelog` CLI. Its implementation and
+common regressions belong to the shared package; this repository owns the
+configuration, recipes, and `scripts/tests/test_changelog_integration.py`.
+Internal shared modules are not a supported consumer API.
+
+`just changelog` generates, normalizes, formats, and rotates completed minor
+series in one operation. It retains Unreleased and the newest minor series in
+`CHANGELOG.md`, with older releases in `docs/archives/changelog/MAJOR.MINOR.md`.
+Existing dated headings remain authoritative. Prospective generation requires
+a `v`-prefixed SemVer tag and an explicit ISO date, and leaves package and
+citation metadata untouched. Prepare metadata separately with
+`just update-version`; choose the same date recorded in `CITATION.cff`.
+Preview validates root and archive candidates without publishing them.
+Malformed versions/dates, duplicate releases, conflicting retained notes,
+and formatter failures stop publication with diagnostics.
+
+`cliff.toml` remains a deliberate consumer policy exception: the packaged
+policy newly groups historical `chore(deps-dev)` entries as Dependencies and
+omits their authored bodies. Those bodies contain retained Ruff, Ty, and
+setuptools release-note, changelog, and comparison links. Retaining the existing
+policy preserves this history and its original code-span representation.
+The shared normalizer preserves complete breaking-change descriptions, Markdown
+links, and literal code in the input while adding merged-PR summaries.
+It retains embedded conventional headings that the old normalizer deduplicated.
+
+`changelog-rumdl.toml` inherits the repository Markdown policy and disables
+MD057 only while formatting unpublished candidates, whose future archive paths
+do not yet exist. Repository Markdown checks and focused archive-link checks
+still validate published destinations. The archive move preserves all release
+dates and links; generated whitespace changes align existing series with the
+shared formatter so later generation remains conflict-free.
+
+The current local setup, release-metadata, dependency-update, scientific,
+benchmark, and performance tooling remains consumer-owned. Shared toolchain
+setup, updates, and other maintenance adoption belong in later PRs. No
+notebook or review-tool migration is included here.
 
 ### Creating a release tag
 
@@ -292,15 +332,19 @@ just tag vX.Y.Z          # create an annotated tag matching Cargo.toml
 just tag-force vX.Y.Z    # replace that tag only when explicitly repairing it
 ```
 
-The `tag-release` CLI (in `tag_release.py`) extracts the matching version
-section from `CHANGELOG.md`, requires the tag to match the Cargo package version,
-validates SemVer, and handles GitHub's 125KB tag-annotation size limit.
+These recipes call `research-repo-tools changelog tag`. It searches the root
+and canonical archives, validates the entire history, and requires the
+`v`-prefixed tag to match the Cargo package version. The dated release heading
+must equal today's UTC date and any `CITATION.cff` date. Oversized annotations
+link to the full notes to respect GitHub's 125KB limit. `--force` replaces an
+existing local ref only after validation; it does not first delete the old tag.
+Tagging never pushes or publishes a release. Use the CLI's `--dry-run` to
+preview an annotation without creating a tag.
 
 ### Scripts overview
 
 | Script | Purpose |
 |---|---|
-| `archive_changelog.py` | Split completed changelog minor series into archives |
 | `archive_performance.py` | Promote release performance docs and archive older comparisons |
 | `performance_artifacts.py` | Validate and publish schema-versioned performance-comparison CSV/JSON inputs |
 | `bench_compare.py` | Compare Criterion benchmark baselines and render Markdown reports |
@@ -308,8 +352,6 @@ validates SemVer, and handles GitHub's 125KB tag-annotation size limit.
 | `check_docs_version_sync.py` | Verify versioned documentation links and snippets stay synchronized |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
 | `criterion_measurements.py` | Validate full Criterion sampling and estimates for local summaries and hosted archives |
-| `tag_release.py` | Create annotated git tags from CHANGELOG.md sections |
-| `postprocess_changelog.py` | Normalize and reflow generated git-cliff Markdown safely |
 | `release_baseline.py` | Inventory full Criterion suites and validate complete raw release baselines before packaging |
 | `subprocess_utils.py` | Safe subprocess wrappers for git commands |
 | `update_cargo_tool_pins.py` | Reconcile repository-owned Cargo and active uv tool pins with installed versions |

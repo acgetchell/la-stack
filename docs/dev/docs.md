@@ -123,7 +123,8 @@ dependency snippets synchronized with `Cargo.toml` and follow
 version: crates.io documentation changes also require a new version.
 
 Never edit `CHANGELOG.md` directly. `just changelog` generates, post-processes,
-archives, and formats the changelog; `just changelog-unreleased <version>`
+archives, and formats the changelog through the pinned shared CLI;
+`just changelog-unreleased <tag> <date>`
 prepends unreleased changes. Commit-message guidance lives in
 [Git and GitHub guidance](MANAGING_CHANGES.md). Benchmark report and generated asset ownership
 belongs in [Benchmarking](../BENCHMARKING.md).

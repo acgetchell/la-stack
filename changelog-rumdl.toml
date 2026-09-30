@@ -1,0 +1,7 @@
+# Inherit repository Markdown rules for candidates before atomic publication.
+extends = "pyproject.toml"
+
+[global]
+# Archive links can point to candidates that have not been published yet.
+# The normal repository Markdown check still validates their final destinations.
+extend-disable = [ "MD057" ]

@@ -20,6 +20,7 @@ SKIP_DIRS = frozenset(
         ".tmp_pycache",
         ".venv",
         "archive",
+        "archives",
         "target",
         "tests",
     }

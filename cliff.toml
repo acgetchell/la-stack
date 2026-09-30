@@ -1,5 +1,8 @@
 # git-cliff configuration for la-stack
 # https://git-cliff.org/docs/configuration
+# Consumer-owned exception to the packaged policy: preserve historical
+# chore(deps-dev) bodies and their upstream release-note/changelog links.
+# See scripts/README.md for the migration boundary.
 
 [changelog]
 # Keep a Changelog header

@@ -8,7 +8,7 @@ clarity, and the fixed-dimension stack-allocation model.
 
 Install Rust 1.98.1 through [rustup](https://rustup.rs/), Git, the
 [GitHub CLI](https://cli.github.com/), Python 3.14,
-[`uv` 0.12.5](https://docs.astral.sh/uv/), and `jq`. Authenticate the GitHub
+[`uv` 0.12.10](https://docs.astral.sh/uv/), and `jq`. Authenticate the GitHub
 CLI for repository operations, then install the repository's pinned `just`
 version from its locked dependency graph:
 
@@ -26,6 +26,19 @@ just ci           # run the comprehensive local CI path
 
 Use `just fix` when you intentionally want formatters and automatic fixes to
 change files. Run `just --list` for the full command surface.
+
+Changelog commands use the published `research-repo-tools==0.1.7` package,
+locked in the `tooling` dependency group and included by `dev`. Normal setup
+and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
+checkout is unnecessary. To upgrade it deliberately, review the exact
+`tooling` requirement and refresh `uv.lock` together, then run the consumer
+integration tests and `just ci`. See the [Scripts guide](scripts/README.md#changelog-and-release-tooling)
+for the retained changelog policy and ownership boundary.
+
+This first adoption phase leaves the existing setup and dependency-update
+recipes in place. The shared setup contract requires an existing uv and uses
+`research-repo-tools setup`; it does not generate bootstrap installers.
+Full toolchain and release-metadata adoption are separate follow-ups.
 
 Use `just update` for deliberate dependency and tool maintenance. It composes
 `just update-dependencies`, which advances Cargo dependency requirements, exact
