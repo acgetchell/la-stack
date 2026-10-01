@@ -193,9 +193,10 @@ def test_readme_tag_references_accept_semver_suffixes(tmp_path: Path, version: s
     assert [(reference.line, reference.version) for reference in references] == [(1, version)]
 
 
-def test_find_version_mismatches_ignores_historical_docs_and_test_fixtures(tmp_path: Path) -> None:
+@pytest.mark.parametrize("archive_dir", ["archive", "archives/changelog"])
+def test_find_version_mismatches_ignores_historical_docs_and_test_fixtures(tmp_path: Path, archive_dir: str) -> None:
     _write_project(tmp_path)
-    archive = tmp_path / "docs" / "archive"
+    archive = tmp_path / "docs" / archive_dir
     archive.mkdir(parents=True)
     fixtures = tmp_path / "tests" / "fixtures"
     fixtures.mkdir(parents=True)

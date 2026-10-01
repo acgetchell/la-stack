@@ -5,6 +5,8 @@ early_access: false
 reviews:
   profile: chill
   request_changes_workflow: true
+  auto_review:
+    drafts: true
   # Repository-owned checks validate deliberately invalid static-analysis fixtures.
   path_filters:
     - "!tests/semgrep/**"

@@ -34,12 +34,9 @@ dependencies = [  ]
 "Bug Tracker" = "https://github.com/acgetchell/la-stack/issues"
 
 [project.scripts]
-archive-changelog = "archive_changelog:main"
 archive-performance = "archive_performance:main"
 bench-compare = "bench_compare:main"
 criterion-dim-plot = "criterion_dim_plot:main"
-postprocess-changelog = "postprocess_changelog:main"
-tag-release = "tag_release:main"
 check-docs-version-sync = "check_docs_version_sync:main"
 update-release-version = "update_release_version:main"
 update-cargo-tool-pins = "update_cargo_tool_pins:main"
@@ -48,7 +45,7 @@ update-python-dev-pins = "update_python_dev_pins:main"
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-py-modules = [ "archive_changelog", "archive_performance", "bench_compare", "benchmark_contract", "benchmark_summaries", "check_docs_version_sync", "check_semgrep_fixtures", "criterion_dim_plot", "criterion_measurements", "performance_artifacts", "postprocess_changelog", "subprocess_utils", "tag_release", "update_cargo_tool_pins", "update_python_dev_pins", "update_release_version" ]
+py-modules = [ "archive_performance", "bench_compare", "benchmark_contract", "benchmark_summaries", "check_docs_version_sync", "check_semgrep_fixtures", "criterion_dim_plot", "criterion_measurements", "performance_artifacts", "subprocess_utils", "update_cargo_tool_pins", "update_python_dev_pins", "update_release_version" ]
 
 [tool.ruff]
 line-length = 160
@@ -92,7 +89,6 @@ max-complexity = 10
 
 [tool.ruff.lint.isort]
 known-first-party = [
-    "archive_changelog",
     "archive_performance",
     "bench_compare",
     "benchmark_contract",
@@ -101,9 +97,7 @@ known-first-party = [
     "criterion_dim_plot",
     "criterion_measurements",
     "performance_artifacts",
-    "postprocess_changelog",
     "subprocess_utils",
-    "tag_release",
     "update_cargo_tool_pins",
     "update_python_dev_pins",
 ]
@@ -153,13 +147,29 @@ line-length = 160
 package = true
 
 [dependency-groups]
+tooling = [ "research-repo-tools==0.1.7" ]
 dev = [
-    "actionlint-py==1.7.12.24",
+    { include-group = "tooling" },
+    "actionlint-py==1.7.12.25",
     "pytest==9.1.1",
-    "ruff==0.16.6",
-    "semgrep==1.176.1",
+    "ruff==0.16.9",
+    "semgrep==1.178.0",
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.2.0",
-    "ty==0.0.79",
+    "ty==0.0.84",
     "yamllint==1.38.0",
 ]
+
+[tool.research-repo-tools]
+schema = 1
+
+[tool.research-repo-tools.changelog]
+owner = "acgetchell"
+repository = "la-stack"
+formatter = "changelog-rumdl.toml"
+# Packaged 0.1.7 template plus one deps-dev body-preservation exception.
+cliff-config = "cliff.toml"
+
+[tool.research-repo-tools.release]
+# Release preparation and post-merge tagging can happen on different UTC days.
+date-policy = "declared"

@@ -108,7 +108,11 @@ inherit the root workspace lints and share the lockfile and target directory.
 The [Benchmarking guide](BENCHMARKING.md) owns benchmark commands, methodology,
 baselines, output locations, and report promotion. The [Scripts guide](../scripts/README.md)
 owns the Python script inventory and entry points for comparisons, plotting,
-release metadata, changelog generation/archiving, and tag preparation.
+and release metadata. The pinned published `research-repo-tools` dependency
+owns changelog generation, normalization, minor-series archiving, note lookup,
+and tag preparation through its CLI. Consumer policy stays in `cliff.toml`,
+`changelog-rumdl.toml`, and `[tool.research-repo-tools]` in `pyproject.toml`;
+focused integration checks live in `scripts/tests/test_changelog_integration.py`.
 The [justfile](../justfile) owns executable development workflows.
 
 `scripts/release_baseline.py` owns release-suite inventory and complete raw

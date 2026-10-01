@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ⚠️ Breaking Changes
+
+- changelog-unreleased now requires TAG DATE and leaves
+  release metadata preparation separate. Replace the removed standalone
+  archive-changelog, postprocess-changelog and tag-release entry points with
+  research-repo-tools changelog commands. Tags must use v-prefixed SemVer;
+  tagging requires today's UTC release date matching CITATION.cff.
+
+### Changed
+
+- [**breaking**] Adopt pinned shared changelog commands [`ce72843`](https://github.com/acgetchell/la-stack/commit/ce72843d3c7e5c2ed6d97955ed6ce3707acb784f)
+
+  - Delegate generation, normalization, minor archiving, release notes and
+    local tag preparation to the published research-repo-tools 0.1.7 CLI.
+  - Preserve retained release history and dependency-note links while moving
+    completed series to docs/archives/changelog.
+  - Keep the historical git-cliff policy as a documented consumer exception
+    and validate published changelog links alongside the shared checks.
+- Stabilize disposable consumer fixtures [`2372f81`](https://github.com/acgetchell/la-stack/commit/2372f81639838b4f3a767ff021c3ca766aaba63e)
+
+  - Pin the synthetic Cargo identity independently of the checkout's release
+    version while retaining the real consumer configuration and policy.
+  - Disable inherited commit and tag signing only inside disposable repositories
+    so fixture operations do not require user signing keys.
+
+### Dependencies
+
+- Bump development tools and refresh dependency locks [`8a06208`](https://github.com/acgetchell/la-stack/commit/8a06208337a1e5f9d0ad638c45be478ae17e8200)
+
+### Fixed
+
+- Preserve consumer command and release contracts [`cb8c471`](https://github.com/acgetchell/la-stack/commit/cb8c471511bf4f7f5f50cdfe3d7a0296e3357f14)
+
+  - Forward preview options to the shared CLI and keep generated archives under
+    the dedicated changelog formatter and final link check.
+  - Accept valid included dependency groups while advancing only direct dev
+    pins, leaving the shared tooling dependency under its own upgrade policy.
+  - Keep declared release dates valid after a later merge and include canonical
+    changelog archives in the release staging guidance.
+
 ## [0.4.6] - 2026-09-08
 
 ### ⚠️ Breaking Changes
@@ -13,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - rename Vector::norm2() to Vector::norm(), Vector::norm2_sq() to Vector::norm_squared(), and Matrix::inf_norm()
   to Matrix::norm_inf(). No compatibility aliases are provided.
 - la-stack now requires Rust 1.98.1.
+- New release performance comparisons require v0.4.4 or newer on both sides. Direct Cargo invocations of vs_linalg must select
+  -p la-stack-comparison; the just recipes handle this automatically.
 
 ### Merged Pull Requests
 
@@ -30,21 +74,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - add release-tracked Criterion comparisons against BigRational Gaussian elimination
   - document the two-domain scalar model and the f64 precision boundary
 - Add certified determinant sign enclosures [`cd94ebb`](https://github.com/acgetchell/la-stack/commit/cd94ebbbfecccc1fc79887eec39f1e2b8a3fc56a)
+
   - Add outward-rounded interval arithmetic with typed range and input errors.
   - Certify determinant signs through D=7 with explicit inconclusive results.
   - Provide runtime dimension dispatch, documentation, and benchmark coverage.
   - Refresh pinned Python development tools and transitive dependencies.
 - Add certified dot and affine error bounds [`973e662`](https://github.com/acgetchell/la-stack/commit/973e662bfa1bb85631f6826034f128b181a326c4)
+
   - Add proof-bearing scalar certificates for dot products and unrounded axis · (left - right) reductions.
   - Expose outward bounds for sign and threshold filtering, with inconclusive results when proof conditions fail.
   - Document and benchmark the deterministic FMA error model.
 - Add overflow-safe Euclidean norms [`f1f7b11`](https://github.com/acgetchell/la-stack/commit/f1f7b11d873db9c70c7db9920ee36efa7b4ed801)
+
   - Add allocation-free Vector::norm2 with scaled accumulation for large and subnormal finite coordinates.
   - Resolve upper-range rounding with exact stack-based square sums, preventing false or hidden overflow without the exact feature.
   - Report VectorNorm-tagged NonFinite errors only when the exact norm rounds to infinity; preserve norm2_sq's distinct range contract.
   - Avoid redundant first-coordinate arithmetic and share binary64 rounding primitives across vector and interval operations.
   - Document approximation limits and add peer-crate norm benchmarks plus scenario comparisons with hypot and Delaunay reference kernels.
 - Add const-generic Gram matrix construction [`a62e72a`](https://github.com/acgetchell/la-stack/commit/a62e72a0468ea13c7c5e851dbf195123d5bb0d38)
+
   - Add allocation-free, const-evaluable `gram_matrix` with independent vector count and dimension
   - Preserve bitwise symmetry and typed dot-product overflow diagnostics
   - Document geometric uses, conditioning, and floating-point limitations
@@ -61,6 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cover determinant accumulation failures, square/addition exhaustion, and matrix access bounds.
   - Clarify that lifting an already-rounded matrix encloses only its stored values.
 - [**breaking**] Standardize vector and matrix norm names [`ab483d4`](https://github.com/acgetchell/la-stack/commit/ab483d4c4cb96b2d3f2ba0be38e96f5820b0de91)
+
   - Distinguish Euclidean norm from squared norm with clearer vector APIs.
   - Use norm_inf for the matrix maximum absolute row sum.
   - Preserve numerical behavior and typed error contracts.
@@ -84,55 +133,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Preserve runtime and build-system dependency requirements.
   - Refresh Ruff, Semgrep, Ty, and their compatible transitive dependencies.
 - Enforce the f64 algebraic-operation ban [`753179c`](https://github.com/acgetchell/la-stack/commit/753179c001ce750195b85bf7bc680cca0558eb34)
+
   - Reject algebraic f64 calls and function items across repository-owned Rust while preserving ordinary operators and `mul_add`.
   - Document the numerical contract, MSRV, release-pinned references, and native BLAS alternatives.
   - Refresh contributor tool pins and adapt subprocess encoding to Ty 0.0.74.
 - Detect qualified f64 algebraic operations [`31021f1`](https://github.com/acgetchell/la-stack/commit/31021f1322a9c443fa4df63e632e8038600b2461)
-  - Reject `&lt;f64&gt;::algebraic_*` calls and function items.
+
+  - Reject `<f64>::algebraic_*` calls and function items.
   - Preserve qualified FMA calls and function items as allowed.
 - Make just update reconcile all managed tools [`b1ca30a`](https://github.com/acgetchell/la-stack/commit/b1ca30a3f3977d3504b9383aff3907ce73f5a72a)
+
   - Preflight update prerequisites before modifying dependency or lock state.
   - Update Cargo and Python dependencies while preserving coupled exact-arithmetic requirements.
   - Upgrade setup-owned Cargo tools and atomically reconcile their pins with the active uv version.
   - Keep actionlint and zizmor compatible for local composite-action references.
 - Validate uv before repository updates [`37a17ed`](https://github.com/acgetchell/la-stack/commit/37a17edc82488ff0f04ec5775fe1eb13760b0468)
+
   - Require the active uv to report a stable X.Y.Z version before dependency or Cargo tool changes.
   - Preserve pin reconciliation for newer stable uv installations.
 - Reject ambiguous uv output before repository updates [`6bb2412`](https://github.com/acgetchell/la-stack/commit/6bb24127cca69f5029346b63fa9bb330381ae9c7)
+
   - Validate uv output with the reconciler's single-stable-version parser before dependency or tool mutations.
   - Accept newer stable uv releases while rejecting ambiguous, missing, prerelease, and embedded versions.
   - Refresh managed tool pins and the Semgrep development dependency.
 - Make Python automation portable on Windows [`2370cbf`](https://github.com/acgetchell/la-stack/commit/2370cbf819f893ca598f83394330a5936fd10c6b)
+
   - Bind uv version validation to the exact launcher selected by update recipes
   - Preserve byte-exact Git input and explicit text newline policies
   - Guard repository scripts against platform-dependent subprocess and file I/O
 - Enforce complete Python type annotations [`b2be4e7`](https://github.com/acgetchell/la-stack/commit/b2be4e73c19d0566efd9d7854e325375287c5e83)
+
   - Enable missing-annotation checks for function parameters and methods
   - Format and type-check repository-owned Python fixtures alongside scripts
   - Preserve intentional negative fixtures with narrow lint suppressions
 - Enforce Python type-only import linting [`dd3d399`](https://github.com/acgetchell/la-stack/commit/dd3d399bf181aea7697c0cca1b6a60f67a39cd2b)
+
   - Apply Ruff's TC rules to Python static-analysis fixtures.
   - Keep annotation-only dependencies out of runtime imports.
 - Enforce complete Python fixture linting [`ebc45fe`](https://github.com/acgetchell/la-stack/commit/ebc45fefeb99eec72c13c939d3eb5c3505bf1114)
+
   - Run the full configured Ruff policy over Python Semgrep fixtures in canonical CI.
   - Isolate deliberate fixture violations with narrow per-file suppressions.
   - Exclude static-analysis fixtures from CodeRabbit review and leave docstring policy to Ruff.
 - [**breaking**] Harden rational APIs and release comparisons
   [`d8f9897`](https://github.com/acgetchell/la-stack/commit/d8f9897f59cce0a220efdbbcbaaf9180861889e9)
+
   - canonicalize signed and unreduced rational inputs at construction boundaries
   - preserve invariant-bearing RationalVector solutions across both exact input domains
   - retain typed singularity, conversion, and runtime-dispatch diagnostics
   - make release comparisons capability-aware for pre-rational benchmark baselines
   - clarify exact-input guarantees, f64 precision loss, and benchmark provenance
 - Make rational comparisons fair and backward-compatible [`67afc8e`](https://github.com/acgetchell/la-stack/commit/67afc8e61345e1993680c315223e544ea1800937)
+
   - Exclude input cloning from consuming BigRational reference timings.
   - Support schema-1 artifacts that predate rational-input provenance.
   - Omit unsupported rational-input rows from legacy coverage checks.
 - Avoid false certificate logging alerts [`d8d21db`](https://github.com/acgetchell/la-stack/commit/d8d21dbf76d7a4fa3ba15f37a6086179e7394976)
+
   - Rename numerical-bound locals so CodeQL does not mistake them for sensitive certificate data.
   - Document finite bound invariants, the affine error formula, and typed failure contexts.
   - Make proof-range and second-FMA overflow expectations explicit.
 - Complete benchmark CI and improve documentation navigation [`ee1c60f`](https://github.com/acgetchell/la-stack/commit/ee1c60f72a7570deae10aa90e54141c9422e4322)
+
   - Allow the full exact benchmark suite to finish while preserving normal sampling and skipping unused plots.
   - Select successful main baselines and report incomplete comparisons accurately.
   - Add a canonical 5×5 quickstart, linked feature summaries, Contents, and a Documentation Map.
@@ -141,11 +203,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Document numerical logging false positives and the outstanding paste maintenance advisory.
   - Update cargo-llvm-cov and rumdl tool pins.
 - Correct Windows Markdown checks and benchmark summaries [`e7ca1fe`](https://github.com/acgetchell/la-stack/commit/e7ca1fe2bcd172d4000434b87ce9d511ac7a1487)
+
   - Count Unicode characters consistently to prevent false Markdown line-length failures on Windows.
   - Report benchmark comparisons as unavailable when baseline coverage is missing or incomplete.
   - Stabilize Documentation Map navigation across GitHub and rustdoc.
   - Link exact determinant filtering to det_direct_with_errbound().
 - Align zizmor audits and harden release cache isolation [`ee091c3`](https://github.com/acgetchell/la-stack/commit/ee091c36e8c6bff299f3536aba6c05ec5c7f659d)
+
   - Synchronize local and CI zizmor versions and personas, enable authenticated online audits, and clearly report offline fallback.
   - Remove dependency and tool caches from release benchmark production while preserving separate producer and publisher permissions.
   - Enforce scanner-version and release-cache policies with Semgrep.
@@ -154,12 +218,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Trim AGENTS.md into focused linked guides and document file ownership.
   - Establish documentation filename conventions and align coverage navigation, performance-report links, and generator output paths.
 - Verify zizmor version sources and clarify numerical docs [`421bcda`](https://github.com/acgetchell/la-stack/commit/421bcdae365145eb2e32e5087e4ef50d1989c43a)
+
   - Require the zizmor resolver to read the canonical justfile pin and publish it without substituting a hard-coded or unrelated version.
   - Point README mathematical-basis links to the main branch.
   - Define roundoff-bound notation explicitly, including binary64 unit roundoff and the D and 2D reduction counts.
   - Document non-finite factor rejection in ScaledProduct.
   - Exempt intentional Semgrep fixtures from the algebraic-operation prohibition while retaining it for other repository-owned Rust.
 - Budget and validate release Criterion baselines [`42a3e1f`](https://github.com/acgetchell/la-stack/commit/42a3e1fc2f4db0fee13e7ae2a72295ec7286934f)
+
   - Allow 150 minutes for comparative benchmarks and 90 minutes for exact benchmarks within a 285-minute job, preserving full Criterion sampling.
   - Require complete, valid raw measurements and matching saved baselines before packaging the archive with its benchmark inventory.
   - Report suite runtimes and support manual runs without release publication.
@@ -167,27 +233,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Document runtime estimates, headroom, and pre-release verification.
 - Enforce benchmark setup limits and improve README navigation
   [`d8382ea`](https://github.com/acgetchell/la-stack/commit/d8382eac0b6b467ea390ea04a5ec04fb4600bc8a)
+
   - Limit checkout to 2 minutes and share a 28-minute timeout across tool installation, input validation, and benchmark inventory.
   - Align budget documentation with the enforced setup limits.
   - Place scalar types, API navigation, and features after Quickstart, move Examples before Benchmarks, and update the Contents list.
   - Sort feature flags, scalar domains, documentation links, examples, and their run commands lexicographically.
 - Attach benchmark baselines before publishing releases [`0ddf9cf`](https://github.com/acgetchell/la-stack/commit/0ddf9cf31e65a41ddeff2fc996f84222c1f19ebf)
+
   - Require an explicit stable tag and a matching mutable draft release.
   - Benchmark the resolved tag commit and verify the uploaded archive's size and SHA-256 digest before publishing the draft.
   - Reuse matching draft assets on publisher retries without overwriting conflicting assets or modifying published releases.
   - Require fresh draft checks when rerunning benchmarks.
   - Document draft creation, workflow dispatch, and failed-run recovery.
 - Isolate release benchmarks from default-branch caches [`d9434f2`](https://github.com/acgetchell/la-stack/commit/d9434f2cfcf20c05a898228e563fd0d1eee63632)
+
   - Run benchmarks from the release tag and check out the workflow's own commit to keep execution in that tag's cache scope.
   - Reject mismatched dispatch refs and tags moved since dispatch.
   - Update release instructions to use --ref "$TAG" instead of main.
 - Correct interval bounds and support mutable dispatch captures
   [`3fb215b`](https://github.com/acgetchell/la-stack/commit/3fb215b6dcbc17d5ed209b4b35a6038d8e0362af)
+
   - Use magnitude-ordered FastTwoSum to avoid spurious non-finite errors in interval addition and subtraction near f64::MAX.
   - Allow dimension-dispatch macro bodies to mutate captures while preserving support for consuming closures.
   - Skip redundant GCD work when clearing rational denominators.
   - Clarify numerical certificates, error provenance, and mutation guarantees in API documentation.
   - Sort README API entries and document the existing Gram benchmark suite.
+- [**breaking**] Finalize v0.4.6 and preserve benchmark history
+  [`5c8a514`](https://github.com/acgetchell/la-stack/commit/5c8a51482c94dede10b2d7cb224186c09de76420)
+
+  - Complete the v0.4.6 release PR with updated crate and utility package versions, citation metadata, release documentation, and roadmap
+  - Generate the release changelog with complete breaking-change descriptions, preserved Rust code formatting, and idempotent summary generation
+  - Refresh README benchmark assets and the v0.4.6 versus v0.4.5 report
+  - Preserve every measured local benchmark case in versioned CSV snapshots with means, medians, confidence intervals, sample counts, and provenance
+  - Regenerate reports and README assets after cleanup or artifact-only commits without rerunning benchmarks
+  - Publish reports, snapshots, and the latest pointer atomically; reject incomplete inputs, mismatched provenance, and overlapping output paths
+  - Isolate nalgebra/faer dependencies in the comparison workspace package so exact benchmark builds do not compile peer libraries
+  - Reuse baseline peer measurements and disable unused Criterion HTML generation to avoid missing-sample errors in filtered runs
+  - Fix shared-harness target resolution and exact-solve compatibility with supported historical releases
+  - Use faer's native dot-product kernel under a distinct benchmark identity
+  - Remove v0.4.3 adapters, missing-row exemptions, and legacy benchmark-name substitutions while preserving historical reports
+  - Archive the previous performance report and completed optimization studies
+  - Fix cargo-upgrade version detection during setup
+- Restore portable Python validation [`4b6e7a1`](https://github.com/acgetchell/la-stack/commit/4b6e7a15d44f4f3af6b84e5cd7dbd374e0c49f2e)
+
+  - Install git-cliff in CI using the justfile pin and require that version before running Python tests
+  - Preserve LF line endings in benchmark fixtures to prevent checksum failures on Windows
+  - Inspect parsed Just recipe bodies when checking benchmark runs so command prefixes and formatting cannot silently omit recipes
 
 ### Maintenance
 
@@ -208,6 +299,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Publish allocation and timing data with provenance and reproduction steps supporting the existing borrowed implementation.
 - [**breaking**] Optimize exact conversion and dense 4D determinants
   [`7fd6d8e`](https://github.com/acgetchell/la-stack/commit/7fd6d8efd3cf6c12be5a591d87addd6e4961fa82)
+
   - Avoid redundant fraction reduction in strict RationalVector conversion.
   - Share minors in dense exact 4×4 determinants while preserving the sparse fast path.
   - Add adversarial solve benchmarks across D=2,3,4,5,8,16,32,64 and exact-arithmetic diagnostics.
@@ -242,70 +334,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Bump the github-actions group with 7 updates [#200](https://github.com/acgetchell/la-stack/pull/200)
   [`9728daf`](https://github.com/acgetchell/la-stack/commit/9728dafc026bb2a849bae49feaca6144c5598698)
-
-### Fixed
-
-- Enforce pinned uv in local recipe guards [`938aff6`](https://github.com/acgetchell/la-stack/commit/938aff62517d5055d1db49bc7734e4069ef74d72)
-
-  - Reject missing or mismatched uv versions with actionable diagnostics.
-  - Reuse the canonical version guard across uv-backed validation helpers.
-- Harden release artifact promotion [`8b8537b`](https://github.com/acgetchell/la-stack/commit/8b8537b86226285a343976ea987cf2759bf3dd7d)
-  - Treat CRLF and LF archive reports as equivalent while preserving stored bytes.
-  - Share comparison selection and report-update guidance across generation paths.
-  - Isolate artifact path resolution and retained-artifact rendering.
-  - Clarify that durable benchmark downloads are GitHub Release assets.
-- Harden numerical and release evidence [`c878701`](https://github.com/acgetchell/la-stack/commit/c8787017122c3e94958e82d327fdab8a305999b8)
-  - Surface determinant overflow even when error-bound terms underflow.
-  - Measure complete benchmark operations symmetrically and bind retained reports to atomic, validated provenance.
-  - Fail closed on inconsistent release metadata, tags, changelog sections, Semgrep annotations, and recorded CPU provenance.
-  - Align docs.rs feature annotations, citation identifiers, all-target linting, and configurable property-test runs with documented contracts.
-- Harden release and validation edge cases [`260afb8`](https://github.com/acgetchell/la-stack/commit/260afb85fdc8eaa873bdb64b6d7eae76ab6b9abc)
-  - Preserve archived changelog bytes during rollback and reject malformed Unreleased headings.
-  - Match overlapping Semgrep fixture spans deterministically and centralize immutable benchmark provenance handling.
-  - Document exact matrix/RHS scaling and the power-of-two factor that preserves linear systems.
-- [**breaking**] Unify local and release performance workflows
-  [`c601c41`](https://github.com/acgetchell/la-stack/commit/c601c4146b01868a29288b7221e413706e3e01c7)
-  - Retain local Markdown, CSV, and provenance artifacts while allowing same-version comparisons of tracked changes.
-  - Exclude untracked files explicitly and isolate the narrowed non-exact comparison bundle.
-  - Promote distinct-release artifacts through performance-doc and keep performance-release atomic and rollback-capable.
-  - Render one consolidated table per benchmark suite and reject invalid release publication states.
-- Isolate algebraic float fixture scans [`56e848f`](https://github.com/acgetchell/la-stack/commit/56e848fb3dbbc93f2fd4c0b566d71489c96dc857)
-  - exclude intentional algebraic float violations from production Semgrep scans while preserving direct fixture validation
-  - cover f64 associated-call syntax alongside f32 and receiver forms
-  - forbid dead-code suppressions and remove blanket allowances from static-analysis fixtures
-
-### Maintenance
-
-- Gate auto-merge on CodeRabbit approval [`2a37961`](https://github.com/acgetchell/la-stack/commit/2a37961ee8c95f2482541910de78680af22bb968)
-
-  - Request one SHA-scoped CodeRabbit review for each Dependabot update.
-  - Enable squash auto-merge only for the triggering head after required checks pass.
-  - Group GitHub Actions updates, remove autopep8, and refresh pinned tooling.
-  - Print an explicit release title in tag-release follow-up guidance.
-- [**breaking**] Require Rust 1.97.1 [`99bac26`](https://github.com/acgetchell/la-stack/commit/99bac263ae773cc8cb42c418630c8e7dd7d023b8)
-  - align contributor, CI, release, and Clippy toolchain baselines
-  - compile benchmarks with Cargo's warning policy to preserve cache reuse
-  - publish CodeRabbit's canonical review check for ruleset enforcement
-- Restore ruleset-compatible status [`5235365`](https://github.com/acgetchell/la-stack/commit/5235365efaf38a0d4035d74a46a7468ad10921d0)
-  - publish the legacy CodeRabbit commit status required by the main ruleset
-  - keep review progress disabled until CodeRabbit can publish the required check run
-- Standardize validation and centralize tool pins [`54a7e3a`](https://github.com/acgetchell/la-stack/commit/54a7e3a8e8a640fa5069d5c07fffbf1c1dfab903)
-  - Compose CI from orthogonal leaf validators with one release-profile nextest pass and separate doctests.
-  - Resolve workflow tooling through the justfile and shared setup action.
-  - Document focused validation, notebook scope, and Rust 1.97 tooling policy.
-  - Refresh development tools, security actions, Dependabot schedules, and lockfiles.
-- [**breaking**] Require Rust 1.98.0 [`2f9e0a8`](https://github.com/acgetchell/la-stack/commit/2f9e0a83c4fd974f34f87f29409cf1eac4da5343)
-  - align the MSRV, contributor toolchain, dependency locks, and documented maintenance baseline
-  - forbid algebraic float operations in numerical kernels to preserve IEEE-754 error and reproducibility contracts
-  - add a scoped just update workflow with atomic Cargo tool-pin reconciliation
-  - clean failed changelog and performance staging files without disturbing published artifacts
 - Bump the dependencies group with 3 updates [#211](https://github.com/acgetchell/la-stack/pull/211)
   [`493068a`](https://github.com/acgetchell/la-stack/commit/493068ac653724959f7083f34d5c909a496314bd)
 
-  Updates the requirements on [ruff](https://github.com/astral-sh/ruff) , [ty](https://github.com/astral-sh/ty) and
+  Updates the requirements on [ruff](https://github.com/astral-sh/ruff), [ty](https://github.com/astral-sh/ty) and
   [setuptools](https://github.com/pypa/setuptools) to permit the latest version.
 
   Updates `ruff` from 0.16.1 to 0.16.2
+
   - [Release notes](https://github.com/astral-sh/ruff/releases)
   - [Changelog](https://github.com/astral-sh/ruff/blob/main/CHANGELOG.md)
   - [Commits](https://github.com/astral-sh/ruff/compare/0.16.1...0.16.2)
@@ -320,6 +356,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - [Changelog](https://github.com/pypa/setuptools/blob/main/NEWS.rst)
   - [Commits](https://github.com/pypa/setuptools/compare/v83.0.0...v84.0.0)
 
+### Fixed
+
+- Enforce pinned uv in local recipe guards [`938aff6`](https://github.com/acgetchell/la-stack/commit/938aff62517d5055d1db49bc7734e4069ef74d72)
+
+  - Reject missing or mismatched uv versions with actionable diagnostics.
+  - Reuse the canonical version guard across uv-backed validation helpers.
+- Harden release artifact promotion [`8b8537b`](https://github.com/acgetchell/la-stack/commit/8b8537b86226285a343976ea987cf2759bf3dd7d)
+
+  - Treat CRLF and LF archive reports as equivalent while preserving stored bytes.
+  - Share comparison selection and report-update guidance across generation paths.
+  - Isolate artifact path resolution and retained-artifact rendering.
+  - Clarify that durable benchmark downloads are GitHub Release assets.
+- Harden numerical and release evidence [`c878701`](https://github.com/acgetchell/la-stack/commit/c8787017122c3e94958e82d327fdab8a305999b8)
+
+  - Surface determinant overflow even when error-bound terms underflow.
+  - Measure complete benchmark operations symmetrically and bind retained reports to atomic, validated provenance.
+  - Fail closed on inconsistent release metadata, tags, changelog sections, Semgrep annotations, and recorded CPU provenance.
+  - Align docs.rs feature annotations, citation identifiers, all-target linting, and configurable property-test runs with documented contracts.
+- Harden release and validation edge cases [`260afb8`](https://github.com/acgetchell/la-stack/commit/260afb85fdc8eaa873bdb64b6d7eae76ab6b9abc)
+
+  - Preserve archived changelog bytes during rollback and reject malformed Unreleased headings.
+  - Match overlapping Semgrep fixture spans deterministically and centralize immutable benchmark provenance handling.
+  - Document exact matrix/RHS scaling and the power-of-two factor that preserves linear systems.
+- [**breaking**] Unify local and release performance workflows
+  [`c601c41`](https://github.com/acgetchell/la-stack/commit/c601c4146b01868a29288b7221e413706e3e01c7)
+
+  - Retain local Markdown, CSV, and provenance artifacts while allowing same-version comparisons of tracked changes.
+  - Exclude untracked files explicitly and isolate the narrowed non-exact comparison bundle.
+  - Promote distinct-release artifacts through performance-doc and keep performance-release atomic and rollback-capable.
+  - Render one consolidated table per benchmark suite and reject invalid release publication states.
+- Isolate algebraic float fixture scans [`56e848f`](https://github.com/acgetchell/la-stack/commit/56e848fb3dbbc93f2fd4c0b566d71489c96dc857)
+
+  - exclude intentional algebraic float violations from production Semgrep scans while preserving direct fixture validation
+  - cover f64 associated-call syntax alongside f32 and receiver forms
+  - forbid dead-code suppressions and remove blanket allowances from static-analysis fixtures
+
+### Maintenance
+
+- Gate auto-merge on CodeRabbit approval [`2a37961`](https://github.com/acgetchell/la-stack/commit/2a37961ee8c95f2482541910de78680af22bb968)
+
+  - Request one SHA-scoped CodeRabbit review for each Dependabot update.
+  - Enable squash auto-merge only for the triggering head after required checks pass.
+  - Group GitHub Actions updates, remove autopep8, and refresh pinned tooling.
+  - Print an explicit release title in tag-release follow-up guidance.
+- [**breaking**] Require Rust 1.97.1 [`99bac26`](https://github.com/acgetchell/la-stack/commit/99bac263ae773cc8cb42c418630c8e7dd7d023b8)
+
+  - align contributor, CI, release, and Clippy toolchain baselines
+  - compile benchmarks with Cargo's warning policy to preserve cache reuse
+  - publish CodeRabbit's canonical review check for ruleset enforcement
+- Restore ruleset-compatible status [`5235365`](https://github.com/acgetchell/la-stack/commit/5235365efaf38a0d4035d74a46a7468ad10921d0)
+
+  - publish the legacy CodeRabbit commit status required by the main ruleset
+  - keep review progress disabled until CodeRabbit can publish the required check run
+- Standardize validation and centralize tool pins [`54a7e3a`](https://github.com/acgetchell/la-stack/commit/54a7e3a8e8a640fa5069d5c07fffbf1c1dfab903)
+
+  - Compose CI from orthogonal leaf validators with one release-profile nextest pass and separate doctests.
+  - Resolve workflow tooling through the justfile and shared setup action.
+  - Document focused validation, notebook scope, and Rust 1.97 tooling policy.
+  - Refresh development tools, security actions, Dependabot schedules, and lockfiles.
+- [**breaking**] Require Rust 1.98.0 [`2f9e0a8`](https://github.com/acgetchell/la-stack/commit/2f9e0a83c4fd974f34f87f29409cf1eac4da5343)
+
+  - align the MSRV, contributor toolchain, dependency locks, and documented maintenance baseline
+  - forbid algebraic float operations in numerical kernels to preserve IEEE-754 error and reproducibility contracts
+  - add a scoped just update workflow with atomic Cargo tool-pin reconciliation
+  - clean failed changelog and performance staging files without disturbing published artifacts
+
 ### Performance
 
 - Reduce checked determinant query overhead [`2bdf1d3`](https://github.com/acgetchell/la-stack/commit/2bdf1d3dc4b4a27928a888be678b4c360916e94c)
@@ -331,10 +433,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠️ Breaking Changes
 
-- Rename `Tolerance::new` to `Tolerance::try_new` and `Matrix::get_checked` to `Matrix::try_get` ; remove `Matrix::set_checked` in favor of `Matrix::set` .
+- Rename `Tolerance::new` to `Tolerance::try_new` and `Matrix::get_checked` to `Matrix::try_get`; remove `Matrix::set_checked` in favor of `Matrix::set`.
   `Vector::dot` and `Vector::norm2_sq` now borrow their operands. `det_sign_exact` is now infallible and returns `DeterminantSign` instead of
-  `Result<i8, LaError>` . `LaError` variants now use typed reason, location, and origin fields and require `..` in downstream matches. LDLT now requires exact
-  symmetry, determinant error bounds may be unavailable under gradual underflow, and `ERR_COEFF_2` , `ERR_COEFF_3` , and `ERR_COEFF_4` are no longer exported by
+  `Result<i8, LaError>`. `LaError` variants now use typed reason, location, and origin fields and require `..` in downstream matches. LDLT now requires exact
+  symmetry, determinant error bounds may be unavailable under gradual underflow, and `ERR_COEFF_2`, `ERR_COEFF_3`, and `ERR_COEFF_4` are no longer exported by
   the prelude.
 - Rust versions earlier than 1.97.0 are no longer supported.
 
@@ -375,6 +477,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - align README, API documentation, examples, and LDLT diagnostics with guarantees over stored values
   - audit academic references and extend Criterion coverage for determinant error-bound paths
 - Clarify determinant and LDLT failure contracts [`e257343`](https://github.com/acgetchell/la-stack/commit/e2573434c541a8115750b3a965882f7b484b6be0)
+
   - State the determinant sign condition without ambiguous Markdown delimiters.
   - Distinguish singular zero pivots from coupled zero-pivot LDLT rejections.
   - Align citation and contributor guidance with the positive-definite domain.
@@ -388,12 +491,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Preserve benchmark provenance, suite-specific fallback commands, and publication rollback guarantees
   - Harden Windows Git input, changelog links, and version-reference parsing across platforms
 - Harden exact arithmetic and benchmark publication [`db2fad5`](https://github.com/acgetchell/la-stack/commit/db2fad50087c773f7ae37f181f720da2a9ff4a23)
+
   - add `DeterminantWithErrorBound` for paired determinant estimates and certified bounds
   - scale exact systems independently and round exact values directly to IEEE-754
   - fail benchmark publication closed on invalid samples or mismatched provenance
   - make release and changelog tooling transactional, path-safe, and Windows-portable
   - align benchmark CI with pinned local tools and least-privilege publishing
 - Harden changelog and version generation [`2e1eb2e`](https://github.com/acgetchell/la-stack/commit/2e1eb2e965333fab51934c2b605fe3465e4b57e6)
+
   - Reject tag prefixes embedded in longer non-semver revisions
   - Preserve fenced examples when stripping Dependabot metadata
   - Document the conditional exact-solve scaling invariant
@@ -411,9 +516,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - [Changelog](https://github.com/pypa/setuptools/blob/main/NEWS.rst)
   - [Commits](https://github.com/pypa/setuptools/compare/v65.0.0...v83.0.0)
 - Avoid duplicate review checks [`5e15d92`](https://github.com/acgetchell/la-stack/commit/5e15d9250455fd1467e47a735412f65449f30b56)
+
   - Use the legacy required status while preserving automatic approvals.
   - Add explicit dense D3 determinant coverage and document the D4 error bound.
 - [**breaking**] Require Rust 1.97.0 [`4033f1f`](https://github.com/acgetchell/la-stack/commit/4033f1f39e411ed066fec808805371979995964b)
+
   - Align Cargo, the pinned toolchain, Clippy, dependency-audit triggers, and maintainer guidance with the new baseline.
   - Audit Rust 1.97 integer bit helpers against exact-arithmetic hot paths and retain existing operations where alternatives do not preserve performance.
   - Correct v0.4.3 citation metadata and document exact decomposition and solve scaling accurately.
@@ -426,14 +533,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Share D=4 minors while retaining guarded sparse evaluation.
   - Preserve non-finite handling for mathematically inactive terms.
 - Restore small-matrix det_sign_exact throughput [`b8bfa9f`](https://github.com/acgetchell/la-stack/commit/b8bfa9fa0c908ea034d294ceb123c8191eff3395)
+
   - Reuse proof-bearing shared minors for D4 determinant and permanent evaluation.
   - Restore the dense D3 filter while preserving sparse, overflow, and underflow fallbacks.
   - Require headline benchmarks to exercise the intended filter and document historical harness overhead.
 - Improve inf_norm throughput [`dc28f98`](https://github.com/acgetchell/la-stack/commit/dc28f9828a1e90b5604e4a55284175e50f84d7e2)
+
   - Check row-sum finiteness once per completed row on the success path.
   - Replay only overflowing rows to preserve the first failing matrix coordinate.
   - Preserve left-to-right accumulation and const evaluation across dimensions.
 - Improve dot and norm2_sq throughput [`ece54d7`](https://github.com/acgetchell/la-stack/commit/ece54d7b2a73111c2bc378a417189e2951a39cbc)
+
   - Check accumulator finiteness once after the success-path reduction.
   - Replay only non-finite reductions to preserve the first failing step.
   - Preserve left-to-right fused accumulation and const evaluation.
@@ -458,21 +568,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     hidden doctest mirrors
   - Update CI uv pins to 0.11.19
 - Report determinant scale overflow precisely [`928f62b`](https://github.com/acgetchell/la-stack/commit/928f62bba0d837afe04cb8ccb3fbfed6b095d8f7)
+
   - Add a typed LaError::DeterminantScaleOverflow path for exact determinant scale exponent failures
   - Convert det_exact_f64 directly from the shared Bareiss integer/exponent pair while preserving Overflow for finite-f64 conversion failures
   - Reuse vector finiteness scanning across raw and proof-bearing constructors
   - Harden docs version sync checks for reordered inline-table dependency snippets and pruned Markdown traversal
 - Add release performance comparison workflow [`53b5fde`](https://github.com/acgetchell/la-stack/commit/53b5fde13f3e4afbd3db80d324185a091203cb75)
+
   - Extend vs_linalg with LDLT/Cholesky benchmark rows and shared deterministic inputs.
   - Add smoke coverage that checks la-stack, nalgebra, and faer agree on benchmark inputs.
   - Expand bench-compare to support latest-vs-last reports, suite/scope selection, peer baseline context, and clearer malformed Criterion diagnostics.
   - Document the benchmark methodology, release baseline workflow, roadmap direction, and contributor guidance.
 - Publish release benchmark baselines [`9497ca5`](https://github.com/acgetchell/la-stack/commit/9497ca5f88dd7800bdf3823123e2a295fcb5ced1)
+
   - Add a release-only benchmark workflow that saves full Criterion baselines for published releases and attaches the archived baseline to the GitHub Release.
   - Keep the regular benchmark workflow focused on PR and main-branch comparison runs.
   - Document how to restore archived release baselines for future performance comparisons.
 - Feat!(api): make Matrix and Vector finite by construction [`1fa2f55`](https://github.com/acgetchell/la-stack/commit/1fa2f55cfac6f249a7e2bf30922901539e580dd8)
 - [**breaking**] Make exact f64 conversions strict [`8e33f1a`](https://github.com/acgetchell/la-stack/commit/8e33f1a8ec291bfcb6312375969efce076421e96)
+
   - Add explicit rounded exact-to-f64 APIs for determinant and solve results
   - Report exact conversion failures with typed Unrepresentable reasons
   - Remove finite proof wrapper APIs now that Matrix and Vector carry finiteness directly
@@ -480,26 +594,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Update exact benchmarks to distinguish strict Result paths from rounded f64 paths
   - Document and exercise the rounded fallback pattern for RequiresRounding errors
 - [**breaking**] Make exact f64 conversions strict [`89f3720`](https://github.com/acgetchell/la-stack/commit/89f3720ecde9f12d7a0f42e79394836615e8fd97)
+
   - Make Matrix and Vector the finite-by-construction public types for exact arithmetic.
   - Add rounded exact-to-f64 APIs for determinant and solve callers that want explicit lossy conversion.
   - Return typed Unrepresentable reasons when strict exact-to-f64 conversion would round or become non-finite.
   - Specialize D4 exact determinants and keep determinant/error-bound zero coefficients from evaluating overflowing absent terms.
   - Update exact benchmark comparison reporting to compare strict and rounded APIs against legacy v0.4.2 rows.
 - Archive release performance reports [`2817d01`](https://github.com/acgetchell/la-stack/commit/2817d01374ad0aeab98d6f48a3dae9b30f878a8a)
+
   - Add an archive-performance utility that promotes curated benchmark reports into docs/PERFORMANCE.md while archiving prior release comparisons
   - Generate release comparisons in isolated temporary worktrees, including legacy command fallback for published tags
   - Wire release and historical archive recipes into just, Python packaging, and release documentation
 - Automate published performance report archiving [`d31e26a`](https://github.com/acgetchell/la-stack/commit/d31e26a9d7a47a6c3089028630640bcff5afe7c0)
+
   - Track the latest curated release comparison in docs/PERFORMANCE.md and archive older comparisons under docs/archive/performance/
   - Let performance-archive-published discover the latest stable GitHub release and previous stable baseline automatically
   - Generate release comparisons in isolated temporary worktrees, with release-asset restore and local baseline fallback paths
   - Update benchmark and release docs to use the scripted workflow instead of manual checkout steps
 - Split local and release performance comparisons [`7258525`](https://github.com/acgetchell/la-stack/commit/7258525590f2ed68d41879e71c833010e408e7f7)
+
   - Add default performance-local and performance-release workflows that infer the relevant release tags and run in temporary worktrees.
   - Add a performance-github-assets workflow for comparing stored GitHub Actions release benchmark assets without local cargo runs.
   - Normalize release tags before fetching, downloading assets, or checking out detached worktrees.
   - Update performance docs, release guidance, and generated report instructions to use the new benchmark workflows.
 - Add vs_linalg-only performance checks [`d7c1487`](https://github.com/acgetchell/la-stack/commit/d7c1487115e1a8e5bb1ec4fcc7592786e300e2ce)
+
   - Add local workflows for comparing current non-exact la-stack kernels against a release baseline without rerunning current nalgebra/faer or exact benchmarks.
   - Route archive-performance baseline and current benchmark commands by suite, with legacy fallback support for older release worktrees.
   - Document the faster release-signal workflow and expand Semgrep fixtures for benchmark, example, doctest, and public panic-path rules.
@@ -511,11 +630,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Extract determinant scale exponent calculation into a private helper
   - Assert typed DeterminantScaleOverflow errors for dimension conversion and exponent product overflow
 - Harden support script parsing [`87e1d00`](https://github.com/acgetchell/la-stack/commit/87e1d0042ad2de7888c1a065ab78524a63f4c045)
+
   - Require Python 3.13 for support-script tooling and align Ruff/Ty with that baseline.
   - Replace mypy with strict Ty checking in the Python workflow.
   - Parse TOML, JSON, argparse, and Semgrep inputs into typed boundary objects before downstream use.
   - Reject malformed Criterion estimates, non-finite timings, invalid confidence intervals, and malformed Semgrep result shapes.
 - Harden Rust release hygiene [`8e12c93`](https://github.com/acgetchell/la-stack/commit/8e12c935fe54e265e8ceb640702267ec0e71b7b1)
+
   - Promote missing documentation and dead code lints to deny-level checks.
   - Forbid unsafe code explicitly across Rust modules and benchmark targets.
   - Document the LU/LDLT empty-matrix convention for D=0.
@@ -543,6 +664,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Return matrix-cell metadata when inf-norm row sums or symmetry tolerance scaling overflow.
   - Avoid reparsing finite-by-construction RHS vectors in LU and LDLT solves.
 - Re-raise unexpected archive failures [`7938386`](https://github.com/acgetchell/la-stack/commit/7938386166f1f3f5cf594c5def67458d48e19a98)
+
   - Limit archive-performance CLI error handling to expected validation, filesystem, subprocess, and runtime failures.
   - Let unexpected exceptions propagate so benchmark archiving bugs surface during development.
 
@@ -554,6 +676,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fuse multiplier computation with trailing updates for larger dimensions to reduce extra column walks
   - Rely on the LDLT factorization proof instead of a redundant final finite-storage scan
 - Optimize exact and factorized solve kernels [`1690355`](https://github.com/acgetchell/la-stack/commit/1690355bf27c2cbba685ba0cd70486275c7620b8)
+
   - Split LU and LDLT solve paths so tiny matrices keep the direct kernels while larger fixed dimensions avoid extra substitution work.
   - Convert dyadic exact solve results directly to finite f64 and preserve UnrepresentableReason recovery semantics on strict conversion failures.
   - Modernize release branch commands and keep just recipes sorted.
@@ -587,11 +710,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [`758321a`](https://github.com/acgetchell/la-stack/commit/758321acf872b1f17286ff3bb7bee6a807e4b440)
 - Encode nonzero mantissas in exact decomposition [`7a664ed`](https://github.com/acgetchell/la-stack/commit/7a664ede2f4add168c5813f8d24e16732fa03b30)
 
-  - Replace the exact-arithmetic zero mantissa sentinel with `Option&lt;NonZeroU64&gt;`.
+  - Replace the exact-arithmetic zero mantissa sentinel with `Option<NonZeroU64>`.
   - Carry nonzero mantissa proof through matrix/vector decomposition and BigInt scaling.
   - Clarify determinant documentation around uncertified `det()` bounds.
   - Keep SPD determinant proptests on the tolerance-aware LU path.
 - Simplify finite proof wrappers [`54b603c`](https://github.com/acgetchell/la-stack/commit/54b603c21f0eb5b4d63ff334fac7f8cc325ebc2e)
+
   - Use the checked proof-wrapper constructors as the single internal path for finite matrices and vectors.
   - Remove exact-arithmetic tests that duplicated the matrix and vector non-finite boundary checks.
 
@@ -617,10 +741,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add a roadmap covering the v0.4.x stable-Rust issue sequence and the v0.5.0 generic_const_exprs anchor.
   - Refresh generated changelog entries and archived changelog grouping.
 - Document finite RHS solve validation [`075aed7`](https://github.com/acgetchell/la-stack/commit/075aed78cf8264fc920258f1f1d977ddd589ffd7)
+
   - Document that LU and LDLT solve_vec reject non-finite RHS entries with LaError::NonFinite metadata.
   - Cite the Bareiss reference in the exact solve helper docs and describe exact-arithmetic growth and complexity.
   - Cover finite proof defaults and non-finite RHS solve boundaries in unit tests.
 - Clarify finite solve and norm guarantees [`fb71485`](https://github.com/acgetchell/la-stack/commit/fb71485cac0b464b2fa9ee949140a558b7738781)
+
   - State that LU and LDLT solve_vec use floating-point substitution without a certified absolute rounding-error bound.
   - Clarify that inf_norm reports NonFinite for unchecked stored NaN/∞ as well as row-sum overflow.
   - Exercise the unchecked finite-proof fixture path directly in exact tests.
@@ -638,16 +764,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     tolerance overflow.
   - Update exact examples to propagate typed crate errors instead of unwrapping.
 - Harden Semgrep fixture parsing [`ac44c07`](https://github.com/acgetchell/la-stack/commit/ac44c078cc4435d5beca27f1890fbb4046cf5952)
+
   - Ignore non-canonical todoruleid annotations when counting expected rule hits.
   - Reject malformed Semgrep JSON results with clear stderr diagnostics instead of propagating KeyError.
 - Revalidate finite proof conversions [`419a90f`](https://github.com/acgetchell/la-stack/commit/419a90f7267608051736498154ac5e6faf0909c5)
 
   Ensure internal finite proof conversions cannot accept raw Matrix or Vector storage without checking the invariant.
+
   - Revalidate TryFrom&lt;Matrix&lt;D&gt;&gt; and TryFrom&lt;Vector&lt;D&gt;&gt; before constructing finite wrappers.
   - Measure exact random percentile benchmarks over repeated corpus timings and cumulative input sets.
   - Tighten Codecov status thresholds and extend benchmark workflow timeout.
   - Keep Semgrep constructor fixtures aligned with public API guardrails.
 - Revalidate public compute inputs [`ffca00e`](https://github.com/acgetchell/la-stack/commit/ffca00e9dd6fde5e57c8064f69807a76e45a469e)
+
   - Parse Matrix and Vector storage into private finite proof-bearing types at public compute boundaries.
   - Reject unchecked non-finite storage before LU, LDLT, determinant, norm, dot, and exact-arithmetic paths can proceed.
   - Keep unchecked proof-wrapper constructors crate-private for internal paths with local finiteness proofs.
@@ -664,6 +793,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Add archive-aware changelog generation, post-processing, and tag-release tooling.
   - Preserve exact arithmetic overflow reporting without non-finite sentinel defaults.
 - Modernize tooling checks and example execution [`da626bc`](https://github.com/acgetchell/la-stack/commit/da626bcca899aa91d58f728db433a53a46179e92)
+
   - Run examples from prebuilt binaries instead of invoking cargo run for each example.
   - Add check/fix recipe aliases and guard documented command ordering with Semgrep.
   - Document the Rust-native Markdown, YAML, TOML, spelling, and workflow action policy.
@@ -784,7 +914,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     pass that decomposes each entry and return
     `Err(LaError::NonFinite { row, col })` on the first non-finite cell.
   - `bareiss_det_int`, `bareiss_det`, `gauss_solve` now return
-    `Result&lt;_, LaError&gt;`; error propagates to every public entry point via
+    `Result<_, LaError>`; error propagates to every public entry point via
     `?`.
   - `validate_finite` and `validate_finite_vec` removed (dead after the
     refactor); `det_sign_exact` relies on IEEE 754 NaN/∞ propagation
@@ -796,6 +926,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   APIs to catch tail cases that fixed well-conditioned inputs miss.
 
   Benchmarks (benches/exact.rs):
+
   - Factor out `bench_extreme_group` helper running the same four benches
     (`det_sign_exact`, `det_exact`, `solve_exact`, `solve_exact_f64`) so
     adversarial groups are directly comparable.
@@ -900,7 +1031,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   off-diagonal pairs as an asymmetry. This prevents cases where a single
   infinite entry paired with a finite entry would incorrectly pass as
   symmetric because the matrix's infinite norm blew the tolerance up to
-  infinity, making the comparison `diff &gt; eps` return false.
+  infinity, making the comparison `diff > eps` return false.
 
 ### Maintenance
 
@@ -1066,6 +1197,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Replace `BigRational::from_float(x)` in `f64_to_bigrational` with manual
   IEEE 754 binary64 bit decomposition and `BigRational::new_raw`, bypassing
   the unnecessary GCD normalization that `from_float` performs internally.
+
   - Decompose f64 into sign, biased exponent, and significand fields
   - Strip trailing zeros from the significand so the fraction is already
     in lowest terms (odd numerator over power-of-two denominator)
@@ -1081,6 +1213,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all f64 entries are decomposed into mantissa × 2^exponent, scaled to
   a common integer base, and eliminated without any rational arithmetic.
   The result is reconstructed as BigRational only at the end.
+
   - Add f64_decompose helper (extracted from f64_to_bigrational)
   - Add bareiss_det_int: integer-only Bareiss returning (BigInt, i32)
   - Add bigint_exp_to_bigrational: reconstruction with trailing-zero
@@ -1105,10 +1238,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Older releases are archived by minor series:
 
-- [0.3.x](docs/archive/changelog/0.3.md)
-- [0.2.x](docs/archive/changelog/0.2.md)
-- [0.1.x](docs/archive/changelog/0.1.md)
+- [0.3.x](docs/archives/changelog/0.3.md)
+- [0.2.x](docs/archives/changelog/0.2.md)
+- [0.1.x](docs/archives/changelog/0.1.md)
 
+[Unreleased]: https://github.com/acgetchell/la-stack/compare/v0.4.6...HEAD
 [0.4.6]: https://github.com/acgetchell/la-stack/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/acgetchell/la-stack/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/acgetchell/la-stack/compare/v0.4.3...v0.4.4

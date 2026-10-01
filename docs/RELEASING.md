@@ -93,13 +93,21 @@ continuing.
 ### 3. Generate the release changelog
 
 ```bash
-just changelog-unreleased "$TAG"
+RELEASE_DATE="$(date -u +%F)"
+just changelog-unreleased "$TAG" "$RELEASE_DATE"
 ```
 
 This generates `CHANGELOG.md` as though the target tag already existed, archives
-completed minor series under `docs/archive/changelog/`, and synchronizes the
-changelog heading with the UTC preparation date recorded in `CITATION.cff`.
-Review the generated changelog and any archive changes.
+completed minor series under `docs/archives/changelog/`, and uses the explicit
+ISO release date. Verify that `RELEASE_DATE` equals the date recorded in
+`CITATION.cff` by metadata preparation; if preparation crossed UTC midnight,
+rerun `just update-version "$TAG"` first. Generation preserves existing release
+dates and does not update package or citation metadata.
+Use `just changelog-preview --tag "$TAG" --date "$RELEASE_DATE"` for a read-only
+preview, and `just changelog-check` to validate the root and every archive.
+Review the generated changelog and any archive changes. The
+[Scripts guide](../scripts/README.md#changelog-and-release-tooling) explains
+the consumer policy exception that preserves historical dependency-note links.
 
 ### 4. Generate the release performance comparison
 
@@ -161,7 +169,7 @@ git --no-pager diff
 
 Expected release artifacts include package metadata and lockfiles,
 `CITATION.cff`, `CHANGELOG.md`, `README.md`, `docs/performance.md`, and generated
-files under `docs/archive/` and `docs/assets/bench/`. Stage only the reviewed
+files under `docs/archive/`, `docs/archives/changelog/`, and `docs/assets/bench/`. Stage only the reviewed
 paths that were intentionally changed; do not stage the entire `docs/` tree.
 Then inspect the staged diff and commit it:
 
@@ -189,7 +197,7 @@ focused release preparation without feature work.
 ### Handling fixes found during preparation
 
 For a critical fix that must be included, make and commit the fix, rerun
-`just changelog-unreleased "$TAG"`, review and stage only the resulting changelog
+`just changelog-unreleased "$TAG" "$RELEASE_DATE"`, review and stage only the resulting changelog
 files, and commit that generated update separately.
 
 For a non-critical fix, file an issue and defer it to a later release. Do not
