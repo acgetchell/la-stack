@@ -27,34 +27,15 @@ jobs:
   semgrep-sarif:
     name: Repository Rule SARIF Analysis
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Set up just
-        uses: ./.github/actions/setup-just # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
-
-      - name: Resolve uv version
-        id: uv_version
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version="$(just --evaluate uv_version)"
-          if [[ -z "$version" ]]; then
-            echo "::error::Could not resolve uv_version from justfile"
-            exit 1
-          fi
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: ${{ steps.uv_version.outputs.version }}
+      - name: Set up declared tools
+        uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
 
       - name: Run repository Semgrep rules
         id: semgrep

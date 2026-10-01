@@ -1,15 +1,12 @@
 # shellcheck disable=SC2148
 # Justfile for la-stack development workflow
-# Install just: https://github.com/casey/just
+# Install tools: uv run --locked --managed-python --only-group tooling research-repo-tools setup
 # Usage: just <command> or just --list
 
 # Use bash with strict error handling for all recipes
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-home_dir := env_var_or_default("HOME", env_var_or_default("USERPROFILE", ""))
-cargo_home := env_var_or_default("CARGO_HOME", home_dir + "/.cargo")
-path_separator := if os_family() == "windows" { ";" } else { ":" }
-export PATH := cargo_home + "/bin" + path_separator + env_var("PATH")
+_run := "uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain run --"
 
 # Coverage (cargo-llvm-cov)
 #
@@ -17,219 +14,28 @@ export PATH := cargo_home + "/bin" + path_separator + env_var("PATH")
 _coverage_base_args := '''--features exact \
   --workspace --lib --tests \
   --verbose'''
-cargo_edit_version := "0.13.13"
-cargo_llvm_cov_version := "0.9.1"
-cargo_machete_version := "0.9.2"
-cargo_nextest_version := "0.9.146"
-cargo_update_version := "22.1.1"
-clippy_sarif_version := "0.8.0"
-dprint_version := "0.58.0"
-git_cliff_version := "2.14.2"
-just_version := "1.58.0"
-rumdl_version := "0.2.78"
-sarif_fmt_version := "0.8.0"
-taplo_version := "0.10.0"
-typos_version := "1.50.3"
-uv_version := "0.12.21"
-zizmor_version := "1.30.1"
-
-# Internal helpers: ensure external tooling is installed
-_ensure-actionlint: _ensure-uv
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv run --locked actionlint -version >/dev/null
-
-_ensure-cargo-edit:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    installed_version=""
-    if cargo upgrade --version >/dev/null 2>&1; then
-        installed_version="$(cargo upgrade --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    fi
-    if [[ "$installed_version" != "{{ cargo_edit_version }}" ]]; then
-        echo "❌ 'cargo-edit' {{ cargo_edit_version }} not found. Install with:"
-        echo "   cargo install --locked cargo-edit --version {{ cargo_edit_version }}"
-        exit 1
-    fi
-
-_ensure-cargo-install-update:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v cargo-install-update >/dev/null || {
-        echo "❌ 'cargo-install-update' not found. Run 'just setup-tools' or install it with:"
-        echo "   cargo install --locked cargo-update"
-        exit 1
-    }
-
-_ensure-cargo-llvm-cov:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    installed_version=""
-    if command -v cargo-llvm-cov >/dev/null; then
-        installed_version="$(cargo llvm-cov --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    fi
-    if [[ "$installed_version" != "{{ cargo_llvm_cov_version }}" ]]; then
-        echo "❌ 'cargo-llvm-cov' {{ cargo_llvm_cov_version }} not found. Install with:"
-        echo "   cargo install --locked cargo-llvm-cov --version {{ cargo_llvm_cov_version }}"
-        exit 1
-    fi
-
-_ensure-cargo-machete:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    installed_version=""
-    if cargo machete --version >/dev/null 2>&1; then
-        installed_version="$(cargo machete --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    fi
-    if [[ "$installed_version" != "{{ cargo_machete_version }}" ]]; then
-        echo "❌ 'cargo-machete' {{ cargo_machete_version }} not found. Install with:"
-        echo "   cargo install --locked cargo-machete --version {{ cargo_machete_version }}"
-        exit 1
-    fi
-
-_ensure-cargo-nextest:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    installed_version=""
-    if cargo nextest --version >/dev/null 2>&1; then
-        installed_version="$(cargo nextest --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    fi
-    if [[ "$installed_version" != "{{ cargo_nextest_version }}" ]]; then
-        echo "❌ 'cargo-nextest' {{ cargo_nextest_version }} not found. Install with:"
-        echo "   cargo install --locked cargo-nextest --version {{ cargo_nextest_version }}"
-        exit 1
-    fi
-
-_ensure-dprint:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    installed_version=""
-    if command -v dprint >/dev/null; then
-        installed_version="$(dprint --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    fi
-    if [[ "$installed_version" != "{{ dprint_version }}" ]]; then
-        echo "❌ 'dprint' {{ dprint_version }} not found. Install with:"
-        echo "   cargo install --locked dprint --version {{ dprint_version }}"
-        exit 1
-    fi
-
+# System prerequisites remain consumer-owned.
 _ensure-gh:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v gh >/dev/null || { echo "❌ 'gh' not found. Install GitHub CLI and re-run this command."; exit 1; }
-
-_ensure-git-cliff:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    installed_version=""
-    if command -v git-cliff >/dev/null; then
-        installed_version="$(git-cliff --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    fi
-    if [[ "$installed_version" != "{{ git_cliff_version }}" ]]; then
-        echo "❌ 'git-cliff' {{ git_cliff_version }} not found. Install with:"
-        echo "   cargo install --locked git-cliff --version {{ git_cliff_version }}"
-        exit 1
-    fi
+    @command -v gh >/dev/null || { echo "GitHub CLI is required on PATH." >&2; exit 1; }
 
 _ensure-jq:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v jq >/dev/null || { echo "❌ 'jq' not found. Install jq and re-run this command."; exit 1; }
+    @command -v jq >/dev/null || { echo "jq is required on PATH." >&2; exit 1; }
 
-_ensure-rumdl:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    installed_version=""
-    if command -v rumdl >/dev/null; then
-        installed_version="$(rumdl --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    fi
-    if [[ "$installed_version" != "{{ rumdl_version }}" ]]; then
-        echo "❌ 'rumdl' {{ rumdl_version }} not found. Install with:"
-        echo "   cargo install --locked rumdl --version {{ rumdl_version }}"
-        exit 1
-    fi
+# uv enforces its exact declaration before running the locked CLI.
+_ensure-uv:
+    uv run --locked --no-sync --no-python-downloads research-repo-tools deps check-uv
+
+_ensure-actionlint: _ensure-uv
+    uv run --locked actionlint -version >/dev/null
 
 _ensure-shellcheck: _ensure-uv
-    #!/usr/bin/env bash
-    set -euo pipefail
     uv run --locked shellcheck --version >/dev/null
 
 _ensure-shfmt: _ensure-uv
-    #!/usr/bin/env bash
-    set -euo pipefail
     uv run --locked shfmt --version >/dev/null
 
-_ensure-taplo:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    installed_version=""
-    if command -v taplo >/dev/null; then
-        installed_version="$(taplo --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    fi
-    if [[ "$installed_version" != "{{ taplo_version }}" ]]; then
-        echo "❌ 'taplo' {{ taplo_version }} not found. Install with:"
-        echo "   cargo install --locked taplo-cli --version {{ taplo_version }}"
-        exit 1
-    fi
-
-# Internal helper: ensure typos-cli is installed
-_ensure-typos:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    installed_version=""
-    if command -v typos >/dev/null; then
-        installed_version="$(typos --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    fi
-    if [[ "$installed_version" != "{{ typos_version }}" ]]; then
-        echo "❌ 'typos' {{ typos_version }} not found. Install with:"
-        echo "   cargo install --locked typos-cli --version {{ typos_version }}"
-        exit 1
-    fi
-
-_ensure-uv: _ensure-uv-available
-    #!/usr/bin/env bash
-    set -euo pipefail
-    resolved="$(command -v uv 2>/dev/null || true)"
-    actual="$(uv --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    if [[ "$actual" != "{{ uv_version }}" ]]; then
-        echo "❌ 'uv' resolves to '${resolved:-missing}' at version '${actual:-missing}', expected '{{ uv_version }}'." >&2
-        echo "   Install uv {{ uv_version }} and re-run: just setup-tools" >&2
-        exit 1
-    fi
-
-_ensure-uv-available:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    command -v uv >/dev/null || {
-        echo "❌ 'uv' not found. Install it from https://github.com/astral-sh/uv" >&2
-        exit 1
-    }
-    uv --version >/dev/null
-
-_ensure-stable-uv-version: _ensure-uv-available
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv_executable="$(command -v uv)"
-    version_output="$("$uv_executable" --version)"
-    "$uv_executable" run --locked update-cargo-tool-pins "--check-uv-version=$version_output"
-
 _ensure-yamllint: _ensure-uv
-    #!/usr/bin/env bash
-    set -euo pipefail
     uv run --locked yamllint --version >/dev/null
-
-_ensure-zizmor:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    installed_version=""
-    if command -v zizmor >/dev/null; then
-        installed_version="$(zizmor --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-    fi
-    if [[ "$installed_version" != "{{ zizmor_version }}" ]]; then
-        echo "❌ 'zizmor' {{ zizmor_version }} not found. Install with:"
-        echo "   cargo install --locked zizmor --version {{ zizmor_version }}"
-        exit 1
-    fi
 
 # GitHub Actions workflow validation
 action-lint: _ensure-actionlint
@@ -249,7 +55,7 @@ action-lint: _ensure-actionlint
 
 # Benchmarks
 bench:
-    cargo bench --locked --workspace --features bench
+    {{ _run }} cargo bench --locked --workspace --features bench
 
 # Compare latest measurements against a saved baseline.
 # Defaults to the `last` full-release baseline.
@@ -257,41 +63,41 @@ bench-compare baseline="last" suite="all" scope="release-signal": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     baseline={{ quote(baseline) }}
-    uv run --locked bench-compare "$baseline" --suite {{ quote(suite) }} --scope {{ quote(scope) }}
+    {{ _run }} uv run --locked bench-compare "$baseline" --suite {{ quote(suite) }} --scope {{ quote(scope) }}
 
 # Compile benchmarks without running them, treating warnings as errors through
 # Cargo so warning policy does not create separate rustc cache artifacts.
 # This catches bench/release-profile-only warnings that won't show up in normal debug-profile runs.
 bench-compile:
-    CARGO_BUILD_WARNINGS=deny cargo bench --locked --workspace --no-run --features bench
-    CARGO_BUILD_WARNINGS=deny cargo bench --locked --no-run --features bench,exact --bench exact
+    CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --workspace --no-run --features bench
+    CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench exact
 
 # Run the exact-arithmetic benchmark suite.
 bench-exact:
-    cargo bench --locked --features bench,exact --bench exact
+    {{ _run }} cargo bench --locked --features bench,exact --bench exact
 
 # Run the outward-rounded interval determinant benchmark suite.
 bench-interval:
-    cargo bench --locked --features bench --bench interval
+    {{ _run }} cargo bench --locked --features bench --bench interval
 
 # Run the certified dot-product and affine-difference benchmark suite.
 bench-linear-form:
-    cargo bench --locked --features bench --bench linear_form
+    {{ _run }} cargo bench --locked --features bench --bench linear_form
 
 # Run the cheaper latest measurements used for latest-vs-last reports.
 bench-latest: bench-vs-linalg-la-stack bench-exact
 
 # Run latest measurements and render the latest-vs-last performance report.
 bench-latest-vs-last baseline="last": bench-latest python-sync
-    uv run --locked bench-compare {{ quote(baseline) }}
+    {{ _run }} uv run --locked bench-compare {{ quote(baseline) }}
 
 # Discover all release benchmarks and report their expected measurement budget.
 bench-release-inventory: _ensure-uv
-    uv run --locked scripts/release_baseline.py inventory
+    {{ _run }} uv run --locked scripts/release_baseline.py inventory
 
 # Check every discovered benchmark before the release workflow packages it.
 bench-release-check tag: _ensure-uv
-    uv run --locked scripts/release_baseline.py validate --baseline {{ quote(tag) }}
+    {{ _run }} uv run --locked scripts/release_baseline.py validate --baseline {{ quote(tag) }}
 
 # Save a Criterion baseline. Defaults to all release-signal benchmark suites.
 bench-save-baseline tag suite="all":
@@ -300,14 +106,14 @@ bench-save-baseline tag suite="all":
     suite={{ quote(suite) }}
     case "$suite" in
         all)
-            cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --noplot --save-baseline {{ quote(tag) }}
-            cargo bench --locked --features bench,exact --bench exact -- --noplot --save-baseline {{ quote(tag) }}
+            {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --noplot --save-baseline {{ quote(tag) }}
+            {{ _run }} cargo bench --locked --features bench,exact --bench exact -- --noplot --save-baseline {{ quote(tag) }}
             ;;
         exact)
-            cargo bench --locked --features bench,exact --bench exact -- --noplot --save-baseline {{ quote(tag) }}
+            {{ _run }} cargo bench --locked --features bench,exact --bench exact -- --noplot --save-baseline {{ quote(tag) }}
             ;;
         vs_linalg)
-            cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --noplot --save-baseline {{ quote(tag) }}
+            {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --noplot --save-baseline {{ quote(tag) }}
             ;;
         *)
             echo "unknown benchmark suite: $suite" >&2
@@ -325,19 +131,19 @@ bench-vs-linalg filter="":
     set -euo pipefail
     filter={{ quote(filter) }}
     if [ -n "$filter" ]; then
-        cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- "$filter"
+        {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- "$filter"
     else
-        cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg
+        {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg
     fi
 
 # Bench only la-stack rows from the vs_linalg suite for cheap latest-vs-last comparisons.
 # Filtered runs omit peer samples, so disable Criterion's complete-group HTML reports.
 bench-vs-linalg-la-stack:
-    cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- la_stack --noplot
+    {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- la_stack --noplot
 
 # Run only la-stack vs_linalg measurements and render a non-exact performance report.
 bench-vs-linalg-latest-vs baseline="last": bench-vs-linalg-la-stack python-sync
-    uv run --locked bench-compare {{ quote(baseline) }} --suite vs_linalg --scope release-signal
+    {{ _run }} uv run --locked bench-compare {{ quote(baseline) }} --suite vs_linalg --scope release-signal
 
 # Quick iteration (reduced runtime, no Criterion HTML).
 bench-vs-linalg-quick filter="":
@@ -345,48 +151,48 @@ bench-vs-linalg-quick filter="":
     set -euo pipefail
     filter={{ quote(filter) }}
     if [ -n "$filter" ]; then
-        cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- "$filter" --quick --noplot
+        {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- "$filter" --quick --noplot
     else
-        cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --quick --noplot
+        {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --quick --noplot
     fi
 
 # Build commands
 build:
-    cargo build
+    {{ _run }} cargo build
 
 build-release:
-    cargo build --release
+    {{ _run }} cargo build --release
 
 # Verify Cargo.toml and the committed Cargo.lock are synchronized.
 cargo-lock-check:
-    cargo metadata --locked --format-version 1 --no-deps > /dev/null
+    {{ _run }} cargo metadata --locked --format-version 1 --no-deps > /dev/null
 
 # Generate, normalize, and rotate completed minor series with the pinned shared CLI.
-changelog: _ensure-git-cliff _ensure-rumdl python-sync
-    uv run --locked --group dev research-repo-tools changelog generate
+changelog: tools-check python-sync
+    {{ _run }} research-repo-tools changelog generate
 
 # Rotate existing history without regenerating release notes.
 changelog-archive: python-sync
     uv run --locked --group dev research-repo-tools changelog archive
 
 # Check release headings and all archives without writing files.
-changelog-check: _ensure-rumdl python-sync
+changelog-check: tools-check python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     shopt -s nullglob
     uv run --locked --group dev research-repo-tools changelog check
-    rumdl check --no-cache --config pyproject.toml CHANGELOG.md docs/archives/changelog/*.md
+    {{ _run }} rumdl check --no-cache --config pyproject.toml CHANGELOG.md docs/archives/changelog/*.md
 
 # Validate generation and print the root changelog without publishing candidates.
 [positional-arguments]
-changelog-preview *args: _ensure-git-cliff _ensure-rumdl python-sync
+changelog-preview *args: tools-check python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    uv run --locked --group dev research-repo-tools changelog generate --dry-run "$@"
+    {{ _run }} research-repo-tools changelog generate --dry-run "$@"
 
 # Generate a prospective release using the explicit ISO date, without updating metadata.
-changelog-release tag date: _ensure-git-cliff _ensure-rumdl python-sync
-    uv run --locked --group dev research-repo-tools changelog generate --tag {{ quote(tag) }} --date {{ quote(date) }}
+changelog-release tag date: tools-check python-sync
+    {{ _run }} research-repo-tools changelog generate --tag {{ quote(tag) }} --date {{ quote(date) }}
 
 alias changelog-unreleased := changelog-release
 
@@ -396,7 +202,7 @@ check: lint
 
 # Fast compile check (no binary produced)
 check-fast:
-    cargo check
+    {{ _run }} cargo check
 
 # CI simulation: flat GitHub-equivalent union of leaf validators.
 # Keep this dependency list explicit so each validation surface runs once without
@@ -410,7 +216,7 @@ citation-check: _ensure-uv
 
 # Clean build artifacts
 clean:
-    cargo clean
+    {{ _run }} cargo clean
     rm -rf target/llvm-cov
     rm -rf coverage
 
@@ -418,34 +224,34 @@ clean:
 clippy: clippy-all-targets
 
 clippy-all-targets:
-    cargo clippy --workspace --all-targets
-    cargo clippy --workspace --all-targets --all-features
+    {{ _run }} cargo clippy --workspace --all-targets
+    {{ _run }} cargo clippy --workspace --all-targets --all-features
 
 # Core library Clippy checks used by the orthogonal CI graph.
 clippy-core:
-    cargo clippy --workspace --lib
-    cargo clippy --workspace --lib --all-features
+    {{ _run }} cargo clippy --workspace --lib
+    {{ _run }} cargo clippy --workspace --lib --all-features
 
 # Clippy for the "exact" feature (catches feature-gated lint issues)
 clippy-exact:
-    cargo clippy --features exact --all-targets
+    {{ _run }} cargo clippy --features exact --all-targets
 
 # Coverage analysis for local development (HTML output)
-coverage: _ensure-cargo-llvm-cov _ensure-cargo-nextest
+coverage: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
 
     mkdir -p target/llvm-cov
-    cargo llvm-cov nextest {{ _coverage_base_args }} --open --output-dir target/llvm-cov -P coverage
+    {{ _run }} cargo llvm-cov nextest {{ _coverage_base_args }} --open --output-dir target/llvm-cov -P coverage
     echo "Coverage report generated: target/llvm-cov/html/index.html"
 
 # Coverage analysis for CI (XML output for Codecov)
-coverage-ci: _ensure-cargo-llvm-cov _ensure-cargo-nextest
+coverage-ci: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
 
     mkdir -p coverage
-    cargo llvm-cov nextest {{ _coverage_base_args }} --cobertura --output-path coverage/cobertura.xml -P coverage
+    {{ _run }} cargo llvm-cov nextest {{ _coverage_base_args }} --cobertura --output-path coverage/cobertura.xml -P coverage
 
 # Default recipe shows available commands
 default:
@@ -453,17 +259,17 @@ default:
 
 # Documentation build checks for the default and exact-feature public APIs.
 doc-check:
-    RUSTDOCFLAGS='-D warnings' cargo doc --no-deps
-    RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --features exact
+    RUSTDOCFLAGS='-D warnings' {{ _run }} cargo doc --no-deps
+    RUSTDOCFLAGS='-D warnings' {{ _run }} cargo doc --no-deps --features exact
 
-docs-version-check: _ensure-uv
-    uv run --locked check-docs-version-sync
+docs-version-check: python-sync
+    uv run --locked --group dev research-repo-tools release check
 
 # Examples
 examples:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo build --features exact --examples
+    {{ _run }} cargo build --features exact --examples
 
     exe_suffix=""
     if [[ "${OS:-}" == "Windows_NT" ]]; then
@@ -486,10 +292,10 @@ fix: toml-fmt fmt python-fix shell-fmt markdown-fix yaml-fix
 
 # Rust formatting
 fmt:
-    cargo fmt --all
+    {{ _run }} cargo fmt --all
 
 fmt-check:
-    cargo fmt --all -- --check
+    {{ _run }} cargo fmt --all -- --check
 
 github-actions-check: action-lint zizmor
     @echo "✅ GitHub Actions checks complete!"
@@ -542,7 +348,7 @@ help-workflows:
     @echo "  just update-version <tag>       # Update release metadata and infer the previous tag"
     @echo ""
     @echo "Setup:"
-    @echo "  just setup             # Setup project environment (depends on setup-tools)"
+    @echo "  just setup             # Install declared tools, sync dev, and build"
     @echo "  just setup-tools       # Install/verify external tooling"
     @echo "  just update            # Update dependencies and repository-owned tool pins"
     @echo ""
@@ -579,7 +385,7 @@ lint-config: json-check toml-ci yaml-ci github-actions-check justfile-fmt-check
 lint-docs: markdown-ci docs-version-check changelog-check
 
 # Markdown
-markdown-check: _ensure-rumdl _ensure-uv
+markdown-check: tools-check _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -592,8 +398,8 @@ markdown-check: _ensure-rumdl _ensure-uv
         fi
     done < <(git ls-files -co --exclude-standard -z -- '*.md')
     if [ "${#files[@]}" -gt 0 ]; then
-        printf '%s\0' "${files[@]}" | xargs -0 -n100 rumdl check
-        uv run --locked scripts/check_markdown_lines.py "${files[@]}"
+        printf '%s\0' "${files[@]}" | xargs -0 -n100 {{ _run }} rumdl check
+        uv run --locked --group dev research-repo-tools docs check-lines "${files[@]}"
     else
         echo "No markdown files found to check."
     fi
@@ -601,7 +407,7 @@ markdown-check: _ensure-rumdl _ensure-uv
 markdown-ci: markdown-check spell-check
     @echo "✅ Markdown checks complete!"
 
-markdown-fix: _ensure-rumdl
+markdown-fix: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -615,7 +421,7 @@ markdown-fix: _ensure-rumdl
     done < <(git ls-files -co --exclude-standard -z -- '*.md')
     if [ "${#files[@]}" -gt 0 ]; then
         echo "📝 rumdl check --fix (${#files[@]} files)"
-        printf '%s\0' "${files[@]}" | xargs -0 -n100 rumdl check --fix
+        printf '%s\0' "${files[@]}" | xargs -0 -n100 {{ _run }} rumdl check --fix
     else
         echo "No markdown files found to format."
     fi
@@ -624,7 +430,7 @@ markdown-lint: markdown-check
 
 # Build release docs from retained scratch inputs or the latest docs/performance snapshot.
 performance-doc: python-sync
-    uv run --locked archive-performance --promote-artifacts
+    {{ _run }} uv run --locked archive-performance --promote-artifacts
 
 # Compare stored GitHub Actions release benchmark assets without local cargo runs.
 performance-github-assets current_tag="" baseline_tag="": _ensure-gh python-sync
@@ -637,14 +443,14 @@ performance-github-assets current_tag="" baseline_tag="": _ensure-gh python-sync
             echo "current_tag and baseline_tag must be provided together" >&2
             exit 2
         fi
-        uv run --locked archive-performance "$current_tag" "$baseline_tag" --github-assets --generate-in-temp-worktree --worktree-ref "$current_tag" --output-only --output target/bench-reports/github-assets-performance.md --artifact-csv target/bench-reports/github-assets-performance.csv --artifact-provenance target/bench-reports/github-assets-performance.provenance.json
+        {{ _run }} uv run --locked archive-performance "$current_tag" "$baseline_tag" --github-assets --generate-in-temp-worktree --worktree-ref "$current_tag" --output-only --output target/bench-reports/github-assets-performance.md --artifact-csv target/bench-reports/github-assets-performance.csv --artifact-provenance target/bench-reports/github-assets-performance.provenance.json
     else
-        uv run --locked archive-performance --published-latest --github-assets --generate-in-temp-worktree --output-only --output target/bench-reports/github-assets-performance.md --artifact-csv target/bench-reports/github-assets-performance.csv --artifact-provenance target/bench-reports/github-assets-performance.provenance.json
+        {{ _run }} uv run --locked archive-performance --published-latest --github-assets --generate-in-temp-worktree --output-only --output target/bench-reports/github-assets-performance.md --artifact-csv target/bench-reports/github-assets-performance.csv --artifact-provenance target/bench-reports/github-assets-performance.provenance.json
     fi
 
 # Compare the current tree against the latest release; untracked files are excluded.
 performance-local: _ensure-gh python-sync
-    uv run --locked archive-performance --current-vs-latest --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance.md
+    {{ _run }} uv run --locked archive-performance --current-vs-latest --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance.md
 
 # Compare current non-exact kernels locally without rerunning current peer crates.
 performance-local-non-exact current_tag="" baseline_tag="": _ensure-gh python-sync
@@ -657,9 +463,9 @@ performance-local-non-exact current_tag="" baseline_tag="": _ensure-gh python-sy
             echo "current_tag and baseline_tag must be provided together" >&2
             exit 2
         fi
-        uv run --locked archive-performance "$current_tag" "$baseline_tag" --suite vs_linalg --generate-in-temp-worktree --worktree-ref HEAD --output-only --local-report --output target/bench-reports/performance-non-exact.md --artifact-csv target/bench-reports/performance-non-exact.csv --artifact-provenance target/bench-reports/performance-non-exact.provenance.json
+        {{ _run }} uv run --locked archive-performance "$current_tag" "$baseline_tag" --suite vs_linalg --generate-in-temp-worktree --worktree-ref HEAD --output-only --local-report --output target/bench-reports/performance-non-exact.md --artifact-csv target/bench-reports/performance-non-exact.csv --artifact-provenance target/bench-reports/performance-non-exact.provenance.json
     else
-        uv run --locked archive-performance --current-vs-latest --suite vs_linalg --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance-non-exact.md --artifact-csv target/bench-reports/performance-non-exact.csv --artifact-provenance target/bench-reports/performance-non-exact.provenance.json
+        {{ _run }} uv run --locked archive-performance --current-vs-latest --suite vs_linalg --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance-non-exact.md --artifact-csv target/bench-reports/performance-non-exact.csv --artifact-provenance target/bench-reports/performance-non-exact.provenance.json
     fi
 
 # Publish README assets/table from retained measurements, including after target cleanup.
@@ -670,7 +476,7 @@ performance-readme metric="lu_solve" stat="median" sample="new" log_y="true": py
     if [ {{ quote(log_y) }} = "true" ]; then
         args+=(--log-y)
     fi
-    uv run --locked criterion-dim-plot "${args[@]}"
+    {{ _run }} uv run --locked criterion-dim-plot "${args[@]}"
 
 # Measure locally, preserve complete summaries in docs/performance, and promote/archive docs.
 performance-release current_tag="" baseline_tag="": _ensure-gh python-sync
@@ -683,9 +489,9 @@ performance-release current_tag="" baseline_tag="": _ensure-gh python-sync
             echo "current_tag and baseline_tag must be provided together" >&2
             exit 2
         fi
-        uv run --locked archive-performance "$current_tag" "$baseline_tag" --generate-in-temp-worktree --worktree-ref HEAD
+        {{ _run }} uv run --locked archive-performance "$current_tag" "$baseline_tag" --generate-in-temp-worktree --worktree-ref HEAD
     else
-        uv run --locked archive-performance --infer-release --generate-in-temp-worktree --worktree-ref HEAD
+        {{ _run }} uv run --locked archive-performance --infer-release --generate-in-temp-worktree --worktree-ref HEAD
     fi
 
 # Plot: generate a single time-vs-dimension SVG from Criterion results.
@@ -699,7 +505,7 @@ plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_
     if [ {{ quote(allow_partial) }} = "true" ]; then
         args+=(--allow-partial)
     fi
-    uv run --locked criterion-dim-plot "${args[@]}"
+    {{ _run }} uv run --locked criterion-dim-plot "${args[@]}"
 
 # Python tooling (uv)
 python-check: python-format-check python-lint python-fixture-lint python-typecheck
@@ -738,6 +544,17 @@ review base="origin/main":
 review-uncommitted:
     uv run --locked --group dev research-repo-tools review uncommitted
 
+# Run the shared dependency and full-history secret scans.
+security: security-osv security-secrets
+
+# Audit the repository's Python and Rust lockfiles with the managed OSV scanner.
+security-osv:
+    uv run --locked --group dev research-repo-tools security osv uv.lock Cargo.lock
+
+# Scan reachable Git history and current tracked/nonignored files with redacted reports.
+security-secrets:
+    uv run --locked --group dev research-repo-tools security secrets
+
 rust-core-check: cargo-lock-check fmt-check clippy-core doc-check semgrep semgrep-test unused-deps
     @echo "✅ Rust core checks complete!"
 
@@ -746,184 +563,25 @@ semgrep: _ensure-uv
     uv run --locked semgrep --metrics off --error --strict --timeout 30 --exclude tests/semgrep/src/project_rules/algebraic_float.rs --config semgrep.yaml .
 
 # Fixture tests for repository-owned Semgrep rules.
-semgrep-test: _ensure-uv
-    #!/usr/bin/env bash
-    set -euo pipefail
+semgrep-test: python-sync
+    uv run --locked --group dev research-repo-tools semgrep check-fixtures
 
-    check_semgrep_fixture() {
-        target="$1"
-        json="$(uv run --locked semgrep scan --metrics off --json --quiet --strict --config semgrep.yaml "$target")"
-        SEMGREP_JSON="$json" uv run --locked scripts/check_semgrep_fixtures.py "$target"
-    }
+# Install declared managed tools and explicitly synchronize dev.
+setup: _ensure-gh _ensure-jq
+    uv run --locked --managed-python --only-group tooling research-repo-tools setup
+    {{ _run }} cargo build
 
-    while IFS= read -r -d '' fixture; do
-        check_semgrep_fixture "$fixture"
-    done < <(find tests/semgrep -type f ! -name '*.fixed' -print0)
+# Tool-only setup; compilation belongs to setup.
+setup-tools: _ensure-gh _ensure-jq
+    uv run --locked --managed-python --only-group tooling research-repo-tools setup
 
-# Setup
-setup: setup-tools
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "Setting up la-stack development environment..."
-    echo "Note: Rust toolchain and components managed by rust-toolchain.toml (if present)"
-    echo ""
+# Check installed tools without synchronization, downloads, or installation.
+tools-check:
+    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain check
 
-    echo "Building project..."
-    cargo build
-    echo "✅ Setup complete! Run 'just help-workflows' to see available commands."
-
-# Development tooling installation and verification
-setup-tools:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    have() { command -v "$1" >/dev/null 2>&1; }
-
-    installed_tool_version() {
-        case "$1" in
-            cargo-llvm-cov)
-                cargo llvm-cov --version 2>/dev/null
-                ;;
-            cargo-machete)
-                cargo machete --version 2>/dev/null
-                ;;
-            cargo-nextest)
-                cargo nextest --version 2>/dev/null
-                ;;
-            cargo-upgrade)
-                cargo upgrade --version 2>/dev/null
-                ;;
-            *)
-                "$1" --version 2>/dev/null
-                ;;
-        esac | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true
-    }
-
-    verify_tool_version() {
-        local cmd="$1"
-        local expected="$2"
-        local actual=""
-        local resolved=""
-
-        actual="$(installed_tool_version "$cmd")"
-        resolved="$(command -v "$cmd" 2>/dev/null || true)"
-        if [[ "$actual" != "$expected" ]]; then
-            echo "❌ '$cmd' resolves to '${resolved:-missing}' at version '${actual:-missing}', expected '$expected'." >&2
-            return 1
-        fi
-        echo "  ✓ $cmd $actual"
-    }
-
-    echo "🔧 Ensuring tooling required by just recipes is installed..."
-    echo ""
-    uv_version="{{ uv_version }}"
-    if ! have uv; then
-        echo "❌ 'uv' not found. Install uv $uv_version and re-run: just setup-tools" >&2
-        exit 1
-    fi
-    verify_tool_version uv "$uv_version"
-    if ! have jq; then
-        echo "❌ 'jq' not found. Install jq and re-run: just setup-tools" >&2
-        exit 1
-    fi
-    if ! have gh; then
-        echo "❌ 'gh' not found. Install GitHub CLI and re-run: just setup-tools" >&2
-        exit 1
-    fi
-
-    echo "Ensuring Rust components..."
-    if ! have rustup; then
-        echo "❌ 'rustup' not found. Install Rust via https://rustup.rs and re-run: just setup-tools"
-        exit 1
-    fi
-    rustup component add clippy rustfmt rust-src llvm-tools-preview
-    echo ""
-
-    echo "Ensuring cargo tools..."
-    just_version="{{ just_version }}"
-    if ! have just || [[ "$(just --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$just_version" ]]; then
-        cargo install --locked just --version "$just_version"
-    fi
-
-    cargo_update_version="{{ cargo_update_version }}"
-    if ! have cargo-install-update || [[ "$(cargo-install-update --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$cargo_update_version" ]]; then
-        cargo install --locked cargo-update --version "$cargo_update_version"
-    fi
-
-    cargo_edit_version="{{ cargo_edit_version }}"
-    if ! cargo upgrade --version >/dev/null 2>&1 || [[ "$(cargo upgrade --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$cargo_edit_version" ]]; then
-        cargo install --locked cargo-edit --version "$cargo_edit_version"
-    fi
-
-    cargo_llvm_cov_version="{{ cargo_llvm_cov_version }}"
-    if ! have cargo-llvm-cov || [[ "$(cargo llvm-cov --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$cargo_llvm_cov_version" ]]; then
-        cargo install --locked cargo-llvm-cov --version "$cargo_llvm_cov_version"
-    fi
-    cargo_machete_version="{{ cargo_machete_version }}"
-    if ! cargo machete --version >/dev/null 2>&1 || [[ "$(cargo machete --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$cargo_machete_version" ]]; then
-        cargo install --locked cargo-machete --version "$cargo_machete_version"
-    fi
-
-    cargo_nextest_version="{{ cargo_nextest_version }}"
-    if ! cargo nextest --version >/dev/null 2>&1 || [[ "$(cargo nextest --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$cargo_nextest_version" ]]; then
-        cargo install --locked cargo-nextest --version "$cargo_nextest_version"
-    fi
-    dprint_version="{{ dprint_version }}"
-    if ! have dprint || [[ "$(dprint --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$dprint_version" ]]; then
-        cargo install --locked dprint --version "$dprint_version"
-    fi
-    git_cliff_version="{{ git_cliff_version }}"
-    if ! have git-cliff || [[ "$(git-cliff --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$git_cliff_version" ]]; then
-        cargo install --locked git-cliff --version "$git_cliff_version"
-    fi
-    rumdl_version="{{ rumdl_version }}"
-    if ! have rumdl || [[ "$(rumdl --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$rumdl_version" ]]; then
-        cargo install --locked rumdl --version "$rumdl_version"
-    fi
-    taplo_version="{{ taplo_version }}"
-    if ! have taplo || [[ "$(taplo --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$taplo_version" ]]; then
-        cargo install --locked taplo-cli --version "$taplo_version"
-    fi
-    typos_version="{{ typos_version }}"
-    if ! have typos || [[ "$(typos --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$typos_version" ]]; then
-        cargo install --locked typos-cli --version "$typos_version"
-    fi
-    zizmor_version="{{ zizmor_version }}"
-    if ! have zizmor || [[ "$(zizmor --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)" != "$zizmor_version" ]]; then
-        cargo install --locked zizmor --version "$zizmor_version"
-    fi
-    echo ""
-
-    echo "Ensuring uv-managed Python tools..."
-    uv sync --locked --group dev
-    echo ""
-
-    echo ""
-    echo "Verifying required commands and versions..."
-    have jq || { echo "❌ 'jq' is still missing."; exit 1; }
-    echo "  ✓ jq"
-    verify_tool_version just "$just_version"
-    verify_tool_version cargo-install-update "$cargo_update_version"
-    verify_tool_version cargo-upgrade "$cargo_edit_version"
-    verify_tool_version cargo-llvm-cov "$cargo_llvm_cov_version"
-    verify_tool_version cargo-machete "$cargo_machete_version"
-    verify_tool_version cargo-nextest "$cargo_nextest_version"
-    verify_tool_version dprint "$dprint_version"
-    verify_tool_version git-cliff "$git_cliff_version"
-    verify_tool_version rumdl "$rumdl_version"
-    verify_tool_version taplo "$taplo_version"
-    verify_tool_version typos "$typos_version"
-    verify_tool_version uv "$uv_version"
-    verify_tool_version zizmor "$zizmor_version"
-    uv run --locked actionlint -version >/dev/null
-    echo "  ✓ actionlint (uv)"
-    for cmd in pytest ruff semgrep shellcheck shfmt ty yamllint; do
-        uv run --locked "$cmd" --version >/dev/null
-        echo "  ✓ $cmd (uv)"
-    done
-
-    echo ""
-    echo "✅ Tooling setup complete."
+# Export verified managed paths to GITHUB_ENV in hosted workflows.
+tools-export:
+    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain export
 
 # Shell scripts
 shell-check: _ensure-shellcheck _ensure-shfmt
@@ -963,7 +621,7 @@ shell-fmt: _ensure-shfmt
 shell-lint: shell-check
 
 # Spell check (typos)
-spell-check: _ensure-typos
+spell-check: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -976,7 +634,7 @@ spell-check: _ensure-typos
     done < <(git ls-files -co --exclude-standard -z)
     if [ "${#files[@]}" -gt 0 ]; then
         # Exclude typos.toml itself: it intentionally contains allowlisted fragments.
-        printf '%s\0' "${files[@]}" | xargs -0 -n100 typos --config typos.toml --force-exclude --exclude typos.toml --
+        printf '%s\0' "${files[@]}" | xargs -0 -n100 {{ _run }} typos --config typos.toml --force-exclude --exclude typos.toml --
     else
         echo "No files found to spell-check."
     fi
@@ -996,38 +654,38 @@ test-all: test-rust test-python
     @echo "✅ All tests passed"
 
 # Smoke-test deterministic inputs and configuration shared with benchmark suites.
-test-bench-inputs: _ensure-cargo-nextest
-    cargo nextest run --workspace --profile ci --features bench,exact --test vs_linalg_inputs --test exact_bench_config --verbose
+test-bench-inputs: tools-check
+    {{ _run }} cargo nextest run --workspace --profile ci --features bench,exact --test vs_linalg_inputs --test exact_bench_config --verbose
 
 test-doc:
-    cargo test --doc --verbose
+    {{ _run }} cargo test --doc --verbose
 
 test-doc-exact:
-    cargo test --features exact --doc --verbose
+    {{ _run }} cargo test --features exact --doc --verbose
 
 # Tests for the "exact" feature (exact determinants, conversions, and Bareiss solves)
-test-exact: _ensure-cargo-nextest test-doc-exact
-    cargo nextest run --profile ci --features exact --verbose
+test-exact: tools-check test-doc-exact
+    {{ _run }} cargo nextest run --profile ci --features exact --verbose
 
-test-integration: _ensure-cargo-nextest
-    cargo nextest run --profile ci --tests --verbose
+test-integration: tools-check
+    {{ _run }} cargo nextest run --profile ci --tests --verbose
 
 # Compile all integration-test targets without running them.
-test-integration-compile: _ensure-cargo-nextest
-    cargo nextest run --all-features --tests --no-run
+test-integration-compile: tools-check
+    {{ _run }} cargo nextest run --all-features --tests --no-run
 
-test-lib: _ensure-cargo-nextest
-    cargo nextest run --profile ci --lib --verbose
+test-lib: tools-check
+    {{ _run }} cargo nextest run --profile ci --lib --verbose
 
-test-python: _ensure-git-cliff python-sync
-    uv run --locked pytest -q
+test-python: tools-check python-sync
+    {{ _run }} uv run --locked pytest -q
 
 test-rust: test-rust-ci test-doc test-doc-exact
     @echo "✅ Rust tests passed"
 
 # CI Rust bucket: all runnable unit/integration targets in one nextest pass.
-test-rust-ci: _ensure-cargo-nextest
-    cargo nextest run --workspace --release --profile ci --all-features --lib --tests --verbose
+test-rust-ci: tools-check
+    {{ _run }} cargo nextest run --workspace --release --profile ci --all-features --lib --tests --verbose
 
 test-unit: test-lib
 
@@ -1039,7 +697,7 @@ toml-ci: toml-check
 
 toml-fix: toml-fmt
 
-toml-fmt: _ensure-taplo
+toml-fmt: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -1049,12 +707,12 @@ toml-fmt: _ensure-taplo
         fi
     done < <(git ls-files -co --exclude-standard -z -- '*.toml')
     if [ "${#files[@]}" -gt 0 ]; then
-        taplo fmt "${files[@]}"
+        {{ _run }} taplo fmt "${files[@]}"
     else
         echo "No TOML files found to format."
     fi
 
-toml-fmt-check: _ensure-taplo
+toml-fmt-check: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -1064,12 +722,12 @@ toml-fmt-check: _ensure-taplo
         fi
     done < <(git ls-files -co --exclude-standard -z -- '*.toml')
     if [ "${#files[@]}" -gt 0 ]; then
-        taplo fmt --check "${files[@]}"
+        {{ _run }} taplo fmt --check "${files[@]}"
     else
         echo "No TOML files found to check."
     fi
 
-toml-lint: _ensure-taplo
+toml-lint: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -1079,7 +737,7 @@ toml-lint: _ensure-taplo
         fi
     done < <(git ls-files -co --exclude-standard -z -- '*.toml')
     if [ "${#files[@]}" -gt 0 ]; then
-        taplo lint "${files[@]}"
+        {{ _run }} taplo lint "${files[@]}"
     else
         echo "No TOML files found to lint."
     fi
@@ -1101,60 +759,45 @@ toml-parse-check: python-sync
     fi
 
 # Check for unused direct Cargo dependencies.
-unused-deps: _ensure-cargo-machete
-    cargo machete
+unused-deps: tools-check
+    {{ _run }} cargo machete
 
-# Update dependency requirements, locks, managed Cargo tools, and the active uv pin.
-update: _ensure-cargo-install-update _ensure-stable-uv-version update-dependencies update-cargo-tools
+# Upgrade tools before updating dependency requirements and lock resolutions.
+update: update-tools update-dependencies
     @echo "✅ Repository dependencies and tools updated."
 
-# Update locally installed Cargo CLI tools and reconcile their pins plus the active uv version.
-[doc('Update managed Cargo CLI tools and reconcile all root justfile tool pins.')]
-update-cargo-tools: _ensure-stable-uv-version _ensure-cargo-install-update
-    #!/usr/bin/env bash
-    set -euo pipefail
+# Upgrade uv through its owner, then declared Cargo tools, then synchronize setup.
+update-tools: update-uv update-cargo-tools setup-tools
 
-    packages=(
-        cargo-edit
-        cargo-llvm-cov
-        cargo-machete
-        cargo-nextest
-        cargo-update
-        dprint
-        git-cliff
-        just
-        rumdl
-        taplo-cli
-        typos-cli
-        zizmor
-    )
-    cargo install-update --locked "${packages[@]}"
-    uv run --locked update-cargo-tool-pins
+# Bootstrap outside the project's old uv-version requirement; do not sync here.
+update-uv:
+    uv run --no-config --no-sync --no-python-downloads research-repo-tools deps update-uv
 
-# Advance Cargo and exact Python development requirements plus their lockfiles.
-[doc('Update Cargo and Python development requirements plus all Cargo/uv locked dependencies.')]
-update-dependencies: _ensure-cargo-edit _ensure-stable-uv-version update-cargo-dependencies update-python-dependencies
+# Upgrade only declared managed Cargo tools and publish verified TOML pins.
+update-cargo-tools:
+    uv run --locked --only-group tooling --inexact research-repo-tools toolchain upgrade
 
-# Advance Cargo dependency declarations and lockfile entries.
-[doc('Update Cargo.toml dependency requirements and Cargo.lock.')]
-update-cargo-dependencies: _ensure-cargo-edit
-    # num-bigint and num-rational share public types and must advance together.
-    cargo upgrade --incompatible allow --exclude num-bigint --exclude num-rational
-    cargo update
+# Dependency-only updates leave uv and managed Cargo tool pins unchanged.
+update-dependencies: update-cargo-dependencies update-python-dependencies
 
-# Resolve latest Python development tools, retain exact pins, and sync the environment.
-[doc('Update exact dependency-groups.dev pins and uv.lock through uv.')]
-update-python-dependencies: _ensure-uv-available
-    uv run --locked update-python-dev-pins
+# num-bigint and num-rational share public types and must advance together.
+update-cargo-dependencies:
+    uv run --locked --only-group tooling --inexact research-repo-tools toolchain run -- cargo upgrade --incompatible allow --exclude num-bigint --exclude num-rational
+    uv run --locked --only-group tooling --inexact research-repo-tools toolchain run -- cargo update
+
+# Advance direct dev pins, refresh the whole lock, and explicitly synchronize dev.
+update-python-dependencies:
+    uv run --locked --only-group tooling --inexact research-repo-tools deps update-python
     uv lock --upgrade
-    uv sync --locked --group dev
+    {{ _run }} uv sync --locked --managed-python --group dev
+
+alias update-python-deps := update-python-dependencies
 
 # Update deterministic release metadata, inferring the previous stable published GitHub release.
 [doc('Update package, citation, lockfile, and non-artifact documentation release versions.')]
-update-version tag: _ensure-gh _ensure-uv
-    uv run --locked update-release-version {{ quote(tag) }}
-    cargo metadata --locked --format-version 1 --no-deps > /dev/null
-    uv run --locked check-docs-version-sync
+[positional-arguments]
+update-version tag *args: _ensure-gh python-sync
+    {{ _run }} research-repo-tools release update "$@"
 
 validate-json: _ensure-jq
     #!/usr/bin/env bash
@@ -1177,7 +820,7 @@ yaml-check: yaml-fmt-check yaml-lint
 yaml-ci: yaml-check citation-check
     @echo "✅ YAML/CFF checks complete!"
 
-yaml-fix: _ensure-dprint
+yaml-fix: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -1187,12 +830,12 @@ yaml-fix: _ensure-dprint
         fi
     done < <(git ls-files -co --exclude-standard -z -- '*.yml' '*.yaml' 'CITATION.cff')
     if [ "${#files[@]}" -gt 0 ]; then
-        printf '%s\0' "${files[@]}" | xargs -0 dprint fmt --incremental=false
+        printf '%s\0' "${files[@]}" | xargs -0 {{ _run }} dprint fmt --incremental=false
     else
         echo "No YAML files found to format."
     fi
 
-yaml-fmt-check: _ensure-dprint
+yaml-fmt-check: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -1202,7 +845,7 @@ yaml-fmt-check: _ensure-dprint
         fi
     done < <(git ls-files -co --exclude-standard -z -- '*.yml' '*.yaml' 'CITATION.cff')
     if [ "${#files[@]}" -gt 0 ]; then
-        printf '%s\0' "${files[@]}" | xargs -0 dprint check --incremental=false
+        printf '%s\0' "${files[@]}" | xargs -0 {{ _run }} dprint check --incremental=false
     else
         echo "No YAML files found to check."
     fi
@@ -1224,5 +867,5 @@ yaml-lint: _ensure-yamllint
     fi
 
 # GitHub Actions security analysis
-zizmor: _ensure-zizmor
-    @bash scripts/run_zizmor.sh
+zizmor: tools-check
+    @{{ _run }} bash scripts/run_zizmor.sh

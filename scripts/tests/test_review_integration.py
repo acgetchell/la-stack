@@ -103,7 +103,7 @@ def test_local_scopes_do_not_require_a_remote(consumer: Path, stub: Path, args: 
 def test_service_failures_and_interruption_status_reach_just(consumer: Path, stub: Path, monkeypatch: pytest.MonkeyPatch, status: int) -> None:
     monkeypatch.setenv("REVIEW_STUB_STATUS", str(status))
     result = recipe(consumer, "review-uncommitted")
-    assert result.returncode != 0
+    assert result.returncode == status
     assert f"exit code {status}" in result.stderr
     assert "fixture diagnostic" in result.stderr
 

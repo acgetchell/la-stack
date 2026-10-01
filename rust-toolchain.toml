@@ -2,13 +2,13 @@
 # Pin to MSRV as specified in Cargo.toml
 channel = "1.98.1"
 
-# Essential repository components. Keep checkout and CI setup lean; workflows
-# install additional targets or components when they need them.
+# Components used by the shared development and CI toolchain.
 components = [
     "clippy", # Linting (you use strict pedantic mode)
     "rustfmt", # Code formatting (you use cargo fmt --all)
     "rust-src", # Source code for IDEs and local diagnostics
+    "llvm-tools-preview", # Coverage instrumentation
 ]
 
-# Keep host installs small; CI passes matrix targets explicitly.
+# Keep native host installs small.
 profile = "minimal"

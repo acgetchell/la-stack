@@ -1,0 +1,38 @@
+name: Set up declared tools
+description: Install the locked shared package, synchronize declared tools, and export verified paths.
+
+inputs:
+  cache:
+    description: Restore and save managed tool installations; release jobs must disable this.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install declared uv
+      uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      with:
+        version-file: pyproject.toml
+        enable-cache: ${{ inputs.cache }}
+        cache-python: false
+
+    - name: Cache declared Rust and Cargo tools
+      if: inputs.cache == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/rrt
+        key: rrt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'pyproject.toml', 'uv.lock', '.python-version') }}
+        restore-keys: rrt-${{ runner.os }}-${{ runner.arch }}-
+
+    - name: Set up declared tools and development environment
+      shell: bash
+      env:
+        RESEARCH_REPO_TOOLS_HOME: ${{ runner.temp }}/rrt
+      run: uv run --locked --managed-python --only-group tooling research-repo-tools setup
+
+    - name: Export verified managed paths
+      shell: bash
+      env:
+        RESEARCH_REPO_TOOLS_HOME: ${{ runner.temp }}/rrt
+      run: uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain export

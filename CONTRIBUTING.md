@@ -6,14 +6,13 @@ clarity, and the fixed-dimension stack-allocation model.
 
 ## Getting Started
 
-Install Rust 1.98.1 through [rustup](https://rustup.rs/), Git, the
-[GitHub CLI](https://cli.github.com/), Python 3.14,
-[`uv` 0.12.10](https://docs.astral.sh/uv/), and `jq`. Authenticate the GitHub
-CLI for repository operations, then install the repository's pinned `just`
-version from its locked dependency graph:
+Install Git, the
+[GitHub CLI](https://cli.github.com/), [`uv`](https://docs.astral.sh/uv/) at the
+exact version declared in `pyproject.toml`, and `jq`. Authenticate the GitHub CLI for repository operations. Bootstrap
+the declared Python, Rust, Cargo tools, and Just through the locked PyPI package:
 
 ```bash
-cargo install --locked just --version 1.58.0
+uv run --locked --managed-python --only-group tooling research-repo-tools setup
 ```
 
 Set up the remaining development tools and validate the checkout:
@@ -27,7 +26,7 @@ just ci           # run the comprehensive local CI path
 Use `just fix` when you intentionally want formatters and automatic fixes to
 change files. Run `just --list` for the full command surface.
 
-Changelog and opt-in CodeRabbit review commands use the published `research-repo-tools==0.1.7` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.1.7` package,
 locked in the `tooling` dependency group and included by `dev`. Normal setup
 and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
 checkout is unnecessary. To upgrade it deliberately, review the exact
@@ -35,19 +34,37 @@ checkout is unnecessary. To upgrade it deliberately, review the exact
 integration tests and `just ci`. See the [Scripts guide](scripts/README.md#changelog-and-release-tooling)
 for the retained changelog policy and ownership boundary.
 
-This adoption leaves the existing setup and dependency-update
-recipes in place. The shared setup contract requires an existing uv and uses
-`research-repo-tools setup`; it does not generate bootstrap installers.
-Full toolchain and release-metadata adoption are separate follow-ups.
+The shared setup contract requires an existing uv and does not generate bootstrap
+installers. `.python-version` selects Python; `rust-toolchain.toml` selects Rust
+and its components; `pyproject.toml` owns the exact uv requirement and managed
+Cargo tool versions. `just setup-tools` installs these declarations and explicitly
+synchronizes `dev`, even with `default-groups = []`. `just tools-check` verifies
+without installing. Recipes execute managed tools through the checked runner;
+an unrelated system installation cannot satisfy a managed Cargo pin.
 
-Use `just update` for deliberate dependency and tool maintenance. It composes
-`just update-dependencies`, which advances Cargo dependency requirements, exact
-Python development-tool pins, and the Cargo/uv locks, with
-`just update-cargo-tools`, which upgrades only the Cargo CLI packages owned by
-`setup-tools` and atomically reconciles their root `justfile` pins. `just setup`
-installs and verifies the pinned `cargo-update` package that provides
-`cargo-install-update`; the updater does not touch unrelated Cargo executables
-or uv's user-global tool environments.
+Use `just update` for deliberate maintenance. It runs `just update-tools` first:
+upgrade uv through its installation owner, upgrade declared managed Cargo tools,
+publish their verified pins, and synchronize setup. Just follows the shared
+package's `rust-just` pin. Managed upgrades replace `cargo-update` and the old
+Just-variable reconciler; unrelated user-global Cargo installations stay outside
+this workflow.
+
+Then `just update-dependencies` upgrades Cargo requirements and refreshes Cargo's
+lock, resolves exact direct Python `dev` pins, refreshes the complete `uv.lock`,
+and explicitly synchronizes `dev` with managed Rust available for native builds.
+Included groups retain their constraints, including the exact shared-package pin.
+`just update-cargo-dependencies` excludes `num-bigint` and `num-rational` from
+incompatible requirement upgrades because their public types must advance
+together; Cargo can still refresh locked versions within those requirements.
+`just update-python-dependencies` and its `update-python-deps` alias run the full
+Python update and sync sequence. Dependency-only commands preserve tool pins;
+tool-only commands preserve dependency requirements and locks. A failure stops
+later steps, without rolling back earlier package-manager updates.
+
+Release metadata, version checks, Markdown line checks, and Semgrep fixture
+validation also use the shared CLI. Consumer integration tests exercise the
+actual release policy and native dependency updates; common helper regressions
+belong to research-repo-tools.
 
 The repository uses `cargo-nextest` for runnable Rust tests, `cargo-machete`
 for unused-dependency checks, and `just cargo-lock-check` to verify that the
@@ -63,8 +80,17 @@ workflow. It runs online audits using `ZIZMOR_GITHUB_TOKEN`, `GH_TOKEN`,
 printing the token. Without authentication it reports an offline fallback;
 SHA/version-comment resolution and other online findings are then unchecked.
 Use `ZIZMOR_OFFLINE=true just zizmor` to request offline audits explicitly.
-Zizmor owns remote action SHA/tag resolution; Semgrep guards explicit scanner
-version configuration and cache isolation in release workflows.
+Zizmor owns remote action SHA/tag resolution; Semgrep guards managed scanner
+execution and cache isolation in release workflows. The local authentication
+adapter and its tests remain consumer-owned security policy.
+
+`just security` runs the shared OSV dependency audit for `uv.lock` and `Cargo.lock`,
+then the Gitleaks scan of reachable Git history and current tracked/nonignored
+files. Run either gate separately with `just security-osv` or
+`just security-secrets`. Setup installs both declared managed binaries. OSV needs
+network access, and Gitleaks requires a complete Git checkout. JSON/SARIF reports
+are retained under `target/security`, with secret findings redacted. These gates
+run separately from `just ci`; the hosted RustSec audit remains in place.
 
 CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
 aligned with the local comprehensive validation path.

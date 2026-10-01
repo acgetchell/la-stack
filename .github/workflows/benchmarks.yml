@@ -22,7 +22,10 @@ on:
       - "Cargo.lock"
       - "justfile"
       - "rust-toolchain.toml"
-      - ".github/actions/setup-just/action.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
+      - ".github/actions/setup-tools/action.yml"
       - ".github/workflows/benchmarks.yml"
   pull_request:
     branches:
@@ -36,7 +39,10 @@ on:
       - "Cargo.lock"
       - "justfile"
       - "rust-toolchain.toml"
-      - ".github/actions/setup-just/action.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
+      - ".github/actions/setup-tools/action.yml"
       - ".github/workflows/benchmarks.yml"
   workflow_dispatch:
 
@@ -65,33 +71,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-        with:
-          cache: true
-          cache-bin: false
-
-      - name: Set up just
-        uses: ./.github/actions/setup-just # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
-
-      - name: Resolve cargo-nextest version
-        id: cargo_nextest_version
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version="$(just --evaluate cargo_nextest_version)"
-          if [[ -z "$version" ]]; then
-            echo "::error::Could not resolve cargo_nextest_version from justfile"
-            exit 1
-          fi
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Install cargo-nextest
-        uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
-        with:
-          tool: cargo-nextest@${{ steps.cargo_nextest_version.outputs.version }}
+      - name: Set up declared tools
+        uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
 
       - name: Validate benchmark inputs
         run: just test-bench-inputs

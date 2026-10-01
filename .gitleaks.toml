@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+
+# Commit d8f9897 contains a historical identifier alias, not a credential.
+# Match only that assignment in its owning file; retain all default detectors.
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Historical benchmark compatibility identifier alias"
+condition = "AND"
+paths = [ '''(?:^|[/\\])scripts[/\\]bench_compare\.py$''' ]
+regexTarget = "line"
+regexes = [ '''^\s*_V0_4_3_API_COMPATIBILITY\s*=\s*V0_4_3_API_COMPATIBILITY\s*$''' ]

@@ -34,54 +34,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-        with:
-          cache: true # toolchain/components are specified in rust-toolchain.toml
-          cache-bin: false
-
-      - name: Set up just
-        uses: ./.github/actions/setup-just # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
-
-      - name: Export tool versions
-        id: tool_versions
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          resolve_version() {
-            local name="$1"
-            local value
-
-            if ! value="$(just --evaluate "$name")"; then
-              echo "::error::Failed to resolve $name from justfile" >&2
-              return 1
-            fi
-            if [[ -z "$value" ]]; then
-              echo "::error::Resolved empty $name from justfile" >&2
-              return 1
-            fi
-
-            printf '%s\n' "$value"
-          }
-
-          clippy_sarif_version="$(resolve_version clippy_sarif_version)"
-          sarif_fmt_version="$(resolve_version sarif_fmt_version)"
-
-          {
-            echo "CLIPPY_SARIF_VERSION=$clippy_sarif_version"
-            echo "SARIF_FMT_VERSION=$sarif_fmt_version"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Install clippy-sarif
-        uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
-        with:
-          tool: clippy-sarif@${{ steps.tool_versions.outputs.CLIPPY_SARIF_VERSION }}
-
-      - name: Install sarif-fmt
-        uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
-        with:
-          tool: sarif-fmt@${{ steps.tool_versions.outputs.SARIF_FMT_VERSION }}
+      - name: Set up declared tools
+        uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
 
       - name: Run clippy with SARIF output
         run: |
