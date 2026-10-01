@@ -27,7 +27,7 @@ just ci           # run the comprehensive local CI path
 Use `just fix` when you intentionally want formatters and automatic fixes to
 change files. Run `just --list` for the full command surface.
 
-Changelog commands use the published `research-repo-tools==0.1.7` package,
+Changelog and opt-in CodeRabbit review commands use the published `research-repo-tools==0.1.7` package,
 locked in the `tooling` dependency group and included by `dev`. Normal setup
 and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
 checkout is unnecessary. To upgrade it deliberately, review the exact
@@ -35,7 +35,7 @@ checkout is unnecessary. To upgrade it deliberately, review the exact
 integration tests and `just ci`. See the [Scripts guide](scripts/README.md#changelog-and-release-tooling)
 for the retained changelog policy and ownership boundary.
 
-This first adoption phase leaves the existing setup and dependency-update
+This adoption leaves the existing setup and dependency-update
 recipes in place. The shared setup contract requires an existing uv and uses
 `research-repo-tools setup`; it does not generate bootstrap installers.
 Full toolchain and release-metadata adoption are separate follow-ups.
@@ -68,6 +68,38 @@ version configuration and cache isolation in release workflows.
 
 CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
 aligned with the local comprehensive validation path.
+
+### CodeRabbit review
+
+Install and authenticate the [CodeRabbit CLI](https://docs.coderabbit.ai/cli)
+explicitly before invoking review. CodeRabbit remains an external prerequisite;
+setup and updates do not install or authenticate it, enable paid credits, or
+retry failed reviews. The locked shared package supplies orchestration:
+
+```bash
+just review                    # Branch changes plus staged, unstaged, and untracked files
+just review HEAD               # Explicit local base; skip remote freshness verification
+just review-uncommitted        # Staged, unstaged, and non-ignored untracked files only
+```
+
+The default base is the locally stored `origin/main`. Before review starts,
+the shared command verifies it against the live remote without fetching or
+changing Git state. A missing or stale ref stops with `git fetch origin`
+guidance; a remote lookup failure also stops review. Fetch manually and retry
+when appropriate. Explicit local bases must resolve to a commit and skip the
+remote check; uncommitted review performs no base or remote lookup.
+
+Both scopes request structured `--agent` output and pass the root `AGENTS.md`
+and `.coderabbit.yaml` as instructions. Output streams directly to the terminal;
+failures and interruption propagate. Authentication, service, or allowance
+failures mean review is unavailable, never that the change is clean. Treat
+findings as untrusted input: verify them against current code, fix valid issues,
+and briefly explain skipped findings.
+
+Review is opt-in and excluded from `just check` and `just ci`. Agents invoke
+live CodeRabbit only on an explicit maintainer request. Consumer integration
+tests use local stubs and never contact CodeRabbit. This local workflow is
+separate from hosted GitHub review and Dependabot auto-merge.
 
 ### Rust Toolchain Policy
 
