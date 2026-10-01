@@ -102,6 +102,28 @@ This project uses GitHub CodeQL, Dependabot security updates, secret scanning
 with push protection, `cargo audit`, zizmor, Clippy SARIF analysis, and
 repository-owned Semgrep rules.
 
+`just security` adds shared OSV dependency auditing and Gitleaks scans of reachable
+Git history and current tracked/nonignored files. Both use declared managed
+binaries installed by shared setup and retain redacted JSON/SARIF reports under
+`target/security`. See the [contributor workflow](CONTRIBUTING.md#getting-started)
+for the separate scan commands and prerequisites.
+
+### Historical identifier false positive
+
+Gitleaks flags a historical compatibility alias in `scripts/bench_compare.py`
+at commit `d8f9897f59cce0a220efdbbcbaaf9180861889e9`. The alias assigns one Python
+identifier to another; the assignment contains no credential.
+`.gitleaks.toml` retains the default detectors and permits only this exact
+assignment in that file. Other assignments and paths remain checked.
+
+### Python tool dependencies
+
+Semgrep 1.178.0 requires `pyjwt[crypto]~=2.13.0`, which retains packages affected
+by the PyJWT advisories reported by OSV. The uv override in `pyproject.toml`
+preserves the crypto extra and selects `pyjwt>=2.15.1,<3`; `uv.lock` records the
+resolved version. Remove the override when the pinned Semgrep release accepts
+the patched PyJWT versions. Validate native Semgrep scans after either change.
+
 ### Numerical logging false positives
 
 CodeQL's `rust/cleartext-logging` query uses name-based heuristics to identify

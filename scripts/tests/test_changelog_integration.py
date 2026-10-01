@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def create_consumer(root: Path, source: Path) -> Path:
     """Use real configuration and policy with a stable synthetic package identity."""
-    for name in ("pyproject.toml", "cliff.toml", "changelog-rumdl.toml", "README.md"):
+    for name in ("pyproject.toml", "cliff.toml", "changelog-rumdl.toml", "README.md", ".python-version", "rust-toolchain.toml"):
         shutil.copyfile(source / name, root / name)
     (root / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.4.6"\n', encoding="utf-8")
     run_git_command(["init", "--quiet"], cwd=root)
@@ -257,7 +257,9 @@ def test_consumer_recipes_forward_cli_arguments_and_keep_metadata_separate() -> 
     for args, expected in commands.items():
         result = run_safe_command("just", ["--dry-run", *args], cwd=REPO_ROOT)
         assert expected in result.stderr
-        assert "uv run --locked --group dev research-repo-tools" in result.stderr
+        assert "research-repo-tools" in result.stderr
+        if "generate" in expected:
+            assert "research-repo-tools toolchain run -- research-repo-tools changelog generate" in result.stderr
         assert "update-release-version" not in result.stderr
 
 
@@ -269,7 +271,7 @@ def test_preview_recipe_executes_explicit_tag_and_date_without_publishing(consum
     (consumer / "CHANGELOG.md").write_text("# Changelog\n\n## [0.4.5] - 2000-01-02\n\n- Retained.\n", encoding="utf-8")
     wrapper = consumer / "recipes.just"
     wrapper.write_text(
-        f"set allow-duplicate-recipes\nimport '{(REPO_ROOT / 'justfile').as_posix()}'\n_ensure-git-cliff:\n\n_ensure-rumdl:\n\npython-sync:\n",
+        f"set allow-duplicate-recipes\nimport '{(REPO_ROOT / 'justfile').as_posix()}'\ntools-check:\n\npython-sync:\n",
         encoding="utf-8",
     )
     before = markdown_bytes(consumer)
@@ -349,7 +351,7 @@ def test_fixture_tags_remain_valid_after_the_source_release_version_advances(tmp
     """A release update in the checkout cannot invalidate synthetic tag scenarios."""
     source = tmp_path / "advanced-source"
     source.mkdir()
-    for name in ("pyproject.toml", "cliff.toml", "changelog-rumdl.toml", "README.md"):
+    for name in ("pyproject.toml", "cliff.toml", "changelog-rumdl.toml", "README.md", ".python-version", "rust-toolchain.toml"):
         shutil.copyfile(REPO_ROOT / name, source / name)
     manifest = source / "pyproject.toml"
     text = manifest.read_text(encoding="utf-8")

@@ -32,27 +32,27 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up just
-        uses: ./.github/actions/setup-just # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
+      - name: Set up declared tools
+        uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
 
-      - name: Resolve zizmor version
-        id: zizmor_version
-        shell: bash
+      - name: Run declared zizmor with SARIF output
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-
-          version="$(just --evaluate zizmor_version)"
-          if [[ -z "$version" ]]; then
-            echo "::error::Could not resolve zizmor_version from justfile"
-            exit 1
+          scan_status=0
+          uv run --locked --no-sync --no-python-downloads research-repo-tools \
+            toolchain run -- zizmor --persona regular --format sarif .github > zizmor-results.sarif || scan_status=$?
+          if [[ ! -s zizmor-results.sarif ]] || ! jq -e '.version == "2.1.0" and (.runs | type == "array")' zizmor-results.sarif > /dev/null; then
+            rm -f zizmor-results.sarif
           fi
+          exit "$scan_status"
 
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Run zizmor
-        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+      - name: Upload SARIF results
+        if: >-
+          always() && hashFiles('zizmor-results.sarif') != '' &&
+          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
-          inputs: .github
-          online-audits: true
-          persona: regular
-          version: ${{ steps.zizmor_version.outputs.version }}
+          sarif_file: zizmor-results.sarif
+          category: zizmor
+          wait-for-processing: true

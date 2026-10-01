@@ -222,7 +222,9 @@ def test_workflow_requires_preflight_and_isolates_publication_permissions() -> N
     assert "run: just test-bench-inputs" in preparation
     assert "run: just bench-release-inventory" in preparation
     assert "continue-on-error" not in preparation
-    assert preparation.index("- name: Require fresh release preflight") < preparation.index("- name: Install Rust toolchain")
+    assert preparation.index("- name: Require fresh release preflight") < preparation.index("- name: Set up declared tools without caches")
+    assert "uses: ./.github/actions/setup-tools" in preparation
+    assert "cache: false" in preparation
     steps = [
         "Prepare release benchmarks",
         "Save comparative Criterion baseline",

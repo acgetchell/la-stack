@@ -435,7 +435,7 @@ rules:
     languages:
       - yaml
     severity: ERROR
-    message: "Set zizmor-action's version from steps.zizmor_version.outputs.version, resolved with just --evaluate zizmor_version."
+    message: "Run zizmor through the declared research-repo-tools toolchain instead of zizmor-action."
     metadata:
       category: security
       rationale: >-
@@ -454,24 +454,17 @@ rules:
       - metavariable-regex:
           metavariable: $ACTION
           regex: ^zizmorcore/zizmor-action@
-      - pattern-not: |
-          uses: $ACTION
-          with:
-            ...
-            version: ${{ steps.zizmor_version.outputs.version }}
-            ...
-          ...
 
-  - id: la-stack.github-actions.zizmor-version-resolved-from-just
+  - id: la-stack.github-actions.zizmor-managed-execution
     languages:
       - yaml
     severity: ERROR
-    message: "Resolve the zizmor_version step's output with the canonical just --evaluate zizmor_version sequence in .github/workflows/zizmor.yml."
+    message: "Run zizmor through research-repo-tools toolchain run so system binaries cannot bypass declared pins."
     metadata:
       category: security
       rationale: >-
-        An output expression alone does not prove scanner parity. Require the
-        resolver to read justfile and publish that value without replacement.
+        Direct scanner execution can select an undeclared system binary.
+        The checked runner verifies the managed executable and its version.
     paths:
       include:
         - "/.github/workflows/**/*.yml"
@@ -480,28 +473,17 @@ rules:
         - "/tests/semgrep/.github/workflows/**/*.yaml"
     patterns:
       - pattern: |
-          id: zizmor_version
-          ...
           run: $SCRIPT
       - metavariable-pattern:
           metavariable: $SCRIPT
           language: bash
-          patterns:
-            - pattern: ...
-            - pattern-not-inside: |
-                set -euo pipefail
-                version="$(just --evaluate zizmor_version)"
-                if [[ -z "$version" ]]; then
-                  echo "::error::Could not resolve zizmor_version from justfile"
-                  exit 1
-                fi
-                echo "version=$version" >> "$GITHUB_OUTPUT"
+          pattern: zizmor ...
 
   - id: la-stack.github-actions.release-no-dependency-cache
     languages:
       - yaml
     severity: ERROR
-    message: "Release artifact jobs must avoid cache actions and explicitly disable setup-rust-toolchain, setup-uv, and setup-just caches."
+    message: "Release artifact jobs must avoid cache actions and explicitly disable setup-rust-toolchain, setup-uv, and setup-tools caches."
     metadata:
       category: security
       rationale: >-
@@ -514,6 +496,7 @@ rules:
         - "/.github/workflows/release-*.yaml"
         - "/tests/semgrep/.github/workflows/release-*.yml"
         - "/tests/semgrep/.github/workflows/release-*.yaml"
+        - "/.github/actions/prepare-release-benchmarks/action.yml"
     pattern-either:
       - patterns:
           - pattern: |
@@ -557,7 +540,7 @@ rules:
               ...
           - metavariable-regex:
               metavariable: $ACTION
-              regex: '^(?:\./|\$/)\.github/actions/setup-just/?$'
+              regex: '^(?:\./|\$/)\.github/actions/setup-(?:just|tools)/?$'
           - pattern-not: |
               uses: $ACTION
               with:

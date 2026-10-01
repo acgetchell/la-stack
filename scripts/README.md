@@ -26,15 +26,16 @@ uv sync --locked --group dev
 
 ### Updating dependencies and repository-owned tools
 
-Run `just update` for the deliberate maintenance workflow. It updates Cargo and
-exact Python development-tool declarations and their locks, upgrades only the
-Cargo CLI packages owned by `setup-tools`, and then reconciles their installed
-versions plus the active uv version with the root `justfile` atomically. All
-required update tools are checked before the first dependency write, and the
-maintenance workflow accepts a newer active uv so it can become the new pin.
+Run `just update` for the deliberate shared maintenance workflow. Tool updates
+run first: uv upgrades through its installation owner, declared managed Cargo
+tools upgrade with verified TOML pins, and setup synchronizes the environment.
+Just follows the shared package's `rust-just` dependency. Dependency updates then
+advance Cargo requirements and exact direct Python `dev` pins, refresh both
+locks, and explicitly synchronize `dev` with managed Rust available. A failed
+step stops subsequent work without rolling back earlier package-manager steps.
 The coupled `num-bigint` and `num-rational` requirements are excluded from
 independent incompatible upgrades and must be advanced together. The Python
-updater asks uv to resolve one cross-platform tool set before applying all
+shared updater asks uv to resolve one cross-platform tool set before applying all
 changed exact pins together; it does not change runtime or build-system
 requirements.
 
@@ -258,13 +259,23 @@ This repo has been tested with `gnuplot 6.0 patchlevel 3` (Homebrew `gnuplot 6.0
 just update-version vX.Y.Z
 ```
 
-The updater infers the previous stable release from published GitHub releases,
-updates package, lockfile, citation, non-artifact README, and active
-benchmark workflow version references transactionally, and records the current
-UTC date in `CITATION.cff`. It leaves README benchmark artifact links for
-`performance-readme`, and it does not upgrade dependencies. If the target
-changelog heading already exists, the updater advances its date atomically with
-the citation date.
+The shared `research-repo-tools release update` CLI infers the previous stable
+release from published GitHub releases and updates package, lockfile, citation,
+and non-artifact README references transactionally. It records the current UTC
+date in `CITATION.cff`. Pass `--previous-release vA.B.C` to avoid release discovery,
+`--date YYYY-MM-DD` to declare a date, or `--dry-run` to preview validated changes:
+
+```bash
+just update-version vX.Y.Z --previous-release vA.B.C --date YYYY-MM-DD --dry-run
+```
+
+Consumer policy in `pyproject.toml` checks the concept DOI and the expected README
+reference count. Measured benchmark links, retained performance reports, archived
+documentation, and dependency versions stay unchanged. Benchmark command examples
+use selected tag variables rather than mutable release literals. If the target
+changelog heading already exists, its date advances with the citation date.
+After metadata preparation, `just docs-version-check` requires generated notes
+for the new version; generate them with the same declared date before validation.
 
 ### Generating the changelog
 
@@ -293,7 +304,7 @@ common regressions belong to the shared package; this repository owns the
 configuration, recipes, and `scripts/tests/test_changelog_integration.py`.
 Internal shared modules are not a supported consumer API.
 
-The consumer-owned `update-python` helper advances only exact requirements
+The shared `deps update-python` command advances only exact requirements
 declared directly in `dev`. Included groups retain their own upgrade policy;
 the shared `tooling` pin and its lockfile change together through an intentional
 dependency upgrade.
@@ -329,10 +340,20 @@ still validate published destinations. The archive move preserves all release
 dates and links; generated whitespace changes align existing series with the
 shared formatter so later generation remains conflict-free.
 
-The current local setup, release-metadata, dependency-update, scientific,
-benchmark, and performance tooling remains consumer-owned. Shared toolchain
-setup, updates, and other maintenance adoption belong in later PRs. Notebook
-tooling remains outside this repository's current scope.
+Setup, tool verification, managed execution, and updates now use the published
+shared CLI. Consumer declarations stay in `.python-version`, `rust-toolchain.toml`,
+and `pyproject.toml`; update recipes retain coupled Cargo exclusions and explicit
+dev synchronization. `tests/test_toolchain_integration.py` exercises the actual
+recipes with recording update boundaries and verifies native managed execution.
+The shared CLI also owns release metadata and version checks, Markdown line
+checks, and Semgrep fixture validation. `tests/test_maintenance_integration.py`
+checks the actual release selectors, preserved scientific evidence, DOI policy,
+and recipe forwarding. `tests/test_cargo_update_integration.py` executes native
+Cargo upgrades against a disposable local registry; Python updates have a
+matching real-uv fixture in the toolchain tests. Common parser, transaction,
+Markdown, and fixture regressions belong to the shared package. Scientific,
+benchmark, and performance tooling remains consumer-owned. Notebook tooling
+remains outside scope.
 
 The same pinned release owns opt-in CodeRabbit review orchestration through
 `research-repo-tools review branch --base=REF` and `review uncommitted`.
@@ -368,13 +389,9 @@ preview an annotation without creating a tag.
 | `performance_artifacts.py` | Validate and publish schema-versioned performance-comparison CSV/JSON inputs |
 | `bench_compare.py` | Compare Criterion benchmark baselines and render Markdown reports |
 | `benchmark_summaries.py` | Preserve every local case summary, bind provenance, and resolve saved report inputs after cleanup |
-| `check_docs_version_sync.py` | Verify versioned documentation links and snippets stay synchronized |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
 | `criterion_measurements.py` | Validate full Criterion sampling and estimates for local summaries and hosted archives |
 | `release_baseline.py` | Inventory full Criterion suites and validate complete raw release baselines before packaging |
 | `subprocess_utils.py` | Safe subprocess wrappers for git commands |
-| `update_cargo_tool_pins.py` | Reconcile repository-owned Cargo and active uv tool pins with installed versions |
-| `update_python_dev_pins.py` | Resolve and advance exact Python development-tool pins through uv |
-| `update_release_version.py` | Transactionally update deterministic release-version metadata |
 
 See `docs/RELEASING.md` for the full release workflow.

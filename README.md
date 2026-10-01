@@ -460,13 +460,13 @@ expectations are validated outside the timed closures.
 
 A short contributor workflow:
 
-Install Rust 1.98.1 through [rustup](https://rustup.rs/), Git,
-[GitHub CLI](https://cli.github.com/), Python 3.14,
-[`uv` 0.12.5](https://docs.astral.sh/uv/), and `jq`. Then install the pinned
-`just` release from its locked dependency graph:
+Install Git,
+[GitHub CLI](https://cli.github.com/), [`uv`](https://docs.astral.sh/uv/) at the
+exact version declared in `pyproject.toml`, and `jq`. Set up declared Python, Rust, Cargo tools, and Just through the locked
+shared package:
 
 ```bash
-cargo install --locked just --version 1.58.0
+uv run --locked --managed-python --only-group tooling research-repo-tools setup
 just setup        # install/verify dev tools + sync Python deps + build
 just check        # lint/validate (non-mutating)
 just fix          # apply auto-fixes (mutating)

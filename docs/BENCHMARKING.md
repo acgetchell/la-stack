@@ -24,18 +24,23 @@ the commands measure and where their outputs go.
 
 ## Start Here
 
+For explicit release comparisons, set `CURRENT_TAG` and `PREVIOUS_TAG` to the
+stable tags you want to compare. Omit both arguments to use each recipe's
+documented defaults. These variables keep command examples independent of the
+next release; measured artifact links and historical reports retain their tags.
+
 | Goal | Recipe |
 |------|--------|
 | Latest-release local audit | `just performance-local` |
-| Non-exact release-signal check against tags | `just performance-local-non-exact v0.4.6 v0.4.5` |
+| Non-exact release-signal check against tags | `just performance-local-non-exact "$CURRENT_TAG" "$PREVIOUS_TAG"` |
 | Fast saved-baseline loop | `just bench-save-baseline <name> <suite>` then `just bench-compare <name> <suite> all-benches` |
 | Full crate comparison | `just bench-vs-linalg` |
 | Interval determinant filter | `just bench-interval` |
 | Certified dot/linear-form filter | `just bench-linear-form` |
 | README table and plot | `just performance-release` then `just performance-readme` |
-| Release report | `just performance-release v0.4.6 v0.4.5` |
+| Release report | `just performance-release "$CURRENT_TAG" "$PREVIOUS_TAG"` |
 | Build docs from retained release inputs | `just performance-doc` |
-| Published-asset comparison | `just performance-github-assets v0.4.6 v0.4.5` |
+| Published-asset comparison | `just performance-github-assets "$CURRENT_TAG" "$PREVIOUS_TAG"` |
 
 Rule of thumb:
 
@@ -193,10 +198,10 @@ distinct release identifiers.
 For a narrower non-exact check against a known release pair, run:
 
 ```bash
-just performance-local-non-exact v0.4.6 v0.4.5
+just performance-local-non-exact "$CURRENT_TAG" "$PREVIOUS_TAG"
 ```
 
-This generates a local `v0.4.5` `vs_linalg` baseline, measures the current
+This generates a local `$PREVIOUS_TAG` `vs_linalg` baseline, measures the current
 la-stack `vs_linalg` rows, and renders a `vs_linalg` report. The report includes
 saved baseline nalgebra/faer timings as context where matching peer rows exist,
 without rerunning current peer crates.
@@ -296,7 +301,7 @@ Release PRs promote one curated release-to-release comparison into committed
 docs:
 
 ```bash
-just performance-release v0.4.6 v0.4.5
+just performance-release "$CURRENT_TAG" "$PREVIOUS_TAG"
 ```
 
 With no arguments, `just performance-release` infers the current release tag
@@ -367,7 +372,7 @@ requirement applies even when both release tags are supplied explicitly because
 the recipe still downloads their GitHub Release assets:
 
 ```bash
-just performance-github-assets v0.4.6 v0.4.5
+just performance-github-assets "$CURRENT_TAG" "$PREVIOUS_TAG"
 ```
 
 With no arguments, the recipe discovers the latest and previous stable

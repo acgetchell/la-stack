@@ -107,8 +107,8 @@ inherit the root workspace lints and share the lockfile and target directory.
 
 The [Benchmarking guide](BENCHMARKING.md) owns benchmark commands, methodology,
 baselines, output locations, and report promotion. The [Scripts guide](../scripts/README.md)
-owns the Python script inventory and entry points for comparisons, plotting,
-and release metadata. The pinned published `research-repo-tools` dependency
+owns the Python script inventory and entry points for comparisons and plotting.
+The pinned published `research-repo-tools` dependency
 owns changelog generation, normalization, minor-series archiving, note lookup,
 and tag preparation through its CLI. Consumer policy stays in `cliff.toml`,
 `changelog-rumdl.toml`, and `[tool.research-repo-tools]` in `pyproject.toml`;
@@ -118,6 +118,20 @@ wrappers. `scripts/tests/test_review_integration.py` owns consumer wiring checks
 with local stubs; the [contributor review workflow](../CONTRIBUTING.md#coderabbit-review)
 owns prerequisites and invocation policy.
 The [justfile](../justfile) owns executable development workflows.
+
+The shared package also owns managed tool installation, verification, and update
+implementation. `.python-version`, `rust-toolchain.toml`, and `pyproject.toml`
+own consumer declarations; `scripts/tests/test_toolchain_integration.py` checks
+actual recipe sequencing and native managed execution. The
+`.github/actions/setup-tools/action.yml` composite synchronizes the locked PyPI
+package and exports verified paths for CI. Release callers disable its caches.
+
+Release metadata, version checks, Markdown line checks, and Semgrep fixture
+validation also belong to the shared CLI. Consumer policy stays in
+`pyproject.toml`; `scripts/tests/test_maintenance_integration.py` verifies the
+actual release selectors and preservation of scientific evidence.
+`scripts/tests/test_cargo_update_integration.py` exercises native dependency
+upgrades and coupled exclusions against a disposable local registry.
 
 `scripts/release_baseline.py` owns release-suite inventory and complete raw
 Criterion validation. The release workflow packages only datasets that pass

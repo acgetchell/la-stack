@@ -35,9 +35,8 @@ git switch main
 git pull --ff-only
 ```
 
-Install or verify the pinned development tools before running maintenance
-recipes. This includes the `cargo-update` package that provides
-`cargo-install-update` for `just update`:
+Install or verify the declared development tools before running maintenance
+recipes. Shared setup installs managed tools and explicitly synchronizes `dev`:
 
 ```bash
 just setup
@@ -308,9 +307,9 @@ The command must print `la-stack-$TAG-criterion-baseline.tar.gz`. A short-lived
 Actions artifact is not a substitute for this release asset.
 
 The benchmark producer has read-only repository permissions and restores no
-dependency caches, including tool binaries. It disables Rust toolchain and
-`setup-just` caching and installs the pinned just and cargo-nextest versions
-with `cargo install --locked`. The short preflight job receives `contents: write`
+dependency caches, including tool binaries. It invokes `setup-tools` with
+`cache: false`, installs declared managed Rust and Cargo tools through the locked
+shared package, and exports verified paths. The short preflight job receives `contents: write`
 for draft visibility; the separate publisher receives it to attach the archive
 and publish. Neither privileged job checks out or executes repository code.
 

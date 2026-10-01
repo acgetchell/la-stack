@@ -40,21 +40,21 @@ jobs:
 
       - name: Cache-free just
         # ok: la-stack.github-actions.release-no-dependency-cache
-        uses: ./.github/actions/setup-just
+        uses: ./.github/actions/setup-tools
         with:
           cache: false
 
       - name: Implicit just cache
         # ruleid: la-stack.github-actions.release-no-dependency-cache
-        uses: ./.github/actions/setup-just
+        uses: ./.github/actions/setup-tools
 
       # ok: la-stack.github-actions.release-no-dependency-cache
-      - uses: ./.github/actions/setup-just
+      - uses: ./.github/actions/setup-tools
         with:
           cache: false
 
       # ruleid: la-stack.github-actions.release-no-dependency-cache
-      - uses: ./.github/actions/setup-just
+      - uses: ./.github/actions/setup-tools
         with:
           cache: true
 
