@@ -113,6 +113,10 @@ owns changelog generation, normalization, minor-series archiving, note lookup,
 and tag preparation through its CLI. Consumer policy stays in `cliff.toml`,
 `changelog-rumdl.toml`, and `[tool.research-repo-tools]` in `pyproject.toml`;
 focused integration checks live in `scripts/tests/test_changelog_integration.py`.
+The same dependency owns CodeRabbit review orchestration through thin Just
+wrappers. `scripts/tests/test_review_integration.py` owns consumer wiring checks
+with local stubs; the [contributor review workflow](../CONTRIBUTING.md#coderabbit-review)
+owns prerequisites and invocation policy.
 The [justfile](../justfile) owns executable development workflows.
 
 `scripts/release_baseline.py` owns release-suite inventory and complete raw

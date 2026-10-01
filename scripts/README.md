@@ -331,8 +331,17 @@ shared formatter so later generation remains conflict-free.
 
 The current local setup, release-metadata, dependency-update, scientific,
 benchmark, and performance tooling remains consumer-owned. Shared toolchain
-setup, updates, and other maintenance adoption belong in later PRs. No
-notebook or review-tool migration is included here.
+setup, updates, and other maintenance adoption belong in later PRs. Notebook
+tooling remains outside this repository's current scope.
+
+The same pinned release owns opt-in CodeRabbit review orchestration through
+`research-repo-tools review branch --base=REF` and `review uncommitted`.
+Thin Just wrappers retain the common implementation upstream; consumer checks
+in `tests/test_review_integration.py` exercise recipe forwarding, instruction
+discovery, freshness diagnostics, and failure propagation with local stubs.
+CodeRabbit remains externally installed and authenticated. See the
+[contributor review workflow](../CONTRIBUTING.md#coderabbit-review) for scopes
+and invocation policy.
 
 ### Creating a release tag
 
