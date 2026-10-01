@@ -170,3 +170,33 @@ def test_zizmor_workflow_separates_findings_from_sarif_export() -> None:
     upload = next(step for step in steps if step.get("uses", "").startswith("github/codeql-action/upload-sarif@"))
     assert "steps.sarif.outcome == 'success'" in upload["if"]
     assert "github.actor != 'dependabot[bot]'" in upload["if"]
+
+
+def test_semgrep_sarif_upload_honors_only_in_source_suppressions() -> None:
+    """GitHub receives actionable findings with their original metadata across every run."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/semgrep-sarif.yml").read_bytes())
+    steps = workflow["jobs"]["semgrep-sarif"]["steps"]
+    scan = next(step for step in steps if step.get("id") == "semgrep")
+    command = next(line.strip() for line in scan["run"].splitlines() if line.strip().startswith("jq "))
+    arguments = shlex.split(command)
+    actionable = {"ruleId": "actionable", "partialFingerprints": {"primaryLocationLineHash": "original"}}
+    reviewed = {"ruleId": "reviewed", "suppressions": [{"kind": "inSource"}]}
+    external = {"ruleId": "external", "suppressions": [{"kind": "external"}]}
+    other_run = {"ruleId": "other-run", "locations": [{"physicalLocation": {"artifactLocation": {"uri": "other.yml"}}}]}
+    report = {
+        "version": "2.1.0",
+        "runs": [
+            {"tool": {"driver": {"name": "Semgrep OSS"}}, "results": [reviewed, actionable, external]},
+            {"tool": {"driver": {"name": "Semgrep OSS"}}, "results": [other_run, reviewed]},
+        ],
+    }
+    filtered = json.loads(run_command("jq", arguments[1:2], input=json.dumps(report)).stdout)
+    assert filtered["version"] == report["version"]
+    assert filtered["runs"][0]["results"] == [actionable, external]
+    assert filtered["runs"][1]["results"] == [other_run]
+    assert filtered["runs"][0]["tool"] == report["runs"][0]["tool"]
+    upload = next(step for step in steps if step.get("uses", "").startswith("github/codeql-action/upload-sarif@"))
+    assert arguments[2:] == ["semgrep-raw.sarif", ">", upload["with"]["sarif_file"]]
+    gate = next(step for step in steps if step["name"] == "Fail on repository rule findings")
+    assert gate["if"] == "steps.semgrep.outputs.exit_code != '0'"
+    assert gate["run"] == "exit 1"
