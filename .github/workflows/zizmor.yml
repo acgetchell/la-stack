@@ -39,8 +39,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          scan_status=0
           uv run --locked --no-sync --no-python-downloads research-repo-tools \
-            toolchain run -- zizmor --persona regular --format sarif .github > zizmor-results.sarif
+            toolchain run -- zizmor --persona regular --format sarif .github > zizmor-results.sarif || scan_status=$?
+          if [[ ! -s zizmor-results.sarif ]] || ! jq -e '.version == "2.1.0" and (.runs | type == "array")' zizmor-results.sarif > /dev/null; then
+            rm -f zizmor-results.sarif
+          fi
+          exit "$scan_status"
 
       - name: Upload SARIF results
         if: >-
