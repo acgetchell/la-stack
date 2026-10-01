@@ -79,8 +79,9 @@ just update-version "$TAG"
 The recipe requires a stable `vX.Y.Z` target that is not older than any
 published stable GitHub release and that has at least one earlier published
 stable release. It infers the previous release from GitHub and updates the Rust
-and Python package metadata and lockfiles, `CITATION.cff`, README dependency and
-non-artifact links, and active benchmark examples. `date-released` uses the
+and Python package metadata and lockfiles, `CITATION.cff`, and README dependency
+metadata. Active navigation stays on `main`; measured artifact links retain their
+recorded revision. `date-released` uses the
 current UTC date; if the target changelog section already exists, its date is
 updated in the same transaction. `CITATION.cff` retains the Zenodo all-versions
 concept DOI.

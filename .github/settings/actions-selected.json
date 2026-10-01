@@ -1,0 +1,15 @@
+{
+  "github_owned_allowed": true,
+  "verified_allowed": false,
+  "patterns_allowed": [
+    "github/codeql-action@*",
+    "actions-rust-lang/setup-rust-toolchain@*",
+    "astral-sh/setup-uv@*",
+    "codecov/codecov-action@*",
+    "zizmorcore/zizmor-action@*",
+    "taiki-e/cache-cargo-install-action@*",
+    "swatinem/rust-cache@*",
+    "dependabot/fetch-metadata@*",
+    "acgetchell/research-repo-tools/.github/workflows/dependabot-approve.yml@*"
+  ]
+}

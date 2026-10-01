@@ -133,6 +133,15 @@ actual release selectors and preservation of scientific evidence.
 `scripts/tests/test_cargo_update_integration.py` exercises native dependency
 upgrades and coupled exclusions against a disposable local registry.
 
+The shared package also owns process discovery, captured/live execution, exact
+byte transport, CPU metadata, diagnostics, and zizmor authentication. The thin
+`scripts/benchmark_process.py` adapter retains benchmark phase signatures and
+consumer root selection. Generic `subprocess_utils.py` and `run_zizmor.sh`
+implementations and their duplicate tests are retired; scientific schemas and
+benchmark policy remain here. Hosted Dependabot approvals use the pinned shared
+GitHub workflow; the [rollout guide](dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
+owns settings and deployment verification.
+
 `scripts/release_baseline.py` owns release-suite inventory and complete raw
 Criterion validation. The release workflow packages only datasets that pass
 that gate; its regression and archive tests live in

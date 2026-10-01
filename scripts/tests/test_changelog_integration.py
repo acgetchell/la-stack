@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from research_repo_tools.cli import main
 
-from subprocess_utils import run_git_command, run_safe_command
+from benchmark_process import run_git_command, run_safe_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

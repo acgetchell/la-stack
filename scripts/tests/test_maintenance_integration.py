@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from research_repo_tools.cli import main
 
-from subprocess_utils import run_git_command, run_safe_command
+from benchmark_process import run_git_command, run_safe_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -88,8 +88,7 @@ def test_concept_doi_policy_rejects_drift_before_publication(consumer: Path, fil
 def test_readme_release_selector_requires_the_reviewed_link_inventory(consumer: Path) -> None:
     path = consumer / "README.md"
     text = path.read_text(encoding="utf-8")
-    current = tomllib.loads((consumer / "Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
-    path.write_text(text.replace(f"/blob/v{current}/LICENSE", "/blob/main/LICENSE", 1), encoding="utf-8")
+    path.write_text(text.replace("/blob/main/LICENSE", "/blob/removed/LICENSE", 1), encoding="utf-8")
     before = snapshot(consumer)
     assert main(release_args(consumer, "--dry-run")) == 1
     assert snapshot(consumer) == before

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from subprocess_utils import run_safe_command
+from benchmark_process import run_safe_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

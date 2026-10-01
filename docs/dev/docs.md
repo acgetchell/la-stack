@@ -5,6 +5,7 @@ Detailed documentation rules for [AGENTS.md](../../AGENTS.md).
 ## Contents
 
 - [Document ownership and ordering](#document-ownership-and-ordering)
+- [Command discovery and placement](#command-discovery-and-placement)
 - [Filename conventions](#filename-conventions)
 - [README and rustdoc guides](#readme-and-rustdoc-guides)
 - [Links and published destinations](#links-and-published-destinations)
@@ -16,6 +17,9 @@ Detailed documentation rules for [AGENTS.md](../../AGENTS.md).
 
 - `README.md` owns concise orientation, quickstart, capabilities, and API
   navigation. Place "Use this crate when" immediately after Introduction.
+- `CONTRIBUTING.md` owns prerequisite setup, checks, fixes, tests, security,
+  and PR preparation. Dedicated task guides own detailed benchmark, coverage,
+  release, and dependency-maintenance procedures.
 - `REFERENCES.md` owns bibliographic provenance. Keep the bibliography thematic
   and preserve citation identifiers and deep links.
 - `docs/mathematical_basis.md` owns mathematical explanations, assumptions,
@@ -32,6 +36,30 @@ Detailed documentation rules for [AGENTS.md](../../AGENTS.md).
 - [Code organization](../code_organization.md) owns module and file placement.
   Update its map when ownership or layout changes; keep command procedures in
   their existing contributor, benchmark, script, and release guides.
+
+## Command discovery and placement
+
+Bare `just` generates the complete public recipe list, including arguments and
+useful descriptions, directly from Just. Use an explicit private default recipe
+so lexicographic source sorting cannot change that action. Keep recipe definitions
+sorted lexicographically; do not maintain a second help list or help alias.
+
+Name recipes by their purpose and preserve equivalent semantics across la-stack,
+delaunay, causal-triangulations, and markov-chain-monte-carlo: `check` validates
+without changing sources, `fix` applies changes, and `ci` composes final validation.
+Tests and security scans belong in contributor guidance. Keep distinct scopes,
+feature configurations, and workloads, while removing verified duplicate wrappers
+and updating their callers.
+
+README Quickstart owns useful library usage, bare `just`, and concrete runnable
+examples such as `just examples` or `cargo run --locked --example solve_5x5`.
+Link prerequisite setup to CONTRIBUTING. This library has no binary; do not add
+a `run` recipe solely for consistency with application repositories.
+
+Discuss individual commands in their owning sections instead of copying the full
+recipe list. Release and dependency maintenance remain maintainer workflows in
+their dedicated guides. A shared-package upgrade does not rewrite local recipes
+or documentation automatically.
 
 ## Filename conventions
 
@@ -84,6 +112,10 @@ semantics in the linked guide when shortening a README section.
   versions for release-specific contracts. docs.rs builds published crates;
   merging changes does not publish new guide pages. Local rendering does not
   establish availability on the published site.
+- Active repository navigation uses the default branch (`main` here), while
+  release metadata policy preserves those destinations. Keep measured artifact
+  links, archived reports, historical release records, and citation provenance
+  pinned to their original revisions.
 
 ## Executable examples
 

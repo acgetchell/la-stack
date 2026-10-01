@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from research_repo_tools.cli import main
 
-from subprocess_utils import run_git_command, run_safe_command
+from benchmark_process import run_git_command, run_safe_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -150,7 +150,7 @@ def test_missing_cli_reports_explicit_installation(consumer: Path, monkeypatch: 
 
 def test_reviews_are_discoverable_and_outside_routine_gates() -> None:
     surface = json.loads(run_safe_command("just", ["--dump", "--dump-format", "json"], cwd=REPO_ROOT).stdout)["recipes"]
-    help_text = run_safe_command("just", ["help-workflows"], cwd=REPO_ROOT).stdout
+    help_text = run_safe_command("just", [], cwd=REPO_ROOT).stdout
     listed = run_safe_command("just", ["--list"], cwd=REPO_ROOT).stdout
     for name in ("review", "review-uncommitted"):
         assert name in help_text

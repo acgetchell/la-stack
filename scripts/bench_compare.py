@@ -37,6 +37,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
+from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics
+
+from benchmark_process import find_project_root, run_git_command
 from criterion_dim_plot import METRICS
 from performance_artifacts import (
     PRE_RATIONAL_INPUT_API_COMPATIBILITY,
@@ -53,7 +56,6 @@ from performance_artifacts import (
     publish_bundle,
     resolve_shared_harness_compatibility,
 )
-from subprocess_utils import ExecutableNotFoundError, find_project_root, format_exception_diagnostics, run_git_command
 
 # ---------------------------------------------------------------------------
 # Benchmark group / bench discovery

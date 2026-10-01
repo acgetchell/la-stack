@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Never
 
 import pytest
+from research_repo_tools.process import run_command
 
 import archive_performance
 from archive_performance import (
@@ -34,7 +35,6 @@ from performance_artifacts import (
     TimingEstimate,
     write_bundle,
 )
-from subprocess_utils import run_cargo_command
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -294,7 +294,8 @@ def test_shared_harness_preserves_manifest_example_targets(tmp_path: Path, examp
     )
 
     digest = archive_performance._install_shared_benchmark_harness(source=current, destination=baseline)
-    run_cargo_command(
+    run_command(
+        "cargo",
         [
             "test",
             "--offline",
@@ -314,7 +315,8 @@ def test_shared_harness_preserves_manifest_example_targets(tmp_path: Path, examp
         cwd=Path(__file__).resolve().parents[2],
     )
     metadata = json.loads(
-        run_cargo_command(
+        run_command(
+            "cargo",
             ["metadata", "--offline", "--no-deps", "--format-version", "1", "--manifest-path", str(baseline / "Cargo.toml")],
             cwd=Path(__file__).resolve().parents[2],
         ).stdout
@@ -536,11 +538,22 @@ def test_apply_current_diff_fails_loudly_and_cleans_temporary_directory(
     ("failure", "message"),
     [
         (archive_performance.ExecutableNotFoundError("missing tool"), "command could not start: tool --flag: missing tool"),
-        (subprocess.TimeoutExpired(["tool", "--flag"], 17, stderr="stalled"), "command timed out after 17 seconds: tool --flag"),
+        (
+            subprocess.TimeoutExpired(["tool", "--flag"], 17, stderr="stalled"),
+            "command timed out after 17 seconds: tool --flag\nstderr:\nstalled",
+        ),
+        (
+            subprocess.CalledProcessError(1, ["tool", "--flag"], output=b"partial output\n", stderr=b"failed\n"),
+            "command failed (1): tool --flag\nstdout:\npartial output\nstderr:\nfailed",
+        ),
+        (
+            subprocess.TimeoutExpired(["tool", "--flag"], 17, output=b"partial output\n", stderr=b"stalled\n"),
+            "command timed out after 17 seconds: tool --flag\nstdout:\npartial output\nstderr:\nstalled",
+        ),
         (OSError("working directory unavailable"), "command could not start: tool --flag: working directory unavailable"),
     ],
 )
-def test_run_tool_normalizes_launch_timeout_and_os_errors(
+def test_run_tool_normalizes_command_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     failure: Exception,
@@ -554,7 +567,7 @@ def test_run_tool_normalizes_launch_timeout_and_os_errors(
     with pytest.raises(RuntimeError) as exc_info:
         archive_performance._run_tool("tool", ["--flag"], cwd=tmp_path)
 
-    assert str(exc_info.value).startswith(message)
+    assert str(exc_info.value) == message
     assert exc_info.value.__cause__ is failure
 
 
@@ -1618,7 +1631,7 @@ def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pyt
             _write_current_benchmark_tooling(worktree)
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         return _result()
 
@@ -1635,7 +1648,7 @@ def test_main_generates_report_in_temp_worktree(tmp_path: Path, monkeypatch: pyt
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     rc = main(
@@ -1707,7 +1720,7 @@ def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path: Path, m
                 _write_current_benchmark_tooling(worktree)
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         return _result()
 
@@ -1724,7 +1737,7 @@ def test_temp_worktree_is_removed_when_benchmark_command_fails(tmp_path: Path, m
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     rc = main(
@@ -1763,7 +1776,7 @@ def test_generate_report_rejects_unsafe_baseline_archive(tmp_path: Path, monkeyp
             _write_current_benchmark_tooling(worktree)
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         return _result()
 
@@ -1777,7 +1790,7 @@ def test_generate_report_rejects_unsafe_baseline_archive(tmp_path: Path, monkeyp
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     rc = main(
@@ -1828,7 +1841,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
                 _write_current_benchmark_tooling(worktree)
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         return _result()
 
@@ -1869,7 +1882,7 @@ def test_generate_report_generates_release_baseline_locally(  # noqa: PLR0915
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     rc = main(
@@ -1939,7 +1952,7 @@ def test_generate_local_non_exact_report_retains_same_version_comparison_artifac
                 _write_current_benchmark_tooling(worktree)
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         return _result()
 
@@ -1959,7 +1972,7 @@ def test_generate_local_non_exact_report_retains_same_version_comparison_artifac
         return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     report_id = generate_worktree_report(
@@ -2022,7 +2035,7 @@ def test_generate_local_report_artifacts_can_be_rendered_and_promoted(
             _write_current_benchmark_tooling(worktree)
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         return _result()
 
@@ -2044,7 +2057,7 @@ def test_generate_local_report_artifacts_can_be_rendered_and_promoted(
         return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     report_id = generate_worktree_report(
@@ -2131,7 +2144,7 @@ def test_main_generates_latest_published_report_from_github_releases(tmp_path: P
             _write_current_benchmark_tooling(worktree)
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         return _result()
 
@@ -2154,7 +2167,7 @@ def test_main_generates_latest_published_report_from_github_releases(tmp_path: P
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     rc = main(
@@ -2203,7 +2216,7 @@ def test_main_normalizes_explicit_bare_tags_before_fetching_and_checkout(tmp_pat
             _write_current_benchmark_tooling(worktree)
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         return _result()
 
@@ -2219,7 +2232,7 @@ def test_main_normalizes_explicit_bare_tags_before_fetching_and_checkout(tmp_pat
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     rc = main(
@@ -2277,7 +2290,7 @@ def test_main_published_latest_fetch_failure_stops_before_worktree(tmp_path: Pat
             _write_current_benchmark_tooling(worktree)
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         return _result()
 
@@ -2294,7 +2307,7 @@ def test_main_published_latest_fetch_failure_stops_before_worktree(tmp_path: Pat
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     rc = main(
@@ -2535,9 +2548,11 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(
             Path(output_arg.removeprefix("--output=")).write_bytes(b"diff --git a/README.md b/README.md\n")
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str | bytes, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
-        assert b"diff --git" in input_data if isinstance(input_data, bytes) else "diff --git" in input_data
+        payload = kwargs["input"]
+        assert isinstance(payload, bytes)
+        assert b"diff --git" in payload
         return _result()
 
     def fake_run_safe(command: str, args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
@@ -2555,7 +2570,7 @@ def test_generate_and_promote_uses_temp_worktree_and_current_diff(
         return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     report_id = generate_and_promote_worktree_report(
@@ -2596,7 +2611,7 @@ def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path
             _write_legacy_benchmark_tooling(worktree)
         return _result()
 
-    def fake_run_git_with_input(args: Sequence[str], input_data: str, cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
+    def fake_run_git_with_input(args: Sequence[str], cwd: Path | None = None, **kwargs: Any) -> SimpleNamespace:
         calls.append(("git-stdin", tuple(args), cwd))
         return _result()
 
@@ -2612,7 +2627,7 @@ def test_generate_and_promote_legacy_published_tag_uses_legacy_commands(tmp_path
         return _result()
 
     monkeypatch.setattr(archive_performance, "run_git_command", fake_run_git)
-    monkeypatch.setattr(archive_performance, "run_git_command_with_input", fake_run_git_with_input)
+    monkeypatch.setattr(archive_performance, "run_git_bytes", fake_run_git_with_input)
     monkeypatch.setattr(archive_performance, "run_safe_command", fake_run_safe)
 
     report_id = generate_and_promote_worktree_report(

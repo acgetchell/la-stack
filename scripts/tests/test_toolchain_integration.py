@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from research_repo_tools.cli import main
 
-from subprocess_utils import run_safe_command
+from benchmark_process import run_safe_command
 
 if TYPE_CHECKING:
     import subprocess

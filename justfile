@@ -14,6 +14,16 @@ _run := "uv run --locked --no-sync --no-python-downloads research-repo-tools too
 _coverage_base_args := '''--features exact \
   --workspace --lib --tests \
   --verbose'''
+
+# List all public recipes with their arguments and descriptions.
+[default]
+[private]
+_default:
+    @just --list
+
+_ensure-actionlint: _ensure-uv
+    uv run --locked actionlint -version >/dev/null
+
 # System prerequisites remain consumer-owned.
 _ensure-gh:
     @command -v gh >/dev/null || { echo "GitHub CLI is required on PATH." >&2; exit 1; }
@@ -21,18 +31,15 @@ _ensure-gh:
 _ensure-jq:
     @command -v jq >/dev/null || { echo "jq is required on PATH." >&2; exit 1; }
 
-# uv enforces its exact declaration before running the locked CLI.
-_ensure-uv:
-    uv run --locked --no-sync --no-python-downloads research-repo-tools deps check-uv
-
-_ensure-actionlint: _ensure-uv
-    uv run --locked actionlint -version >/dev/null
-
 _ensure-shellcheck: _ensure-uv
     uv run --locked shellcheck --version >/dev/null
 
 _ensure-shfmt: _ensure-uv
     uv run --locked shfmt --version >/dev/null
+
+# uv enforces its exact declaration before running the locked CLI.
+_ensure-uv:
+    uv run --locked --no-sync --no-python-downloads research-repo-tools deps check-uv
 
 _ensure-yamllint: _ensure-uv
     uv run --locked yamllint --version >/dev/null
@@ -53,7 +60,11 @@ action-lint: _ensure-actionlint
         echo "No workflow files found to lint."
     fi
 
-# Benchmarks
+# Audit the repository's Python and Rust lockfiles with the managed OSV scanner.
+audit:
+    uv run --locked --group dev research-repo-tools security osv uv.lock Cargo.lock
+
+# Run the fixed-dimension benchmark suites.
 bench:
     {{ _run }} cargo bench --locked --workspace --features bench
 
@@ -65,9 +76,7 @@ bench-compare baseline="last" suite="all" scope="release-signal": python-sync
     baseline={{ quote(baseline) }}
     {{ _run }} uv run --locked bench-compare "$baseline" --suite {{ quote(suite) }} --scope {{ quote(scope) }}
 
-# Compile benchmarks without running them, treating warnings as errors through
-# Cargo so warning policy does not create separate rustc cache artifacts.
-# This catches bench/release-profile-only warnings that won't show up in normal debug-profile runs.
+# Compile benchmark targets with warnings denied; do not measure timings.
 bench-compile:
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --workspace --no-run --features bench
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench exact
@@ -80,10 +89,6 @@ bench-exact:
 bench-interval:
     {{ _run }} cargo bench --locked --features bench --bench interval
 
-# Run the certified dot-product and affine-difference benchmark suite.
-bench-linear-form:
-    {{ _run }} cargo bench --locked --features bench --bench linear_form
-
 # Run the cheaper latest measurements used for latest-vs-last reports.
 bench-latest: bench-vs-linalg-la-stack bench-exact
 
@@ -91,13 +96,17 @@ bench-latest: bench-vs-linalg-la-stack bench-exact
 bench-latest-vs-last baseline="last": bench-latest python-sync
     {{ _run }} uv run --locked bench-compare {{ quote(baseline) }}
 
-# Discover all release benchmarks and report their expected measurement budget.
-bench-release-inventory: _ensure-uv
-    {{ _run }} uv run --locked scripts/release_baseline.py inventory
+# Run the certified dot-product and affine-difference benchmark suite.
+bench-linear-form:
+    {{ _run }} cargo bench --locked --features bench --bench linear_form
 
 # Check every discovered benchmark before the release workflow packages it.
 bench-release-check tag: _ensure-uv
     {{ _run }} uv run --locked scripts/release_baseline.py validate --baseline {{ quote(tag) }}
+
+# Discover all release benchmarks and report their expected measurement budget.
+bench-release-inventory: _ensure-uv
+    {{ _run }} uv run --locked scripts/release_baseline.py inventory
 
 # Save a Criterion baseline. Defaults to all release-signal benchmark suites.
 bench-save-baseline tag suite="all":
@@ -136,8 +145,7 @@ bench-vs-linalg filter="":
         {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg
     fi
 
-# Bench only la-stack rows from the vs_linalg suite for cheap latest-vs-last comparisons.
-# Filtered runs omit peer samples, so disable Criterion's complete-group HTML reports.
+# Measure only la-stack rows without generating incomplete peer HTML reports.
 bench-vs-linalg-la-stack:
     {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- la_stack --noplot
 
@@ -156,10 +164,11 @@ bench-vs-linalg-quick filter="":
         {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --quick --noplot
     fi
 
-# Build commands
+# Build the library in the debug profile.
 build:
     {{ _run }} cargo build
 
+# Build the library in the release profile.
 build-release:
     {{ _run }} cargo build --release
 
@@ -204,9 +213,7 @@ check: lint
 check-fast:
     {{ _run }} cargo check
 
-# CI simulation: flat GitHub-equivalent union of leaf validators.
-# Keep this dependency list explicit so each validation surface runs once without
-# re-entering broad check/test bundles. All Cargo targets match the SARIF lint scope.
+# Run the complete local CI validation, tests, examples, and benchmark compilation.
 ci: action-lint zizmor markdown-check spell-check docs-version-check changelog-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-fixture-lint python-typecheck test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
     @echo "🎯 CI checks complete!"
 
@@ -220,9 +227,7 @@ clean:
     rm -rf target/llvm-cov
     rm -rf coverage
 
-# Full Cargo-target Clippy sweep used by `just ci` and the GitHub SARIF workflow.
-clippy: clippy-all-targets
-
+# Check every workspace target with default and all features.
 clippy-all-targets:
     {{ _run }} cargo clippy --workspace --all-targets
     {{ _run }} cargo clippy --workspace --all-targets --all-features
@@ -253,19 +258,16 @@ coverage-ci: tools-check
     mkdir -p coverage
     {{ _run }} cargo llvm-cov nextest {{ _coverage_base_args }} --cobertura --output-path coverage/cobertura.xml -P coverage
 
-# Default recipe shows available commands
-default:
-    @just --list
-
 # Documentation build checks for the default and exact-feature public APIs.
 doc-check:
     RUSTDOCFLAGS='-D warnings' {{ _run }} cargo doc --no-deps
     RUSTDOCFLAGS='-D warnings' {{ _run }} cargo doc --no-deps --features exact
 
+# Check synchronized release metadata without changing files.
 docs-version-check: python-sync
     uv run --locked --group dev research-repo-tools release check
 
-# Examples
+# Build and run all library examples, including exact arithmetic.
 examples:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -287,104 +289,39 @@ examples:
     done
 
 # Fix (mutating): apply formatters/auto-fixes
-fix: toml-fmt fmt python-fix shell-fmt markdown-fix yaml-fix
+fix: toml-fix fmt python-fix shell-fix markdown-fix yaml-fix
     @echo "✅ Fixes applied!"
 
 # Rust formatting
 fmt:
     {{ _run }} cargo fmt --all
 
+# Check Rust formatting without changing files.
 fmt-check:
     {{ _run }} cargo fmt --all -- --check
 
+# Check workflow syntax and security findings.
 github-actions-check: action-lint zizmor
     @echo "✅ GitHub Actions checks complete!"
 
-help-workflows:
-    @echo "Common Just workflows:"
-    @echo "  just check             # Run lint/validators (non-mutating)"
-    @echo "  just check-fast        # Fast compile check (cargo check)"
-    @echo "  just ci                # Full CI simulation (check + tests + examples + bench compile)"
-    @echo "  just fix               # Apply formatters/auto-fixes (mutating)"
-    @echo "  just setup             # Install/verify dev tools + sync Python deps"
-    @echo ""
-    @echo "CodeRabbit review (opt-in):"
-    @echo "  just review [base]     # Review branch and local changes; verify origin/main by default"
-    @echo "  just review-uncommitted # Review only local changes, including untracked files"
-    @echo ""
-    @echo "Benchmarks:"
-    @echo "  just bench                 # Run benchmarks"
-    @echo "  just bench-compile          # Compile benches with warnings-as-errors"
-    @echo "  just bench-latest           # Run cheap latest measurements"
-    @echo "  just bench-latest-vs-last   # Run latest and compare against last"
-    @echo "  just bench-exact            # Run exact-arithmetic benchmarks"
-    @echo "  just bench-interval         # Run interval determinant benchmarks"
-    @echo "  just bench-linear-form      # Run certified linear-form benchmarks"
-    @echo "  just bench-save-last        # Save full baseline as 'last'"
-    @echo "  just bench-vs-linalg        # Run vs_linalg bench (optional filter)"
-    @echo "  just bench-vs-linalg-la-stack # Run la-stack rows from vs_linalg"
-    @echo "  just bench-vs-linalg-latest-vs # Run non-exact latest and compare against last"
-    @echo "  just bench-vs-linalg-quick  # Quick vs_linalg bench (reduced samples)"
-    @echo "  just performance-doc        # Build release docs from retained CSV/JSON"
-    @echo "  just performance-github-assets # Compare stored GitHub Actions release assets"
-    @echo "  just performance-local      # Compare current tree against latest release locally"
-    @echo "  just performance-local-non-exact # Compare current non-exact kernels locally"
-    @echo "  just performance-readme     # Publish retained release data to README assets/table"
-    @echo "  just performance-release    # Measure, retain, and publish release docs"
-    @echo ""
-    @echo "Benchmark plotting:"
-    @echo "  just plot-vs-linalg         # Plot Criterion results (CSV + SVG + provenance)"
-    @echo ""
-    @echo "Changelog & releases:"
-    @echo "  just changelog              # Regenerate CHANGELOG.md from full history"
-    @echo "  just changelog-preview       # Preview generation without writing"
-    @echo "  just changelog-release <tag> <date>  # Generate a release with an explicit date"
-    @echo "  just changelog-unreleased <tag> <date>  # Alias for changelog-release"
-    @echo "  just changelog-archive       # Rotate existing changelog history"
-    @echo "  just changelog-check         # Validate root and archived release notes"
-    @echo "  just release-notes <tag>     # Print root or archived release notes"
-    @echo "  just tag <ver>              # Create annotated tag from CHANGELOG.md"
-    @echo "  just tag-force <ver>        # Recreate an existing tag"
-    @echo "  just update-version <tag>       # Update release metadata and infer the previous tag"
-    @echo ""
-    @echo "Setup:"
-    @echo "  just setup             # Install declared tools, sync dev, and build"
-    @echo "  just setup-tools       # Install/verify external tooling"
-    @echo "  just update            # Update dependencies and repository-owned tool pins"
-    @echo ""
-    @echo "Testing:"
-    @echo "  just coverage          # Generate coverage report (HTML)"
-    @echo "  just coverage-ci       # Generate coverage for CI (XML)"
-    @echo "  just examples          # Run examples"
-    @echo "  just test              # Lib + doc tests (fast)"
-    @echo "  just test-all          # All tests (Rust + Python)"
-    @echo "  just test-bench-inputs # Benchmark input smoke tests"
-    @echo "  just test-doc          # Default-feature doctests"
-    @echo "  just test-exact        # Exact-feature tests and doctests"
-    @echo "  just test-integration  # Integration tests"
-    @echo "  just test-python       # Python tests only (pytest)"
-    @echo "  just test-rust-ci      # Release-profile unit + integration CI bucket"
-    @echo "  just test-unit         # Library unit tests"
-    @echo ""
-    @echo "Note: Some recipes require external tools. Run 'just setup-tools' (tooling) or 'just setup' (full env) first."
-
 # File validation
-json-check: validate-json
-
 # Keep the command-memory layer itself canonically formatted.
 justfile-fmt-check:
     just --fmt --check
 
-# Lint groups (delaunay-style)
+# Check code, documentation, and configuration without changing sources.
 lint: lint-code lint-docs lint-config
 
+# Check Rust, Python, and shell code without changing sources.
 lint-code: rust-core-check python-check shell-check
 
-lint-config: json-check toml-ci yaml-ci github-actions-check justfile-fmt-check
+# Check JSON, TOML, YAML, workflow security, and Just formatting.
+lint-config: validate-json toml-check yaml-check github-actions-check justfile-fmt-check
 
+# Check Markdown, spelling, release metadata, and generated changelogs.
 lint-docs: markdown-ci docs-version-check changelog-check
 
-# Markdown
+# Check active Markdown formatting, local links, and line lengths.
 markdown-check: tools-check _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
@@ -404,9 +341,11 @@ markdown-check: tools-check _ensure-uv
         echo "No markdown files found to check."
     fi
 
+# Check active Markdown and spelling without changing files.
 markdown-ci: markdown-check spell-check
     @echo "✅ Markdown checks complete!"
 
+# Format active Markdown files; preserve generated and archived records.
 markdown-fix: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
@@ -425,8 +364,6 @@ markdown-fix: tools-check
     else
         echo "No markdown files found to format."
     fi
-
-markdown-lint: markdown-check
 
 # Build release docs from retained scratch inputs or the latest docs/performance snapshot.
 performance-doc: python-sync
@@ -507,28 +444,35 @@ plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_
     fi
     {{ _run }} uv run --locked criterion-dim-plot "${args[@]}"
 
-# Python tooling (uv)
+# Check Python formatting, lint, fixtures, and types.
 python-check: python-format-check python-lint python-fixture-lint python-typecheck
 
+# Check Python tooling and run its consumer integration tests.
 python-ci: python-format-check python-lint python-fixture-lint python-typecheck test-python
     @echo "✅ Python checks complete!"
 
+# Apply Python lint fixes and formatting.
 python-fix: python-sync
     uv run --locked ruff check scripts/ --fix
     uv run --locked ruff format scripts/ tests/semgrep/scripts/
 
-python-format-check: python-sync
-    uv run --locked ruff format --check scripts/ tests/semgrep/scripts/
-
-python-lint: python-sync
-    uv run --locked ruff check scripts/
-
+# Lint deliberate Python fixtures with their declared exceptions.
 python-fixture-lint: python-sync
     uv run --locked ruff check tests/semgrep/scripts/
 
+# Check Python formatting, including static-analysis fixtures.
+python-format-check: python-sync
+    uv run --locked ruff format --check scripts/ tests/semgrep/scripts/
+
+# Lint Python support tools and their tests.
+python-lint: python-sync
+    uv run --locked ruff check scripts/
+
+# Synchronize the locked Python development environment.
 python-sync: _ensure-uv
     uv sync --locked --group dev
 
+# Check all Python support and fixture types; fail on every diagnostic.
 python-typecheck: python-sync
     uv run --locked ty check scripts/ tests/semgrep/scripts/ --error all
 
@@ -544,19 +488,16 @@ review base="origin/main":
 review-uncommitted:
     uv run --locked --group dev research-repo-tools review uncommitted
 
-# Run the shared dependency and full-history secret scans.
-security: security-osv security-secrets
+# Check library contracts, docs, static analysis, and dependencies.
+rust-core-check: cargo-lock-check fmt-check clippy-core doc-check semgrep semgrep-test unused-deps
+    @echo "✅ Rust core checks complete!"
 
-# Audit the repository's Python and Rust lockfiles with the managed OSV scanner.
-security-osv:
-    uv run --locked --group dev research-repo-tools security osv uv.lock Cargo.lock
+# Run the shared dependency and full-history secret scans.
+security: audit security-secrets
 
 # Scan reachable Git history and current tracked/nonignored files with redacted reports.
 security-secrets:
     uv run --locked --group dev research-repo-tools security secrets
-
-rust-core-check: cargo-lock-check fmt-check clippy-core doc-check semgrep semgrep-test unused-deps
-    @echo "✅ Rust core checks complete!"
 
 # Repository-owned Semgrep rules for project-specific diagnostics.
 semgrep: _ensure-uv
@@ -575,15 +516,7 @@ setup: _ensure-gh _ensure-jq
 setup-tools: _ensure-gh _ensure-jq
     uv run --locked --managed-python --only-group tooling research-repo-tools setup
 
-# Check installed tools without synchronization, downloads, or installation.
-tools-check:
-    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain check
-
-# Export verified managed paths to GITHUB_ENV in hosted workflows.
-tools-export:
-    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain export
-
-# Shell scripts
+# Check shell script lint and formatting.
 shell-check: _ensure-shellcheck _ensure-shfmt
     #!/usr/bin/env bash
     set -euo pipefail
@@ -600,9 +533,8 @@ shell-check: _ensure-shellcheck _ensure-shfmt
         echo "No shell files found to check."
     fi
 
-shell-fix: shell-fmt
-
-shell-fmt: _ensure-shfmt
+# Format maintained shell scripts.
+shell-fix: _ensure-shfmt
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -617,8 +549,6 @@ shell-fmt: _ensure-shfmt
     else
         echo "No shell files found to format."
     fi
-
-shell-lint: shell-check
 
 # Spell check (typos)
 spell-check: tools-check
@@ -647,9 +577,10 @@ tag version: python-sync
 tag-force version: python-sync
     uv run --locked --group dev research-repo-tools changelog tag {{ quote(version) }} --force
 
-# Testing: runnable Rust tests use nextest; rustdoc doctests remain on cargo test.
-test: test-lib test-doc
+# Run library unit tests and default-feature doctests.
+test: test-unit test-doc
 
+# Run all Rust tests, doctests, and Python integration tests.
 test-all: test-rust test-python
     @echo "✅ All tests passed"
 
@@ -657,9 +588,11 @@ test-all: test-rust test-python
 test-bench-inputs: tools-check
     {{ _run }} cargo nextest run --workspace --profile ci --features bench,exact --test vs_linalg_inputs --test exact_bench_config --verbose
 
+# Run default-feature Rust doctests.
 test-doc:
     {{ _run }} cargo test --doc --verbose
 
+# Run Rust doctests with exact arithmetic enabled.
 test-doc-exact:
     {{ _run }} cargo test --features exact --doc --verbose
 
@@ -667,6 +600,7 @@ test-doc-exact:
 test-exact: tools-check test-doc-exact
     {{ _run }} cargo nextest run --profile ci --features exact --verbose
 
+# Run Rust integration tests with nextest.
 test-integration: tools-check
     {{ _run }} cargo nextest run --profile ci --tests --verbose
 
@@ -674,12 +608,11 @@ test-integration: tools-check
 test-integration-compile: tools-check
     {{ _run }} cargo nextest run --all-features --tests --no-run
 
-test-lib: tools-check
-    {{ _run }} cargo nextest run --profile ci --lib --verbose
-
+# Run Python consumer integration and benchmark-policy tests.
 test-python: tools-check python-sync
     {{ _run }} uv run --locked pytest -q
 
+# Run all runnable Rust tests and both doctest configurations.
 test-rust: test-rust-ci test-doc test-doc-exact
     @echo "✅ Rust tests passed"
 
@@ -687,17 +620,15 @@ test-rust: test-rust-ci test-doc test-doc-exact
 test-rust-ci: tools-check
     {{ _run }} cargo nextest run --workspace --release --profile ci --all-features --lib --tests --verbose
 
-test-unit: test-lib
+# Run library unit tests with nextest.
+test-unit: tools-check
+    {{ _run }} cargo nextest run --profile ci --lib --verbose
 
-# TOML
+# Check TOML parsing, formatting, and lint without changing files.
 toml-check: toml-parse-check toml-fmt-check toml-lint
 
-toml-ci: toml-check
-    @echo "✅ TOML checks complete!"
-
-toml-fix: toml-fmt
-
-toml-fmt: tools-check
+# Format maintained TOML files.
+toml-fix: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
@@ -712,6 +643,7 @@ toml-fmt: tools-check
         echo "No TOML files found to format."
     fi
 
+# Check TOML formatting without changing files.
 toml-fmt-check: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
@@ -727,6 +659,7 @@ toml-fmt-check: tools-check
         echo "No TOML files found to check."
     fi
 
+# Lint maintained TOML files.
 toml-lint: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
@@ -758,6 +691,14 @@ toml-parse-check: python-sync
         echo "No TOML files found to parse."
     fi
 
+# Check installed tools without synchronization, downloads, or installation.
+tools-check:
+    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain check
+
+# Export verified managed paths to GITHUB_ENV in hosted workflows.
+tools-export:
+    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain export
+
 # Check for unused direct Cargo dependencies.
 unused-deps: tools-check
     {{ _run }} cargo machete
@@ -766,12 +707,10 @@ unused-deps: tools-check
 update: update-tools update-dependencies
     @echo "✅ Repository dependencies and tools updated."
 
-# Upgrade uv through its owner, then declared Cargo tools, then synchronize setup.
-update-tools: update-uv update-cargo-tools setup-tools
-
-# Bootstrap outside the project's old uv-version requirement; do not sync here.
-update-uv:
-    uv run --no-config --no-sync --no-python-downloads research-repo-tools deps update-uv
+# num-bigint and num-rational share public types and must advance together.
+update-cargo-dependencies:
+    uv run --locked --only-group tooling --inexact research-repo-tools toolchain run -- cargo upgrade --incompatible allow --exclude num-bigint --exclude num-rational
+    uv run --locked --only-group tooling --inexact research-repo-tools toolchain run -- cargo update
 
 # Upgrade only declared managed Cargo tools and publish verified TOML pins.
 update-cargo-tools:
@@ -779,11 +718,6 @@ update-cargo-tools:
 
 # Dependency-only updates leave uv and managed Cargo tool pins unchanged.
 update-dependencies: update-cargo-dependencies update-python-dependencies
-
-# num-bigint and num-rational share public types and must advance together.
-update-cargo-dependencies:
-    uv run --locked --only-group tooling --inexact research-repo-tools toolchain run -- cargo upgrade --incompatible allow --exclude num-bigint --exclude num-rational
-    uv run --locked --only-group tooling --inexact research-repo-tools toolchain run -- cargo update
 
 # Advance direct dev pins, refresh the whole lock, and explicitly synchronize dev.
 update-python-dependencies:
@@ -793,12 +727,20 @@ update-python-dependencies:
 
 alias update-python-deps := update-python-dependencies
 
+# Upgrade uv through its owner, then declared Cargo tools, then synchronize setup.
+update-tools: update-uv update-cargo-tools setup-tools
+
+# Bootstrap outside the project's old uv-version requirement; do not sync here.
+update-uv:
+    uv run --no-config --no-sync --no-python-downloads research-repo-tools deps update-uv
+
 # Update deterministic release metadata, inferring the previous stable published GitHub release.
 [doc('Update package, citation, lockfile, and non-artifact documentation release versions.')]
 [positional-arguments]
 update-version tag *args: _ensure-gh python-sync
     {{ _run }} research-repo-tools release update "$@"
 
+# Check maintained JSON syntax.
 validate-json: _ensure-jq
     #!/usr/bin/env bash
     set -euo pipefail
@@ -814,12 +756,10 @@ validate-json: _ensure-jq
         echo "No JSON files found to validate."
     fi
 
-# YAML
+# Check YAML and CFF formatting and lint.
 yaml-check: yaml-fmt-check yaml-lint
 
-yaml-ci: yaml-check citation-check
-    @echo "✅ YAML/CFF checks complete!"
-
+# Format maintained YAML and CFF files.
 yaml-fix: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
@@ -835,6 +775,7 @@ yaml-fix: tools-check
         echo "No YAML files found to format."
     fi
 
+# Check YAML and CFF formatting without changing files.
 yaml-fmt-check: tools-check
     #!/usr/bin/env bash
     set -euo pipefail
@@ -850,6 +791,7 @@ yaml-fmt-check: tools-check
         echo "No YAML files found to check."
     fi
 
+# Lint maintained YAML and CFF files.
 yaml-lint: _ensure-yamllint
     #!/usr/bin/env bash
     set -euo pipefail
@@ -866,6 +808,7 @@ yaml-lint: _ensure-yamllint
         echo "No YAML files found to lint."
     fi
 
-# GitHub Actions security analysis
-zizmor: tools-check
-    @{{ _run }} bash scripts/run_zizmor.sh
+# Audit workflows with the declared scanner and shared authentication policy.
+[positional-arguments]
+zizmor *args:
+    uv run --locked --group dev research-repo-tools zizmor check "$@"
