@@ -30,7 +30,7 @@ rumdl_version := "0.2.78"
 sarif_fmt_version := "0.8.0"
 taplo_version := "0.10.0"
 typos_version := "1.50.3"
-uv_version := "0.12.19"
+uv_version := "0.12.21"
 zizmor_version := "1.30.1"
 
 # Internal helpers: ensure external tooling is installed
@@ -502,6 +502,10 @@ help-workflows:
     @echo "  just fix               # Apply formatters/auto-fixes (mutating)"
     @echo "  just setup             # Install/verify dev tools + sync Python deps"
     @echo ""
+    @echo "CodeRabbit review (opt-in):"
+    @echo "  just review [base]     # Review branch and local changes; verify origin/main by default"
+    @echo "  just review-uncommitted # Review only local changes, including untracked files"
+    @echo ""
     @echo "Benchmarks:"
     @echo "  just bench                 # Run benchmarks"
     @echo "  just bench-compile          # Compile benches with warnings-as-errors"
@@ -725,6 +729,14 @@ python-typecheck: python-sync
 # Print release notes from the root changelog or a completed minor archive.
 release-notes tag: python-sync
     uv run --locked --group dev research-repo-tools changelog notes {{ quote(tag) }}
+
+# Review branch and local changes against a verified origin/main, or an explicit local base.
+review base="origin/main":
+    uv run --locked --group dev research-repo-tools review branch --base={{ quote(base) }}
+
+# Review staged, unstaged, and non-ignored untracked changes without a remote lookup.
+review-uncommitted:
+    uv run --locked --group dev research-repo-tools review uncommitted
 
 rust-core-check: cargo-lock-check fmt-check clippy-core doc-check semgrep semgrep-test unused-deps
     @echo "✅ Rust core checks complete!"
