@@ -428,7 +428,8 @@ def test_complete_summaries_reject_duplicate_criterion_identities(tmp_path: Path
         collect_measurements(tmp_path, "v0.4.5")
 
 
-def test_apply_current_diff_includes_only_tracked_changes_without_mutating_index(tmp_path: Path) -> None:
+@pytest.mark.parametrize("line_ending", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_apply_current_diff_includes_only_tracked_changes_without_mutating_index(tmp_path: Path, line_ending: str) -> None:
     repo_root = tmp_path / "repo"
     worktree = tmp_path / "worktree"
     repo_root.mkdir()
@@ -436,17 +437,18 @@ def test_apply_current_diff_includes_only_tracked_changes_without_mutating_index
     _git(repo_root, "config", "user.name", "Test User")
     _git(repo_root, "config", "user.email", "test@example.com")
     _git(repo_root, "config", "commit.gpgsign", "false")
+    _git(repo_root, "config", "core.autocrlf", "false")
 
     (repo_root / ".gitignore").write_text("ignored.bin\n", encoding="utf-8")
     tracked = repo_root / "tracked.txt"
-    tracked.write_text("committed\n", encoding="utf-8")
+    tracked.write_text("committed\n", encoding="utf-8", newline=line_ending)
     _git(repo_root, "add", "--", ".gitignore", "tracked.txt")
     _git(repo_root, "commit", "--quiet", "-m", "initial")
     _git(repo_root, "worktree", "add", "--quiet", "--detach", str(worktree), "HEAD")
 
-    tracked.write_text("staged\n", encoding="utf-8")
+    tracked.write_text("staged\n", encoding="utf-8", newline=line_ending)
     _git(repo_root, "add", "--", "tracked.txt")
-    tracked.write_text("working tree\n", encoding="utf-8")
+    tracked.write_text("working tree\n", encoding="utf-8", newline=line_ending)
     binary_payload = bytes(range(256)) * 2
     binary = repo_root / "--untracked.bin"
     binary.write_bytes(binary_payload)
@@ -460,11 +462,11 @@ def test_apply_current_diff_includes_only_tracked_changes_without_mutating_index
     status_before = _git(repo_root, "status", "--porcelain=v1", "--untracked-files=all")
     archive_performance._apply_current_diff_to_worktree(repo_root=repo_root, worktree=worktree)
 
-    assert (worktree / "tracked.txt").read_text(encoding="utf-8") == "working tree\n"
+    assert (worktree / "tracked.txt").read_bytes() == f"working tree{line_ending}".encode()
     assert not (worktree / binary.name).exists()
     assert not (worktree / link.name).exists()
     assert not (worktree / "ignored.bin").exists()
-    assert _git(repo_root, "show", ":tracked.txt") == "staged\n"
+    assert _git(repo_root, "show", ":tracked.txt") == f"staged{line_ending}"
     assert _git(repo_root, "status", "--porcelain=v1", "--untracked-files=all") == status_before
 
 
