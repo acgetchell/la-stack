@@ -5,13 +5,15 @@ import hashlib
 import io
 import json
 from collections.abc import Mapping
-from pathlib import Path
 from types import MappingProxyType
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 import performance_artifacts
+
+if TYPE_CHECKING:
+    from pathlib import Path
 from archive_performance import render_and_promote_artifacts
 from benchmark_summaries import full_summary_paths, resolve_report_paths, retained_outputs, summary_outputs
 from performance_artifacts import (
@@ -22,9 +24,9 @@ from performance_artifacts import (
     ReleasePair,
     ReportSource,
     TimingEstimate,
+    bundle_outputs,
     load_bundle,
     load_bundle_bytes,
-    publish_bundle,
     serialize_bundle,
     write_bundle,
 )
@@ -234,12 +236,6 @@ def _replace_csv_and_digest(csv_payload: bytes, provenance_payload: bytes) -> tu
     provenance = json.loads(provenance_payload)
     provenance["csv"]["sha256"] = hashlib.sha256(csv_payload).hexdigest()
     return csv_payload, (json.dumps(provenance, indent=2, sort_keys=True) + "\n").encode()
-
-
-def _simulate_promotion_failure(paths: ArtifactPaths) -> None:
-    with publish_bundle(paths, _bundle(current_value=7.0)):
-        msg = "simulated promotion failure"
-        raise RuntimeError(msg)
 
 
 def _write_outputs(outputs: dict[Path, str]) -> None:
@@ -619,7 +615,7 @@ def test_bundle_rejects_duplicate_benchmark_keys() -> None:
 
 @pytest.mark.parametrize("value", [0.0, -1.0, float("inf"), float("nan")])
 def test_timing_rejects_non_positive_or_non_finite_values(value: float) -> None:
-    with pytest.raises(ValueError, match="must be finite and positive"):
+    with pytest.raises(ValueError, match="finite positive number"):
         TimingEstimate(median_ns=value, ci_lower_ns=1.0, ci_upper_ns=2.0)
 
 
@@ -630,7 +626,7 @@ def test_timing_accepts_ordered_bootstrap_interval_that_excludes_point_estimate(
 
 
 def test_timing_rejects_reversed_interval() -> None:
-    with pytest.raises(ValueError, match="confidence interval must be ordered"):
+    with pytest.raises(ValueError, match="lower bound exceeds upper bound"):
         TimingEstimate(median_ns=10.0, ci_lower_ns=11.0, ci_upper_ns=9.0)
 
 
@@ -698,114 +694,25 @@ def test_artifact_loader_fails_closed_on_partial_pair(tmp_path: Path) -> None:
         load_bundle(paths)
 
 
-def test_stage_payload_removes_temporary_file_when_fsync_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    target = tmp_path / "performance.csv"
+def test_bundle_candidates_round_trip_without_publishing(tmp_path: Path) -> None:
+    paths = ArtifactPaths(csv=tmp_path / "performance.csv", provenance=tmp_path / "performance.provenance.json")
+    bundle = _bundle()
+    outputs = bundle_outputs(paths, bundle)
 
-    def fail_fsync(_descriptor: int) -> None:
-        msg = "simulated fsync failure"
-        raise OSError(msg)
-
-    monkeypatch.setattr(performance_artifacts.os, "fsync", fail_fsync)
-
-    with pytest.raises(OSError, match="simulated fsync failure"):
-        performance_artifacts._stage_payload(target, b"payload")
-
-    assert not list(tmp_path.glob(".performance.csv.*.tmp"))
-
-
-def test_failed_second_stage_removes_first_temporary_file(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    paths = ArtifactPaths(
-        csv=tmp_path / "performance.csv",
-        provenance=tmp_path / "performance.provenance.json",
-    )
-    real_stage_payload = performance_artifacts._stage_payload
-
-    def fail_provenance_stage(path: Path, payload: bytes) -> Path:
-        if path == paths.provenance:
-            msg = "simulated provenance staging failure"
-            raise OSError(msg)
-        return real_stage_payload(path, payload)
-
-    monkeypatch.setattr(performance_artifacts, "_stage_payload", fail_provenance_stage)
-
-    with pytest.raises(OSError, match="simulated provenance staging failure"):
-        write_bundle(paths, _bundle())
-
-    assert not list(tmp_path.glob(".performance.csv.*.tmp"))
     assert not paths.csv.exists()
     assert not paths.provenance.exists()
-
-
-def test_failed_second_replace_restores_prior_valid_pair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    paths = ArtifactPaths(
-        csv=tmp_path / "performance.csv",
-        provenance=tmp_path / "performance.provenance.json",
+    assert load_bundle_bytes(outputs[paths.csv], outputs[paths.provenance], source="candidates") == PerformanceBundle(
+        context=bundle.context, rows=bundle.sorted_rows
     )
-    original = _bundle(current_value=8.0)
-    write_bundle(paths, original)
-    real_replace = performance_artifacts._replace_path
-    failed = False
-
-    def fail_provenance_once(source: Path, destination: Path) -> None:
-        nonlocal failed
-        if Path(destination) == paths.provenance and not failed:
-            failed = True
-            msg = "simulated provenance replace failure"
-            raise OSError(msg)
-        real_replace(source, destination)
-
-    monkeypatch.setattr(performance_artifacts, "_replace_path", fail_provenance_once)
-
-    with pytest.raises(OSError, match="simulated provenance replace failure"):
-        write_bundle(paths, _bundle(current_value=7.0))
-
-    assert load_bundle(paths) == PerformanceBundle(context=original.context, rows=original.sorted_rows)
 
 
-def test_downstream_promotion_failure_rolls_back_artifact_pair(tmp_path: Path) -> None:
-    paths = ArtifactPaths(
-        csv=tmp_path / "performance.csv",
-        provenance=tmp_path / "performance.provenance.json",
-    )
-    original = _bundle(current_value=8.0)
-    write_bundle(paths, original)
+def test_shared_publication_rejects_invalid_pair_before_replacing_csv(tmp_path: Path) -> None:
+    paths = ArtifactPaths(csv=tmp_path / "performance.csv", provenance=tmp_path / "performance.provenance.json")
+    paths.csv.write_bytes(b"original CSV")
+    paths.provenance.mkdir()
 
-    with pytest.raises(RuntimeError, match="simulated promotion failure"):
-        _simulate_promotion_failure(paths)
+    with pytest.raises(IsADirectoryError):
+        write_bundle(paths, _bundle())
 
-    assert load_bundle(paths) == PerformanceBundle(context=original.context, rows=original.sorted_rows)
-
-
-def test_rollback_attempts_both_artifacts_when_first_restoration_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    paths = ArtifactPaths(
-        csv=tmp_path / "performance.csv",
-        provenance=tmp_path / "performance.provenance.json",
-    )
-    write_bundle(paths, _bundle(current_value=8.0))
-    real_restore = performance_artifacts._atomic_restore
-    restored: list[Path] = []
-
-    def fail_csv_restore(path: Path, payload: bytes | None) -> None:
-        restored.append(path)
-        if path == paths.csv:
-            msg = "simulated CSV restoration failure"
-            raise OSError(msg)
-        real_restore(path, payload)
-
-    monkeypatch.setattr(performance_artifacts, "_atomic_restore", fail_csv_restore)
-
-    with pytest.raises(BaseExceptionGroup, match="downstream publication and rollback failed") as raised:
-        _simulate_promotion_failure(paths)
-
-    assert restored == [paths.csv, paths.provenance]
-    assert any(isinstance(error, RuntimeError) for error in raised.value.exceptions)
-    assert any(isinstance(error, OSError) for error in raised.value.exceptions)
+    assert paths.csv.read_bytes() == b"original CSV"
+    assert paths.provenance.is_dir()

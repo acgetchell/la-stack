@@ -2,6 +2,10 @@ import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, Mock
 
+from research_repo_tools.process import run_command
+
+from benchmark_process import run_safe_command
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -28,16 +32,6 @@ def catches_specific_exception() -> None:
     # ok: la-stack.python.no-broad-exception
     except OSError:
         pass
-
-
-def raises_raw_exception() -> None:
-    # ruleid: la-stack.python.no-raw-exception-in-tests
-    raise Exception("too broad")
-
-
-def raises_specific_exception() -> None:
-    # ok: la-stack.python.no-raw-exception-in-tests
-    raise RuntimeError("specific failure")
 
 
 def implicit_path_read_text_encoding(path: Path) -> None:
@@ -89,11 +83,8 @@ def direct_subprocess_run() -> None:
     subprocess.run(["git", "status"], check=False)
 
 
-# ruleid: la-stack.python.no-untyped-defs-in-scripts
-def missing_return_annotation():  # noqa: ANN201 - intentional Semgrep violation fixture
-    return None
-
-
-# ok: la-stack.python.no-untyped-defs-in-scripts
-def explicit_return_annotation() -> None:
-    return None
+def shared_process_runners() -> None:
+    # ok: la-stack.python.no-direct-subprocess-run-outside-wrapper
+    run_command("git", ["status"], check=False)
+    # ok: la-stack.python.no-direct-subprocess-run-outside-wrapper
+    run_safe_command("git", ["status"], check=False)

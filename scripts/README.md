@@ -352,9 +352,10 @@ checks the actual release selectors, preserved scientific evidence, DOI policy,
 and recipe forwarding. `tests/test_cargo_update_integration.py` executes native
 Cargo upgrades against a disposable local registry; Python updates have a
 matching real-uv fixture in the toolchain tests. Common parser, transaction,
-Markdown, and fixture regressions belong to the shared package. Scientific,
-benchmark, and performance tooling remains consumer-owned. Notebook tooling
-remains outside scope.
+Markdown, and fixture regressions belong to the shared package. Scientific
+eligibility, benchmark orchestration, retained schemas, and report layouts remain
+consumer-owned. Shared performance primitives are adopted below.
+Notebook tooling remains outside scope.
 
 The same pinned release owns opt-in CodeRabbit review orchestration through
 `research-repo-tools review branch --base=REF` and `review uncommitted`.
@@ -400,9 +401,30 @@ Shared process discovery, execution, byte transport, CPU detection, diagnostics,
 and zizmor authentication belong to research-repo-tools. The former
 `subprocess_utils.py` and `run_zizmor.sh` implementations and their duplicated
 unit tests are removed. Consumer tests retain native adapter checks, benchmark
-contracts, caller file-policy coverage, and recipe forwarding. The remaining
-performance modules own la-stack's retained schemas, scientific eligibility,
-benchmark inventories, and report layouts; shared primitives are not a drop-in
-replacement for those contracts.
+contracts, caller file-policy coverage, and recipe forwarding.
+
+Performance scripts also use the published shared Criterion parser and estimate
+validation, comparison arithmetic, exact-byte digest verification, safe archive
+extraction, document marker replacement, and multi-file publication transaction.
+Raw Criterion numeric strings are rejected by the shared parser. Plotting and
+release publication still require complete confidence intervals; hosted baselines
+and full local summaries additionally require 100 samples and 95% intervals.
+README marker replacement preserves bytes outside the selected section.
+Publication candidates are fully rendered and validated before one transaction
+replaces the report, evidence, archive index, and retained summaries. Shared
+recovery errors identify preserved backups if rollback fails.
+
+The remaining modules own la-stack's historical CSV/JSON schemas and fingerprints,
+scientific eligibility, benchmark inventories, current-harness installation,
+release selection policy, complete run retention, and multi-library plot layout.
+Existing evidence keeps its schema and digest framing. Generic parser and
+transaction regressions belong upstream; consumer tests check retained-schema
+round trips, complete output groups, failure preservation, and scientific policy.
+The remaining workflow migration requires a published shared contract for common
+harnesses, configurable measurement completeness, and immutable per-run retention.
+[research-repo-tools#64](https://github.com/acgetchell/research-repo-tools/issues/64)
+tracks that contract;
+[la-stack#268](https://github.com/acgetchell/la-stack/issues/268) tracks adoption
+after publication.
 
 See `docs/RELEASING.md` for the full release workflow.

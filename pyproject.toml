@@ -77,8 +77,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "**/tests/test_*.py" = [ "S101", "SLF001", "D101", "D102", "D103" ]
 # Static-analysis fixtures intentionally contain the patterns these rules reject.
-"tests/semgrep/scripts/python_portability.py" = [ "D103", "INP001", "N813", "PLW1510", "S603", "S607", "SIM115", "UP020", "UP021" ]
-"tests/semgrep/scripts/tests/python_exceptions.py" = [ "BLE001", "D100", "D103", "EM101", "INP001", "S110", "S607", "SIM105", "TRY002" ]
+"tests/semgrep/scripts/python_portability.py" = [ "D103", "INP001", "N813", "PLW1510", "S603", "S607", "SIM115", "UP020" ]
+"tests/semgrep/scripts/tests/python_exceptions.py" = [ "BLE001", "D100", "D103", "EM101", "INP001", "S110", "S607", "SIM105" ]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
@@ -139,6 +139,8 @@ line-length = 160
 [tool.uv]
 package = true
 required-version = "==0.12.21"
+# Semgrep wheels bundle the native engine; building its sdist does not.
+no-build-package = [ "semgrep" ]
 # Semgrep 1.178.0 restricts PyJWT to 2.13.x; 2.15.1 contains the OSV fixes.
 # Keep crypto support while overriding that restriction until upstream updates it.
 override-dependencies = [ "pyjwt[crypto]>=2.15.1,<3" ]
@@ -149,7 +151,8 @@ dev = [
     { include-group = "tooling" },
     "actionlint-py==1.7.12.25",
     "pytest==9.1.1",
-    "ruff==0.16.9",
+    "ruff==0.16.10",
+    # 1.179.0 has no Windows wheel; its sdist omits semgrep-core.exe.
     "semgrep==1.178.0",
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.2.0",

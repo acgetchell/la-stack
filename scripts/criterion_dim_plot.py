@@ -24,12 +24,14 @@ import sys
 import tempfile
 import tomllib
 from collections.abc import Mapping
-from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Protocol, TypeGuard, cast
+from typing import Final, TypeGuard, cast
 
-from research_repo_tools.process import ExecutableNotFoundError, cpu_description
+from research_repo_tools.criterion import Statistic, read_estimate
+from research_repo_tools.files import replace_many
+from research_repo_tools.process import ExecutableNotFoundError, cpu_description, format_exception_diagnostics
+from research_repo_tools.publication import MarkerPair, replace_section
 
 from benchmark_contract import benchmark_contract_digest
 from benchmark_process import find_project_root, run_git_command, run_safe_command
@@ -126,46 +128,8 @@ class Row:
         _require_confidence_interval(self.fa_lo, self.fa_hi, "faer row")
 
 
-class ReadmeMarkerError(ValueError):
-    """Base error for invalid README BENCH_TABLE markers."""
-
-
-class MarkerNotFoundError(ReadmeMarkerError):
-    """Raised when README markers are missing or not unique."""
-
-
-class MarkerOrderError(ReadmeMarkerError):
-    """Raised when README markers are out of order."""
-
-
 class ReadmeBenchmarkLinkError(ValueError):
     """Raised when canonical README benchmark artifact links are incomplete."""
-
-
-class PublicationRollbackError(RuntimeError):
-    """Raised when artifact publication fails and rollback is incomplete."""
-
-
-class _ReadmeArgs(Protocol):
-    @property
-    def update_readme(self) -> bool: ...
-
-    @property
-    def readme(self) -> str: ...
-
-    @property
-    def metric(self) -> str: ...
-
-    @property
-    def stat(self) -> str: ...
-
-    @property
-    def sample(self) -> str: ...
-
-
-class _RenderArgs(Protocol):
-    @property
-    def no_plot(self) -> bool: ...
 
 
 type ParsedObject = dict[str, object]
@@ -338,57 +302,10 @@ def _format_legend_label(name: str, version: str) -> str:
 
 
 def _read_estimate(estimates_json: Path, stat: str) -> tuple[float, float, float]:
-    data = _read_json_object(estimates_json)
-
-    stat_obj = data.get(stat)
-    if not _is_parsed_object(stat_obj):
-        raise KeyError(f"stat '{stat}' not found in {estimates_json}")
-
-    point = _read_numeric_field(stat_obj, "point_estimate", estimates_json, stat)
-    if "confidence_interval" not in stat_obj:
-        msg = f"field 'confidence_interval' for stat '{stat}' not found in {estimates_json}"
-        raise KeyError(msg)
-    ci = stat_obj["confidence_interval"]
-    if not _is_parsed_object(ci):
-        msg = f"field 'confidence_interval' for stat '{stat}' in {estimates_json} is not an object"
-        raise TypeError(msg)
-
-    lo = _read_numeric_field(ci, "lower_bound", estimates_json, stat)
-    hi = _read_numeric_field(ci, "upper_bound", estimates_json, stat)
-    _require_confidence_interval(lo, hi, f"{stat}.confidence_interval in {estimates_json}")
-    return (point, lo, hi)
-
-
-def _read_json_object(path: Path) -> ParsedObject:
-    try:
-        data: object = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as err:
-        msg = f"malformed Criterion estimates JSON in {path}: {err}"
-        raise ValueError(msg) from err
-    return _require_parsed_object(data, str(path))
-
-
-def _read_numeric_field(
-    obj: ParsedObject,
-    field: str,
-    estimates_json: Path,
-    stat: str,
-) -> float:
-    if field not in obj:
-        msg = f"field '{field}' for stat '{stat}' not found in {estimates_json}"
-        raise KeyError(msg)
-
-    value = obj[field]
-    if isinstance(value, bool) or not isinstance(value, int | float | str):
-        msg = f"field '{field}' for stat '{stat}' in {estimates_json} is not numeric: {value!r}"
-        raise TypeError(msg)
-
-    try:
-        parsed = float(value)
-    except (OverflowError, ValueError) as err:
-        msg = f"field '{field}' for stat '{stat}' in {estimates_json} is not numeric: {value!r}"
-        raise ValueError(msg) from err
-    return _require_positive_finite_time(parsed, f"{stat}.{field} in {estimates_json}")
+    estimate = read_estimate(estimates_json, statistic=cast("Statistic", stat))
+    if estimate.lower is None or estimate.upper is None:
+        raise ValueError(f"{estimates_json}: plotted estimates require a complete confidence interval")
+    return estimate.point, estimate.lower, estimate.upper
 
 
 def _require_positive_finite_time(value: float, context: str) -> float:
@@ -440,32 +357,11 @@ def _readme_table_markers(metric: str, stat: str, sample: str) -> tuple[str, str
 
 
 def _update_readme_table(readme_path: Path, marker_begin: str, marker_end: str, table_md: str) -> bool:
-    lines = readme_path.read_text(encoding="utf-8").splitlines(keepends=True)
-
-    begin_indices = [i for i, line in enumerate(lines) if line.strip() == marker_begin]
-    end_indices = [i for i, line in enumerate(lines) if line.strip() == marker_end]
-
-    if len(begin_indices) != 1 or len(end_indices) != 1:
-        msg = f"README markers not found or not unique (begin={len(begin_indices)}, end={len(end_indices)})."
-        raise MarkerNotFoundError(msg)
-
-    begin_idx = begin_indices[0]
-    end_idx = end_indices[0]
-    if begin_idx >= end_idx:
-        msg = "README markers are out of order."
-        raise MarkerOrderError(msg)
-
-    table_lines = ["\n", *[line + "\n" for line in table_md.strip("\n").splitlines()], "\n"]
-    new_lines = [
-        *lines[: begin_idx + 1],
-        *table_lines,
-        *lines[end_idx:],
-    ]
-
-    if new_lines == lines:
+    original = readme_path.read_bytes()
+    updated = replace_section(original, MarkerPair(marker_begin, marker_end), table_md)
+    if updated == original:
         return False
-
-    readme_path.write_text("".join(new_lines), encoding="utf-8", newline="\n")
+    replace_many({readme_path: updated})
     return True
 
 
@@ -1196,76 +1092,14 @@ def _validate_publication_paths(root: Path, args: PlotCliArgs, *, out_svg: Path,
     return 0
 
 
-def _changed_staged_files(pairs: list[tuple[Path, Path]]) -> list[tuple[Path, Path]]:
-    """Return staged files whose destination bytes differ or do not exist."""
-    changed_pairs: list[tuple[Path, Path]] = []
-    for staged, destination in pairs:
-        if destination.is_file() and staged.read_bytes() == destination.read_bytes():
-            continue
-        changed_pairs.append((staged, destination))
-    return changed_pairs
-
-
-def _replace_staged_files(pairs: list[tuple[Path, Path]], backup_dir: Path) -> None:
-    """Replace a group of publication files and roll back on any failure."""
-    changed_pairs = _changed_staged_files(pairs)
-    backups: dict[Path, Path | None] = {}
-    for index, (_staged, destination) in enumerate(changed_pairs):
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.is_file():
-            backup = backup_dir / f"backup-{index}"
-            shutil.copy2(destination, backup)
-            backups[destination] = backup
-        elif destination.exists():
-            msg = f"publication destination is not a regular file: {destination}"
-            raise ValueError(msg)
-        else:
-            backups[destination] = None
-
-    replaced: list[Path] = []
+def _publish_staged_files(pairs: list[tuple[Path, Path]]) -> bool:
+    """Publish the complete CSV/SVG/provenance/README group through the shared API."""
     try:
-        for staged, destination in changed_pairs:
-            staged.replace(destination)
-            replaced.append(destination)
-    except OSError as primary:
-        rollback_errors: list[str] = []
-        for destination in reversed(replaced):
-            backup = backups[destination]
-            try:
-                if backup is None:
-                    destination.unlink(missing_ok=True)
-                else:
-                    backup.replace(destination)
-            except OSError as rollback:
-                rollback_errors.append(f"could not restore {destination}: {rollback}")
-        if rollback_errors:
-            msg = f"artifact replacement failed ({primary}); rollback failed: {'; '.join(rollback_errors)}; backups preserved at {backup_dir}"
-            raise PublicationRollbackError(msg) from primary
-        raise
-
-
-def _remove_publication_backup(backup_dir: Path) -> None:
-    """Clean up an unneeded backup without masking the publication outcome."""
-    try:
-        shutil.rmtree(backup_dir)
-    except OSError as exc:
-        print(f"Warning: could not remove artifact backup {backup_dir}: {exc}", file=sys.stderr)
-
-
-def _publish_staged_files(pairs: list[tuple[Path, Path]], root: Path) -> bool:
-    """Publish staged files together, preserving backups after rollback failure."""
-    backup_dir = Path(tempfile.mkdtemp(prefix=".criterion-dim-plot-backup-", dir=root))
-    with ExitStack() as cleanup:
-        cleanup.callback(_remove_publication_backup, backup_dir)
-        try:
-            _replace_staged_files(pairs, backup_dir)
-        except PublicationRollbackError as exc:
-            cleanup.pop_all()
-            print(f"could not publish benchmark artifacts atomically: {exc}", file=sys.stderr)
-            return False
-        except (OSError, ValueError) as exc:
-            print(f"could not publish benchmark artifacts atomically: {exc}", file=sys.stderr)
-            return False
+        outputs = {destination: staged.read_bytes() for staged, destination in pairs}
+        replace_many({path: payload for path, payload in outputs.items() if path.is_symlink() or not path.is_file() or path.read_bytes() != payload})
+    except (OSError, ValueError, ExceptionGroup) as exc:
+        print(f"could not publish benchmark artifacts: {format_exception_diagnostics(exc)}", file=sys.stderr)
+        return False
     return True
 
 
@@ -1289,12 +1123,12 @@ def _update_staged_readme_publication(
         msg = f"{root / 'Cargo.toml'} has no string package version"
         raise ReadmeBenchmarkLinkError(msg)
     updated_readme = _replace_readme_benchmark_asset_versions(
-        staged_readme.read_text(encoding="utf-8"),
+        staged_readme.read_bytes().decode("utf-8"),
         metric=args.metric,
         stat=args.stat,
         version=package_version,
     )
-    staged_readme.write_text(updated_readme, encoding="utf-8", newline="\n")
+    staged_readme.write_bytes(updated_readme.encode("utf-8"))
 
 
 def _stage_and_publish_outputs(  # noqa: PLR0913
@@ -1352,7 +1186,7 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
                 return 2
             pairs.append((staged_readme, readme_path))
 
-        if not _publish_staged_files(pairs, root):
+        if not _publish_staged_files(pairs):
             return 2
 
     if skipped:
@@ -1365,49 +1199,6 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
     print(f"Wrote provenance: {final_provenance}")
     if args.update_readme:
         print(f"Updated README benchmark publication: {_resolve_under_root(root, args.readme)}")
-    return 0
-
-
-def _maybe_update_readme(root: Path, args: _ReadmeArgs, rows: list[Row]) -> int:
-    if not args.update_readme:
-        return 0
-
-    readme_path = _resolve_under_root(root, args.readme)
-
-    marker_begin, marker_end = _readme_table_markers(args.metric, args.stat, args.sample)
-    table_md = _markdown_table(rows, args.stat)
-
-    try:
-        changed = _update_readme_table(readme_path, marker_begin, marker_end, table_md)
-    except (OSError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        return 2
-
-    if changed:
-        print(f"Updated README table: {readme_path}")
-
-    return 0
-
-
-def _maybe_render_plot(args: _RenderArgs, req: PlotRequest, skipped: list[str]) -> int:
-    if args.no_plot:
-        print(f"Wrote CSV: {req.csv_path}")
-        return 0
-
-    try:
-        _render_svg_with_gnuplot(req)
-    except (FileNotFoundError, subprocess.CalledProcessError) as e:
-        print(str(e), file=sys.stderr)
-        print(f"Wrote CSV instead: {req.csv_path}", file=sys.stderr)
-        return 1
-
-    if skipped:
-        print("Warning: some dimension groups were skipped:")
-        for s in skipped:
-            print(f"  - {s}")
-
-    print(f"Wrote CSV: {req.csv_path}")
-    print(f"Wrote SVG: {req.out_svg}")
     return 0
 
 

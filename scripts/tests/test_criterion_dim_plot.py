@@ -1,6 +1,5 @@
 """Tests for Criterion dimension-report generation and README updates."""
 
-import argparse
 import hashlib
 import json
 import re
@@ -8,8 +7,9 @@ import shutil
 import subprocess
 import tomllib
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import pytest
 
@@ -26,9 +26,6 @@ from performance_artifacts import (
     load_bundle,
     write_bundle,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _OVERFLOWING_TIMING = 10**400
 
@@ -144,41 +141,11 @@ def test_gp_quote_escapes_backslashes_and_quotes() -> None:
     assert criterion_dim_plot._gp_quote("a\\'b") == "'a\\\\\\'b'"
 
 
-def test_maybe_render_plot_handles_gnuplot_failure(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    # Simulate gnuplot existing but failing to run (CalledProcessError).
-    def boom(_req: object) -> None:
-        raise criterion_dim_plot.subprocess.CalledProcessError(1, ["gnuplot"])
-
-    monkeypatch.setattr(criterion_dim_plot, "_render_svg_with_gnuplot", boom)
-
-    args = argparse.Namespace(no_plot=False)
-    req = criterion_dim_plot.PlotRequest(
-        csv_path=criterion_dim_plot.Path("out.csv"),
-        out_svg=criterion_dim_plot.Path("out.svg"),
-        title="t",
-        stat="median",
-        dims=(2,),
-        la_label="la-stack v0.1.2",
-        na_label="nalgebra v0.34.1",
-        fa_label="faer v0.24.0",
-        log_y=False,
-    )
-
-    rc = criterion_dim_plot._maybe_render_plot(args, req, skipped=[])
-    assert rc == 1
-
-    captured = capsys.readouterr()
-    assert "Wrote CSV instead" in captured.err
-
-
 def test_update_readme_table_replaces_only_between_markers(tmp_path: Path) -> None:
     marker_begin, marker_end = criterion_dim_plot._readme_table_markers("lu_solve", "median", "new")
 
     readme = tmp_path / "README.md"
-    readme.write_text(
-        f"# Title\nbefore\n{marker_begin}\nold line 1\nold line 2\n{marker_end}\nafter\n",
-        encoding="utf-8",
-    )
+    readme.write_bytes(f"# Title\r\nbefore\r\n{marker_begin}\r\nold line 1\r\nold line 2\r\n{marker_end}\r\nafter\r\n".encode())
 
     table_md = "| a |\n|---|\n| 1 |"
 
@@ -186,6 +153,8 @@ def test_update_readme_table_replaces_only_between_markers(tmp_path: Path) -> No
     assert changed is True
 
     text = readme.read_text(encoding="utf-8")
+    assert readme.read_bytes().startswith(b"# Title\r\nbefore\r\n")
+    assert readme.read_bytes().endswith(b"\r\nafter\r\n")
     assert "old line 1" not in text
     assert "old line 2" not in text
     assert marker_begin in text
@@ -202,7 +171,7 @@ def test_update_readme_table_errors_on_missing_markers(tmp_path: Path) -> None:
     readme = tmp_path / "README.md"
     readme.write_text("# Title\n", encoding="utf-8")
 
-    with pytest.raises(criterion_dim_plot.ReadmeMarkerError, match=r"README markers not found"):
+    with pytest.raises(ValueError, match="exactly one ordered publication marker pair"):
         criterion_dim_plot._update_readme_table(
             readme,
             "<!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->",
@@ -217,7 +186,7 @@ def test_update_readme_table_errors_on_out_of_order_markers(tmp_path: Path) -> N
     readme = tmp_path / "README.md"
     readme.write_text(f"{marker_end}\n{marker_begin}\n", encoding="utf-8")
 
-    with pytest.raises(criterion_dim_plot.ReadmeMarkerError, match=r"out of order"):
+    with pytest.raises(ValueError, match="exactly one ordered publication marker pair"):
         criterion_dim_plot._update_readme_table(readme, marker_begin, marker_end, "| x |")
 
 
@@ -230,7 +199,7 @@ def test_update_readme_table_errors_on_non_unique_markers(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    with pytest.raises(criterion_dim_plot.ReadmeMarkerError, match=r"not found or not unique"):
+    with pytest.raises(ValueError, match="exactly one ordered publication marker pair"):
         criterion_dim_plot._update_readme_table(readme, marker_begin, marker_end, "| x |")
 
 
@@ -687,137 +656,16 @@ def test_read_estimate_errors_and_success(tmp_path: Path) -> None:
     point, lo, hi = criterion_dim_plot._read_estimate(estimates, "median")
     assert (point, lo, hi) == (5.0, 4.0, 6.0)
 
-    with pytest.raises(KeyError, match="stat 'mean' not found"):
+    with pytest.raises(ValueError, match="Criterion mean must be a JSON object"):
         criterion_dim_plot._read_estimate(estimates, "mean")
 
 
-def test_read_estimate_malformed_json_names_file(tmp_path: Path) -> None:
+@pytest.mark.parametrize("interval", [None, {"lower_bound": 4.0}])
+def test_plot_adapter_requires_complete_confidence_interval(tmp_path: Path, interval: dict[str, float] | None) -> None:
     estimates = tmp_path / "estimates.json"
-    estimates.write_text("{not json", encoding="utf-8")
+    estimates.write_text(json.dumps({"median": {"point_estimate": 5.0, "confidence_interval": interval}}), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=re.escape(f"malformed Criterion estimates JSON in {estimates}")):
-        criterion_dim_plot._read_estimate(estimates, "median")
-
-
-def test_read_estimate_missing_point_estimate_names_field(tmp_path: Path) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(json.dumps({"median": {}}), encoding="utf-8")
-
-    with pytest.raises(KeyError, match="field 'point_estimate' for stat 'median' not found"):
-        criterion_dim_plot._read_estimate(estimates, "median")
-
-
-def test_read_estimate_non_numeric_ci_bound_names_field(tmp_path: Path) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(
-        json.dumps(
-            {
-                "median": {
-                    "point_estimate": 1.0,
-                    "confidence_interval": {"lower_bound": "fast", "upper_bound": 2.0},
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match=r"field 'lower_bound' for stat 'median'.*not numeric"):
-        criterion_dim_plot._read_estimate(estimates, "median")
-
-
-def test_read_estimate_rejects_numeric_overflow(tmp_path: Path) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(json.dumps({"median": {"point_estimate": _OVERFLOWING_TIMING}}), encoding="utf-8")
-
-    with pytest.raises(ValueError, match=r"field 'point_estimate'.*not numeric") as exc_info:
-        criterion_dim_plot._read_estimate(estimates, "median")
-
-    assert isinstance(exc_info.value.__cause__, OverflowError)
-
-
-def test_read_estimate_rejects_missing_or_partial_confidence_interval(tmp_path: Path) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(json.dumps({"median": {"point_estimate": 1.0}}), encoding="utf-8")
-    with pytest.raises(KeyError, match="field 'confidence_interval'"):
-        criterion_dim_plot._read_estimate(estimates, "median")
-
-    estimates.write_text(
-        json.dumps(
-            {
-                "median": {
-                    "point_estimate": 1.0,
-                    "confidence_interval": {"lower_bound": 0.9},
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    with pytest.raises(KeyError, match="field 'upper_bound'"):
-        criterion_dim_plot._read_estimate(estimates, "median")
-
-
-@pytest.mark.parametrize(
-    ("payload", "field"),
-    [
-        ({"median": {"point_estimate": True}}, "point_estimate"),
-        (
-            {
-                "median": {
-                    "point_estimate": 1.0,
-                    "confidence_interval": {"lower_bound": False, "upper_bound": 2.0},
-                }
-            },
-            "lower_bound",
-        ),
-    ],
-)
-def test_read_estimate_rejects_boolean_numeric_fields(tmp_path: Path, payload: dict[str, object], field: str) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(json.dumps(payload), encoding="utf-8")
-
-    with pytest.raises(TypeError, match=rf"field '{field}' for stat 'median'.*not numeric"):
-        criterion_dim_plot._read_estimate(estimates, "median")
-
-
-def test_read_estimate_rejects_nonfinite_time(tmp_path: Path) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(json.dumps({"median": {"point_estimate": "NaN"}}), encoding="utf-8")
-
-    with pytest.raises(ValueError, match=r"median\.point_estimate.*finite and positive"):
-        criterion_dim_plot._read_estimate(estimates, "median")
-
-
-def test_read_estimate_rejects_negative_time(tmp_path: Path) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(json.dumps({"median": {"point_estimate": -1.0}}), encoding="utf-8")
-
-    with pytest.raises(ValueError, match=r"median\.point_estimate.*finite and positive"):
-        criterion_dim_plot._read_estimate(estimates, "median")
-
-
-def test_read_estimate_rejects_zero_time(tmp_path: Path) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(json.dumps({"median": {"point_estimate": 0.0}}), encoding="utf-8")
-
-    with pytest.raises(ValueError, match=r"median\.point_estimate.*finite and positive"):
-        criterion_dim_plot._read_estimate(estimates, "median")
-
-
-def test_read_estimate_rejects_inverted_confidence_interval(tmp_path: Path) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(
-        json.dumps(
-            {
-                "median": {
-                    "point_estimate": 5.0,
-                    "confidence_interval": {"lower_bound": 6.0, "upper_bound": 4.0},
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="lower bound must be <= upper bound"):
+    with pytest.raises(ValueError, match=r"confidence interval|upper_bound"):
         criterion_dim_plot._read_estimate(estimates, "median")
 
 
@@ -926,66 +774,6 @@ def test_resolve_paths(tmp_path: Path) -> None:
     svg, csv = criterion_dim_plot._resolve_output_paths(root, "lu_solve", "median", None, None)
     assert svg == root / "docs/assets/bench/vs_linalg_lu_solve_median.svg"
     assert csv == root / "docs/assets/bench/vs_linalg_lu_solve_median.csv"
-
-
-def test_maybe_render_plot_no_plot_path(capsys: pytest.CaptureFixture[str]) -> None:
-    args = argparse.Namespace(no_plot=True)
-    req = criterion_dim_plot.PlotRequest(
-        csv_path=criterion_dim_plot.Path("out.csv"),
-        out_svg=criterion_dim_plot.Path("out.svg"),
-        title="t",
-        stat="median",
-        dims=(2,),
-        la_label="la",
-        na_label="na",
-        fa_label="fa",
-        log_y=False,
-    )
-    rc = criterion_dim_plot._maybe_render_plot(args, req, skipped=[])
-    assert rc == 0
-    captured = capsys.readouterr()
-    assert "Wrote CSV: out.csv" in captured.out
-
-
-def test_maybe_render_plot_success_path(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    def no_op(_req: object) -> None:
-        return None
-
-    monkeypatch.setattr(criterion_dim_plot, "_render_svg_with_gnuplot", no_op)
-
-    args = argparse.Namespace(no_plot=False)
-    req = criterion_dim_plot.PlotRequest(
-        csv_path=criterion_dim_plot.Path("out.csv"),
-        out_svg=criterion_dim_plot.Path("out.svg"),
-        title="t",
-        stat="median",
-        dims=(2,),
-        la_label="la",
-        na_label="na",
-        fa_label="fa",
-        log_y=False,
-    )
-
-    rc = criterion_dim_plot._maybe_render_plot(args, req, skipped=["d2 (missing)"])
-    assert rc == 0
-    captured = capsys.readouterr()
-    assert "Warning: some dimension groups were skipped:" in captured.out
-    assert "Wrote CSV: out.csv" in captured.out
-    assert "Wrote SVG: out.svg" in captured.out
-
-
-def test_maybe_update_readme_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    args = argparse.Namespace(
-        update_readme=True,
-        readme="missing.md",
-        metric="lu_solve",
-        stat="median",
-        sample="new",
-    )
-    rc = criterion_dim_plot._maybe_update_readme(tmp_path, args, [])
-    assert rc == 2
-    captured = capsys.readouterr()
-    assert "No such file or directory" in captured.err
 
 
 def test_main_error_paths(tmp_path: Path) -> None:
@@ -1403,102 +1191,53 @@ def test_staged_publication_leaves_existing_assets_unchanged_when_render_fails(
     assert "old table" in readme.read_text(encoding="utf-8")
 
 
-def test_artifact_rollback_failure_preserves_backups(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_main_restores_complete_publication_when_readme_replace_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    destination_one = tmp_path / "one.txt"
-    destination_two = tmp_path / "two.txt"
-    staged_one = tmp_path / "staged-one.txt"
-    staged_two = tmp_path / "staged-two.txt"
-    backup_dir = tmp_path / "backups"
-    backup_dir.mkdir()
-    destination_one.write_text("old one\n", encoding="utf-8")
-    destination_two.write_text("old two\n", encoding="utf-8")
-    staged_one.write_text("new one\n", encoding="utf-8")
-    staged_two.write_text("new two\n", encoding="utf-8")
-    original_replace = criterion_dim_plot.Path.replace
+    _write_benchmark_checkout(tmp_path)
+    _write_performance_bundle(tmp_path)
+    _mock_publication_environment(tmp_path, monkeypatch)
+    readme = tmp_path / "README.md"
+    before = {readme: _canonical_benchmark_readme("0.0.8").replace("\n", "\r\n").encode()}
+    for suffix in ("csv", "svg", "provenance.json"):
+        before[tmp_path / f"docs/assets/bench/vs_linalg_lu_solve_median.{suffix}"] = f"previous {suffix}\n".encode()
+    for path, payload in before.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
 
-    def fail_replacement_and_rollback(source: Path, destination: Path) -> Path:
-        if source == staged_two and destination == destination_two:
-            msg = "simulated publish failure"
+    def render(request: criterion_dim_plot.PlotRequest) -> None:
+        request.out_svg.write_bytes(b"<svg/>\n")
+
+    real_replace = Path.replace
+
+    def fail_readme(source: Path, destination: Path) -> Path:
+        if destination == readme:
+            msg = "README publication failed"
             raise OSError(msg)
-        if source == backup_dir / "backup-0" and destination == destination_one:
-            msg = "simulated rollback failure"
-            raise OSError(msg)
-        return original_replace(source, destination)
+        return real_replace(source, destination)
 
-    monkeypatch.setattr(criterion_dim_plot.Path, "replace", fail_replacement_and_rollback)
+    monkeypatch.setattr(criterion_dim_plot, "_render_svg_with_gnuplot", render)
+    monkeypatch.setattr(Path, "replace", fail_readme)
 
-    with pytest.raises(criterion_dim_plot.PublicationRollbackError, match="backups preserved") as exc_info:
-        criterion_dim_plot._replace_staged_files(
-            [(staged_one, destination_one), (staged_two, destination_two)],
-            backup_dir,
-        )
-
-    assert str(backup_dir) in str(exc_info.value)
-    assert (backup_dir / "backup-0").read_text(encoding="utf-8") == "old one\n"
-    assert destination_one.read_text(encoding="utf-8") == "new one\n"
-    assert destination_two.read_text(encoding="utf-8") == "old two\n"
+    assert criterion_dim_plot.main(["--update-readme"]) == 2
+    captured = capsys.readouterr()
+    assert "README publication failed" in captured.err
+    assert "Wrote" not in captured.out
+    assert {path: path.read_bytes() for path in before} == before
 
 
-@pytest.mark.parametrize("failure_point", [None, "replace", "rollback"])
-def test_publication_keeps_backups_only_when_rollback_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    failure_point: str | None,
-) -> None:
-    destination_one = tmp_path / "one.txt"
-    destination_two = tmp_path / "two.txt"
-    staged_one = tmp_path / "staged-one.txt"
-    staged_two = tmp_path / "staged-two.txt"
-    for path, text in (
-        (destination_one, "old one\n"),
-        (destination_two, "old two\n"),
-        (staged_one, "new one\n"),
-        (staged_two, "new two\n"),
-    ):
-        path.write_text(text, encoding="utf-8")
-    original_replace = criterion_dim_plot.Path.replace
+def test_shared_publication_keeps_existing_plot_when_provenance_target_is_invalid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    csv_path, provenance = tmp_path / "plot.csv", tmp_path / "plot.provenance.json"
+    staged_csv, staged_provenance = tmp_path / "candidate.csv", tmp_path / "candidate.json"
+    csv_path.write_bytes(b"old CSV")
+    provenance.mkdir()
+    staged_csv.write_bytes(b"new CSV")
+    staged_provenance.write_bytes(b"new provenance")
 
-    def replace(source: Path, destination: Path) -> Path:
-        if failure_point is not None and source == staged_two:
-            msg = "simulated publish failure"
-            raise OSError(msg)
-        if failure_point == "rollback" and source.name == "backup-0":
-            msg = "simulated rollback failure"
-            raise OSError(msg)
-        return original_replace(source, destination)
-
-    monkeypatch.setattr(criterion_dim_plot.Path, "replace", replace)
-
-    published = criterion_dim_plot._publish_staged_files(
-        [(staged_one, destination_one), (staged_two, destination_two)],
-        tmp_path,
-    )
-
-    assert published is (failure_point is None)
-    backups = list(tmp_path.glob(".criterion-dim-plot-backup-*"))
-    stderr = capsys.readouterr().err
-    if failure_point == "rollback":
-        assert len(backups) == 1
-        assert (backups[0] / "backup-0").read_text(encoding="utf-8") == "old one\n"
-        assert (backups[0] / "backup-1").read_text(encoding="utf-8") == "old two\n"
-        assert destination_one.read_text(encoding="utf-8") == "new one\n"
-        assert destination_two.read_text(encoding="utf-8") == "old two\n"
-        assert "simulated publish failure" in stderr
-        assert "simulated rollback failure" in stderr
-        assert f"backups preserved at {backups[0]}" in stderr
-    else:
-        assert backups == []
-        expected = "new" if published else "old"
-        assert destination_one.read_text(encoding="utf-8") == f"{expected} one\n"
-        assert destination_two.read_text(encoding="utf-8") == f"{expected} two\n"
-        if published:
-            assert stderr == ""
-        else:
-            assert "simulated publish failure" in stderr
+    assert not criterion_dim_plot._publish_staged_files([(staged_csv, csv_path), (staged_provenance, provenance)])
+    assert csv_path.read_bytes() == b"old CSV"
+    assert provenance.is_dir()
+    assert "could not publish benchmark artifacts" in capsys.readouterr().err
 
 
 def test_repo_root_resolution_uses_working_checkout_for_installed_entrypoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

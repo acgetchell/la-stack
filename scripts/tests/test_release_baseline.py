@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 import release_baseline
+from criterion_measurements import validate_measurement
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/release-benchmarks.yml"
@@ -150,13 +151,32 @@ def test_invalid_measurement_blocks_publication(dataset: tuple[Path, Path], corr
             write_json(directory / "estimates.json", estimates)
     errors = {
         "short-samples": "times must contain 100 samples",
-        "nonfinite": "finite positive timing value",
-        "reversed-interval": "confidence interval must be ordered",
-        "wrong-confidence": "expected a 95% confidence interval",
+        "nonfinite": "finite positive number",
+        "reversed-interval": "lower bound exceeds upper bound",
+        "wrong-confidence": "confidence_level requires an interval",
         "malformed": "Expecting property name",
     }
     with pytest.raises(ValueError, match=errors[corruption]):
         release_baseline.validate(criterion, manifest, BASELINE)
+
+
+@pytest.mark.parametrize(("filename", "location"), [("sample.json", "times[9]"), ("estimates.json", "mean")])
+def test_measurement_error_identifies_file_and_field(dataset: tuple[Path, Path], filename: str, location: str) -> None:
+    criterion, _manifest = dataset
+    directory = criterion / "d2/la_stack_dot/new"
+    path = directory / filename
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if filename == "sample.json":
+        data["times"][9] = -1.0
+    else:
+        data["mean"]["point_estimate"] = -1.0
+    write_json(path, data)
+
+    with pytest.raises(ValueError, match="finite positive number") as error:
+        validate_measurement(directory)
+
+    assert str(path) in str(error.value)
+    assert location in str(error.value)
 
 
 @pytest.mark.parametrize("baseline", ["../escape", "", "new", "base", "change", "report", "/absolute"])

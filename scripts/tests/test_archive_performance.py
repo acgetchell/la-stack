@@ -1813,7 +1813,7 @@ def test_generate_report_rejects_unsafe_baseline_archive(tmp_path: Path, monkeyp
 
     captured = capsys.readouterr()
     assert rc == 1
-    assert "refusing to extract unsafe archive member '../escape.txt'" in captured.err
+    assert "unsafe or nonportable archive path: '../escape.txt'" in captured.err
     assert not (tmp_path / "escape.txt").exists()
     assert not current.exists()
     assert not any(kind in {"just", "uv"} for kind, _, _ in calls)
@@ -2014,9 +2014,19 @@ def test_generate_local_non_exact_report_retains_same_version_comparison_artifac
     assert not current.exists()
 
 
-def _fail_retained_summary_index(_archive: Path) -> None:
-    msg = "simulated retained summary promotion failure"
-    raise OSError(msg)
+def _fail_publication_once(monkeypatch: pytest.MonkeyPatch, target: Path) -> None:
+    real_replace = Path.replace
+    failed = False
+
+    def fail(source: Path, destination: Path) -> Path:
+        nonlocal failed
+        if destination == target and not failed:
+            failed = True
+            msg = "simulated retained summary promotion failure"
+            raise OSError(msg)
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(Path, "replace", fail)
 
 
 @pytest.mark.parametrize("fail_promotion", [False, True])
@@ -2082,7 +2092,7 @@ def test_generate_local_report_artifacts_can_be_rendered_and_promoted(
 
     current = tmp_path / "docs" / "performance.md"
     if fail_promotion:
-        monkeypatch.setattr(archive_performance, "update_archive_index", _fail_retained_summary_index)
+        _fail_publication_once(monkeypatch, tmp_path / "docs/archive/performance/README.md")
         with pytest.raises(OSError, match="simulated retained summary"):
             archive_performance.render_and_promote_artifacts(
                 artifacts=ArtifactPaths(csv=output.with_suffix(".csv"), provenance=output.with_suffix(".provenance.json")),
@@ -2334,69 +2344,6 @@ def test_main_published_latest_fetch_failure_stops_before_worktree(tmp_path: Pat
     assert not any(kind == "git-stdin" for kind, _, _ in calls)
 
 
-def test_failed_atomic_replace_preserves_existing_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    source = tmp_path / "performance-new.md"
-    current = tmp_path / "docs" / "performance.md"
-    archive_dir = tmp_path / "docs" / "archive" / "performance"
-    original = _report("0.4.5", "v0.4.4")
-
-    source.write_text(_report("0.4.6", "v0.4.5"), encoding="utf-8")
-    current.parent.mkdir(parents=True)
-    current.write_text(original, encoding="utf-8")
-
-    def fail_replace(src: Path, dst: Path) -> None:
-        msg = f"simulated replace failure for {dst}"
-        raise OSError(msg)
-
-    monkeypatch.setattr(archive_performance, "_replace_file", fail_replace)
-
-    with pytest.raises(OSError, match="simulated replace failure"):
-        promote_report(
-            source=source,
-            current=current,
-            archive_dir=archive_dir,
-            expected_current_tag="v0.4.6",
-            expected_baseline_tag="v0.4.5",
-        )
-
-    assert current.read_text(encoding="utf-8") == original
-    assert not list(current.parent.glob(".performance.md.*.tmp"))
-
-
-@pytest.mark.parametrize("operation", ["write", "restore"])
-@pytest.mark.parametrize("failure_point", ["create", "fsync", "replace"])
-def test_atomic_report_update_failure_preserves_original_and_cleans_temp(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    operation: str,
-    failure_point: str,
-) -> None:
-    target = tmp_path / "docs" / "performance.md"
-    target.parent.mkdir()
-    target.write_text("current\n", encoding="utf-8")
-
-    def fail(*_args: object, **_kwargs: object) -> Never:
-        msg = f"simulated {failure_point} failure"
-        raise OSError(msg)
-
-    if failure_point == "create":
-        monkeypatch.setattr(archive_performance.tempfile, "NamedTemporaryFile", fail)
-    elif failure_point == "fsync":
-        monkeypatch.setattr(archive_performance.os, "fsync", fail)
-    else:
-        monkeypatch.setattr(archive_performance.Path, "replace", fail)
-
-    if operation == "write":
-        with pytest.raises(OSError, match=f"simulated {failure_point} failure"):
-            archive_performance._write_text(target, "updated\n")
-    else:
-        with pytest.raises(OSError, match=f"simulated {failure_point} failure"):
-            archive_performance._restore_file(target, b"restored\n")
-
-    assert target.read_text(encoding="utf-8") == "current\n"
-    assert list(target.parent.iterdir()) == [target]
-
-
 def test_failed_archive_index_update_rolls_back_report_and_new_archive(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2409,11 +2356,18 @@ def test_failed_archive_index_update_rolls_back_report_and_new_archive(
     current.parent.mkdir(parents=True)
     current.write_text(original, encoding="utf-8")
 
-    def fail_index(_archive_dir: Path) -> None:
-        msg = "simulated archive index failure"
-        raise OSError(msg)
+    real_replace = Path.replace
+    failed = False
 
-    monkeypatch.setattr(archive_performance, "update_archive_index", fail_index)
+    def fail_index(source_path: Path, destination: Path) -> Path:
+        nonlocal failed
+        if destination == archive_dir / "README.md" and not failed:
+            failed = True
+            msg = "simulated archive index failure"
+            raise OSError(msg)
+        return real_replace(source_path, destination)
+
+    monkeypatch.setattr(Path, "replace", fail_index)
 
     with pytest.raises(OSError, match="simulated archive index failure"):
         promote_report(
@@ -2446,15 +2400,18 @@ def test_failed_artifact_promotion_output_write_rolls_back_report_archive_and_in
     index.write_text(original_index, encoding="utf-8")
     output.parent.mkdir(parents=True)
     output.write_text(original_output, encoding="utf-8")
-    real_write = archive_performance._write_text
+    real_replace = Path.replace
+    failed = False
 
-    def fail_output_write(path: Path, text: str) -> None:
-        if path == output:
+    def fail_output_write(source: Path, destination: Path) -> Path:
+        nonlocal failed
+        if destination == output and not failed:
+            failed = True
             msg = "simulated artifact promotion output failure"
             raise OSError(msg)
-        real_write(path, text)
+        return real_replace(source, destination)
 
-    monkeypatch.setattr(archive_performance, "_write_text", fail_output_write)
+    monkeypatch.setattr(Path, "replace", fail_output_write)
 
     with pytest.raises(OSError, match="simulated artifact promotion output failure"):
         archive_performance._promote_report_text(

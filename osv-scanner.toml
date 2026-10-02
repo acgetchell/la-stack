@@ -1,0 +1,6 @@
+# Advisory-specific, temporary acceptance; keep every other advisory enabled.
+# Native OSV configuration applies to the lockfiles in this directory.
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+ignoreUntil = 2027-01-01
+reason = "Benchmark-only faer -> gemm/pulp -> paste has no maintained published replacement yet; see SECURITY.md#benchmark-dependency-maintenance."

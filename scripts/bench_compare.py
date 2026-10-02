@@ -23,20 +23,18 @@ Typical workflow (see docs/RELEASING.md):
 
 import argparse
 import json
-import math
-import os
 import re
 import subprocess
 import sys
-import tempfile
 import tomllib
 from collections.abc import Mapping
-from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
+from research_repo_tools.criterion import Comparison as TimingComparison, Estimate, read_estimate
+from research_repo_tools.files import replace_many
 from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics
 
 from benchmark_process import find_project_root, run_git_command
@@ -50,10 +48,10 @@ from performance_artifacts import (
     ReleasePair,
     ReportSource,
     TimingEstimate,
+    bundle_outputs,
     ensure_distinct_paths,
     freeze_mapping,
     load_bundle,
-    publish_bundle,
     resolve_shared_harness_compatibility,
 )
 
@@ -232,20 +230,7 @@ class CriterionEstimate:
 
     def __post_init__(self) -> None:
         """Keep every stored timing finite, positive, and interval-complete."""
-        for field, value in (
-            ("point_ns", self.point_ns),
-            ("ci_lo_ns", self.ci_lo_ns),
-            ("ci_hi_ns", self.ci_hi_ns),
-        ):
-            if value is not None and (not math.isfinite(value) or value <= 0):
-                msg = f"{field} must be finite and positive: {value!r}"
-                raise ValueError(msg)
-        if (self.ci_lo_ns is None) != (self.ci_hi_ns is None):
-            msg = "Criterion confidence interval must contain both bounds or neither"
-            raise ValueError(msg)
-        if self.ci_lo_ns is not None and self.ci_hi_ns is not None and self.ci_lo_ns > self.ci_hi_ns:
-            msg = f"Criterion confidence interval lower bound exceeds upper bound: {self.ci_lo_ns} > {self.ci_hi_ns}"
-            raise ValueError(msg)
+        Estimate(self.point_ns, self.ci_lo_ns, self.ci_hi_ns)
 
     @property
     def has_confidence_interval(self) -> bool:
@@ -305,12 +290,12 @@ class Comparison:
     @property
     def speedup(self) -> float:
         """Return baseline/current, where values above one are faster."""
-        return self.baseline_ns / self.current_ns
+        return TimingComparison(self.bench, Estimate(self.baseline_ns), Estimate(self.current_ns)).speedup
 
     @property
     def pct_change(self) -> float:
         """Return signed point-estimate change, where negative is faster."""
-        return ((self.current_ns - self.baseline_ns) / self.baseline_ns) * 100.0
+        return 0.0 - TimingComparison(self.bench, Estimate(self.baseline_ns), Estimate(self.current_ns)).percent_reduction
 
     @property
     def baseline_nalgebra_ns(self) -> float | None:
@@ -462,61 +447,9 @@ def _is_selected_comparison_row(
 
 
 def _read_estimate(estimates_json: Path, stat: str = "median") -> CriterionEstimate:
-    """Read and validate a Criterion point estimate and confidence interval."""
-    try:
-        data = json.loads(estimates_json.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as err:
-        msg = f"malformed Criterion estimates JSON in {estimates_json}: {err}"
-        raise ValueError(msg) from err
-
-    if not isinstance(data, dict):
-        msg = f"expected JSON object in {estimates_json}"
-        raise TypeError(msg)
-
-    stat_obj = data.get(stat)
-    if not isinstance(stat_obj, dict):
-        msg = f"stat '{stat}' not found in {estimates_json}"
-        raise KeyError(msg)
-
-    point = _read_numeric_field(stat_obj, "point_estimate", estimates_json, stat)
-    if "confidence_interval" not in stat_obj:
-        return CriterionEstimate(point_ns=point, ci_lo_ns=None, ci_hi_ns=None)
-    ci = stat_obj["confidence_interval"]
-    if not isinstance(ci, dict):
-        msg = f"field 'confidence_interval' for stat '{stat}' in {estimates_json} is not an object"
-        raise TypeError(msg)
-
-    lo = _read_numeric_field(ci, "lower_bound", estimates_json, stat)
-    hi = _read_numeric_field(ci, "upper_bound", estimates_json, stat)
-    if lo > hi:
-        msg = f"invalid confidence interval for stat '{stat}' in {estimates_json}: lower_bound {lo} exceeds upper_bound {hi}"
-        raise ValueError(msg)
-    return CriterionEstimate(point_ns=point, ci_lo_ns=lo, ci_hi_ns=hi)
-
-
-def _read_numeric_field(
-    obj: dict[str, object],
-    field: str,
-    estimates_json: Path,
-    stat: str,
-) -> float:
-    """Read a numeric Criterion field with file and statistic context."""
-    if field not in obj:
-        msg = f"field '{field}' for stat '{stat}' not found in {estimates_json}"
-        raise KeyError(msg)
-    value = obj[field]
-    if isinstance(value, bool) or not isinstance(value, int | float | str):
-        msg = f"field '{field}' for stat '{stat}' in {estimates_json} is not numeric: {value!r}"
-        raise TypeError(msg)
-    try:
-        result = float(value)
-    except (OverflowError, ValueError) as err:
-        msg = f"field '{field}' for stat '{stat}' in {estimates_json} is not numeric: {value!r}"
-        raise ValueError(msg) from err
-    if not math.isfinite(result) or result <= 0:
-        msg = f"field '{field}' for stat '{stat}' in {estimates_json} must be finite and positive: {value!r}"
-        raise ValueError(msg)
-    return result
+    """Adapt shared Criterion parsing to the retained report schema."""
+    estimate = read_estimate(estimates_json, statistic=cast("Statistic", stat))
+    return CriterionEstimate(estimate.point, estimate.lower, estimate.upper)
 
 
 def _read_harness_provenance(
@@ -1906,7 +1839,11 @@ def _release_artifact_bundle(
 
 def render_release_artifacts(paths: ArtifactPaths) -> str:
     """Reload, validate, and render a report without Criterion, Cargo, or Git."""
-    bundle = load_bundle(paths)
+    return render_bundle(load_bundle(paths), paths)
+
+
+def render_bundle(bundle: PerformanceBundle, paths: ArtifactPaths) -> str:
+    """Render validated retained data before publishing any output."""
     context = bundle.context
     selection = CriterionSelection(
         suite=cast("BenchmarkSuite", context.suite),
@@ -2088,30 +2025,15 @@ def _write_and_render_artifacts(  # noqa: PLR0913
         settings=settings,
         collection=collection,
     )
-    with publish_bundle(paths, bundle):
-        markdown = render_release_artifacts(paths)
-        _write_text_atomic(output_path, markdown)
+    outputs = bundle_outputs(paths, bundle)
+    ensure_distinct_paths({"report": output_path, "artifact CSV": paths.csv, "artifact provenance": paths.provenance})
+    outputs[output_path] = render_bundle(bundle, paths).encode("utf-8")
+    replace_many(outputs)
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
-    """Replace a UTF-8 text file only after its complete payload is durable."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with ExitStack() as cleanup:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            newline="",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            staged = Path(handle.name)
-            cleanup.callback(staged.unlink, missing_ok=True)
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        staged.replace(path)
+    """Publish a standalone report through the shared transaction."""
+    replace_many({path: text.encode("utf-8")})
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912, PLR0915
@@ -2187,7 +2109,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
                 file=sys.stderr,
             )
             return 2
-        table = _comparison_tables(collection.comparisons, baseline_name)
+        try:
+            table = _comparison_tables(collection.comparisons, baseline_name)
+        except ValueError as err:
+            print(f"Invalid Criterion comparison data: {err}", file=sys.stderr)
+            return 2
     else:
         coverage_errors = _snapshot_coverage_errors(
             criterion_dir,
@@ -2242,8 +2168,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
         md = _generate_markdown(root, table, settings)
         try:
             _write_text_atomic(output_path, md)
-        except OSError as err:
-            print(f"Could not write benchmark report: {err}", file=sys.stderr)
+        except (ExceptionGroup, OSError, ValueError) as err:
+            print(f"Could not write benchmark report: {format_exception_diagnostics(err)}", file=sys.stderr)
             return 2
         print(f"📊 Wrote {output_path}")
 
