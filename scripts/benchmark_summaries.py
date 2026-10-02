@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from research_repo_tools.criterion import read_estimate
+
 from criterion_measurements import positive_number, read_object, validate_measurement
 from performance_artifacts import ArtifactPaths, TimingEstimate, load_bundle
 
@@ -62,16 +64,11 @@ def report_input_paths(report: ArtifactPaths) -> dict[str, Path]:
     }
 
 
-def _estimate(directory: Path, statistic: str) -> TimingEstimate:
-    estimates = read_object(directory / "estimates.json")
-    estimate = estimates[statistic]
-    if not isinstance(estimate, dict) or not isinstance(interval := estimate.get("confidence_interval"), dict):
-        raise TypeError(f"missing {statistic} confidence interval in {directory}")
-    return TimingEstimate(
-        median_ns=positive_number(estimate.get("point_estimate")),
-        ci_lower_ns=positive_number(interval.get("lower_bound")),
-        ci_upper_ns=positive_number(interval.get("upper_bound")),
-    )
+def _estimate(directory: Path, statistic: Literal["mean", "median"]) -> TimingEstimate:
+    estimate = read_estimate(directory / "estimates.json", statistic=statistic)
+    if estimate.lower is None or estimate.upper is None:
+        raise ValueError(f"{directory}: complete summaries require confidence intervals")
+    return TimingEstimate(estimate.point, estimate.lower, estimate.upper)
 
 
 def collect_measurements(criterion: Path, baseline: str) -> tuple[Measurement, ...]:

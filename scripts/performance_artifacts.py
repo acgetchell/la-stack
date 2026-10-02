@@ -5,18 +5,18 @@ import hashlib
 import io
 import json
 import math
-import os
 import re
-import tempfile
 from collections.abc import Mapping
-from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, cast
 
+from research_repo_tools.criterion import Estimate
+from research_repo_tools.evidence import verify_sha256
+from research_repo_tools.files import replace_many
+
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from pathlib import Path
 
 SCHEMA_VERSION = 1
 SUITES = ("all", "exact", "vs_linalg")
@@ -125,17 +125,10 @@ class TimingEstimate:
 
     def __post_init__(self) -> None:
         """Reject non-finite, non-positive, or reversed timing intervals."""
-        for field, value in (
-            ("median_ns", self.median_ns),
-            ("ci_lower_ns", self.ci_lower_ns),
-            ("ci_upper_ns", self.ci_upper_ns),
-        ):
-            if not math.isfinite(value) or value <= 0:
-                msg = f"{field} must be finite and positive: {value!r}"
-                raise ValueError(msg)
-        if self.ci_lower_ns > self.ci_upper_ns:
-            msg = f"confidence interval must be ordered: {self.ci_lower_ns} <= {self.ci_upper_ns}"
+        if self.ci_lower_ns is None or self.ci_upper_ns is None:
+            msg = "retained timings require a complete confidence interval"
             raise ValueError(msg)
+        Estimate(self.median_ns, self.ci_lower_ns, self.ci_upper_ns)
 
 
 @dataclass(frozen=True, slots=True)
@@ -900,10 +893,10 @@ def _parse_provenance(payload: bytes, *, source: str) -> tuple[ArtifactContext, 
 def load_bundle_bytes(csv_payload: bytes, provenance_payload: bytes, *, source: str) -> PerformanceBundle:
     """Parse and validate an artifact pair before it reaches report rendering."""
     context, expected_digest, expected_count, _columns = _parse_provenance(provenance_payload, source=source)
-    observed_digest = hashlib.sha256(csv_payload).hexdigest()
-    if observed_digest != expected_digest:
-        msg = f"CSV digest mismatch in {source}: expected {expected_digest}, got {observed_digest}"
-        raise ValueError(msg)
+    try:
+        verify_sha256(csv_payload, expected_digest)
+    except ValueError as exc:
+        raise ValueError(f"CSV digest mismatch in {source}: {exc}") from exc
     rows = _parse_rows(csv_payload, source=source)
     if len(rows) != expected_count:
         msg = f"CSV row count mismatch in {source}: expected {expected_count}, got {len(rows)}"
@@ -924,104 +917,13 @@ def load_bundle(paths: ArtifactPaths) -> PerformanceBundle:
     )
 
 
-def _stage_payload(path: Path, payload: bytes) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staged: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile("wb", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False) as tmp:
-            staged = Path(tmp.name)
-            tmp.write(payload)
-            tmp.flush()
-            os.fsync(tmp.fileno())
-    except BaseException:
-        if staged is not None:
-            staged.unlink(missing_ok=True)
-        raise
-    if staged is None:
-        msg = "temporary artifact staging completed without a path"
-        raise AssertionError(msg)
-    return staged
-
-
-def _atomic_restore(path: Path, payload: bytes | None) -> None:
-    if payload is None:
-        path.unlink(missing_ok=True)
-        return
-    staged = _stage_payload(path, payload)
-    try:
-        _replace_path(staged, path)
-    finally:
-        staged.unlink(missing_ok=True)
-
-
-def _publish_payloads(paths: ArtifactPaths, csv_payload: bytes, provenance_payload: bytes) -> None:
-    staged_paths: list[Path] = []
-    try:
-        staged_csv = _stage_payload(paths.csv, csv_payload)
-        staged_paths.append(staged_csv)
-        staged_provenance = _stage_payload(paths.provenance, provenance_payload)
-        staged_paths.append(staged_provenance)
-        previous_csv = paths.csv.read_bytes() if paths.csv.is_file() else None
-        previous_provenance = paths.provenance.read_bytes() if paths.provenance.is_file() else None
-        try:
-            _replace_path(staged_csv, paths.csv)
-            _replace_path(staged_provenance, paths.provenance)
-            load_bundle(paths)
-        except BaseException as publication_error:
-            rollback_errors = _restore_artifact_pair(paths, previous_csv, previous_provenance)
-            if rollback_errors:
-                group_message = "release-performance artifact publication and rollback failed"
-                raise BaseExceptionGroup(
-                    group_message,
-                    [publication_error, *rollback_errors],
-                ) from None
-            raise
-    finally:
-        for staged in staged_paths:
-            staged.unlink(missing_ok=True)
-
-
-def _replace_path(source: Path, destination: Path) -> None:
-    """Atomically replace *destination* with a staged file."""
-    source.replace(destination)
-
-
-def _restore_artifact_pair(
-    paths: ArtifactPaths,
-    previous_csv: bytes | None,
-    previous_provenance: bytes | None,
-) -> tuple[BaseException, ...]:
-    """Attempt both artifact restorations and return every rollback failure."""
-    errors: list[BaseException] = []
-    for path, payload in ((paths.csv, previous_csv), (paths.provenance, previous_provenance)):
-        try:
-            _atomic_restore(path, payload)
-        except BaseException as exc:  # noqa: BLE001
-            errors.append(exc)
-    return tuple(errors)
-
-
-@contextmanager
-def publish_bundle(paths: ArtifactPaths, bundle: PerformanceBundle) -> Iterator[None]:
-    """Publish a validated pair and roll it back if a downstream promotion fails."""
+def bundle_outputs(paths: ArtifactPaths, bundle: PerformanceBundle) -> dict[Path, bytes]:
+    """Validate serialized legacy evidence before composing its publication."""
+    ensure_distinct_paths({"artifact CSV": paths.csv, "artifact provenance": paths.provenance})
     csv_payload, provenance_payload = serialize_bundle(bundle)
-    previous_csv = paths.csv.read_bytes() if paths.csv.is_file() else None
-    previous_provenance = paths.provenance.read_bytes() if paths.provenance.is_file() else None
-    _publish_payloads(paths, csv_payload, provenance_payload)
-    try:
-        yield
-    except BaseException as downstream_error:
-        rollback_errors = _restore_artifact_pair(paths, previous_csv, previous_provenance)
-        if rollback_errors:
-            group_message = "release-performance downstream publication and rollback failed"
-            raise BaseExceptionGroup(
-                group_message,
-                [downstream_error, *rollback_errors],
-            ) from None
-        raise
+    return {paths.csv: csv_payload, paths.provenance: provenance_payload}
 
 
 def write_bundle(paths: ArtifactPaths, bundle: PerformanceBundle) -> None:
-    """Atomically publish a complete validated artifact pair."""
-    csv_payload, provenance_payload = serialize_bundle(bundle)
-    _publish_payloads(paths, csv_payload, provenance_payload)
+    """Publish the complete validated artifact pair through the shared transaction."""
+    replace_many(bundle_outputs(paths, bundle))

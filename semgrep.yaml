@@ -1025,59 +1025,14 @@ rules:
       - pattern-regex: '^\s*#\s*\[\s*expect\s*\([^\]\n]*\)\s*\]'
       - pattern-not-regex: '\breason\s*='
 
-  - id: la-stack.python.git-stdin-binary-transport
-    languages:
-      - python
-    severity: WARNING
-    message: "Keep Git stdin byte-exact: use text=False and do not enable encoding, errors, or universal_newlines on the subprocess."
-    metadata:
-      category: correctness
-      rationale: "Windows text pipes rewrite LF and CRLF, corrupting hashes, patches, and verbatim tag messages before Git receives them."
-    paths:
-      include:
-        - "/scripts/**/*.py"
-        - "/tests/semgrep/scripts/**/*.py"
-      exclude:
-        - "/scripts/tests/**"
-        - "/tests/semgrep/scripts/tests/**"
-    patterns:
-      - pattern-inside: |
-          def run_git_command_with_input(...):
-              ...
-      - pattern-either:
-          - pattern: subprocess.run(..., input=$INPUT, ...)
-          - pattern: subprocess.Popen(...)
-      - pattern-either:
-          - patterns:
-              - pattern-either:
-                  - pattern: subprocess.run(..., input=$INPUT, ...)
-                  - pattern: subprocess.Popen(...)
-              - pattern-not: $CALL(..., text=False, ...)
-          - patterns:
-              - pattern-either:
-                  - pattern: subprocess.run(..., encoding=$ENCODING, ...)
-                  - pattern: subprocess.Popen(..., encoding=$ENCODING, ...)
-              - pattern-not: $CALL(..., encoding=None, ...)
-          - patterns:
-              - pattern-either:
-                  - pattern: subprocess.run(..., errors=$ERRORS, ...)
-                  - pattern: subprocess.Popen(..., errors=$ERRORS, ...)
-              - pattern-not: $CALL(..., errors=None, ...)
-          - patterns:
-              - pattern-either:
-                  - pattern: subprocess.run(..., universal_newlines=$NEWLINES, ...)
-                  - pattern: subprocess.Popen(..., universal_newlines=$NEWLINES, ...)
-              - pattern-not: $CALL(..., universal_newlines=False, ...)
-              - pattern-not: $CALL(..., universal_newlines=None, ...)
-
   - id: la-stack.python.git-stdin-use-shared-helper
     languages:
       - python
     severity: WARNING
-    message: "Send Git stdin through subprocess_utils.run_git_command_with_input so Windows cannot translate the input bytes."
+    message: "Send Git stdin as bytes through research_repo_tools.process.run_git_bytes."
     metadata:
       category: correctness
-      rationale: "The shared Git-input helper preserves exact encoded input; the generic text wrappers do not make that guarantee."
+      rationale: "Git patches and hash inputs should retain their original bytes without passing through text encoding choices."
     paths:
       include:
         - "/scripts/**/*.py"
@@ -1087,10 +1042,9 @@ rules:
         - "/tests/semgrep/scripts/tests/**"
     patterns:
       - pattern-either:
-          - pattern: run_git_command(..., input=$INPUT, ...)
-          - pattern: subprocess_utils.run_git_command(..., input=$INPUT, ...)
           - pattern: run_safe_command("git", ..., input=$INPUT, ...)
-          - pattern: subprocess_utils.run_safe_command("git", ..., input=$INPUT, ...)
+          - pattern: benchmark_process.run_safe_command("git", ..., input=$INPUT, ...)
+          - pattern: research_repo_tools.process.run_command("git", ..., input=$INPUT, ...)
           - pattern: subprocess.run(["git", ...], ..., input=$INPUT, ...)
           - pattern: subprocess.Popen(["git", ...], ..., stdin=subprocess.PIPE, ...)
       - pattern-not: $CALL(..., input=None, ...)
@@ -1211,20 +1165,6 @@ rules:
         - "/tests/semgrep/scripts/tests/python_exceptions.py"
     pattern-regex: '^\s*except\s+Exception(?:\s+as\s+\w+)?\s*:'
 
-  - id: la-stack.python.no-raw-exception-in-tests
-    languages:
-      - python
-    severity: WARNING
-    message: "Raise a specific exception type in Python tests instead of raw Exception."
-    metadata:
-      category: maintainability
-      rationale: "Typed exceptions make expected failures easier to diagnose."
-    paths:
-      include:
-        - "/scripts/tests/**/*.py"
-        - "/tests/semgrep/scripts/tests/python_exceptions.py"
-    pattern: raise Exception(...)
-
   - id: la-stack.python.no-adhoc-completedprocess-mock
     languages:
       - python
@@ -1307,7 +1247,7 @@ rules:
     languages:
       - python
     severity: WARNING
-    message: "Use subprocess_utils command wrappers instead of calling subprocess.run directly."
+    message: "Use research_repo_tools.process runners or benchmark_process adapters instead of calling subprocess.run directly."
     metadata:
       category: security
       rationale: "Support scripts should inherit the repository's subprocess hardening."
@@ -1316,20 +1256,5 @@ rules:
         - "/scripts/**/*.py"
         - "/tests/semgrep/scripts/tests/python_exceptions.py"
       exclude:
-        - "/scripts/subprocess_utils.py"
         - "/scripts/tests/**/*.py"
     pattern: subprocess.run(...)
-
-  - id: la-stack.python.no-untyped-defs-in-scripts
-    languages:
-      - python
-    severity: WARNING
-    message: "Add an explicit return annotation to script functions."
-    metadata:
-      category: maintainability
-      rationale: "Typed script helpers are easier for ty and reviewers to reason about."
-    paths:
-      include:
-        - "/scripts/**/*.py"
-        - "/tests/semgrep/scripts/tests/python_exceptions.py"
-    pattern-regex: '^( {0,4}|\t)(async\s+)?def\s+[A-Za-z_][A-Za-z0-9_]*\([^#\n]*\)\s*:'

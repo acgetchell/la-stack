@@ -119,6 +119,10 @@ with local stubs; the [contributor review workflow](../CONTRIBUTING.md#coderabbi
 owns prerequisites and invocation policy.
 The [justfile](../justfile) owns executable development workflows.
 
+`osv-scanner.toml` owns temporary advisory-specific dependency exceptions, and
+`.gitleaks.toml` owns narrow secret-scan false-positive exceptions. Their rationale
+and review policy belong in [Security Checks](../SECURITY.md#security-checks).
+
 The shared package also owns managed tool installation, verification, and update
 implementation. `.python-version`, `rust-toolchain.toml`, and `pyproject.toml`
 own consumer declarations; `scripts/tests/test_toolchain_integration.py` checks
@@ -138,7 +142,18 @@ byte transport, CPU metadata, diagnostics, and zizmor authentication. The thin
 `scripts/benchmark_process.py` adapter retains benchmark phase signatures and
 consumer root selection. Generic `subprocess_utils.py` and `run_zizmor.sh`
 implementations and their duplicate tests are retired; scientific schemas and
-benchmark policy remain here. Hosted Dependabot approvals use the pinned shared
+benchmark policy remain here.
+
+Performance consumers use shared Criterion parsing and estimate/comparison
+validation, digest verification, archive extraction, byte-preserving document
+sections, and multi-file transactions. Local rendering produces complete candidate
+outputs before publication. Historical artifact schemas and fingerprint framing,
+benchmark selection and eligibility, common-harness orchestration, and complete
+run retention remain in the consumer pending the corresponding shared workflow
+contract. Generic parsing, staging, and rollback tests belong upstream; local
+tests verify the scientific and retained-artifact integration boundaries.
+
+Hosted Dependabot approvals use the pinned shared
 GitHub workflow; the [rollout guide](dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
 owns settings and deployment verification.
 

@@ -6,55 +6,27 @@ import subprocess
 import tempfile
 from subprocess import run as run_process
 from tempfile import NamedTemporaryFile as named_file
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from research_repo_tools import process as shared_process
+from research_repo_tools.process import run_command, run_git_bytes as git_input
+
+import benchmark_process as utils
+from benchmark_process import run_git_command, run_safe_command
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
-import subprocess_utils as utils
-from subprocess_utils import run_git_command, run_git_command_with_input as git_input, run_safe_command
 
-
-def run_git_command_with_input(payload: str, argv: Sequence[str], options: Mapping[str, Any]) -> None:
-    # Original failure: the text defaults were hidden in shared kwargs.
-    kwargs: dict[str, Any] = {"text": True, "encoding": "utf-8"}
-    # ruleid: la-stack.python.git-stdin-binary-transport
-    subprocess.run(argv, input=payload, **kwargs)
-    # ruleid: la-stack.python.git-stdin-binary-transport
-    subprocess.run(argv, input=payload, text=True)
-    # ruleid: la-stack.python.git-stdin-binary-transport
-    subprocess.run(argv, input=payload.encode(), text=False, encoding="utf-8")
-    # ruleid: la-stack.python.git-stdin-binary-transport
-    subprocess.run(argv, input=payload.encode(), text=False, errors="strict")
-    # ruleid: la-stack.python.git-stdin-binary-transport
-    subprocess.run(argv, input=payload.encode(), text=False, universal_newlines=True)
-    # ruleid: la-stack.python.git-stdin-binary-transport
-    run_process(argv, input=payload, text=True)
-    # ruleid: la-stack.python.git-stdin-binary-transport
-    subprocess.Popen(argv, stdin=subprocess.PIPE)
-    # ruleid: la-stack.python.git-stdin-binary-transport
-    subprocess.Popen(argv, stdin=subprocess.PIPE, text=False, encoding="utf-8")
-
-    # ok: la-stack.python.git-stdin-binary-transport
-    subprocess.run(argv, input=payload.encode("utf-8"), text=False, **options)
-    # ok: la-stack.python.git-stdin-binary-transport
-    run_process(argv, input=payload.encode(), text=False)
-    # ok: la-stack.python.git-stdin-binary-transport
-    subprocess.run(argv, input=payload.encode(), text=False, encoding=None, errors=None, universal_newlines=False)
-    # ok: la-stack.python.git-stdin-binary-transport
-    subprocess.Popen(argv, stdin=subprocess.PIPE, text=False)
-
-
-def git_input_routing(payload: str, argv: Sequence[str]) -> None:
-    # ruleid: la-stack.python.git-stdin-use-shared-helper
-    run_git_command(argv, input=payload)
-    # ruleid: la-stack.python.git-stdin-use-shared-helper
-    utils.run_git_command(argv, input=payload)
+def git_input_routing(payload: str, argv: list[str]) -> None:
     # ruleid: la-stack.python.git-stdin-use-shared-helper
     run_safe_command("git", argv, input=payload)
     # ruleid: la-stack.python.git-stdin-use-shared-helper
     utils.run_safe_command("git", argv, input=payload)
+    # ruleid: la-stack.python.git-stdin-use-shared-helper
+    run_command("git", argv, input=payload)
+    # ruleid: la-stack.python.git-stdin-use-shared-helper
+    shared_process.run_command("git", argv, input=payload)
     # ruleid: la-stack.python.git-stdin-use-shared-helper
     subprocess.run(["git", "hash-object", "--stdin"], input=payload, text=True)
     # ruleid: la-stack.python.git-stdin-use-shared-helper
@@ -68,23 +40,25 @@ def git_input_routing(payload: str, argv: Sequence[str]) -> None:
     process.communicate(payload.encode("utf-8"))
 
     # ok: la-stack.python.git-stdin-use-shared-helper
-    git_input(argv, payload)
+    git_input(argv, input=payload.encode("utf-8"))
     # ok: la-stack.python.git-stdin-use-shared-helper
-    utils.run_git_command_with_input(argv, input_data=payload)
+    shared_process.run_git_bytes(argv, input=payload.encode("utf-8"))
     # ok: la-stack.python.git-stdin-use-shared-helper
     run_git_command(argv)
     # ok: la-stack.python.git-stdin-use-shared-helper
-    run_git_command(argv, input=None)
-    # Ordinary text-mode subprocesses outside the Git-input helper are allowed.
-    # ok: la-stack.python.git-stdin-use-shared-helper, la-stack.python.git-stdin-binary-transport
+    shared_process.run_command("git", argv, input=None)
+    # Ordinary text input to non-Git commands is outside this rule's scope.
+    # ok: la-stack.python.git-stdin-use-shared-helper
     run_safe_command("ruff", ["check", "-"], input=payload)
-    # ok: la-stack.python.git-stdin-use-shared-helper, la-stack.python.git-stdin-binary-transport
+    # ok: la-stack.python.git-stdin-use-shared-helper
+    run_command("ruff", ["check", "-"], input=payload)
+    # ok: la-stack.python.git-stdin-use-shared-helper
     subprocess.run(["formatter"], input=payload, text=True, encoding="utf-8")
-    # ok: la-stack.python.git-stdin-use-shared-helper, la-stack.python.git-stdin-binary-transport
+    # ok: la-stack.python.git-stdin-use-shared-helper
     process = subprocess.Popen(["formatter"], stdin=subprocess.PIPE, text=True, encoding="utf-8")
     process.communicate(payload)
     # Git commands without piped stdin do not need the input helper.
-    # ok: la-stack.python.git-stdin-use-shared-helper, la-stack.python.git-stdin-binary-transport
+    # ok: la-stack.python.git-stdin-use-shared-helper
     subprocess.Popen(["git", "status"], stdout=subprocess.PIPE, text=True)
 
 

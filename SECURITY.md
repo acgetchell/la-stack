@@ -140,7 +140,7 @@ Review new alerts on their own data flow.
 
 ### Benchmark dependency maintenance
 
-As of September 7, 2026, `paste` 1.0.15 enters through the development dependency
+As of October 1, 2026, `paste` 1.0.15 enters through the development dependency
 `faer` 0.24.4, via `gemm` 0.19.0 and `pulp` 0.22.3. Those are the latest
 published upstream versions checked on that date. Repository-owned Rust code
 already uses `pastey`; changing that direct dependency cannot replace upstream
@@ -152,7 +152,14 @@ maintenance concern, separate from the logging false positives. `paste` is absen
 from the library's normal and build dependency graph, including with `exact`
 enabled, but its procedural macro executes when building development targets.
 
+The root `osv-scanner.toml` temporarily accepts only `RUSTSEC-2024-0436` until
+January 1, 2027, when OSV resumes blocking on it. This is a documented acceptance
+of the maintenance risk, not a patched dependency. Native OSV configuration
+discovery applies it to the root lockfiles scanned by `just security`; `paste`
+remains in the package inventory, and all other advisories remain enabled.
+
 Keep this advisory visible in `cargo audit`. Recheck the dependency path with
-`cargo tree --locked --all-features -i paste` when updating `faer`, `gemm`, or
-`pulp`, and remove the dependency through a maintained upstream release when
-available.
+`cargo tree --locked --workspace --all-features -i paste` when updating `faer`,
+`gemm`, or `pulp`. Remove both the dependency and its OSV exception through a
+maintained upstream release when available; reassess explicitly before extending
+the exception.

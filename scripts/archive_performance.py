@@ -26,16 +26,17 @@ import re
 import shutil
 import subprocess
 import sys
-import tarfile
 import tempfile
 import tomllib
 from collections.abc import Iterator, Mapping
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from research_repo_tools.archives import extract_archive
+from research_repo_tools.files import replace_many
 from research_repo_tools.process import ExecutableNotFoundError, cpu_description, format_exception_diagnostics, run_git_bytes
 
 from bench_compare import HOW_TO_UPDATE_SECTION, render_release_artifacts
@@ -45,9 +46,9 @@ from benchmark_summaries import report_input_paths, resolve_report_paths, retain
 from performance_artifacts import (
     NO_API_COMPATIBILITY,
     ArtifactPaths,
+    bundle_outputs,
     ensure_distinct_paths,
     load_bundle,
-    publish_bundle,
     resolve_shared_harness_compatibility,
 )
 
@@ -190,9 +191,11 @@ class ArchivePaths:
 
 @dataclass(frozen=True)
 class GeneratedReport:
-    """A generated benchmark report that remains valid after worktree cleanup."""
+    """Validated report and candidate outputs available until temporary cleanup."""
 
     text: str
+    artifacts: ArtifactPaths
+    outputs: Mapping[Path, bytes]
 
 
 @dataclass(frozen=True)
@@ -434,50 +437,8 @@ def _normalize_how_to_update(text: str) -> str:
     return f"{text.rstrip()}\n\n{HOW_TO_UPDATE_SECTION}"
 
 
-def _replace_file(src: Path, dst: Path) -> None:
-    src.replace(dst)
-
-
 def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with ExitStack() as cleanup:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            newline="",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as tmp:
-            tmp_path = Path(tmp.name)
-            cleanup.callback(tmp_path.unlink, missing_ok=True)
-            tmp.write(text)
-            tmp.flush()
-            os.fsync(tmp.fileno())
-        _replace_file(tmp_path, path)
-
-
-def _restore_file(path: Path, payload: bytes | None) -> None:
-    """Restore one file snapshot without relying on the publication writer."""
-    if payload is None:
-        path.unlink(missing_ok=True)
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with ExitStack() as cleanup:
-        with tempfile.NamedTemporaryFile(
-            "wb",
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".restore",
-            delete=False,
-        ) as tmp:
-            restore_path = Path(tmp.name)
-            cleanup.callback(restore_path.unlink, missing_ok=True)
-            tmp.write(payload)
-            tmp.flush()
-            os.fsync(tmp.fileno())
-        restore_path.replace(path)
+    replace_many({path: text.encode("utf-8")})
 
 
 def _snapshot_regular_file(path: Path, *, label: str) -> bytes | None:
@@ -498,35 +459,10 @@ def _decode_text_snapshot(payload: bytes) -> str:
     return payload.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
 
 
-def _restore_snapshots(snapshots: tuple[tuple[Path, bytes | None], ...]) -> tuple[BaseException, ...]:
-    """Attempt every file restoration and return all rollback failures."""
-    errors: list[BaseException] = []
-    for path, payload in reversed(snapshots):
-        try:
-            _restore_file(path, payload)
-        except BaseException as exc:  # noqa: BLE001
-            errors.append(exc)
-    return tuple(errors)
-
-
-@contextmanager
-def _publish_text_outputs(outputs: Mapping[Path, str]) -> Iterator[None]:
-    """Retain complete scratch summaries with the report's rollback boundary."""
-    snapshots = tuple((path, _snapshot_regular_file(path, label="benchmark summary")) for path in outputs)
-    try:
-        for path, text in outputs.items():
-            _write_text(path, text)
-        yield
-    except BaseException as error:
-        failures = _restore_snapshots(snapshots)
-        if failures:
-            msg = "benchmark summary publication and rollback failed"
-            raise BaseExceptionGroup(msg, [error, *failures]) from None
-        raise
-
-
-def _archive_readme(archive_dir: Path) -> str:
-    reports = sorted(path.name for path in archive_dir.glob("*.md") if path.name != "README.md")
+def _archive_readme(archive_dir: Path, planned: Path | None = None) -> str:
+    reports = {path.name for path in archive_dir.glob("*.md") if path.name != "README.md"}
+    if planned is not None:
+        reports.add(planned.name)
     lines = [
         "# Archived Performance Reports",
         "",
@@ -535,17 +471,12 @@ def _archive_readme(archive_dir: Path) -> str:
         "",
     ]
     if reports:
-        lines.extend(f"- [{name.removesuffix('.md')}]({name})" for name in reports)
+        lines.extend(f"- [{name.removesuffix('.md')}]({name})" for name in sorted(reports))
     else:
         lines.append("- No archived performance reports yet.")
     if (archive_dir / "studies").is_dir():
         lines.extend(("", "Completed optimization investigations are in [archived studies](studies/README.md)."))
     return "\n".join(lines) + "\n"
-
-
-def update_archive_index(archive_dir: Path) -> None:
-    """Write a lexicographically sorted archive index."""
-    _write_text(archive_dir / "README.md", _archive_readme(archive_dir))
 
 
 def _format_command_failure(command: list[str], exc: subprocess.CalledProcessError) -> str:
@@ -989,18 +920,6 @@ def _comparison_benchmark_env(checkout: Path, *, api_compatibility: str | None =
     return env
 
 
-def _safe_extract_tar(archive: Path, target_dir: Path) -> None:
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target_root = target_dir.resolve()
-    with tarfile.open(archive, "r:gz") as tar:
-        for member in tar.getmembers():
-            member_path = (target_dir / member.name).resolve()
-            if not member_path.is_relative_to(target_root):
-                msg = f"refusing to extract unsafe archive member {member.name!r}"
-                raise ValueError(msg)
-        tar.extractall(target_dir, filter="data")
-
-
 def _download_release_baseline(*, baseline_tag: str, download_dir: Path, repo_root: Path) -> Path:
     artifact = download_dir / f"la-stack-{baseline_tag}-criterion-baseline.tar.gz"
     _run_tool(
@@ -1306,8 +1225,14 @@ def _prepare_github_release_assets(*, current_tag: str, baseline_tag: str, repo_
         repo_root=repo_root,
     )
     target_dir = target_worktree / "target"
-    _safe_extract_tar(baseline_archive, target_dir)
-    _safe_extract_tar(current_archive, target_dir)
+    for phase, archive in (("baseline", baseline_archive), ("current", current_archive)):
+        extracted = tmp_dir / f"{phase}-extracted"
+        extract_archive(archive, extracted)
+        # Only this disposable checkout can observe partial assembly. Keep the
+        # expanded archive off the heap while retaining shared path validation.
+        for path in sorted(extracted.rglob("*")):
+            if path.is_file():
+                replace_many({target_dir / path.relative_to(extracted): path.read_bytes()})
     # Published artifacts retain their release-specific harnesses. Never let an
     # embedded or stale local manifest claim that these samples shared one.
     metadata_path = target_dir / "criterion" / _BENCHMARK_HARNESS_METADATA
@@ -1516,20 +1441,21 @@ def _generated_report_in_temp_worktree(
                     baseline_run=baseline_run,
                 )
             report_text = _read_text(report)
+            if render_release_artifacts(temporary_artifacts) != report_text:
+                msg = "retained performance-comparison artifacts did not reproduce the generated Markdown"
+                raise ValueError(msg)
             bundle = load_bundle(temporary_artifacts)
             summaries = {}
             if config.baseline_source == "local":
                 temporary_summaries = summary_outputs(worktree / "target/criterion", config.baseline_tag, temporary_artifacts)
+                replace_many({path: text.encode("utf-8") for path, text in temporary_summaries.items()})
                 summaries = {
                     published_artifacts.csv.with_suffix(".full.csv" if path.suffix == ".csv" else ".full.provenance.json"): text
                     for path, text in temporary_summaries.items()
                 }
-            with _publish_text_outputs(summaries), publish_bundle(published_artifacts, bundle):
-                durable_text = render_release_artifacts(published_artifacts)
-                if durable_text != report_text:
-                    msg = "durable performance-comparison artifacts did not reproduce the generated Markdown"
-                    raise ValueError(msg)
-                yield GeneratedReport(text=durable_text)
+            outputs = bundle_outputs(published_artifacts, bundle)
+            outputs.update({path: text.encode("utf-8") for path, text in summaries.items()})
+            yield GeneratedReport(text=report_text, artifacts=temporary_artifacts, outputs=outputs)
 
 
 def _current_archive_state(
@@ -1594,31 +1520,7 @@ def _existing_archive_matches(*, archive_path: Path | None, current_id: ReportId
     return True
 
 
-def _promotion_snapshots(
-    request: PromotionRequest,
-    *,
-    index_path: Path,
-    archive_path: Path | None,
-    archive_exists: bool,
-) -> tuple[tuple[Path, bytes | None], ...]:
-    """Snapshot every path mutated by a report promotion."""
-    snapshots: list[tuple[Path, bytes | None]] = []
-    if archive_path is not None and not archive_exists:
-        snapshots.append((archive_path, None))
-    snapshots.extend(
-        (
-            (request.current, _snapshot_regular_file(request.current, label="current report")),
-            (index_path, _snapshot_regular_file(index_path, label="archive index")),
-        )
-    )
-    if request.output is not None:
-        snapshots.append((request.output, _snapshot_regular_file(request.output, label="rendered output")))
-    if request.retained_outputs:
-        snapshots.extend((path, _snapshot_regular_file(path, label="retained benchmark summary")) for path in request.retained_outputs)
-    return tuple(snapshots)
-
-
-def _promote_report_text(*, source_text: str, request: PromotionRequest) -> ReportId:
+def _promote_report_text(*, source_text: str, request: PromotionRequest, generated_outputs: Mapping[Path, bytes] | None = None) -> ReportId:
     """Archive the old report and atomically promote validated Markdown text."""
     if request.expected.current_tag == request.expected.baseline_tag:
         msg = "cannot promote a same-version local performance comparison as release documentation"
@@ -1645,31 +1547,18 @@ def _promote_report_text(*, source_text: str, request: PromotionRequest) -> Repo
         current_id=current_id,
         current_text=current_text,
     )
-    snapshots = _promotion_snapshots(
-        request,
-        index_path=index_path,
-        archive_path=archive_path,
-        archive_exists=archive_exists,
-    )
-    try:
-        for path, text in (request.retained_outputs or {}).items():
-            if not path.exists() or _read_text(path) != text:
-                _write_text(path, text)
-        if archive_path is not None and not archive_exists:
-            if current_text is None:
-                msg = "archive promotion invariant violated"
-                raise AssertionError(msg)
-            _write_text(archive_path, current_text)
-        _write_text(request.current, source_text)
-        update_archive_index(request.archive_dir)
-        if request.output is not None:
-            _write_text(request.output, source_text)
-    except BaseException as promotion_error:
-        rollback_errors = _restore_snapshots(snapshots)
-        if rollback_errors:
-            group_message = "performance report promotion and rollback failed"
-            raise BaseExceptionGroup(group_message, [promotion_error, *rollback_errors]) from None
-        raise
+    outputs = dict(generated_outputs or {})
+    outputs.update({path: text.encode("utf-8") for path, text in (request.retained_outputs or {}).items()})
+    if archive_path is not None and not archive_exists:
+        if current_text is None:
+            msg = "archive promotion invariant violated"
+            raise AssertionError(msg)
+        outputs[archive_path] = current_text.encode("utf-8")
+    outputs[request.current] = source_text.encode("utf-8")
+    outputs[index_path] = _archive_readme(request.archive_dir, archive_path).encode("utf-8")
+    if request.output is not None:
+        outputs[request.output] = source_text.encode("utf-8")
+    replace_many(outputs)
     return source_id
 
 
@@ -1748,8 +1637,9 @@ def generate_and_promote_worktree_report(
             source_text=generated.text,
             request=replace(
                 request,
-                retained_outputs=retained_outputs(current.parent / "performance", published_artifacts) if config.baseline_source == "local" else {},
+                retained_outputs=retained_outputs(current.parent / "performance", generated.artifacts) if config.baseline_source == "local" else {},
             ),
+            generated_outputs=generated.outputs,
         )
 
 
@@ -1796,7 +1686,7 @@ def generate_worktree_report(
                 f"expected {expected.current_tag} vs {expected.baseline_tag}"
             )
             raise ValueError(msg)
-        _write_text(output, report_text)
+        replace_many({**generated.outputs, output: report_text.encode("utf-8")})
         return report_id
 
 

@@ -1,17 +1,14 @@
 """Tests for exact-arithmetic benchmark comparison reports."""
 
 import json
-import re
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Never, cast
+from typing import cast
 
 import pytest
 
 import bench_compare
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _OVERFLOWING_TIMING = 10**400
 
@@ -296,100 +293,6 @@ def test_read_estimate_no_ci(tmp_path: Path) -> None:
     assert estimate.ci_hi_ns is None
 
 
-def test_read_estimate_missing_stat(tmp_path: Path) -> None:
-    est = tmp_path / "estimates.json"
-    _write_estimates(est, "median", 1.0)
-    with pytest.raises(KeyError, match="stat 'mean' not found"):
-        bench_compare._read_estimate(est, "mean")
-
-
-def test_read_estimate_malformed_json_names_file(tmp_path: Path) -> None:
-    est = tmp_path / "estimates.json"
-    est.write_text("{not json", encoding="utf-8")
-
-    with pytest.raises(
-        ValueError,
-        match=re.escape(f"malformed Criterion estimates JSON in {est}"),
-    ):
-        bench_compare._read_estimate(est, "median")
-
-
-def test_read_estimate_missing_point_estimate_names_field(tmp_path: Path) -> None:
-    est = tmp_path / "estimates.json"
-    est.write_text(json.dumps({"median": {}}), encoding="utf-8")
-
-    with pytest.raises(KeyError, match="field 'point_estimate' for stat 'median' not found"):
-        bench_compare._read_estimate(est, "median")
-
-
-def test_read_estimate_non_numeric_ci_bound_names_field(tmp_path: Path) -> None:
-    est = tmp_path / "estimates.json"
-    est.write_text(
-        json.dumps(
-            {
-                "median": {
-                    "point_estimate": 1.0,
-                    "confidence_interval": {"lower_bound": "fast", "upper_bound": 2.0},
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match=r"field 'lower_bound' for stat 'median'.*not numeric"):
-        bench_compare._read_estimate(est, "median")
-
-
-def test_read_estimate_rejects_numeric_overflow(tmp_path: Path) -> None:
-    est = tmp_path / "estimates.json"
-    est.write_text(json.dumps({"median": {"point_estimate": _OVERFLOWING_TIMING}}), encoding="utf-8")
-
-    with pytest.raises(ValueError, match=r"field 'point_estimate'.*not numeric") as exc_info:
-        bench_compare._read_estimate(est, "median")
-
-    assert isinstance(exc_info.value.__cause__, OverflowError)
-
-
-def test_read_estimate_rejects_partial_confidence_interval(tmp_path: Path) -> None:
-    est = tmp_path / "estimates.json"
-    est.write_text(
-        json.dumps(
-            {
-                "median": {
-                    "point_estimate": 1.0,
-                    "confidence_interval": {"lower_bound": 0.9},
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(KeyError, match="field 'upper_bound'"):
-        bench_compare._read_estimate(est, "median")
-
-
-def test_read_estimate_rejects_reversed_confidence_interval(tmp_path: Path) -> None:
-    est = tmp_path / "estimates.json"
-    _write_estimates(est, "median", 10.0, lower=12.0, upper=11.0)
-
-    with pytest.raises(ValueError, match=r"lower_bound 12\.0 exceeds upper_bound 11\.0"):
-        bench_compare._read_estimate(est, "median")
-
-
-@pytest.mark.parametrize("point", [float("nan"), float("inf"), -1.0, 0.0])
-def test_read_estimate_rejects_invalid_timing(tmp_path: Path, point: float) -> None:
-    est = tmp_path / "estimates.json"
-    est.write_text(json.dumps({"median": {"point_estimate": point}}), encoding="utf-8")
-
-    with pytest.raises(ValueError, match="must be finite and positive"):
-        bench_compare._read_estimate(est, "median")
-
-
-def test_criterion_estimate_rejects_partial_interval_even_when_constructed_directly() -> None:
-    with pytest.raises(ValueError, match="both bounds or neither"):
-        bench_compare.CriterionEstimate(point_ns=1.0, ci_lo_ns=0.9, ci_hi_ns=None)
-
-
 # ---------------------------------------------------------------------------
 # collect_results / collect_comparisons
 # ---------------------------------------------------------------------------
@@ -669,6 +572,23 @@ def test_collect_vs_linalg_all_benches_includes_latest_peer_rows(tmp_path: Path)
 # ---------------------------------------------------------------------------
 # Table generation
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("current_ns", "change"), [(5.0, "-50.0%"), (10.0, "+0.0%"), (20.0, "+100.0%")])
+def test_comparison_table_preserves_signed_change(current_ns: float, change: str) -> None:
+    """The report uses signed elapsed-time change, including positive zero."""
+    comparison = bench_compare.Comparison(
+        suite="exact",
+        group="exact_d2",
+        bench="det",
+        baseline=bench_compare.CriterionEstimate(10.0, None, None),
+        current=bench_compare.CriterionEstimate(current_ns, None, None),
+        assessment="unknown",
+    )
+
+    table = bench_compare._comparison_tables([comparison], "last")
+
+    assert f"| {change} |" in table
 
 
 def test_snapshot_uses_one_table_per_suite_with_case_column(tmp_path: Path) -> None:
@@ -1055,13 +975,17 @@ def test_main_comparison_refuses_incomplete_coverage_before_writing(tmp_path: Pa
     assert "## Incomplete Comparison Coverage" in error
 
 
+@pytest.mark.parametrize("point", [0.0, "10.0", True])
 def test_main_rejects_invalid_timing_without_writing_or_traceback(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    point: object,
 ) -> None:
     criterion_dir = tmp_path / "criterion"
     group = criterion_dir / "exact_d2"
-    _write_estimates(group / "det" / "new" / "estimates.json", "median", 0.0)
+    current = group / "det/new/estimates.json"
+    current.parent.mkdir(parents=True)
+    current.write_text(json.dumps({"median": {"point_estimate": point}}), encoding="utf-8")
     _write_estimates(group / "det" / "last" / "estimates.json", "median", 10.0)
     output = tmp_path / "report.md"
 
@@ -1070,6 +994,50 @@ def test_main_rejects_invalid_timing_without_writing_or_traceback(
     assert rc == 2
     assert "Invalid Criterion estimate data" in capsys.readouterr().err
     assert not output.exists()
+
+
+@pytest.mark.parametrize(("baseline", "current"), [(1e-300, 1e300), (1e300, 1e-300)])
+def test_main_rejects_unrepresentable_comparison_without_changing_report(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], baseline: float, current: float
+) -> None:
+    criterion_dir = tmp_path / "criterion"
+    group = criterion_dir / "d2/la_stack_lu_solve"
+    _write_estimates(group / "new/estimates.json", "median", current)
+    _write_estimates(group / "last/estimates.json", "median", baseline)
+    output = tmp_path / "report.md"
+    output.write_bytes(b"prior report\n")
+
+    rc = bench_compare.main(["last", "--suite", "vs_linalg", "--scope", "all-benches", "--criterion-dir", str(criterion_dir), "--output", str(output)])
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "Invalid Criterion comparison data" in captured.err
+    assert not captured.out
+    assert output.read_bytes() == b"prior report\n"
+
+
+@pytest.mark.parametrize("kind", ["directory", "symlink"])
+def test_main_snapshot_rejects_invalid_output_without_traceback(tmp_path: Path, capsys: pytest.CaptureFixture[str], kind: str) -> None:
+    criterion_dir = tmp_path / "criterion"
+    _build_criterion_tree(criterion_dir)
+    output = tmp_path / "report.md"
+    previous = tmp_path / "keep.txt"
+    previous.write_bytes(b"keep\n")
+    if kind == "directory":
+        output.mkdir()
+    else:
+        try:
+            output.symlink_to(previous)
+        except OSError as exc:
+            pytest.skip(f"symlinks unavailable: {exc}")
+
+    rc = bench_compare.main(["--snapshot", "--suite", "exact", "--scope", "all-benches", "--criterion-dir", str(criterion_dir), "--output", str(output)])
+
+    assert rc == 2
+    captured = capsys.readouterr()
+    assert "Could not write benchmark report" in captured.err
+    assert not captured.out
+    assert previous.read_bytes() == b"keep\n"
 
 
 def test_main_rejects_overflowing_timing_without_writing_or_traceback(
@@ -1258,11 +1226,18 @@ def test_markdown_failure_rolls_back_release_artifact_pair(tmp_path: Path, monke
     )
     monkeypatch.setattr(bench_compare, "_release_artifact_bundle", lambda **_kwargs: bundle)
 
-    def fail_markdown(_path: Path, _text: str) -> None:
-        msg = "simulated Markdown publication failure"
-        raise OSError(msg)
+    real_replace = Path.replace
+    failed = False
 
-    monkeypatch.setattr(bench_compare, "_write_text_atomic", fail_markdown)
+    def fail_markdown(source: Path, destination: Path) -> Path:
+        nonlocal failed
+        if destination == output and not failed:
+            failed = True
+            msg = "simulated Markdown publication failure"
+            raise OSError(msg)
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(Path, "replace", fail_markdown)
 
     with pytest.raises(OSError, match="simulated Markdown publication failure"):
         bench_compare._write_and_render_artifacts(
@@ -1282,33 +1257,6 @@ def test_markdown_failure_rolls_back_release_artifact_pair(tmp_path: Path, monke
     assert paths.csv.read_bytes() == b"old csv\n"
     assert paths.provenance.read_bytes() == b"old provenance\n"
     assert output.read_text(encoding="utf-8") == "old markdown\n"
-
-
-@pytest.mark.parametrize("failure_point", ["create", "fsync", "replace"])
-def test_atomic_markdown_write_failure_preserves_original_and_cleans_temp(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    failure_point: str,
-) -> None:
-    output = tmp_path / "performance.md"
-    output.write_text("old\n", encoding="utf-8")
-
-    def fail(*_args: object, **_kwargs: object) -> Never:
-        msg = f"simulated {failure_point} failure"
-        raise OSError(msg)
-
-    if failure_point == "create":
-        monkeypatch.setattr(bench_compare.tempfile, "NamedTemporaryFile", fail)
-    elif failure_point == "fsync":
-        monkeypatch.setattr(bench_compare.os, "fsync", fail)
-    else:
-        monkeypatch.setattr(bench_compare.Path, "replace", fail)
-
-    with pytest.raises(OSError, match=f"simulated {failure_point} failure"):
-        bench_compare._write_text_atomic(output, "new\n")
-
-    assert output.read_text(encoding="utf-8") == "old\n"
-    assert list(tmp_path.iterdir()) == [output]
 
 
 def test_main_v045_comparison_publishes_current_only_rational_rows(
