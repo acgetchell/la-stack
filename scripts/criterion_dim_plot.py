@@ -29,10 +29,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol, TypeGuard, cast
 
+from research_repo_tools.process import ExecutableNotFoundError, cpu_description
+
 from benchmark_contract import benchmark_contract_digest
+from benchmark_process import find_project_root, run_git_command, run_safe_command
 from benchmark_summaries import report_input_paths, resolve_report_paths
 from performance_artifacts import ArtifactPaths, PerformanceBundle, TimingEstimate, ensure_distinct_paths, load_bundle
-from subprocess_utils import ExecutableNotFoundError, cpu_description, find_project_root, run_git_command, run_safe_command
 
 
 @dataclass(frozen=True, slots=True)

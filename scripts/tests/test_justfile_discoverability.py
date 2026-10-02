@@ -1,13 +1,17 @@
 """Regression tests for the Just recipe surface."""
 
 import json
+import re
 import shlex
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
 
-from subprocess_utils import run_cargo_command, run_safe_command
+import yaml
+from research_repo_tools.process import run_command
+
+from benchmark_process import run_safe_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -41,7 +45,8 @@ def just_recipes() -> dict[str, dict[str, Any]]:
 def test_exact_benchmark_package_excludes_peer_libraries() -> None:
     # No dependency resolution: this also runs before Cargo caches exist in CI.
     metadata = json.loads(
-        run_cargo_command(
+        run_command(
+            "cargo",
             ["metadata", "--locked", "--offline", "--no-deps", "--format-version", "1"],
             cwd=REPO_ROOT,
         ).stdout
@@ -99,3 +104,99 @@ def test_ci_enforces_full_python_fixture_lint_policy() -> None:
     assert "python-fixture-lint" in ci_dependencies
     assert "ruff check tests/semgrep/scripts/" in fixture_lint_body
     assert "--select" not in fixture_lint_body
+
+
+def test_bare_just_lists_the_complete_documented_surface_after_source_sorting() -> None:
+    """Discover new recipes from Just metadata without another maintained help list."""
+    recipes = just_recipes()
+    listed = run_just().stdout
+    assert listed == run_just("--list").stdout
+    assert recipes["_default"]["private"]
+    assert "default" in recipes["_default"]["attributes"]
+    assert "help-workflows" not in recipes
+    public = {name: recipe for name, recipe in recipes.items() if not recipe["private"]}
+    assert set(re.findall(r"^    ([a-z][a-z0-9-]*)", listed, re.MULTILINE)) == set(public)
+    for name, recipe in public.items():
+        assert recipe["doc"], name
+        line = next(line for line in listed.splitlines() if re.match(rf"^    {re.escape(name)}(?:\s|$)", line))
+        for parameter in recipe["parameters"]:
+            assert parameter["name"] in line
+    source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
+    definitions = re.findall(r"^(?![^\n]*:=)([a-z_][a-z0-9_-]*)(?: [^:\n]*)?:", source, re.MULTILINE)
+    assert definitions == sorted(definitions)
+
+
+def test_dependabot_shared_caller_covers_every_owned_dependency_file() -> None:
+    """New manifests or workflows cannot silently fall outside automatic eligibility."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/dependabot-auto-merge.yml").read_bytes())
+    events = workflow.get("on", workflow.get(True))
+    assert set(events) == {"pull_request_target"}
+    assert events["pull_request_target"]["branches"] == ["main"]
+    assert workflow["permissions"] == {}
+    assert len(workflow["jobs"]) == 1
+    job = workflow["jobs"]["approve-and-enable-auto-merge"]
+    path, revision = job["uses"].split("@")
+    assert path == "acgetchell/research-repo-tools/.github/workflows/dependabot-approve.yml"
+    assert re.fullmatch(r"[0-9a-f]{40}", revision)
+    assert "steps" not in job
+    assert "secrets" not in job
+    assert job["permissions"] == {"contents": "write", "pull-requests": "write"}
+    assert job["with"]["repository"] == "acgetchell/la-stack"
+    policy = json.loads(job["with"]["policy"])
+    assert set(policy) == {"cargo", "uv", "github_actions"}
+    assert set(policy["cargo"]["files"]) == {"Cargo.toml", "Cargo.lock", "benches/comparison/Cargo.toml"}
+    assert set(policy["uv"]["files"]) == {"pyproject.toml", "uv.lock"}
+    actions = {
+        path.relative_to(REPO_ROOT).as_posix()
+        for directory in (REPO_ROOT / ".github/workflows", REPO_ROOT / ".github/actions")
+        for path in directory.rglob("*")
+        if path.suffix in {".yml", ".yaml"}
+    }
+    assert set(policy["github_actions"]["files"]) == actions
+
+
+def test_zizmor_workflow_separates_findings_from_sarif_export() -> None:
+    """SARIF's successful exit cannot mask findings in the blocking audit."""
+    recipes = just_recipes()
+    assert "research-repo-tools zizmor check" in json.dumps(recipes["zizmor"]["body"])
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/zizmor.yml").read_bytes())
+    steps = workflow["jobs"]["analyze"]["steps"]
+    audit = next(step for step in steps if step.get("id") == "audit")
+    sarif = next(step for step in steps if step.get("id") == "sarif")
+    assert audit["run"] == "just zizmor --require-online"
+    assert "continue-on-error" not in audit
+    assert "just zizmor --require-online --format sarif" in sarif["run"]
+    assert "!cancelled()" in sarif["if"]
+    upload = next(step for step in steps if step.get("uses", "").startswith("github/codeql-action/upload-sarif@"))
+    assert "steps.sarif.outcome == 'success'" in upload["if"]
+    assert "github.actor != 'dependabot[bot]'" in upload["if"]
+
+
+def test_semgrep_sarif_upload_honors_only_in_source_suppressions() -> None:
+    """GitHub receives actionable findings with their original metadata across every run."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/semgrep-sarif.yml").read_bytes())
+    steps = workflow["jobs"]["semgrep-sarif"]["steps"]
+    scan = next(step for step in steps if step.get("id") == "semgrep")
+    command = next(line.strip() for line in scan["run"].splitlines() if line.strip().startswith("jq "))
+    arguments = shlex.split(command)
+    actionable = {"ruleId": "actionable", "partialFingerprints": {"primaryLocationLineHash": "original"}}
+    reviewed = {"ruleId": "reviewed", "suppressions": [{"kind": "inSource"}]}
+    external = {"ruleId": "external", "suppressions": [{"kind": "external"}]}
+    other_run = {"ruleId": "other-run", "locations": [{"physicalLocation": {"artifactLocation": {"uri": "other.yml"}}}]}
+    report = {
+        "version": "2.1.0",
+        "runs": [
+            {"tool": {"driver": {"name": "Semgrep OSS"}}, "results": [reviewed, actionable, external]},
+            {"tool": {"driver": {"name": "Semgrep OSS"}}, "results": [other_run, reviewed]},
+        ],
+    }
+    filtered = json.loads(run_command("jq", arguments[1:2], input=json.dumps(report)).stdout)
+    assert filtered["version"] == report["version"]
+    assert filtered["runs"][0]["results"] == [actionable, external]
+    assert filtered["runs"][1]["results"] == [other_run]
+    assert filtered["runs"][0]["tool"] == report["runs"][0]["tool"]
+    upload = next(step for step in steps if step.get("uses", "").startswith("github/codeql-action/upload-sarif@"))
+    assert arguments[2:] == ["semgrep-raw.sarif", ">", upload["with"]["sarif_file"]]
+    gate = next(step for step in steps if step["name"] == "Fail on repository rule findings")
+    assert gate["if"] == "steps.semgrep.outputs.exit_code != '0'"
+    assert gate["run"] == "exit 1"

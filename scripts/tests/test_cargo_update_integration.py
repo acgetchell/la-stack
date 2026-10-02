@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from subprocess_utils import run_safe_command
+from benchmark_process import run_safe_command
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

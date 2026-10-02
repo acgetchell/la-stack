@@ -36,8 +36,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from research_repo_tools.process import ExecutableNotFoundError, cpu_description, format_exception_diagnostics, run_git_bytes
+
 from bench_compare import HOW_TO_UPDATE_SECTION, render_release_artifacts
 from benchmark_contract import benchmark_contract_digest
+from benchmark_process import run_git_command, run_safe_command
 from benchmark_summaries import report_input_paths, resolve_report_paths, retained_outputs, summary_outputs
 from performance_artifacts import (
     NO_API_COMPATIBILITY,
@@ -46,14 +49,6 @@ from performance_artifacts import (
     load_bundle,
     publish_bundle,
     resolve_shared_harness_compatibility,
-)
-from subprocess_utils import (
-    ExecutableNotFoundError,
-    cpu_description,
-    format_exception_diagnostics,
-    run_git_command,
-    run_git_command_with_input,
-    run_safe_command,
 )
 
 _VERSION_RE = re.compile(r"^\*\*la-stack\*\* v(?P<version>[^\s`]+)", re.MULTILINE)
@@ -554,21 +549,15 @@ def update_archive_index(archive_dir: Path) -> None:
 
 
 def _format_command_failure(command: list[str], exc: subprocess.CalledProcessError) -> str:
-    parts = [f"command failed ({exc.returncode}): {' '.join(command)}"]
-    if exc.stdout:
-        parts.append(f"stdout:\n{exc.stdout.strip()}")
-    if exc.stderr:
-        parts.append(f"stderr:\n{exc.stderr.strip()}")
-    return "\n".join(parts)
+    header = f"command failed ({exc.returncode}): {' '.join(command)}"
+    details = format_exception_diagnostics(exc).partition("\n")[2]
+    return f"{header}\n{details}" if details else header
 
 
 def _format_command_timeout(command: list[str], exc: subprocess.TimeoutExpired) -> str:
-    parts = [f"command timed out after {exc.timeout} seconds: {' '.join(command)}"]
-    if exc.stdout:
-        parts.append(f"stdout:\n{str(exc.stdout).strip()}")
-    if exc.stderr:
-        parts.append(f"stderr:\n{str(exc.stderr).strip()}")
-    return "\n".join(parts)
+    header = f"command timed out after {exc.timeout} seconds: {' '.join(command)}"
+    details = format_exception_diagnostics(exc).partition("\n")[2]
+    return f"{header}\n{details}" if details else header
 
 
 def _format_command_start_failure(command: list[str], exc: BaseException) -> str:
@@ -1343,7 +1332,7 @@ def _apply_current_diff_to_worktree(*, repo_root: Path, worktree: Path) -> None:
         diff = patch_path.read_bytes()
     if diff.strip():
         try:
-            run_git_command_with_input(["apply", "--binary"], diff, cwd=worktree)
+            run_git_bytes(["apply", "--binary"], input=diff, cwd=worktree)
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(_format_command_failure(["git", "apply", "--binary"], exc)) from exc
         except subprocess.TimeoutExpired as exc:

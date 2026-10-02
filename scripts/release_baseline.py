@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics, run_command
+
 from bench_compare import (
     EXACT_GROUPS,
     VS_LINALG_CANONICAL_DIMS,
@@ -15,7 +17,6 @@ from bench_compare import (
     VS_LINALG_STANDARD_BENCH_ORDER,
 )
 from criterion_measurements import read_object, validate_measurement
-from subprocess_utils import ExecutableNotFoundError, format_exception_diagnostics, run_cargo_command
 
 SUITES = {"vs_linalg": "bench", "exact": "bench,exact"}
 RAW_FILES = ("benchmark.json", "estimates.json", "sample.json", "tukey.json")
@@ -68,11 +69,10 @@ def discover(root: Path, manifest: Path, criterion: Path) -> None:
     for suite, features in SUITES.items():
         print(f"[release-baseline] Discovering {suite}", flush=True)
         package = ["-p", "la-stack-comparison"] if suite == "vs_linalg" else []
-        result = run_cargo_command(
+        result = run_command(
+            "cargo",
             ["bench", "--locked", *package, "--features", features, "--bench", suite, "--", "--list"],
             cwd=root,
-            capture_output=False,
-            stdout=subprocess.PIPE,
             timeout=None,  # The workflow bounds compilation and discovery together.
         )
         inventory[suite] = parse_benchmark_list(result.stdout)

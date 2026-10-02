@@ -48,9 +48,12 @@ jobs:
             --timeout 30 \
             --config semgrep.yaml \
             --sarif \
-            --output semgrep-results.sarif \
+            --output semgrep-raw.sarif \
             .
           status=$?
+          set -e
+          # GitHub ignores SARIF suppression metadata; honor reviewed inline exceptions.
+          jq '.runs[].results |= map(select(any(.suppressions[]?; .kind == "inSource") | not))' semgrep-raw.sarif > semgrep-results.sarif
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
 

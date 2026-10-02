@@ -5,6 +5,29 @@ on:
   pull_request_target:
 
 jobs:
+  approved-dependency-review:
+    # ok: la-stack.github-actions.external-action-approved-allowlist, la-stack.github-actions.external-action-sha-pinned
+    uses: acgetchell/research-repo-tools/.github/workflows/dependabot-approve.yml@cbb2ea6dee8866b3f0547bca935aef48fdd71707 # reviewed 2026-10-01
+  unpinned-dependency-review:
+    # ruleid: la-stack.github-actions.external-action-sha-pinned
+    uses: acgetchell/research-repo-tools/.github/workflows/dependabot-approve.yml@main
+  unknown-dependency-review:
+    # ruleid: la-stack.github-actions.external-action-approved-allowlist
+    uses: acgetchell/research-repo-tools/.github/workflows/unapproved.yml@cbb2ea6dee8866b3f0547bca935aef48fdd71707 # reviewed 2026-10-01
+  uncommented-dependency-review:
+    # ruleid: la-stack.github-actions.external-action-version-comment
+    uses: acgetchell/research-repo-tools/.github/workflows/dependabot-approve.yml@cbb2ea6dee8866b3f0547bca935aef48fdd71707
+  action-shorthand:
+    runs-on: ubuntu-latest
+    steps:
+      # ok: la-stack.github-actions.external-action-approved-allowlist, la-stack.github-actions.external-action-sha-pinned
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # ruleid: la-stack.github-actions.external-action-sha-pinned
+      - uses: actions/cache@v6
+      # ruleid: la-stack.github-actions.external-action-approved-allowlist
+      - uses: unapproved/example-action@1111111111111111111111111111111111111111 # v1.0.0
+      # ruleid: la-stack.github-actions.external-action-version-comment
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
   fixtures:
     runs-on: ubuntu-latest
     steps:

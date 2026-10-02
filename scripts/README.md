@@ -261,7 +261,8 @@ just update-version vX.Y.Z
 
 The shared `research-repo-tools release update` CLI infers the previous stable
 release from published GitHub releases and updates package, lockfile, citation,
-and non-artifact README references transactionally. It records the current UTC
+and release metadata transactionally. Active README navigation remains on `main`;
+measured artifact links retain their recorded revision. It records the current UTC
 date in `CITATION.cff`. Pass `--previous-release vA.B.C` to avoid release discovery,
 `--date YYYY-MM-DD` to declare a date, or `--dry-run` to preview validated changes:
 
@@ -386,12 +387,22 @@ preview an annotation without creating a tag.
 | Script | Purpose |
 |---|---|
 | `archive_performance.py` | Promote release performance docs and archive older comparisons |
-| `performance_artifacts.py` | Validate and publish schema-versioned performance-comparison CSV/JSON inputs |
 | `bench_compare.py` | Compare Criterion benchmark baselines and render Markdown reports |
+| `benchmark_contract.py` | Define and hash the consumer's benchmark inventory contract |
+| `benchmark_process.py` | Thin benchmark phase adapters over the published shared process API, plus consumer root selection |
 | `benchmark_summaries.py` | Preserve every local case summary, bind provenance, and resolve saved report inputs after cleanup |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
 | `criterion_measurements.py` | Validate full Criterion sampling and estimates for local summaries and hosted archives |
+| `performance_artifacts.py` | Validate and publish schema-versioned performance-comparison CSV/JSON inputs |
 | `release_baseline.py` | Inventory full Criterion suites and validate complete raw release baselines before packaging |
-| `subprocess_utils.py` | Safe subprocess wrappers for git commands |
+
+Shared process discovery, execution, byte transport, CPU detection, diagnostics,
+and zizmor authentication belong to research-repo-tools. The former
+`subprocess_utils.py` and `run_zizmor.sh` implementations and their duplicated
+unit tests are removed. Consumer tests retain native adapter checks, benchmark
+contracts, caller file-policy coverage, and recipe forwarding. The remaining
+performance modules own la-stack's retained schemas, scientific eligibility,
+benchmark inventories, and report layouts; shared primitives are not a drop-in
+replacement for those contracts.
 
 See `docs/RELEASING.md` for the full release workflow.

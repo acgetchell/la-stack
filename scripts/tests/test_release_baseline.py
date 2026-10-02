@@ -190,12 +190,13 @@ def test_discovery_uses_full_suites_and_never_times_inputs(tmp_path: Path, monke
         # newline policy must preserve identical manifest bytes on both platforms.
         return write_text(path, data, encoding=encoding, errors=errors, newline=host_newline if newline is None else newline)
 
-    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(command: str, args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert command == "cargo"
         calls.append(args)
         suite = args[args.index("--bench") + 1]
         return subprocess.CompletedProcess(args, 0, stdout="\n".join(f"{name}: benchmark" for name in IDS[suite]))
 
-    monkeypatch.setattr(release_baseline, "run_cargo_command", run)
+    monkeypatch.setattr(release_baseline, "run_command", run)
     monkeypatch.setattr(release_baseline, "required_report_ids", lambda: {"d2/la_stack_dot", "exact_d2/det_exact"})
     monkeypatch.setattr(Path, "write_text", host_write_text)
     manifest = tmp_path / "manifest.json"

@@ -24,7 +24,9 @@ just ci           # run the comprehensive local CI path
 ```
 
 Use `just fix` when you intentionally want formatters and automatic fixes to
-change files. Run `just --list` for the full command surface.
+change files. Run bare `just` for the complete generated command list, including
+arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
+owns recipe naming and documentation placement.
 
 Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.1.7` package,
 locked in the `tooling` dependency group and included by `dev`. Normal setup
@@ -76,17 +78,20 @@ an explicit allowlist, and kept with readable version comments for review.
 
 `just zizmor` uses the same pinned scanner and `regular` persona as the SARIF
 workflow. It runs online audits using `ZIZMOR_GITHUB_TOKEN`, `GH_TOKEN`,
-`GITHUB_TOKEN`, or an authenticated `gh auth token`, in that order, without
+or an authenticated `gh auth token`, in that order, without
 printing the token. Without authentication it reports an offline fallback;
 SHA/version-comment resolution and other online findings are then unchecked.
-Use `ZIZMOR_OFFLINE=true just zizmor` to request offline audits explicitly.
+Use `just zizmor --offline` for deliberate offline audits, or
+`just zizmor --require-online` to require authentication, as hosted CI does.
 Zizmor owns remote action SHA/tag resolution; Semgrep guards managed scanner
 execution and cache isolation in release workflows. The local authentication
-adapter and its tests remain consumer-owned security policy.
+adapter and authentication regressions belong to research-repo-tools. Hosted
+CI runs a blocking finding check before a separate SARIF export; native SARIF
+output alone does not fail on findings.
 
 `just security` runs the shared OSV dependency audit for `uv.lock` and `Cargo.lock`,
 then the Gitleaks scan of reachable Git history and current tracked/nonignored
-files. Run either gate separately with `just security-osv` or
+files. Run either gate separately with `just audit` or
 `just security-secrets`. Setup installs both declared managed binaries. OSV needs
 network access, and Gitleaks requires a complete Git checkout. JSON/SARIF reports
 are retained under `target/security`, with secret findings redacted. These gates
@@ -126,6 +131,21 @@ Review is opt-in and excluded from `just check` and `just ci`. Agents invoke
 live CodeRabbit only on an explicit maintainer request. Consumer integration
 tests use local stubs and never contact CodeRabbit. This local workflow is
 separate from hosted GitHub review and Dependabot auto-merge.
+
+### Dependabot approvals
+
+Hosted dependency updates use the same pinned research-repo-tools approval
+workflow as markov-chain-monte-carlo. Trusted base-branch policy verifies signed
+Dependabot commits, complete changed-file allowlists, and the current head
+before a deduplicated `github-actions[bot]` approval. Native squash auto-merge
+still requires the configured approvals, strict checks (including CodeRabbit's
+status), resolved threads, and dismissal of stale approvals.
+
+This replaces owner-authored CodeRabbit requests and their personal token.
+CodeRabbit's successful status on a skipped bot review is not an approval.
+The [rollout guide](docs/dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
+owns GitHub settings and post-merge verification. The workflow never executes
+PR code; dependency eligibility remains in `.github/dependabot.yml`.
 
 ### Rust Toolchain Policy
 
@@ -213,7 +233,7 @@ For individual edited file formats, use these focused checks and formatters:
 | Surface | Commands |
 |---------|----------|
 | JSON | `jq empty <file>.json` or `just validate-json` |
-| TOML | `just toml-lint`, `just toml-fmt-check`; format with `just toml-fmt` |
+| TOML | `just toml-lint`, `just toml-fmt-check`; format with `just toml-fix` |
 | GitHub Actions | `just action-lint` |
 | Shell scripts | `just shell-fix`, then `just shell-check` |
 | YAML | `just yaml-fix`, then `just yaml-lint` |

@@ -191,6 +191,8 @@ Favor the invariant over a convenient edit or faster implementation.
 - Read [Documentation guidance](docs/dev/docs.md) for README inclusion in
   rustdoc, guide placement, feature-gated doctests, link destinations,
   scientific notation, and generated-file rules.
+  The [command policy](docs/dev/docs.md#command-discovery-and-placement) owns
+  recipe naming, generated help, and README/contributor command placement.
 
 ## Validation
 

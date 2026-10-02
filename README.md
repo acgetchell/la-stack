@@ -3,7 +3,7 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18158926.svg)](https://doi.org/10.5281/zenodo.18158926)
 [![Crates.io](https://badgen.net/crates/v/la-stack)](https://crates.io/crates/la-stack)
 [![Downloads](https://badgen.net/crates/d/la-stack)](https://crates.io/crates/la-stack)
-[![License](https://badgen.net/github/license/acgetchell/la-stack)](https://github.com/acgetchell/la-stack/blob/v0.4.6/LICENSE)
+[![License](https://badgen.net/github/license/acgetchell/la-stack)](https://github.com/acgetchell/la-stack/blob/main/LICENSE)
 [![Docs.rs](https://docs.rs/la-stack/badge.svg)](https://docs.rs/la-stack)
 [![CI](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml)
 [![rust-clippy analyze][clippy-badge]][clippy-workflow]
@@ -56,8 +56,6 @@ while keeping the API intentionally small and explicit.
   Each independent dot product is checked once;
   rounding has no certified error bound, and positive definiteness or affine
   independence must still be established by factorization or the caller.
-  Benchmark square simplex and rectangular facet inputs through dimension 8
-  with `cargo bench --locked --features bench --bench gram`.
 - `Interval` and `IntervalMatrix<const D: usize>` for outward-rounded,
   proof-bearing determinant filters through D=7
 - `Ldlt<const D: usize>` for no-pivot factorization intended for exactly
@@ -133,6 +131,24 @@ provide a certified solution error bound.
   `IntervalMatrix` APIs
 - `exact`: exact determinant signs, determinant values, and solves over stored
   `f64` values or caller-supplied `BigRational` inputs
+
+### Run the repository examples
+
+After the [prerequisite setup][contributor-setup], discover commands and run
+the complete examples, including exact determinants and solves:
+
+```bash
+just
+just examples
+```
+
+To run the pivoted solve above individually:
+
+```bash
+cargo run --locked --example solve_5x5
+```
+
+[contributor-setup]: https://github.com/acgetchell/la-stack/blob/main/CONTRIBUTING.md#getting-started
 
 ## 🔢 Scalar and bounded-value types
 
@@ -338,9 +354,9 @@ for the algorithms, validity boundaries, and supporting references.
 - ✅ No runtime dependencies by default (optional features may add deps)
 - ✅ `unsafe` forbidden
 
-See [CHANGELOG.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/CHANGELOG.md)
+See [CHANGELOG.md](https://github.com/acgetchell/la-stack/blob/main/CHANGELOG.md)
 for release history and
-[docs/roadmap.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/roadmap.md)
+[docs/roadmap.md](https://github.com/acgetchell/la-stack/blob/main/docs/roadmap.md)
 for current release planning.
 
 ## 🚫 Anti-goals
@@ -361,12 +377,13 @@ for current release planning.
 ## 🗺️ Documentation Map
 
 - [API guide][api-guide] — worked examples, API selection, storage, and error contracts.
-- [Benchmarking](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/BENCHMARKING.md) — benchmark suites, comparison workflows, and measurement methodology.
+- [Architecture](https://github.com/acgetchell/la-stack/blob/main/docs/code_organization.md) — module, feature, file, and documentation ownership.
+- [Benchmarking](https://github.com/acgetchell/la-stack/blob/main/docs/BENCHMARKING.md) — benchmark suites, comparison workflows, and measurement methodology.
 - [Coverage](https://github.com/acgetchell/la-stack/blob/main/docs/MEASURING_COVERAGE.md) — local and CI coverage commands and report locations.
 - [Mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md) — algorithms, numerical guarantees, and limitations.
 - [Performance reports](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md) — release-to-release measurement results and provenance.
-- [Releasing](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/RELEASING.md) — release preparation, validation, and publication.
-- [Roadmap](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/roadmap.md) — release planning, future directions, and non-goals.
+- [Releasing](https://github.com/acgetchell/la-stack/blob/main/docs/RELEASING.md) — release preparation, validation, and publication.
+- [Roadmap](https://github.com/acgetchell/la-stack/blob/main/docs/roadmap.md) — release planning, future directions, and non-goals.
 
 ## 📋 Examples
 
@@ -421,7 +438,7 @@ README table, and provenance together.
 
 For the full per-kernel comparison methodology, algorithm citations, input
 construction, and release-comparison workflow details, see
-[docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/BENCHMARKING.md).
+[docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/main/docs/BENCHMARKING.md).
 For the current release-to-release performance snapshot, see
 [docs/performance.md](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md).
 The exact release suite includes the already-exact rational-input groups for
@@ -458,40 +475,15 @@ expectations are validated outside the timed closures.
 
 ## 🤝 Contributing
 
-A short contributor workflow:
-
-Install Git,
-[GitHub CLI](https://cli.github.com/), [`uv`](https://docs.astral.sh/uv/) at the
-exact version declared in `pyproject.toml`, and `jq`. Set up declared Python, Rust, Cargo tools, and Just through the locked
-shared package:
-
-```bash
-uv run --locked --managed-python --only-group tooling research-repo-tools setup
-just setup        # install/verify dev tools + sync Python deps + build
-just check        # lint/validate (non-mutating)
-just fix          # apply auto-fixes (mutating)
-just ci           # lint + tests + examples + bench compile
-```
-
-The repository uses `cargo-nextest` for runnable Rust tests, `cargo-machete`
-for unused-dependency checks, `rumdl` for Markdown, `dprint` plus `yamllint`
-for YAML/CFF, `taplo` for TOML, and `typos` for spelling. Python 3.14 support
-tooling is locked with `uv` and checked by Ruff, Ty, and Semgrep. GitHub Actions
-references are SHA-pinned, restricted to an explicit allowlist, and kept with
-readable version comments for review.
-
-CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
-aligned with the local comprehensive validation path.
-
-For coverage commands and report locations, see
-[`docs/MEASURING_COVERAGE.md`](https://github.com/acgetchell/la-stack/blob/main/docs/MEASURING_COVERAGE.md).
-For the full contributor workflow, see
-[CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/main/CONTRIBUTING.md)
+for prerequisite setup, checks and fixes, tests, security scans, and PR preparation.
+Coverage execution belongs in
+[Measuring coverage](https://github.com/acgetchell/la-stack/blob/main/docs/MEASURING_COVERAGE.md).
 
 ## 📚 Citation
 
 If you use this library in academic work, please cite it using
-[CITATION.cff](https://github.com/acgetchell/la-stack/blob/v0.4.6/CITATION.cff)
+[CITATION.cff](https://github.com/acgetchell/la-stack/blob/main/CITATION.cff)
 (or GitHub's "Cite this repository" feature). Tagged releases are archived on
 Zenodo under the
 [all-versions concept DOI](https://doi.org/10.5281/zenodo.18158926).
@@ -499,19 +491,19 @@ Zenodo under the
 ## 🔎 References
 
 For canonical references to the algorithms used by this crate, see
-[REFERENCES.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/REFERENCES.md).
+[REFERENCES.md](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md).
 
 ## 🤖 AI Agents
 
 AI coding assistants should read
-[AGENTS.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/AGENTS.md)
+[AGENTS.md](https://github.com/acgetchell/la-stack/blob/main/AGENTS.md)
 before proposing or applying changes. See
-[CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/v0.4.6/CONTRIBUTING.md)
+[CONTRIBUTING.md](https://github.com/acgetchell/la-stack/blob/main/CONTRIBUTING.md)
 for the repository's AI-assisted development note.
 
 ## 📜 License
 
-BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/v0.4.6/LICENSE).
+BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/main/LICENSE).
 
 [audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml

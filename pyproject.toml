@@ -24,8 +24,8 @@ classifiers = [
     "Topic :: System :: Benchmarking",
 ]
 
-# No runtime dependencies currently; scripts rely on the standard library.
-dependencies = [  ]
+# Benchmark adapters use only the installed shared package and the standard library.
+dependencies = [ "research-repo-tools==0.1.7" ]
 
 [project.urls]
 "Homepage" = "https://github.com/acgetchell/la-stack"
@@ -41,7 +41,7 @@ criterion-dim-plot = "criterion_dim_plot:main"
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-py-modules = [ "archive_performance", "bench_compare", "benchmark_contract", "benchmark_summaries", "criterion_dim_plot", "criterion_measurements", "performance_artifacts", "subprocess_utils" ]
+py-modules = [ "archive_performance", "bench_compare", "benchmark_contract", "benchmark_process", "benchmark_summaries", "criterion_dim_plot", "criterion_measurements", "performance_artifacts" ]
 
 [tool.ruff]
 line-length = 160
@@ -88,11 +88,11 @@ known-first-party = [
     "archive_performance",
     "bench_compare",
     "benchmark_contract",
+    "benchmark_process",
     "benchmark_summaries",
     "criterion_dim_plot",
     "criterion_measurements",
     "performance_artifacts",
-    "subprocess_utils",
 ]
 force-single-line = false
 split-on-trailing-comma = true
@@ -185,6 +185,9 @@ formatter = "changelog-rumdl.toml"
 # Packaged 0.1.7 template plus one deps-dev body-preservation exception.
 cliff-config = "cliff.toml"
 
+[tool.research-repo-tools.zizmor]
+persona = "regular"
+
 [tool.research-repo-tools.release]
 # Release preparation and post-merge tagging can happen on different UTC days.
 date-policy = "declared"
@@ -195,9 +198,9 @@ exclude = [ "docs/archive/**", "docs/performance/**", "docs/performance.md" ]
 
 [[tool.research-repo-tools.release.rules]]
 path = "README.md"
-pattern = 'https://(?:github\.com/acgetchell/la-stack/(?:blob|raw|tree)/|raw\.githubusercontent\.com/acgetchell/la-stack/)(?P<value>v[0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{7,40})/[^\s)\]>"?]+'
-source = "tag"
-count = 13
+pattern = 'https://(?:github\.com/acgetchell/la-stack/(?:blob|raw|tree)/|raw\.githubusercontent\.com/acgetchell/la-stack/)(?P<value>main|v[0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{7,40})/[^\s)\]>"?]+'
+value = "main"
+count = 30
 exclude = '/docs/assets/bench/'
 
 [[tool.research-repo-tools.release.rules]]
