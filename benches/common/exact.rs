@@ -139,6 +139,7 @@ pub struct ValidatedExactInput<const D: usize> {
 
 impl<const D: usize> ValidatedExactInput<D> {
     /// Borrow the independently validated benchmark matrix.
+    #[must_use]
     pub const fn matrix(&self) -> &Matrix<D> {
         &self.matrix
     }
@@ -211,6 +212,7 @@ fn random_seed_for_dim<const D: usize>() -> u64 {
 }
 
 /// Build a fixed random corpus of finite, strictly diagonally-dominant inputs.
+#[must_use]
 pub fn make_random_input_corpus<const D: usize>() -> [ExactInput<D>; RANDOM_INPUT_ARRAY_LEN] {
     let mut rng = SplitMix64::new(random_seed_for_dim::<D>());
     let entry_range = I16Range::try_new(-10, 10).or_abort("random integer range");

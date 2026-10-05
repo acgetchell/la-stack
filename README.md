@@ -84,7 +84,7 @@ while keeping the API intentionally small and explicit.
 
 ## 🚀 Quickstart
 
-The minimum supported Rust version (MSRV) is 1.98.1.
+The minimum supported Rust version (MSRV) is 1.99.0.
 
 Add this to your `Cargo.toml`:
 

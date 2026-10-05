@@ -218,15 +218,19 @@ fn d0_exact_strict_and_rounded_outputs_follow_empty_product_conventions() {
     assert_eq!(matrix.det_exact_rounded_f64(), Ok(1.0));
 
     let solution = matrix.solve_exact(rhs).unwrap();
-    assert!(solution.try_to_f64().unwrap().as_array().is_empty());
-    assert!(solution.to_rounded_f64().unwrap().as_array().is_empty());
-    assert!(matrix.solve_exact_f64(rhs).unwrap().as_array().is_empty());
-    assert!(
+    assert_eq!(solution.try_to_f64().unwrap().as_array().as_slice(), []);
+    assert_eq!(solution.to_rounded_f64().unwrap().as_array().as_slice(), []);
+    assert_eq!(
+        matrix.solve_exact_f64(rhs).unwrap().as_array().as_slice(),
+        []
+    );
+    assert_eq!(
         matrix
             .solve_exact_rounded_f64(rhs)
             .unwrap()
             .as_array()
-            .is_empty()
+            .as_slice(),
+        []
     );
 }
 

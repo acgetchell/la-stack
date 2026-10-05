@@ -107,7 +107,7 @@ fn assert_norm_boundary_regressions<const D: usize>() {
 }
 
 fn assert_norm_guard_transition<const D: usize>() {
-    let dimension_bits = usize::BITS - D.leading_zeros();
+    let dimension_bits = D.bit_width();
     let boundary = f64::from_bits(u64::from(2046 - dimension_bits) << 52);
 
     // Single-coordinate norms are exact on either side of the conservative

@@ -172,17 +172,18 @@ Any future approximate or fast-math API requires a separate design issue, an
 explicit public contract, independent correctness analysis, and representative
 benchmarks. It must remain opt-in and must not change existing APIs.
 
-The remaining Rust 1.98 changes require no repository configuration:
+The current MSRV and contributor toolchain are Rust 1.99.0. Both workspace
+manifests and `clippy.toml` match `rust-toolchain.toml`; CI, coverage, and release
+setup consume that declaration. Run `just setup-tools` after changing it:
+managed Cargo tools are installed separately for each compiler version.
 
-- `core::fmt::NumBuffer`, integer `format_into`, `NonZero::from_str_radix`,
-  circumfix stripping, UTF-16 decoding, and mutable atomic-slice APIs do not
-  simplify an existing path or address a demonstrated bottleneck.
-- The compatibility changes for runtime symbols, trait-object lifetimes,
-  ambiguous imports, attributes, structural equality, `assert_eq!` temporaries,
-  and derived ordering require no source change after comprehensive validation.
-- New or promoted targets do not alter the Linux, macOS, and Windows MSVC CI
-  matrix. Cargo 1.98's stable changes are fixes for Windows credential-provider
-  line endings and diagnostic capitalization; no configuration change is needed.
+The [Rust 1.99 migration study](docs/archive/performance/studies/rust-1.99.md)
+records the final release-note audit, numerical validation, and paired LLVM
+22/23 measurements. New Clippy diagnostics are addressed with `#[must_use]`,
+integer `bit_width`, and diagnostic empty-array assertions. The existing
+Linux, macOS, and Windows MSVC CI matrix and strict floating-point policy remain
+the support contract. New allocation, raw-pointer, and collection APIs do not
+serve an existing library requirement.
 
 ## Contributor Workflow
 

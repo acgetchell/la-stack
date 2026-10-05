@@ -713,11 +713,12 @@ mod tests {
         let lu = a.lu(DEFAULT_SINGULAR_TOL).unwrap();
 
         assert_eq!(lu.det(), Ok(1.0));
-        assert!(
+        assert_eq!(
             lu.solve(Vector::<0>::zero())
                 .unwrap()
                 .into_array()
-                .is_empty()
+                .as_slice(),
+            []
         );
     }
 

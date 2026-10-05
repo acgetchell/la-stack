@@ -52,11 +52,13 @@ pub struct ValidatedRationalInput<const D: usize> {
 
 impl<const D: usize> ValidatedRationalInput<D> {
     /// Borrow the independently checked matrix.
+    #[must_use]
     pub const fn matrix(&self) -> &RationalMatrix<D> {
         &self.matrix
     }
 
     /// Borrow the independently checked right-hand side.
+    #[must_use]
     pub const fn rhs(&self) -> &RationalVector<D> {
         &self.rhs
     }

@@ -196,7 +196,7 @@ gen_matrix_proptests!(5);
 fn zero_dimension_matrix_obeys_empty_product_and_bounds_contracts() {
     let mut matrix = Matrix::<0>::try_from_rows([]).unwrap();
 
-    assert!(matrix.as_rows().is_empty());
+    assert_eq!(matrix.as_rows(), &[[0.0; 0]; 0]);
     assert_eq!(matrix.get(0, 0), None);
     assert!(matches!(
         matrix.try_get(0, 0),
@@ -218,13 +218,14 @@ fn zero_dimension_matrix_obeys_empty_product_and_bounds_contracts() {
     ));
     assert_eq!(matrix.norm_inf(), Ok(0.0));
     assert_eq!(matrix.det(), Ok(1.0));
-    assert!(
+    assert_eq!(
         matrix
             .lu(DEFAULT_SINGULAR_TOL)
             .unwrap()
             .solve(Vector::<0>::zero())
             .unwrap()
             .into_array()
-            .is_empty()
+            .as_slice(),
+        []
     );
 }

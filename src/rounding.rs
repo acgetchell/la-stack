@@ -56,10 +56,8 @@ const fn compare_binary_magnitudes(
     let normalized_left_exponent = left_exponent + left_zeros;
     let normalized_right_exponent = right_exponent + right_zeros;
 
-    let left_top =
-        normalized_left_exponent + (u128::BITS - normalized_left.leading_zeros() - 1) as i64;
-    let right_top =
-        normalized_right_exponent + (u128::BITS - normalized_right.leading_zeros() - 1) as i64;
+    let left_top = normalized_left_exponent + (normalized_left.bit_width() - 1) as i64;
+    let right_top = normalized_right_exponent + (normalized_right.bit_width() - 1) as i64;
     if left_top < right_top {
         return -1;
     }

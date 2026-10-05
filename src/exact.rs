@@ -2923,7 +2923,7 @@ mod tests {
         let a = Matrix::<0>::zero();
         let b = Vector::<0>::zero();
         let x = a.solve_exact(b).unwrap();
-        assert!(x.as_array().is_empty());
+        assert_eq!(x.as_array().as_slice(), []);
     }
 
     #[test]

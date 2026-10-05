@@ -561,11 +561,12 @@ mod tests {
         let ldlt = a.ldlt(DEFAULT_SINGULAR_TOL).unwrap();
 
         assert_eq!(ldlt.det(), Ok(1.0));
-        assert!(
+        assert_eq!(
             ldlt.solve(Vector::<0>::zero())
                 .unwrap()
                 .into_array()
-                .is_empty()
+                .as_slice(),
+            []
         );
     }
 
