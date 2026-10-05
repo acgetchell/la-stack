@@ -719,12 +719,14 @@ impl<const D: usize> IntervalMatrix<D> {
 
     /// Borrow the row-major interval storage.
     #[inline]
+    #[must_use]
     pub const fn as_rows(&self) -> &[[Interval; D]; D] {
         &self.rows
     }
 
     /// Consume this matrix and return its row-major interval storage.
     #[inline]
+    #[must_use]
     pub const fn into_rows(self) -> [[Interval; D]; D] {
         self.rows
     }

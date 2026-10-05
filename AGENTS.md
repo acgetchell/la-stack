@@ -112,7 +112,7 @@ Favor the invariant over a convenient edit or faster implementation.
 ## Rust and API Design
 
 - Keep the MSRV and contributor/CI toolchain aligned across `Cargo.toml`,
-  `rust-toolchain.toml`, and `clippy.toml`; the current baseline is 1.98.1.
+  `rust-toolchain.toml`, and `clippy.toml`; the current baseline is 1.99.0.
 - Rust's `f64::algebraic_*` operations are forbidden in all repository-owned
   Rust, including tests, examples, and benchmarks, except intentional
   Semgrep fixtures under `tests/semgrep/` whose `f64::algebraic_*` usage is

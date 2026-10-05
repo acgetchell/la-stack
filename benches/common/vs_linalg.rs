@@ -229,6 +229,7 @@ pub struct ValidatedLuSolveInput<const D: usize> {
 
 impl<const D: usize> ValidatedLuSolveInput<D> {
     /// Borrow the finite matrix.
+    #[must_use]
     pub const fn matrix(&self) -> &Matrix<D> {
         &self.matrix
     }

@@ -184,6 +184,9 @@ The generated [performance report](performance.md) records measured results;
 [Local benchmark summaries](performance/README.md) owns complete versioned local
 datasets. Completed optimization studies belong under
 [archived performance studies](archive/performance/studies/README.md).
+The [Rust 1.99 study](archive/performance/studies/rust-1.99.md) owns the compiler
+migration baseline and its retained measurements; it is separate from generated
+release-to-release reports.
 
 When adding, removing, renaming, or moving files, update the applicable ownership
 rows here. Prefer links to the detailed owner over copying its procedure into

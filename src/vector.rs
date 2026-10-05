@@ -790,7 +790,7 @@ impl<const D: usize> Vector<D> {
         // norm and the rounded recurrence therefore have ample range margin.
         // Checking scale, rather than only the computed norm, also catches
         // true overflow that rounding in the recurrence could hide.
-        let dimension_bits = usize::BITS - D.leading_zeros();
+        let dimension_bits = D.bit_width();
         let safe_scale = f64::from_bits(u64::from(2046 - dimension_bits) << 52);
         if scale > safe_scale {
             return norm_near_overflow(self.as_array(), scale);
@@ -1485,8 +1485,8 @@ mod tests {
     fn zero_dimension_vector_has_zero_dot_and_norm() {
         let vector = Vector::<0>::try_new([]).unwrap();
 
-        assert!(vector.as_array().is_empty());
-        assert!(vector.into_array().is_empty());
+        assert_eq!(vector.as_array().as_slice(), []);
+        assert_eq!(vector.into_array().as_slice(), []);
         assert_eq!(vector.dot(&Vector::zero()), Ok(0.0));
         let dot_bound = vector.dot_with_errbound(&Vector::zero()).unwrap().unwrap();
         assert_abs_diff_eq!(dot_bound.absolute_error_bound(), 0.0, epsilon = 0.0);

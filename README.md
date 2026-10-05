@@ -5,10 +5,18 @@
 [![Downloads](https://badgen.net/crates/d/la-stack)](https://crates.io/crates/la-stack)
 [![License](https://badgen.net/github/license/acgetchell/la-stack)](https://github.com/acgetchell/la-stack/blob/main/LICENSE)
 [![Docs.rs](https://docs.rs/la-stack/badge.svg)](https://docs.rs/la-stack)
+
 [![CI](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml)
+[![CodeQL][codeql-badge]][codeql-workflow]
+[![zizmor][zizmor-badge]][zizmor-workflow]
 [![rust-clippy analyze][clippy-badge]][clippy-workflow]
+[![Repository Rule SARIF][semgrep-badge]][semgrep-workflow]
+[![Coverage workflow][coverage-badge]][coverage-workflow]
 [![codecov](https://codecov.io/gh/acgetchell/la-stack/graph/badge.svg?token=4eKXa5QjuZ)](https://codecov.io/gh/acgetchell/la-stack)
 [![Audit dependencies][audit-badge]][audit-workflow]
+[![Benchmarks][benchmarks-badge]][benchmarks-workflow]
+[![Release Benchmarks][release-benchmarks-badge]][release-benchmarks-workflow]
+[![Dependabot approval and auto-merge][dependabot-badge]][dependabot-workflow]
 
 ![la-stack](https://raw.githubusercontent.com/acgetchell/la-stack/main/docs/assets/la-stack.jpg)
 
@@ -84,7 +92,7 @@ while keeping the API intentionally small and explicit.
 
 ## 🚀 Quickstart
 
-The minimum supported Rust version (MSRV) is 1.98.1.
+The minimum supported Rust version (MSRV) is 1.99.0.
 
 Add this to your `Cargo.toml`:
 
@@ -508,8 +516,16 @@ BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/
 [audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml
 [benchmark-provenance]: https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json
+[benchmarks-badge]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml/badge.svg
+[benchmarks-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml
 [clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg
 [clippy-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml
+[codeql-badge]: https://github.com/acgetchell/la-stack/actions/workflows/codeql.yml/badge.svg
+[codeql-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/codeql.yml
+[coverage-badge]: https://github.com/acgetchell/la-stack/actions/workflows/codecov.yml/badge.svg
+[coverage-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/codecov.yml
+[dependabot-badge]: https://github.com/acgetchell/la-stack/actions/workflows/dependabot-auto-merge.yml/badge.svg
+[dependabot-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/dependabot-auto-merge.yml
 [lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/v0.4.6/docs/assets/bench/vs_linalg_lu_solve_median.svg
 [refs-det-bound]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#absolute-error-bound-for-closed-form-determinants
 [refs-exact-sign]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-determinant-sign-adaptive-precision-integer-arithmetic
@@ -519,3 +535,9 @@ BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/
 [refs-ldlt]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ldlᵀ-factorization-exactly-symmetric-positive-definite-inputs
 [refs-lu]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#lu-decomposition-gaussian-elimination-with-partial-pivoting
 [refs-reductions]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#certified-fixed-vector-reductions
+[release-benchmarks-badge]: https://github.com/acgetchell/la-stack/actions/workflows/release-benchmarks.yml/badge.svg
+[release-benchmarks-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/release-benchmarks.yml
+[semgrep-badge]: https://github.com/acgetchell/la-stack/actions/workflows/semgrep-sarif.yml/badge.svg
+[semgrep-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/semgrep-sarif.yml
+[zizmor-badge]: https://github.com/acgetchell/la-stack/actions/workflows/zizmor.yml/badge.svg
+[zizmor-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/zizmor.yml
