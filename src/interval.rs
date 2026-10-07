@@ -17,7 +17,7 @@ use crate::{ArithmeticOperation, IntervalBound, IntervalOperand, LaError, Matrix
 /// [`IntervalMatrix::det_sign`].
 ///
 /// A subset-DP determinant needs `2^D` partial intervals. The implementation
-/// reserves 128 entries inline, covering the geometry-oriented D ≤ 7 scope
+/// reserves up to 128 entries inline, covering the geometry-oriented D ≤ 7 scope
 /// without heap allocation.
 pub const MAX_INTERVAL_MATRIX_DIM: usize = 7;
 
@@ -116,9 +116,7 @@ const fn rounded_add_bounds(
     }
 
     let error = two_sum_error(left, right, rounded);
-    if !error.is_finite() {
-        return Err(LaError::non_finite_computation_scalar(operation));
-    }
+    // The ordered FastTwoSum residual is finite for finite operands and sum.
     let (lower, upper) = if error < 0.0 {
         (rounded.next_down(), rounded)
     } else if error > 0.0 {
@@ -133,9 +131,39 @@ const fn rounded_add_bounds(
     Ok((canonical_zero(lower), canonical_zero(upper)))
 }
 
+/// Round only the endpoint used by a non-singleton interval sum.
+#[inline]
+const fn rounded_add_endpoint<const UPPER: bool>(
+    left: f64,
+    right: f64,
+    operation: ArithmeticOperation,
+) -> Result<f64, LaError> {
+    let rounded = left + right;
+    if !rounded.is_finite() {
+        return Err(LaError::interval_range_exhausted(operation));
+    }
+    let error = two_sum_error(left, right, rounded);
+    let endpoint = if UPPER && error > 0.0 {
+        rounded.next_up()
+    } else if !UPPER && error < 0.0 {
+        rounded.next_down()
+    } else {
+        rounded
+    };
+    if !endpoint.is_finite() {
+        return Err(LaError::interval_range_exhausted(operation));
+    }
+    Ok(canonical_zero(endpoint))
+}
+
 /// Turn a finite rounded product into the tight adjacent-float enclosure of the
 /// exact binary64-input product.
-#[inline]
+// This kernel is called for each selected endpoint inside the determinant DP.
+#[expect(
+    clippy::inline_always,
+    reason = "measured endpoint-call overhead in the interval determinant kernel"
+)]
+#[inline(always)]
 const fn rounded_product_bounds(
     left: f64,
     right: f64,
@@ -288,6 +316,12 @@ impl Interval {
                 IntervalOperand::Right,
             ));
         }
+        if right == 0.0 {
+            return Ok(Self::new_unchecked(left, left));
+        }
+        if left == 0.0 {
+            return Ok(Self::new_unchecked(-right, -right));
+        }
         match rounded_add_bounds(left, -right, ArithmeticOperation::IntervalSubtraction) {
             Ok((lower, upper)) => Ok(Self::new_unchecked(lower, upper)),
             Err(error) => Err(error),
@@ -400,13 +434,20 @@ impl Interval {
     /// # Errors
     /// Returns [`LaError::IntervalRangeExhausted`] when the exact square range
     /// has no finite binary64 enclosure.
-    #[inline]
+    #[expect(
+        clippy::inline_always,
+        reason = "measured call overhead in lifted interval assembly"
+    )]
+    #[inline(always)]
     pub const fn try_square(&self) -> Result<Self, LaError> {
         let operation = ArithmeticOperation::IntervalSquare;
         let left_square = match rounded_product_bounds(self.lower, self.lower, operation) {
             Ok(bounds) => bounds,
             Err(error) => return Err(error),
         };
+        if self.is_point() {
+            return Ok(Self::new_unchecked(left_square.0, left_square.1));
+        }
         let right_square = match rounded_product_bounds(self.upper, self.upper, operation) {
             Ok(bounds) => bounds,
             Err(error) => return Err(error),
@@ -436,7 +477,11 @@ impl Interval {
     }
 
     /// Add while attributing range failure to the owning public operation.
-    #[inline]
+    #[expect(
+        clippy::inline_always,
+        reason = "measured result-copy overhead in the interval determinant kernel"
+    )]
+    #[inline(always)]
     const fn try_add_for(
         &self,
         other: &Self,
@@ -448,20 +493,30 @@ impl Interval {
         if other.is_zero() {
             return Ok(*self);
         }
+        if self.is_point() && other.is_point() {
+            return match rounded_add_bounds(self.lower, other.lower, operation) {
+                Ok((lower, upper)) => Ok(Self::new_unchecked(lower, upper)),
+                Err(error) => Err(error),
+            };
+        }
 
-        let lower = match rounded_add_bounds(self.lower, other.lower, operation) {
-            Ok((lower, _)) => lower,
+        let lower = match rounded_add_endpoint::<false>(self.lower, other.lower, operation) {
+            Ok(lower) => lower,
             Err(error) => return Err(error),
         };
-        let upper = match rounded_add_bounds(self.upper, other.upper, operation) {
-            Ok((_, upper)) => upper,
+        let upper = match rounded_add_endpoint::<true>(self.upper, other.upper, operation) {
+            Ok(upper) => upper,
             Err(error) => return Err(error),
         };
         Ok(Self::new_unchecked(lower, upper))
     }
 
     /// Multiply while attributing range failure to the owning public operation.
-    #[inline]
+    #[expect(
+        clippy::inline_always,
+        reason = "measured result-copy overhead in the interval determinant kernel"
+    )]
+    #[inline(always)]
     const fn try_mul_for(
         &self,
         other: &Self,
@@ -829,12 +884,25 @@ impl<const D: usize> IntervalMatrix<D> {
     /// then proceed to an exact or higher-range fallback.
     #[inline]
     pub const fn det(&self) -> Result<Interval, LaError> {
-        if D > MAX_INTERVAL_MATRIX_DIM {
-            return Err(LaError::unsupported_dimension(D, MAX_INTERVAL_MATRIX_DIM));
+        // Stable Rust cannot express [Interval; 1 << D]. Dispatch only the
+        // workspace extent; every arm uses the identical arithmetic tree.
+        match D {
+            0 | 1 => self.det_with_workspace::<2>(),
+            2 => self.det_with_workspace::<4>(),
+            3 => self.det_with_workspace::<8>(),
+            4 => self.det_with_workspace::<16>(),
+            5 => self.det_with_workspace::<32>(),
+            6 => self.det_with_workspace::<64>(),
+            7 => self.det_with_workspace::<128>(),
+            _ => Err(LaError::unsupported_dimension(D, MAX_INTERVAL_MATRIX_DIM)),
         }
+    }
 
+    /// Evaluate with the state count established by the dimension dispatch.
+    #[inline]
+    const fn det_with_workspace<const STATES: usize>(&self) -> Result<Interval, LaError> {
         let state_count = 1_usize << D;
-        let mut partials = [Interval::ZERO; 1 << MAX_INTERVAL_MATRIX_DIM];
+        let mut partials = [Interval::ZERO; STATES];
         partials[0] = Interval::ONE;
         let operation = ArithmeticOperation::IntervalDeterminant;
 
@@ -1117,6 +1185,15 @@ mod tests {
                 operation: ArithmeticOperation::IntervalAddition,
             })
         );
+        let positive = Interval::try_new(f64::from_bits(1), 1.0)?;
+        for (left, right) in [(maximum, positive), (maximum.negate(), positive.negate())] {
+            assert_eq!(
+                left.try_add(&right),
+                Err(LaError::IntervalRangeExhausted {
+                    operation: ArithmeticOperation::IntervalAddition,
+                }),
+            );
+        }
 
         let finite_difference = maximum.try_add(&tiny.negate())?;
         assert_eq!(finite_difference.upper().to_bits(), f64::MAX.to_bits());

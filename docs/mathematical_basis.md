@@ -163,12 +163,43 @@ zero, standard floating-point reduction analysis gives [9-11]
 ```
 
 with `n = D` for a dot product and `n = 2D` for the affine difference. The
-implementation constructs an upper bound on the magnitude sum: exact
-integer-significand comparison determines whether each rounded product must move
-to its next representable value, and every positive accumulation is rounded
-upward. The division forming `γₙ` and its final multiplication are also rounded
+implementation constructs an upper bound on the magnitude sum. A first nonzero
+product with a unit (`±1`) multiplier is exact; otherwise the rounded product
+moves up one representable value. This conservative step avoids computing a
+rounding residual for the magnitude bound. Subsequent products enter the bound
+through an FMA followed by one upward step. This encloses the previous upper
+bound plus the exact product; for the same incoming bound, monotonicity makes
+this step no wider than separately rounding the product upward before adding
+and widening. The first product's unconditional step can make the final bound
+slightly wider than the former residual-based calculation. Each nonzero product
+must still round to a normal value, preserving the relative-error model's
+admission rule.
+When the only nonzero product is normal and has a unit multiplier, the
+implementation instead certifies a zero error bound: its FMA has a zero addend,
+and all other FMAs add exact zero. Encountering another nonzero product clears
+this special proof. This also permits an exact certificate at `f64::MAX` when
+adding a conservative positive error bound would have exhausted the endpoint
+range.
+The division forming `γₙ` and its final multiplication are also rounded
 upward. Magnitude-ordered `FastTwoSum` then selects finite outward endpoints for
 `estimate ± bound` \[17\].
+
+The certificate stores the estimate and bound; endpoints are derived when
+requested. Construction first proves that both endpoints can remain finite:
+the exact value `|estimate| + bound` dominates their magnitudes. If its rounded
+value is below `f64::MAX`, even the next representable value is finite. If it
+rounds to `f64::MAX`, a nonpositive `FastTwoSum` residual proves the exact sum
+does not exceed that limit. An infinite rounded value or positive residual at
+the limit makes the certificate unavailable. Endpoint accessors can therefore
+remain infallible and use the same tight directed rounding as before.
+
+Zero products leave the magnitude bound unchanged. While the proof is
+available, the estimate is normal or positive zero: it starts at positive zero,
+and exact cancellation of nonzero terms rounds to positive zero. Adding either
+signed zero then preserves every estimate bit, so that FMA can be omitted.
+After proof loss, the FMA still executes: underflow may have produced negative
+zero, whose sign a subsequent zero product can change. Nonzero FMAs keep their
+original order, and the returned estimate matches the specified FMA tree.
 
 The relative-error argument is not used across gradual underflow. A nonzero
 product or estimate FMA in the subnormal range, an invalid `γₙ`, or finite-range
@@ -475,14 +506,27 @@ Point construction introduces no width. Exact-real subtraction and interval
 addition use an error-free, magnitude-ordered `FastTwoSum` residual to determine
 whether the rounded result is exact or which adjacent binary64 value is required
 for the outward endpoint. Ordering the operands prevents intermediate overflow
-whenever the rounded sum is finite \[17\]. Multiplication decomposes each nonzero
-binary64 operand into its exact integer significand and power of two, compares
-the exact 106-bit significand
-product with the rounded result, and widens only in the required direction.
+whenever the rounded sum is finite \[17\]. Multiplication uses the exact residual
+`left.mul_add(right, -rounded)` of `TwoProductFMA` \[18\] when
+`|rounded| ≥ 2^-968`. To justify this threshold, let `E` be the rounded product's
+leading binary exponent. The exact product has at most 106 significant bits and
+leading exponent at least `E-1`, allowing for a rounding carry. Its least bit
+therefore has exponent at least `E-106 ≥ -1074`. The residual fits binary64
+precision and cannot lose low bits below the subnormal range. Its sign selects
+the same tight outward endpoint as exact integer comparison.
+In this range a normal power-of-two operand makes the product exact by exponent
+scaling, so no residual evaluation is needed.
+
+Below that conservative threshold, multiplication decomposes each nonzero
+operand into an integer significand and power of two and compares the exact
+106-bit significand product with the rounded result. A zero FMA residual alone
+would not prove exactness here, even for a normal rounded product.
 This comparison also handles products that underflow to zero: a positive result
 is enclosed by `[0, f64::from_bits(1)]`, and a negative result by the mirrored
 interval. Squaring uses multiplication bounds but gives every interval spanning
-zero the exact lower bound zero. These guarantees rely on IEEE-754 binary64
+zero the exact lower bound zero. Singleton squares and sums evaluate the shared
+endpoint only once, preserving the same enclosure and error provenance.
+These guarantees rely on IEEE-754 binary64
 round-to-nearest, ties-to-even, and gradual underflow \[9-11\]. IEEE 1788
 provides the broader standardized interval arithmetic model \[14\]; this crate's
 deliberately smaller, undecorated surface does not claim conformance.
@@ -494,8 +538,10 @@ binary64 endpoints can contain it. The operation then returns
 
 For D≤7, `IntervalMatrix::det()` evaluates the Leibniz determinant with subset
 dynamic programming. A state for each column subset stores the determinant
-enclosure for the corresponding leading-row minor, requiring 128 inline states
-at D=7 and `D × 2^(D-1)` interval products. The expansion performs no division,
+enclosure for the corresponding leading-row minor, requiring `max(2, 2^D)`
+inline states and `D × 2^(D-1)` interval products for positive D. The const
+dimension selects the workspace size without changing the expansion order.
+The expansion performs no division,
 so a pivot interval containing zero cannot make the algorithm unsound.
 `det_sign()` classifies a strictly positive or negative enclosure accordingly,
 returns `Zero` only for the singleton `[0, 0]`, and returns `Inconclusive` for

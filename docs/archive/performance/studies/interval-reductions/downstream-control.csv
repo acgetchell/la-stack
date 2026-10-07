@@ -1,0 +1,2 @@
+case,before_mean_ns,after_mean_ns,before_median_ns,after_median_ns,before_mean_lower_ns,before_mean_upper_ns,after_mean_lower_ns,after_mean_upper_ns,mean_change_percent,criterion_change_lower_percent,criterion_change_upper_percent
+realization_validation/3d/20v,114567291.45,113051288.775,114327187.5,112584250.5,114394102.705,114742447.25,112847106.099125,113264785.38475001,-1.323242136401226,-1.5649929654866446,-1.0892869242077663

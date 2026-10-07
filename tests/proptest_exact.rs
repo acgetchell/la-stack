@@ -762,6 +762,7 @@ gen_dot_errbound_oracle_proptests!(2);
 gen_dot_errbound_oracle_proptests!(3);
 gen_dot_errbound_oracle_proptests!(4);
 gen_dot_errbound_oracle_proptests!(5);
+gen_dot_errbound_oracle_proptests!(6);
 
 /// The scaled Euclidean norm must tightly track an independently assembled
 /// exact-rational sum of squares. The generator spans signed zero, subnormals,
@@ -846,6 +847,7 @@ gen_dot_difference_errbound_oracle_proptests!(2);
 gen_dot_difference_errbound_oracle_proptests!(3);
 gen_dot_difference_errbound_oracle_proptests!(4);
 gen_dot_difference_errbound_oracle_proptests!(5);
+gen_dot_difference_errbound_oracle_proptests!(6);
 
 /// Exercise the determinant certificate with independently mixed per-entry
 /// exponents spanning zero, subnormal, tiny normal, ordinary, and large finite

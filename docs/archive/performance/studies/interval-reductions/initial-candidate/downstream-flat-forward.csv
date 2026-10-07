@@ -1,0 +1,2 @@
+case,before_mean_ns,after_mean_ns,before_median_ns,after_median_ns,before_mean_lower_ns,before_mean_upper_ns,after_mean_lower_ns,after_mean_upper_ns,mean_change_percent,criterion_change_lower_percent,criterion_change_upper_percent
+realization_narrow_phase/single_shared_vertex/2d,103.27228387522626,121.7334757699313,99.8108463569458,125.01017657290834,101.67970759124434,104.98874668974949,117.84669433040813,125.96422154437431,17.876230874306877,13.050895062396009,22.09603556891545

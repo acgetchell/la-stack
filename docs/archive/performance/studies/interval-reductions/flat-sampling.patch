@@ -1,0 +1,10 @@
+--- a/benches/realization_validation.rs
++++ b/benches/realization_validation.rs
+@@ -88,6 +88,7 @@
+ /// Measures ordinary and near-degenerate shared-face decisions in 2D-5D.
+ fn bench_realization_narrow_phase(c: &mut Criterion) {
+     let mut group = c.benchmark_group("realization_narrow_phase");
++    group.sampling_mode(criterion::SamplingMode::Flat);
+     group.throughput(Throughput::Elements(1));
+ 
+     register_valid_narrow_phase::<2>(&mut group, "shared_face_boundary", 1, 1.0);
