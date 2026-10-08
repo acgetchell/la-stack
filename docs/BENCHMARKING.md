@@ -105,19 +105,25 @@ against an independent integer matrix-product oracle before timing. Run it with
 signal is not part of the release-to-release report schema.
 
 **`interval`** (`benches/interval.rs`) measures the default-feature,
-division-free interval determinant sign filter. Its fixtures cover a conclusive
-4×4 relative-coordinate lifted predicate, the corresponding inconclusive
-boundary regime, and a conclusive 7×7 lifted workload at the supported dimension
-limit. Fixture construction and expected-sign validation occur outside the
-timed closures. This suite is a focused kernel signal; it is not part of the
+division-free interval determinant sign filter. It separates scalar addition,
+multiplication, and squaring from lifted-matrix assembly and prepared determinant
+evaluation. Matrices cover 3×3 through 7×7, with sparse lifted, dense conclusive,
+and dense inconclusive inputs. Scalar cases include exact values, cancellation,
+zero, and underflow. Only explicitly named assembly measurements include matrix
+construction; expected-result validation stays outside timing.
+This suite is a focused kernel signal; it is not part of the
 release-to-release `vs_linalg` or `exact` report schema.
 
 **`linear_form`** (`benches/linear_form.rs`) measures the default-feature
-certified dot-product and affine-difference filters at D=4. It compares the
-well-separated bounded dot product with the same plain `Vector::dot` input and
-also covers dot and affine-difference cases whose certified intervals overlap
-zero. Fixture construction and exact small-integer expectations are validated
-outside the timed closures. This focused kernel signal is not part of the
+certified dot-product and affine-difference filters through D=2–6. Prepared
+operands cover dense, sparse, cancellation, underflow, and overflow cases.
+Separate `*_endpoints` cases request both outward endpoints, accounting for
+certificate construction and endpoint derivation together.
+Repeated projection batches reuse a common vertex at the origin and after an
+exact translation, with separate construction-only, prepared, and
+construction-inclusive measurements. The original D=4 plain-dot control remains.
+Fixture expectations are validated outside the timed closures.
+This focused kernel signal is not part of the
 release-to-release report schema.
 
 ## Common Workflows

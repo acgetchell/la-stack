@@ -1132,6 +1132,51 @@ def test_unsupported_baseline_fails_before_fetch_or_worktree(
     assert not (tmp_path / "target").exists()
 
 
+@pytest.mark.parametrize("retained_outputs", [None, {}], ids=["absent", "empty"])
+def test_validate_promotion_paths_without_retained_outputs_preserves_reports(
+    tmp_path: Path,
+    retained_outputs: dict[Path, str] | None,
+) -> None:
+    current = tmp_path / "performance.md"
+    archive_dir = tmp_path / "archive"
+    index = archive_dir / "README.md"
+    current.write_text("current report\n", encoding="utf-8")
+    archive_dir.mkdir()
+    index.write_text("archive index\n", encoding="utf-8")
+    request = archive_performance.PromotionRequest(
+        current=current,
+        archive_dir=archive_dir,
+        expected=archive_performance.ReportId(current_tag="v0.4.6", baseline_tag="v0.4.5"),
+        retained_outputs=retained_outputs,
+    )
+
+    assert archive_performance._validate_promotion_paths(request, index_path=index, archive_path=None) is None
+
+    assert current.read_text(encoding="utf-8") == "current report\n"
+    assert index.read_text(encoding="utf-8") == "archive index\n"
+    assert set(tmp_path.iterdir()) == {current, archive_dir}
+    assert list(archive_dir.iterdir()) == [index]
+
+
+def test_validate_promotion_paths_rejects_retained_summary_alias_without_mutation(tmp_path: Path) -> None:
+    current = tmp_path / "performance.md"
+    archive_dir = tmp_path / "archive"
+    current.write_text("current report\n", encoding="utf-8")
+    request = archive_performance.PromotionRequest(
+        current=current,
+        archive_dir=archive_dir,
+        expected=archive_performance.ReportId(current_tag="v0.4.6", baseline_tag="v0.4.5"),
+        retained_outputs={current: "retained summary\n"},
+    )
+
+    with pytest.raises(ValueError, match="current report and retained summary 0 must use distinct paths") as error:
+        archive_performance._validate_promotion_paths(request, index_path=archive_dir / "README.md", archive_path=None)
+
+    assert str(error.value) == f"current report and retained summary 0 must use distinct paths: {current}"
+    assert current.read_text(encoding="utf-8") == "current report\n"
+    assert not archive_dir.exists()
+
+
 def test_promote_report_archives_previous_and_updates_sorted_index(tmp_path: Path) -> None:
     source = tmp_path / "target" / "bench-reports" / "performance.md"
     current = tmp_path / "docs" / "performance.md"

@@ -185,16 +185,19 @@ representable values to enclose exact-real addition, subtraction,
 multiplication, and square results \[[9], [10], [11]\]. Addition and subtraction
 use a magnitude-ordered `FastTwoSum` residual \[[17]\]. This ordering prevents
 internal overflow when the rounded sum is finite, including opposite-sign inputs
-at the maximum finite magnitude. Multiplication independently compares
-the exact integer-significand product with the rounded binary64 result,
-including gradual underflow to zero. Results whose exact range cannot fit
+at the maximum finite magnitude. Multiplication uses `TwoProductFMA` \[[18]\]
+when its residual is representable, with an exact integer-significand comparison
+for the underflow-sensitive range. The
+[threshold proof](docs/mathematical_basis.md#outward-rounded-interval-expressions)
+explains that dispatch, including gradual underflow to zero.
+Results whose exact range cannot fit
 between finite binary64 endpoints return a typed range failure rather than
 storing infinity. For the broader standardized interval arithmetic model, see
 \[[14]\]; this crate does not claim IEEE 1788 conformance.
 
 `IntervalMatrix::det()` evaluates the Leibniz expansion with a division-free
-column-subset dynamic program. It uses `2^D` inline interval states and
-`D × 2^(D-1)` coefficient products through D=7. A determinant interval strictly
+column-subset dynamic program. It uses `max(2, 2^D)` inline interval states and
+`D × 2^(D-1)` coefficient products for positive D through D=7. A determinant interval strictly
 separated from zero certifies its sign; `[0, 0]` certifies zero; every other
 overlap is explicitly inconclusive. The determinant identity is standard
 linear algebra \[[12]\]; the interval evaluation and subset-DP
@@ -300,6 +303,11 @@ alphabetized for navigation without renumbering citations.
     Algorithms 1–2 and Theorems 5.1, 6.2 (magnitude ordering and overflow).
     [DOI](https://doi.org/10.1145/3054947) ·
     [Authors' PDF](https://perso.lip6.fr/Stef.Graillat/papers/a4-boldo.pdf)
+18. <a name="ref-18"></a> Ogita, Takeshi, Siegfried M. Rump, and Shin'ichi Oishi.
+    "Accurate Sum and Dot Product." *SIAM Journal on Scientific Computing*
+    26.6 (2005): 1955–1988. Algorithm 3.5 (`TwoProductFMA`).
+    [DOI](https://doi.org/10.1137/030601818) ·
+    [Authors' PDF](https://www.tuhh.de/ti3/paper/rump/OgRuOi05.pdf)
 
 [1]: #ref-1
 [2]: #ref-2
@@ -317,3 +325,4 @@ alphabetized for navigation without renumbering citations.
 [15]: #ref-15
 [16]: #ref-16
 [17]: #ref-17
+[18]: #ref-18

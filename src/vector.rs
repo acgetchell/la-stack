@@ -48,8 +48,6 @@ use crate::{ArithmeticOperation, LaError};
 pub struct ScalarWithErrorBound {
     estimate: f64,
     absolute_error_bound: f64,
-    lower_bound: f64,
-    upper_bound: f64,
 }
 
 impl ScalarWithErrorBound {
@@ -68,24 +66,50 @@ impl ScalarWithErrorBound {
     }
 
     /// Return a finite outward-rounded lower bound on the exact-real value.
-    #[inline]
+    #[expect(
+        clippy::inline_always,
+        reason = "avoid a measured out-of-line endpoint call for each projection"
+    )]
+    #[inline(always)]
     #[must_use]
     pub const fn lower_bound(self) -> f64 {
-        self.lower_bound
+        if self.absolute_error_bound == 0.0 {
+            return self.estimate;
+        }
+        let rounded = self.estimate - self.absolute_error_bound;
+        if two_sum_error(self.estimate, -self.absolute_error_bound, rounded) < 0.0 {
+            rounded.next_down()
+        } else {
+            rounded
+        }
     }
 
     /// Return a finite outward-rounded upper bound on the exact-real value.
-    #[inline]
+    #[expect(
+        clippy::inline_always,
+        reason = "avoid a measured out-of-line endpoint call for each projection"
+    )]
+    #[inline(always)]
     #[must_use]
     pub const fn upper_bound(self) -> f64 {
-        self.upper_bound
+        if self.absolute_error_bound == 0.0 {
+            return self.estimate;
+        }
+        let rounded = self.estimate + self.absolute_error_bound;
+        if two_sum_error(self.estimate, self.absolute_error_bound, rounded) > 0.0 {
+            rounded.next_up()
+        } else {
+            rounded
+        }
     }
 
     /// Construct a validated public result with finite outward endpoints.
     ///
-    /// Exact addition residuals determine whether either rounded endpoint must
-    /// move by one binary64 value. Returning `None` instead of publishing an
-    /// infinite endpoint enforces the public proof-unavailable contract.
+    /// The exact `|estimate| + bound` dominates both endpoint magnitudes.
+    /// A rounded sum below `MAX` has a finite successor; at `MAX` its residual
+    /// must be nonpositive. This proves both outward endpoints finite without
+    /// computing an endpoint the caller may never request.
+    #[inline]
     const fn try_new(estimate: f64, absolute_error_bound: f64) -> Option<Self> {
         if !estimate.is_finite() || !absolute_error_bound.is_finite() || absolute_error_bound < 0.0
         {
@@ -96,42 +120,21 @@ impl ScalarWithErrorBound {
             return Some(Self {
                 estimate,
                 absolute_error_bound: 0.0,
-                lower_bound: estimate,
-                upper_bound: estimate,
             });
         }
 
-        let lower_rounded = estimate - absolute_error_bound;
-        let upper_rounded = estimate + absolute_error_bound;
-        if !lower_rounded.is_finite() || !upper_rounded.is_finite() {
-            return None;
-        }
-
-        let lower_error = two_sum_error(estimate, -absolute_error_bound, lower_rounded);
-        let upper_error = two_sum_error(estimate, absolute_error_bound, upper_rounded);
-        if !lower_error.is_finite() || !upper_error.is_finite() {
-            return None;
-        }
-
-        let lower_bound = if lower_error < 0.0 {
-            lower_rounded.next_down()
-        } else {
-            lower_rounded
-        };
-        let upper_bound = if upper_error > 0.0 {
-            upper_rounded.next_up()
-        } else {
-            upper_rounded
-        };
-        if !lower_bound.is_finite() || !upper_bound.is_finite() {
+        let magnitude = estimate.abs();
+        let outer_rounded = magnitude + absolute_error_bound;
+        if !outer_rounded.is_finite()
+            || (outer_rounded >= f64::MAX
+                && two_sum_error(magnitude, absolute_error_bound, outer_rounded) > 0.0)
+        {
             return None;
         }
 
         Some(Self {
             estimate,
             absolute_error_bound,
-            lower_bound,
-            upper_bound,
         })
     }
 }
@@ -143,11 +146,15 @@ impl ScalarWithErrorBound {
 /// (`Err`) from a finite estimate whose proof arithmetic is unavailable
 /// (`Ok(None)`). `magnitude_upper` encloses the sum of exact product
 /// magnitudes while that proof remains available.
+/// While proof is available, `estimate` is normal or positive zero.
+/// `single_exact_product` records one nonzero product with a unit multiplier;
+/// adding zero products preserves that fact and the exact estimate.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct CertifiedReduction {
     estimate: f64,
     magnitude_upper: f64,
     proof_available: bool,
+    single_exact_product: bool,
 }
 
 impl CertifiedReduction {
@@ -155,6 +162,7 @@ impl CertifiedReduction {
         estimate: 0.0,
         magnitude_upper: 0.0,
         proof_available: true,
+        single_exact_product: false,
     };
 
     /// Add one exact-real product through one rounded FMA.
@@ -162,6 +170,13 @@ impl CertifiedReduction {
     /// A non-finite estimate becomes a typed public error. Underflow or range
     /// loss confined to proof construction instead clears `proof_available`,
     /// preserving the finite estimate for the eventual `Ok(None)` result.
+    // Keep the reduction state in caller registers instead of returning a
+    // Result-sized state aggregate across a call for every coordinate.
+    #[expect(
+        clippy::inline_always,
+        reason = "measured per-coordinate reduction-state copy overhead"
+    )]
+    #[inline(always)]
     const fn add_product(
         mut self,
         left: f64,
@@ -169,20 +184,35 @@ impl CertifiedReduction {
         operation: ArithmeticOperation,
         index: usize,
     ) -> Result<Self, LaError> {
+        if left == 0.0 || right == 0.0 {
+            // While proof is available, the estimate is normal or +0: the
+            // initial estimate is +0 and exact cancellation rounds to +0.
+            // Adding either signed zero therefore leaves every bit unchanged.
+            // After proof loss an underflow may have produced -0, so retain
+            // the FMA there to preserve the specified signed-zero result.
+            if !self.proof_available {
+                self.estimate = left.mul_add(right, self.estimate);
+            }
+            return Ok(self);
+        }
         let prior = self.estimate;
         let estimate = left.mul_add(right, prior);
-        if !estimate.is_finite() {
-            cold_path();
-            return Err(LaError::non_finite_computation_step(operation, index));
-        }
-
-        if self.proof_available {
-            self.proof_available = estimate.is_normal()
-                || (estimate == 0.0 && Self::fma_result_is_exact_zero(left, right, prior));
+        if !estimate.is_normal() {
+            if !estimate.is_finite() {
+                cold_path();
+                return Err(LaError::non_finite_computation_step(operation, index));
+            }
+            if self.proof_available {
+                self.proof_available =
+                    estimate == 0.0 && Self::fma_result_is_exact_zero(left, right, prior);
+            }
         }
         if self.proof_available {
             match Self::add_product_magnitude_upper(self.magnitude_upper, left, right) {
-                Some(magnitude_upper) => self.magnitude_upper = magnitude_upper,
+                Some((magnitude_upper, single_exact_product)) => {
+                    self.magnitude_upper = magnitude_upper;
+                    self.single_exact_product = single_exact_product;
+                }
                 None => self.proof_available = false,
             }
         }
@@ -192,14 +222,12 @@ impl CertifiedReduction {
 
     /// Return whether `left × right + addend` is exactly zero.
     ///
-    /// This distinguishes exact cancellation from a nonzero value rounded to
+    /// Nonzero operands are guaranteed by `add_product`. This distinguishes
+    /// exact cancellation from a nonzero value rounded to
     /// zero. Only exact zero is admissible under the relative-error model used
     /// by the public certified reductions.
+    #[inline]
     const fn fma_result_is_exact_zero(left: f64, right: f64, addend: f64) -> bool {
-        if left == 0.0 || right == 0.0 {
-            return addend == 0.0;
-        }
-
         let rounded_product = left * right;
         let rounded_bits = rounded_product.to_bits();
         let negated_addend_bits = (-addend).to_bits();
@@ -212,18 +240,18 @@ impl CertifiedReduction {
 
     /// Add an upward-rounded bound on `|left × right|` to the magnitude sum.
     ///
+    /// The caller supplies nonzero finite operands.
+    /// The returned flag identifies a first unit product; later products clear it.
+    ///
     /// `None` means a nonzero product was not normal or the product/sum could
     /// not be enclosed by a finite binary64 value, so the public result must be
     /// proof-unavailable.
+    #[inline]
     const fn add_product_magnitude_upper(
         magnitude_upper: f64,
         left: f64,
         right: f64,
-    ) -> Option<f64> {
-        if left == 0.0 || right == 0.0 {
-            return Some(magnitude_upper);
-        }
-
+    ) -> Option<(f64, bool)> {
         let left_magnitude = left.abs();
         let right_magnitude = right.abs();
         let rounded_product = left_magnitude * right_magnitude;
@@ -231,26 +259,33 @@ impl CertifiedReduction {
             return None;
         }
 
-        let product_upper =
-            if compare_product_with_rounded(left_magnitude, right_magnitude, rounded_product) > 0 {
-                rounded_product.next_up()
-            } else {
-                rounded_product
-            };
-        if !product_upper.is_finite() {
-            return None;
-        }
-
         if magnitude_upper == 0.0 {
-            return Some(product_upper);
+            let exact = left_magnitude.to_bits() == 1.0_f64.to_bits()
+                || right_magnitude.to_bits() == 1.0_f64.to_bits();
+            // Multiplication by ±1 is exact. Otherwise an unconditional upward
+            // step bounds the product without computing its rounding residual.
+            let product_upper = if exact {
+                rounded_product
+            } else {
+                rounded_product.next_up()
+            };
+            return if product_upper.is_finite() {
+                Some((product_upper, exact))
+            } else {
+                None
+            };
         }
-        let rounded_sum = magnitude_upper + product_upper;
+        // One upward-widened FMA encloses magnitude_upper + |left * right|.
+        // It is no wider than first rounding the product upward, adding, and
+        // widening that sum: round-to-nearest is monotone. Keep the separate
+        // product-normality check above for the relative-error proof contract.
+        let rounded_sum = left_magnitude.mul_add(right_magnitude, magnitude_upper);
         if !rounded_sum.is_finite() {
             return None;
         }
         let sum_upper = rounded_sum.next_up();
         if sum_upper.is_finite() {
-            Some(sum_upper)
+            Some((sum_upper, false))
         } else {
             None
         }
@@ -258,19 +293,20 @@ impl CertifiedReduction {
 
     /// Finish the reduction with an upward-rounded `gamma_n` error bound.
     ///
-    /// Returns `None` when an earlier proof step failed, the term count cannot
-    /// support the relative-error model, or the final bound/endpoints cannot
+    /// Returns `None` when an earlier proof step failed, a needed nonzero bound
+    /// has a term count outside the relative-error model, or bound/endpoints cannot
     /// remain finite. Otherwise the result satisfies every public
     /// [`ScalarWithErrorBound`] invariant.
     #[expect(
         clippy::cast_precision_loss,
         reason = "a usable gamma requires a term count below 2^53, where the cast is exact"
     )]
+    #[inline]
     const fn finish(self, term_count: Option<usize>) -> Option<ScalarWithErrorBound> {
         if !self.proof_available {
             return None;
         }
-        if self.magnitude_upper == 0.0 {
+        if self.magnitude_upper == 0.0 || self.single_exact_product {
             return ScalarWithErrorBound::try_new(self.estimate, 0.0);
         }
 
@@ -485,9 +521,11 @@ impl<const D: usize> Vector<D> {
     /// difference between `s[D]` and the exact-real expression
     /// `Σᵢ self[i] × other[i]` over the stored binary64 inputs.
     ///
-    /// The bound is `gamma_D × Σᵢ |self[i] × other[i]|`, where
+    /// The general bound is `gamma_D × Σᵢ |self[i] × other[i]|`, where
     /// `gamma_D = D u / (1 - D u)` and `u = 2^-53`. The magnitude sum and the
     /// published bound are rounded upward. See `REFERENCES.md` \[9-11\].
+    /// A single nonzero normal product with a unit (±1) multiplier receives a zero
+    /// bound: every other FMA adds exact zero and preserves that product.
     ///
     /// `Ok(None)` means no certificate is available because a nonzero product
     /// or FMA result entered the subnormal range, the reduction dimension made
@@ -526,7 +564,11 @@ impl<const D: usize> Vector<D> {
     /// Returns [`LaError::NonFinite`] with the first failing reduction index and
     /// [`ArithmeticOperation::VectorDotProduct`] when an FMA estimate becomes
     /// non-finite.
-    #[inline]
+    #[expect(
+        clippy::inline_always,
+        reason = "eliminate measured Result-return overhead in repeated projections"
+    )]
+    #[inline(always)]
     pub const fn dot_with_errbound(
         &self,
         other: &Self,
@@ -564,7 +606,7 @@ impl<const D: usize> Vector<D> {
     ///
     /// A returned certificate therefore includes all `2D` FMA rounding events
     /// in that tree and bounds the intended expression over the original
-    /// binary64 coordinates. When available, its absolute bound is
+    /// binary64 coordinates. The general absolute bound is
     /// `gamma_2D × Σᵢ (|self[i] × left[i]| + |self[i] × right[i]|)`, where
     /// `gamma_2D = 2D u / (1 - 2D u)` and `u = 2^-53`; every magnitude and the
     /// final bound are rounded upward. Its
@@ -572,6 +614,8 @@ impl<const D: usize> Vector<D> {
     /// [`upper_bound`](ScalarWithErrorBound::upper_bound) can certify a sign or
     /// separation from a caller's threshold. An overlapping endpoint range
     /// remains inconclusive and should trigger the caller's exact fallback.
+    /// As with [`dot_with_errbound`](Self::dot_with_errbound), a single nonzero
+    /// normal product with a unit (±1) multiplier receives a zero bound.
     ///
     /// `Ok(None)` has the same proof-unavailable meaning as in
     /// [`dot_with_errbound`](Self::dot_with_errbound), including gradual
@@ -1311,11 +1355,104 @@ mod tests {
 
     #[test]
     fn certified_dot_withholds_bound_when_finite_endpoints_cannot_be_published() {
-        let maximum = Vector::<1>::new([f64::MAX]);
-        let one = Vector::<1>::new([1.0]);
+        // The magnitude bound reaches MAX but stays finite, so rejection must
+        // come from publishing the estimate plus its positive error bound.
+        let maximum = Vector::<2>::new([f64::MAX.next_down(), 1.0]);
+        let one = Vector::<2>::new([1.0, 1.0]);
 
-        assert_eq!(maximum.dot(&one), Ok(f64::MAX));
+        assert_eq!(maximum.dot(&one), Ok(f64::MAX.next_down()));
         assert_eq!(maximum.dot_with_errbound(&one), Ok(None));
+    }
+
+    fn assert_one_exact_normal_product<const D: usize>() {
+        let zero = Vector::<D>::new([0.0; D]);
+        for value in [f64::MIN_POSITIVE, -2.0, f64::MAX] {
+            let left =
+                Vector::<D>::new(core::array::from_fn(|i| if i == 1 { value } else { -0.0 }));
+            let right = Vector::<D>::new([1.0; D]);
+            for (result, expected) in [
+                (left.dot_with_errbound(&right), value),
+                (left.dot_difference_with_errbound(&right, &zero), value),
+                (left.dot_difference_with_errbound(&zero, &right), -value),
+            ] {
+                let certificate = result.unwrap().unwrap();
+                assert_eq!(certificate.estimate().to_bits(), expected.to_bits());
+                assert_eq!(certificate.absolute_error_bound(), 0.0);
+                assert_eq!(certificate.lower_bound().to_bits(), expected.to_bits());
+                assert_eq!(certificate.upper_bound().to_bits(), expected.to_bits());
+            }
+        }
+        let inexact = Vector::<D>::new(core::array::from_fn(|i| if i == 1 { 0.1 } else { 0.0 }))
+            .dot_with_errbound(&Vector::new([0.3; D]))
+            .unwrap()
+            .unwrap();
+        assert!(inexact.absolute_error_bound() > 0.0);
+        assert_eq!(
+            Vector::<D>::new(core::array::from_fn(|i| if i == 1 {
+                f64::MIN_POSITIVE
+            } else {
+                0.0
+            }))
+            .dot_with_errbound(&Vector::new([0.5; D])),
+            Ok(None),
+        );
+    }
+
+    macro_rules! gen_single_exact_product_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<single_exact_product_has_zero_error_ $d d>]() {
+                    assert_one_exact_normal_product::<$d>();
+                }
+            }
+        };
+    }
+
+    gen_single_exact_product_tests!(2);
+    gen_single_exact_product_tests!(3);
+    gen_single_exact_product_tests!(4);
+    gen_single_exact_product_tests!(5);
+    gen_single_exact_product_tests!(6);
+
+    #[test]
+    fn scalar_certificate_checks_both_endpoint_ranges_before_construction() {
+        const ENDPOINTS: Option<(f64, f64)> =
+            match ScalarWithErrorBound::try_new(f64::MAX / 2.0, f64::MAX / 2.0) {
+                Some(value) => Some((value.lower_bound(), value.upper_bound())),
+                None => None,
+            };
+        let previous = f64::MAX.next_down();
+        let gap = f64::MAX - previous;
+        for sign in [-1.0, 1.0] {
+            assert_eq!(
+                ScalarWithErrorBound::try_new(sign * f64::MAX, f64::from_bits(1)),
+                None,
+            );
+            assert_eq!(
+                ScalarWithErrorBound::try_new(sign * previous, gap.next_up()),
+                None,
+            );
+            for bound in [gap.next_down(), gap] {
+                let certificate = ScalarWithErrorBound::try_new(sign * previous, bound)
+                    .expect("both exact endpoints remain within the finite range");
+                let (lower, upper) = if sign > 0.0 {
+                    (previous.next_down(), f64::MAX)
+                } else {
+                    (-f64::MAX, -previous.next_down())
+                };
+                assert_eq!(certificate.lower_bound().to_bits(), lower.to_bits());
+                assert_eq!(certificate.upper_bound().to_bits(), upper.to_bits());
+            }
+        }
+        let symmetric = ScalarWithErrorBound::try_new(0.0, f64::MAX).unwrap();
+        assert_eq!(symmetric.lower_bound(), -f64::MAX);
+        assert_eq!(symmetric.upper_bound(), f64::MAX);
+        let negative_zero = ScalarWithErrorBound::try_new(-0.0, -0.0).unwrap();
+        assert_eq!(negative_zero.lower_bound().to_bits(), (-0.0_f64).to_bits());
+        assert_eq!(negative_zero.upper_bound().to_bits(), (-0.0_f64).to_bits());
+
+        assert_eq!(ENDPOINTS, Some((0.0, f64::MAX)));
     }
 
     #[test]
@@ -1352,15 +1489,70 @@ mod tests {
     }
 
     #[test]
+    fn certified_dot_withholds_bound_when_finite_magnitude_sum_cannot_be_widened() {
+        let large = Vector::<2>::new([f64::MAX / 2.0, f64::MAX / 2.0]);
+        let cancelling = Vector::<2>::new([1.0, -1.0]);
+
+        // The magnitude FMA reaches finite MAX; its upward successor is
+        // infinite. Exact estimate cancellation cannot bypass proof loss.
+        assert_eq!(large.dot(&cancelling), Ok(0.0));
+        assert_eq!(large.dot_with_errbound(&cancelling), Ok(None));
+    }
+
+    #[test]
+    fn certified_proof_loss_survives_repeated_underflow_and_a_normal_final_estimate() {
+        let axis = Vector::<3>::new([f64::from_bits(1), f64::from_bits(1), 1.0]);
+        let values = Vector::<3>::new([0.5, 0.5, 2.0]);
+        let zero = Vector::<3>::zero();
+
+        // Both tiny products round to zero. The final term produces a normal
+        // estimate, but cannot restore a proof lost before that term.
+        assert_eq!(axis.dot(&values), Ok(2.0));
+        assert_eq!(axis.dot_with_errbound(&values), Ok(None));
+        assert_eq!(axis.dot_difference_with_errbound(&values, &zero), Ok(None));
+    }
+
+    #[test]
+    fn zero_products_preserve_proof_loss_and_signed_zero_estimates() {
+        let operation = ArithmeticOperation::VectorDotProduct;
+        let underflow = CertifiedReduction::ZERO
+            .add_product(-f64::from_bits(1), 0.5, operation, 0)
+            .unwrap();
+        assert_eq!(underflow.estimate.to_bits(), (-0.0_f64).to_bits());
+        let after_zero = underflow.add_product(0.0, 1.0, operation, 1).unwrap();
+        assert_eq!(after_zero.estimate.to_bits(), 0.0_f64.to_bits());
+        assert!(!after_zero.proof_available);
+        assert_eq!(after_zero.finish(Some(2)), None);
+
+        let normal = CertifiedReduction::ZERO
+            .add_product(1.0, 2.0, operation, 0)
+            .unwrap();
+        let cancelled = normal.add_product(-1.0, 2.0, operation, 1).unwrap();
+        assert_eq!(cancelled.estimate.to_bits(), 0.0_f64.to_bits());
+        for state in [CertifiedReduction::ZERO, normal, cancelled] {
+            for zero in [0.0, -0.0] {
+                for other in [f64::MAX, -f64::MIN_POSITIVE] {
+                    let next = state.add_product(zero, other, operation, 2).unwrap();
+                    assert_eq!(next, state);
+                    assert_eq!(
+                        next.estimate.to_bits(),
+                        zero.mul_add(other, state.estimate).to_bits()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn certified_zero_and_signed_zero_have_an_exact_zero_bound() {
         let left = Vector::<3>::new([-0.0, 0.0, -0.0]);
         let right = Vector::<3>::new([f64::MAX, -1.0, f64::MIN_POSITIVE]);
         let bounded = left.dot_with_errbound(&right).unwrap().unwrap();
 
-        assert_abs_diff_eq!(bounded.estimate(), 0.0, epsilon = 0.0);
-        assert_abs_diff_eq!(bounded.absolute_error_bound(), 0.0, epsilon = 0.0);
-        assert_abs_diff_eq!(bounded.lower_bound(), 0.0, epsilon = 0.0);
-        assert_abs_diff_eq!(bounded.upper_bound(), 0.0, epsilon = 0.0);
+        assert_eq!(bounded.estimate().to_bits(), 0.0_f64.to_bits());
+        assert_eq!(bounded.absolute_error_bound().to_bits(), 0.0_f64.to_bits());
+        assert_eq!(bounded.lower_bound().to_bits(), 0.0_f64.to_bits());
+        assert_eq!(bounded.upper_bound().to_bits(), 0.0_f64.to_bits());
     }
 
     #[test]

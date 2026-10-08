@@ -187,6 +187,8 @@ datasets. Completed optimization studies belong under
 The [Rust 1.99 study](archive/performance/studies/rust-1.99.md) owns the compiler
 migration baseline and its retained measurements; it is separate from generated
 release-to-release reports.
+The [interval and certified-reduction study](archive/performance/studies/interval-reductions.md)
+owns the #247/#248 same-toolchain comparisons and downstream adoption evidence.
 
 When adding, removing, renaming, or moving files, update the applicable ownership
 rows here. Prefer links to the detailed owner over copying its procedure into

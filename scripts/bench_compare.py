@@ -1636,7 +1636,7 @@ def _generate_markdown(
         "",
     ]
 
-    if settings.baseline_name:
+    if settings.baseline_name is not None and settings.baseline_name != "":
         lines.append(f"Comparison against baseline **{settings.baseline_name}**:")
         lines.append("")
         lines.append(

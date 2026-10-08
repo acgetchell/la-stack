@@ -1,0 +1,395 @@
+--- a/src/geometry/predicates.rs
++++ b/src/geometry/predicates.rs
+@@ -8,6 +8,8 @@
+ 
+ use core::hint::cold_path;
+ 
++use la_stack::{Interval, IntervalDeterminantSign, LaError};
++
+ use crate::core::simplex::SimplexValidationError;
+ use crate::geometry::matrix::{
+     LaVector, Matrix, RationalMatrix, StackMatrixDispatchError, matrix_fast_filter, matrix_set,
+@@ -76,156 +78,41 @@
+     }
+ }
+ 
+-/// Closed interval with outward-rounded arithmetic for the filtered predicate.
+-#[derive(Clone, Copy, Debug)]
+-struct F64Interval {
+-    lower: f64,
+-    upper: f64,
+-}
+-
+-impl F64Interval {
+-    const ZERO: Self = Self {
+-        lower: 0.0,
+-        upper: 0.0,
+-    };
+-    const ONE: Self = Self {
+-        lower: 1.0,
+-        upper: 1.0,
+-    };
+-
+-    #[inline]
+-    fn subtract_exact(left: f64, right: f64) -> Option<Self> {
+-        let rounded = left - right;
+-        rounded.is_finite().then_some(Self {
+-            lower: rounded.next_down(),
+-            upper: rounded.next_up(),
+-        })
+-    }
+-
+-    #[inline]
+-    fn add(self, other: Self) -> Option<Self> {
+-        let lower = self.lower + other.lower;
+-        let upper = self.upper + other.upper;
+-        (lower.is_finite() && upper.is_finite()).then_some(Self {
+-            lower: lower.next_down(),
+-            upper: upper.next_up(),
+-        })
+-    }
+-
+-    #[inline]
+-    fn multiply(self, other: Self) -> Option<Self> {
+-        let products = [
+-            self.lower * other.lower,
+-            self.lower * other.upper,
+-            self.upper * other.lower,
+-            self.upper * other.upper,
+-        ];
+-        products.iter().all(|value| value.is_finite()).then(|| {
+-            let lower = products.iter().copied().fold(f64::INFINITY, f64::min);
+-            let upper = products.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+-            Self {
+-                lower: lower.next_down(),
+-                upper: upper.next_up(),
+-            }
+-        })
+-    }
+-
+-    #[inline]
+-    const fn negate(self) -> Self {
+-        Self {
+-            lower: -self.upper,
+-            upper: -self.lower,
+-        }
+-    }
+-
+-    #[inline]
+-    fn square(self) -> Option<Self> {
+-        let lower = if self.lower <= 0.0 && self.upper >= 0.0 {
+-            0.0
+-        } else {
+-            (self.lower * self.lower).min(self.upper * self.upper)
+-        };
+-        let upper = (self.lower * self.lower).max(self.upper * self.upper);
+-        (lower.is_finite() && upper.is_finite()).then_some(Self {
+-            lower: if lower == 0.0 { 0.0 } else { lower.next_down() },
+-            upper: upper.next_up(),
+-        })
+-    }
+-}
+-
+-/// Builds the relative lifted matrix as intervals enclosing the exact-real result.
+-fn relative_insphere_interval_matrix<const D: usize>(
+-    simplex_points: &[Point<D>],
+-    test_point: &Point<D>,
+-) -> Option<[[F64Interval; 7]; 7]> {
+-    if D + 1 > 7 {
+-        return None;
+-    }
+-    if simplex_points.len() != D + 1 {
+-        return None;
+-    }
+-
+-    let mut matrix = [[F64Interval::ZERO; 7]; 7];
+-    let reference_coords = simplex_points[0].coords();
+-    for (row, point) in simplex_points
+-        .iter()
+-        .skip(1)
+-        .chain(core::iter::once(test_point))
+-        .enumerate()
+-    {
+-        let mut lifted = F64Interval::ZERO;
+-        for column in 0..D {
+-            let relative =
+-                F64Interval::subtract_exact(point.coords()[column], reference_coords[column])?;
+-            matrix[row][column] = relative;
+-            lifted = lifted.add(relative.square()?)?;
+-        }
+-        matrix[row][D] = lifted;
+-    }
+-    Some(matrix)
+-}
+-
+-/// Returns a certified determinant sign when interval elimination separates zero.
++/// Assemble relative lifted intervals and accept only a conclusive upstream sign.
+ fn relative_insphere_interval_sign<const D: usize>(
+     simplex_points: &[Point<D>],
+     test_point: &Point<D>,
+ ) -> Option<i32> {
+-    let matrix = relative_insphere_interval_matrix(simplex_points, test_point)?;
+-    let dimension = D + 1;
+-    let mut partials = [None; 128];
+-    partials[0] = Some(F64Interval::ONE);
+-
+-    for mask in 0usize..(1usize << dimension) {
+-        let row = mask.count_ones() as usize;
+-        if row >= dimension {
+-            continue;
+-        }
+-        let Some(partial) = partials[mask] else {
+-            continue;
+-        };
+-        for (column, &entry) in matrix[row][..dimension].iter().enumerate() {
+-            if mask & (1 << column) != 0 {
+-                continue;
+-            }
+-            let mut term = partial.multiply(entry)?;
+-            if (mask >> (column + 1)).count_ones() % 2 == 1 {
+-                term = term.negate();
+-            }
+-            let next = mask | (1 << column);
+-            partials[next] = Some(match partials[next] {
+-                Some(existing) => existing.add(term)?,
+-                None => term,
+-            });
+-        }
++    if D > 6 || simplex_points.len() != D + 1 {
++        return None;
+     }
+-
+-    let determinant = partials[(1 << dimension) - 1]?;
+-    if determinant.lower > 0.0 {
+-        Some(1)
+-    } else if determinant.upper < 0.0 {
+-        Some(-1)
+-    } else {
+-        None
++    let sign = la_stack::try_with_interval_matrix!(D + 1, |mut matrix| -> Result<
++        IntervalDeterminantSign,
++        LaError,
++    > {
++        let reference = simplex_points[0].coords();
++        for (row, point) in simplex_points
++            .iter()
++            .skip(1)
++            .chain(core::iter::once(test_point))
++            .enumerate()
++        {
++            let mut lifted = Interval::ZERO;
++            for (column, &reference_coordinate) in reference.iter().enumerate() {
++                let relative =
++                    Interval::try_from_subtraction(point.coords()[column], reference_coordinate)?;
++                matrix.set(row, column, relative)?;
++                lifted = lifted.try_add(&relative.try_square()?)?;
++            }
++            matrix.set(row, D, lifted)?;
++        }
++        matrix.det_sign()
++    })
++    .ok()?;
++    match sign {
++        IntervalDeterminantSign::Positive => Some(1),
++        IntervalDeterminantSign::Negative => Some(-1),
++        _ => None,
+     }
+ }
+ 
+--- a/src/geometry/util/simplex_lp.rs
++++ b/src/geometry/util/simplex_lp.rs
+@@ -8,7 +8,7 @@
+ 
+ use core::array::from_fn;
+ 
+-use la_stack::{BigInt, BigRational, FromPrimitive, Signed, ToPrimitive};
++use la_stack::{BigInt, BigRational, FromPrimitive, Interval, Signed, ToPrimitive};
+ 
+ use crate::geometry::matrix::{LaError, LaVector, RationalVector, solve_exact_runtime_system};
+ use crate::geometry::realization::{
+@@ -1234,18 +1234,41 @@
+         return false;
+     }
+ 
+-    let scaled_axis: Vec<_> = axis.iter().map(|value| *value * 1024.0).collect();
+-    if scaled_axis.len() != D || scaled_axis.iter().any(|value| !value.is_finite()) {
++    let Ok(axis_rows) = <&[f64; D]>::try_from(axis) else {
+         return false;
+-    }
++    };
++    let axis = LaVector::try_new(axis_rows.map(|value| value * 1024.0));
++    let Ok(axis) = axis else { return false };
++    let Ok(shared) = LaVector::try_new(*first_shared) else {
++        return false;
++    };
++    let Ok(Some(common)) = axis.dot_with_errbound(&shared) else {
++        return false;
++    };
++    // Reuse certified thresholds for the common projection and unit margin.
++    let Ok(positive_margin) = Interval::try_from_subtraction(common.upper_bound(), -1.0) else {
++        return false;
++    };
++    let Ok(negative_margin) = Interval::try_from_subtraction(common.lower_bound(), 1.0) else {
++        return false;
++    };
+     first
+         .labels()
+         .iter()
+         .zip(first.coordinates())
+         .filter(|(label, _)| *label != shared_label)
+         .all(|(_, coordinates)| {
+-            certified_dot_difference_lower_bound(&scaled_axis, coordinates, first_shared)
+-                .is_some_and(|lower_bound| lower_bound > 1.0)
++            let Ok(vertex) = LaVector::try_new(*coordinates) else {
++                return false;
++            };
++            let Ok(Some(projection)) = axis.dot_with_errbound(&vertex) else {
++                return false;
++            };
++            // For representable x, x > RN(y) implies x > y: rounding is
++            // monotone and RN(x) = x. Thus this strict comparison proves
++            // estimate - error > margin without rounding another endpoint.
++            // Overflow gives +infinity and rejects the certificate.
++            projection.estimate() > positive_margin.upper() + projection.absolute_error_bound()
+         })
+         && second
+             .labels()
+@@ -1253,54 +1276,18 @@
+             .zip(second.coordinates())
+             .filter(|(label, _)| *label != shared_label)
+             .all(|(_, coordinates)| {
+-                certified_dot_difference_lower_bound(&scaled_axis, second_shared, coordinates)
+-                    .is_some_and(|lower_bound| lower_bound > 1.0)
++                let Ok(vertex) = LaVector::try_new(*coordinates) else {
++                    return false;
++                };
++                let Ok(Some(projection)) = axis.dot_with_errbound(&vertex) else {
++                    return false;
++                };
++                // The symmetric strict comparison proves estimate + error
++                // < margin. Overflow gives -infinity and rejects it.
++                projection.estimate() < negative_margin.lower() - projection.absolute_error_bound()
+             })
+ }
+ 
+-/// Returns a conservative lower bound for `axis · (left - right)`.
+-fn certified_dot_difference_lower_bound<const D: usize>(
+-    axis: &[f64],
+-    left: &[f64; D],
+-    right: &[f64; D],
+-) -> Option<f64> {
+-    let mut estimate = 0.0;
+-    let mut magnitude = 0.0;
+-    for ((coefficient, left_value), right_value) in axis.iter().zip(left).zip(right) {
+-        let left_product = coefficient * left_value;
+-        let right_product = coefficient * right_value;
+-        if !left_product.is_finite()
+-            || !right_product.is_finite()
+-            || product_underflowed(*coefficient, *left_value, left_product)
+-            || product_underflowed(*coefficient, *right_value, right_product)
+-        {
+-            return None;
+-        }
+-        estimate = coefficient.mul_add(*left_value, estimate);
+-        estimate = (-coefficient).mul_add(*right_value, estimate);
+-        magnitude += left_product.abs() + right_product.abs();
+-        if !estimate.is_finite() || !magnitude.is_finite() {
+-            return None;
+-        }
+-    }
+-
+-    let operation_count = f64::from(u32::try_from(2 * D).ok()?);
+-    // The u32 count times 2^-52 is exact, so fusion preserves this bound's denominator.
+-    let denominator = (-operation_count).mul_add(f64::EPSILON, 1.0);
+-    if denominator <= 0.0 {
+-        return None;
+-    }
+-    let gamma = operation_count * f64::EPSILON / denominator;
+-    let magnitude_upper_bound = magnitude / denominator.powi(2);
+-    let error_bound = 4.0 * gamma * magnitude_upper_bound;
+-    error_bound.is_finite().then_some(estimate - error_bound)
+-}
+-
+-/// Detects a product whose exact non-zero value rounded into the subnormal range.
+-fn product_underflowed(left: f64, right: f64, product: f64) -> bool {
+-    left != 0.0 && right != 0.0 && (product == 0.0 || product.abs() < f64::MIN_POSITIVE)
+-}
+-
+ /// Compares finite coordinates exactly while treating both signed zeros alike.
+ pub(in crate::geometry) fn coordinates_are_identical<const D: usize>(
+     left: &[f64; D],
+@@ -1833,6 +1820,22 @@
+     use approx::assert_abs_diff_eq;
+     use proptest::prelude::*;
+     use std::assert_matches;
++
++    /// Preserve the direct-reduction range probes through the public API.
++    fn certified_dot_difference_lower_bound<const D: usize>(
++        axis: &[f64],
++        left: &[f64; D],
++        right: &[f64; D],
++    ) -> Option<f64> {
++        let axis = LaVector::<D>::try_new(axis.try_into().ok()?).ok()?;
++        let left = LaVector::try_new(*left).ok()?;
++        let right = LaVector::try_new(*right).ok()?;
++        Some(
++            axis.dot_difference_with_errbound(&left, &right)
++                .ok()??
++                .lower_bound(),
++        )
++    }
+ 
+     /// Classification shared by the optimized predicate and legacy exact oracle.
+     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+@@ -2427,13 +2430,18 @@
+ 
+         // Finite products can still overflow the accumulated estimate, the
+         // absolute magnitude despite exact cancellation, or its error bound.
+-        for right in [-f64::MAX, f64::MAX, 0.0] {
++        for right in [-f64::MAX, f64::MAX] {
+             assert_eq!(
+                 certified_dot_difference_lower_bound(&[1.0], &[f64::MAX], &[right]),
+                 None,
+                 "unrepresentable bound must request exact fallback for right={right}"
+             );
+         }
++        // One normal unit product now carries an exact zero-error certificate.
++        assert_eq!(
++            certified_dot_difference_lower_bound(&[1.0], &[f64::MAX], &[0.0]),
++            Some(f64::MAX)
++        );
+     }
+ 
+     /// Checks certified separation and range-sensitive fallback against simplices
+@@ -2474,6 +2482,31 @@
+                 &first, &second, &shared, &axis
+             ));
+         }
++        // The strict rounded threshold must distinguish equality from either
++        // adjacent representable axis on both sides of the shared vertex.
++        for (component, certifies) in [
++            ((1.0_f64 / 1024.0).next_down(), false),
++            ((1.0_f64 / 1024.0).next_up(), true),
++        ] {
++            assert_eq!(
++                filtered_single_shared_vertex_confinement(
++                    &first,
++                    &second,
++                    &shared,
++                    &[component; D]
++                ),
++                certifies
++            );
++            assert_eq!(
++                filtered_single_shared_vertex_confinement(
++                    &second,
++                    &first,
++                    &shared,
++                    &[-component; D]
++                ),
++                certifies
++            );
++        }
+         assert_matches!(
+             intersection_via_linear_program(&first, &second, &shared, false),
+             IntersectionLinearProgramResult::Valid

@@ -87,6 +87,43 @@ fn assert_conclusive_sign_matches(
     Ok(())
 }
 
+#[test]
+fn product_enclosures_at_residual_underflow_boundary() -> Result<(), TestCaseError> {
+    // A rounded product can be normal while its nonzero FMA residual rounds
+    // to zero. Sweep the fast-path threshold as well as the normal/subnormal
+    // boundary and check tightness against independently lifted rationals.
+    for exponent in [-1022, -1000, -970, -969, -968, -967, -500, 0, 500] {
+        let scale = 2.0_f64.powi(exponent);
+        for left in [scale.next_down(), scale, scale.next_up(), scale * 1.5] {
+            for right in [0.5, 1.0_f64.next_down(), 1.0, 1.0_f64.next_up(), 2.0] {
+                for sign in [-1.0, 1.0] {
+                    let left = sign * left;
+                    assert_outward_result(
+                        Interval::point(left)?.try_mul(&Interval::point(right)?),
+                        &(exact_f64(left) * exact_f64(right)),
+                        ArithmeticOperation::IntervalMultiplication,
+                    )?;
+                }
+            }
+        }
+    }
+    for (left, right) in [
+        (f64::from_bits(3), f64::MAX),
+        (f64::MIN_POSITIVE.next_down(), f64::MAX),
+        (f64::MAX, 1.0_f64.next_up()),
+        (f64::MAX, 1.0_f64.next_down()),
+    ] {
+        for sign in [-1.0, 1.0] {
+            assert_outward_result(
+                Interval::point(sign * left)?.try_mul(&Interval::point(right)?),
+                &(exact_f64(sign * left) * exact_f64(right)),
+                ArithmeticOperation::IntervalMultiplication,
+            )?;
+        }
+    }
+    Ok(())
+}
+
 /// Independent determinant oracle using rational Gaussian elimination.
 fn rational_det<const D: usize>(rows: &[[f64; D]; D]) -> BigRational {
     let mut work: [[BigRational; D]; D] =

@@ -28,7 +28,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from collections.abc import Iterator, Mapping
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -506,7 +506,7 @@ def _temporary_detached_worktree(
     worktree: Path,
     revision: str,
     label: str,
-) -> Iterator[Path]:
+) -> Generator[Path]:
     """Create and remove a detached worktree without masking primary failures."""
     _run_git(["worktree", "add", "--detach", str(worktree), revision], cwd=repo_root)
     primary_error: BaseException | None = None
@@ -1372,7 +1372,7 @@ def _generated_report_in_temp_worktree(
     *,
     config: GenerationConfig,
     published_artifacts: ArtifactPaths,
-) -> Iterator[GeneratedReport]:
+) -> Generator[GeneratedReport]:
     """Generate and expose a report before its temporary worktree is removed."""
     if config.baseline_source == "local":
         _require_recorded_measurement_cpu()
@@ -1489,7 +1489,7 @@ def _validate_promotion_paths(request: PromotionRequest, *, index_path: Path, ar
     if archive_path is not None:
         named_paths["archived report"] = archive_path
     ensure_distinct_paths({**named_paths, **(request.reserved_paths or {})})
-    if request.retained_outputs:
+    if request.retained_outputs is not None:
         # Retained inputs may already occupy their own immutable destinations.
         # Check destinations separately so this valid overlap cannot conceal an
         # alias between a report output and either set of protected paths.
