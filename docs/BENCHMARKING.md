@@ -81,8 +81,8 @@ references before timing. Run it with
 `cargo bench --locked --features bench --bench angle`.
 The ordinary max-scaled Kahan control computes the same angles on these vetted
 fixtures, but lacks the public API's general input and underflow handling.
-Its timings describe kernel cost only. Prepared `Vector::angle`, checked
-`angle_between` slices, and construction followed by the method have separate
+Its timings describe kernel cost only. Prepared `Vector::angle`, checked slices
+through `VectorAngle::angle`, and construction followed by the method have separate
 rows so validation and adapter costs remain visible. Every row uses `iter`
 with borrowed, preconstructed inputs; only `construct_then_angle` includes
 construction. This focused signal is outside the release-report schema.

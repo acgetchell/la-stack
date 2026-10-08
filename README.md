@@ -58,7 +58,7 @@ while keeping the API intentionally small and explicit.
 
 `la-stack` provides a handful of const-generic, stack-backed building blocks:
 
-- `angle_between(&[f64], &[f64])` and `Vector::angle` for allocation-free,
+- `VectorAngle::angle` on coordinate slices and `Vector::angle` for allocation-free,
   unsigned vector angles with arbitrary finite nonzero magnitudes
 - `gram_matrix(&[Vector<N>; M])` for allocation-free `Matrix<M>` construction
   from pairwise vector inner products, with bit-for-bit symmetry. Gram matrices
@@ -198,7 +198,7 @@ to combine operations.
 | Gram matrix construction | [`gram_matrix`][api-gram] |
 | Interval expressions and determinant signs | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
 | Runtime selection of a const-generic matrix dimension | [Dimension dispatch examples][api-dispatch] |
-| Unsigned angle in radians | [`angle_between`][api-angle], [`Vector::angle`][api-vector-angle] |
+| Unsigned angle in radians | [`VectorAngle::angle`][api-angle], [`Vector::angle`][api-vector-angle] |
 | Vector operations and norms | [`Vector<D>`][api-vector] |
 
 [`Tolerance`][api-tolerance] validates numerical rejection thresholds.
@@ -212,7 +212,7 @@ for the full contracts.
 [api-reference]: https://docs.rs/la-stack/latest/la_stack/
 [api-guide]: https://docs.rs/la-stack/latest/la_stack/guide/index.html
 [api-vector]: https://docs.rs/la-stack/latest/la_stack/struct.Vector.html
-[api-angle]: https://docs.rs/la-stack/latest/la_stack/fn.angle_between.html
+[api-angle]: https://docs.rs/la-stack/latest/la_stack/trait.VectorAngle.html#tymethod.angle
 [api-vector-angle]: https://docs.rs/la-stack/latest/la_stack/struct.Vector.html#method.angle
 [api-matrix]: https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html
 [api-lu]: https://docs.rs/la-stack/latest/la_stack/struct.Lu.html
@@ -307,8 +307,9 @@ the renames. `Matrix::norm_inf()` remains the maximum absolute row sum.
 
 ### Unsigned vector angles
 
-`angle_between` borrows equal-length coordinate slices, and `Vector::angle`
-uses finite fixed-size storage. Both return radians in `[0, π]`, with no
+Import `VectorAngle` directly or through `la_stack::prelude::*` to call
+`left.angle(right)` on borrowed coordinate slices. `Vector::angle` uses finite
+fixed-size storage. Both return radians in `[0, π]`, with no
 allocation or matrix dispatch limit. Independent magnitude scaling supports
 overflowing input norms and subnormal separations. Empty, zero, unequal-length,
 and non-finite inputs have typed errors. Results are rounded, without a certified

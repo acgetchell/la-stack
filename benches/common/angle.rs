@@ -4,7 +4,7 @@
 
 use core::f64::consts::{FRAC_PI_4, PI};
 
-use la_stack::{Vector, angle_between};
+use la_stack::{Vector, VectorAngle};
 
 use crate::bench_utils::OrAbort;
 
@@ -45,7 +45,10 @@ impl<const D: usize> AngleInput<D> {
         let right = Vector::try_new(right).or_abort("finite benchmark fixture");
         let tolerance = expected.abs() * (8.0 * f64::EPSILON);
         for actual in [
-            angle_between(left.as_array(), right.as_array()).or_abort("valid angle"),
+            left.as_array()
+                .as_slice()
+                .angle(right.as_array())
+                .or_abort("valid angle"),
             left.angle(&right).or_abort("valid vector angle"),
             stable_control(left.as_array(), right.as_array()),
         ] {

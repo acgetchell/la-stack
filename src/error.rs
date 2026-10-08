@@ -152,6 +152,22 @@ pub enum IntervalOperand {
 }
 
 /// Operand of a binary vector operation.
+///
+/// Identifies which input needs correction when [`LaError::ZeroVector`] or
+/// [`NonFiniteLocation::VectorOperandEntry`] reports an invalid direction or
+/// coordinate, including errors from [`crate::VectorAngle::angle`].
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+///
+/// match [1.0, 0.0].as_slice().angle(&[0.0, -0.0]) {
+///     Err(LaError::ZeroVector { operand, .. }) => {
+///         assert_eq!(operand, VectorOperand::Right);
+///     }
+///     _ => unreachable!("the right input is an all-zero vector"),
+/// }
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum VectorOperand {
@@ -1116,11 +1132,17 @@ mod tests {
 
     #[test]
     fn unrepresentable_display_propagates_writer_failure() {
-        struct RejectWrites;
+        struct LimitedWrites {
+            remaining: usize,
+        }
 
-        impl fmt::Write for RejectWrites {
+        impl fmt::Write for LimitedWrites {
             fn write_str(&mut self, _: &str) -> fmt::Result {
-                Err(fmt::Error)
+                if self.remaining == 0 {
+                    return Err(fmt::Error);
+                }
+                self.remaining -= 1;
+                Ok(())
             }
         }
 
@@ -1130,10 +1152,20 @@ mod tests {
         ] {
             for index in [None, Some(2)] {
                 let error = LaError::unrepresentable(index, reason);
-                assert_eq!(
-                    fmt::write(&mut RejectWrites, format_args!("{error}")),
-                    Err(fmt::Error)
-                );
+                for remaining in [0, 1] {
+                    // One write accepts the base message, then rejects any
+                    // optional index suffix. Zero rejects the base message.
+                    let expected = if remaining == 1 && index.is_none() {
+                        Ok(())
+                    } else {
+                        Err(fmt::Error)
+                    };
+                    assert_eq!(
+                        fmt::write(&mut LimitedWrites { remaining }, format_args!("{error}")),
+                        expected,
+                        "reason={reason:?}, index={index:?}, remaining={remaining}"
+                    );
+                }
             }
         }
     }

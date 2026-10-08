@@ -488,7 +488,7 @@ impl<const D: usize> Vector<D> {
     /// Unsigned angle to another nonzero vector, in radians in `[0, π]`.
     ///
     /// Shares the allocation-free numerical implementation and rounded semantics
-    /// of [`crate::angle_between`], using this type's finite-storage invariant.
+    /// of [`crate::VectorAngle::angle`], using this type's finite-storage invariant.
     /// Arbitrary finite magnitudes are supported even when a norm would overflow.
     /// No certified absolute error bound or exact parallelism test is provided.
     ///
@@ -510,7 +510,7 @@ impl<const D: usize> Vector<D> {
     /// ```
     #[inline]
     pub fn angle(&self, other: &Self) -> Result<f64, LaError> {
-        crate::angle::angle_finite(&self.data, &other.data)
+        crate::angle::angle_finite(self, other)
     }
 
     /// Dot product.

@@ -233,7 +233,7 @@ finite results from overflow.
 ### Unsigned vector angles
 
 Kahan's §12, "Mangled Angles," pp. 46–48 \[[19]\] motivates avoiding `acos`
-and discusses cross-product and norm-weighted alternatives. `angle_between`
+and discusses cross-product and norm-weighted alternatives. `VectorAngle::angle`
 and `Vector::angle` use an exterior-product norm with `atan2`, independently
 scaled by powers of two. Minor evaluation uses FMA product residuals \[[18]\]
 and a magnitude-ordered subtraction residual \[[17]\]. The

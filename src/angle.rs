@@ -3,64 +3,83 @@
 //! Scale-safe unsigned angles from compensated exterior products and dot products.
 
 use crate::rounding::two_sum_error;
-use crate::{ArithmeticOperation, LaError, NonFiniteLocation, NonFiniteOrigin, VectorOperand};
+use crate::{
+    ArithmeticOperation, LaError, NonFiniteLocation, NonFiniteOrigin, Vector, VectorOperand,
+};
 
-/// Unsigned angle between two finite, nonzero vectors, in radians in `[0, π]`.
+/// Unsigned angles for borrowed vector coordinates.
 ///
-/// Borrows equal-length coordinate slices without allocating. Every positive
-/// ambient length is supported, including runtime `D + 1` spherical coordinates;
-/// no matrix dispatch limit applies. Magnitudes may differ arbitrarily and the
-/// input norms need not be representable. Signed zeros are treated as zero.
-/// Identical inputs return positive zero, and opposite inputs return `π`.
-///
-/// This is a rounded numerical operation, not an exact parallelism predicate or
-/// a correctly rounded result. No certified absolute error bound is provided.
-/// An `atan2` of the exterior-product norm and dot product avoids the endpoint
-/// sensitivity of `acos`. Power-of-two scaling and compensated products preserve
-/// small differences without first rounding normalized directions. Work is
-/// quadratic in the ambient length, with constant auxiliary storage; the intended
-/// performance scope is small dimensions. An angle below the binary64 output
-/// range can round to zero. See the
-/// [derivation and limitations](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#unsigned-vector-angles)
-/// and `REFERENCES.md` \[18–19\].
-///
+/// Implemented for `[f64]`. Import this trait directly or through
+/// [`crate::prelude`] to call `left.angle(right)` on coordinate slices.
 /// For finite fixed-size storage, use [`crate::Vector::angle`], which shares the
 /// numerical implementation without repeating coordinate validation.
-///
-/// # Errors
-/// Validation proceeds in this order:
-/// - [`LaError::DimensionMismatch`] for unequal lengths (including one empty).
-/// - [`LaError::NonFinite`] for the first non-finite coordinate, checking the
-///   left operand before the right; its input location includes operand/index.
-/// - [`LaError::EmptyVector`] for two empty inputs.
-/// - [`LaError::ZeroVector`] for an all-zero operand, left before right.
-///
-/// A non-finite computed result is reported as [`LaError::NonFinite`] with
-/// [`ArithmeticOperation::VectorAngle`] computation provenance.
-///
-/// # Examples
-/// ```
-/// use la_stack::prelude::*;
-///
-/// # fn main() -> Result<(), LaError> {
-/// let tiny = f64::from_bits(1);
-/// assert_eq!(angle_between(&[1.0, 0.0, 0.0], &[1.0, tiny, 0.0])?, tiny);
-/// # Ok(())
-/// # }
-/// ```
-#[inline]
-pub fn angle_between(left: &[f64], right: &[f64]) -> Result<f64, LaError> {
-    if left.len() != right.len() {
-        return Err(LaError::DimensionMismatch {
-            left: left.len(),
-            right: right.len(),
-        });
-    }
-    let left_scale = input_scale(left, VectorOperand::Left)?;
-    let right_scale = input_scale(right, VectorOperand::Right)?;
-    angle_with_scales(left, right, left_scale, right_scale)
+pub trait VectorAngle {
+    /// Unsigned angle to another finite, nonzero vector, in radians in `[0, π]`.
+    ///
+    /// Borrows equal-length coordinate slices without allocating. Every positive
+    /// ambient length is supported, including runtime `D + 1` spherical coordinates;
+    /// no matrix dispatch limit applies. Magnitudes may differ arbitrarily and the
+    /// input norms need not be representable. Signed zeros are treated as zero.
+    /// Identical inputs return positive zero, and opposite inputs return `π`.
+    ///
+    /// This is a rounded numerical operation, not an exact parallelism predicate or
+    /// a correctly rounded result. No certified absolute error bound is provided.
+    /// An `atan2` of the exterior-product norm and dot product avoids the endpoint
+    /// sensitivity of `acos`. Power-of-two scaling and compensated products preserve
+    /// small differences without first rounding normalized directions. Work is
+    /// quadratic in the ambient length, with constant auxiliary storage; the intended
+    /// performance scope is small dimensions. An angle below the binary64 output
+    /// range can round to zero. See the
+    /// [derivation and limitations](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#unsigned-vector-angles)
+    /// and `REFERENCES.md` \[18–19\].
+    ///
+    /// # Errors
+    /// Validation proceeds in this order:
+    /// - [`LaError::DimensionMismatch`] for unequal lengths (including one empty).
+    /// - [`LaError::NonFinite`] for the first non-finite coordinate, checking
+    ///   `self` before `other`; its input location includes operand/index.
+    /// - [`LaError::EmptyVector`] for two empty inputs.
+    /// - [`LaError::ZeroVector`] for an all-zero operand, `self` before `other`.
+    ///
+    /// A non-finite computed result is reported as [`LaError::NonFinite`] with
+    /// [`ArithmeticOperation::VectorAngle`] computation provenance.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let tiny = f64::from_bits(1);
+    /// let left = [1.0, 0.0, 0.0];
+    /// let right = [1.0, tiny, 0.0];
+    /// assert_eq!(left.as_slice().angle(right.as_slice())?, tiny);
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn angle(&self, other: &Self) -> Result<f64, LaError>;
 }
 
+impl VectorAngle for [f64] {
+    #[inline]
+    fn angle(&self, other: &Self) -> Result<f64, LaError> {
+        if self.len() != other.len() {
+            return Err(LaError::DimensionMismatch {
+                left: self.len(),
+                right: other.len(),
+            });
+        }
+        let left_scale = input_scale(self, VectorOperand::Left)?;
+        let right_scale = input_scale(other, VectorOperand::Right)?;
+        angle_with_scales(self, other, left_scale, right_scale)
+    }
+}
+
+/// Validate one borrowed operand and return its maximum absolute coordinate.
+///
+/// Reject the first non-finite coordinate in index order, preserving its operand
+/// and index in the input error. Empty and all-zero operands return zero here;
+/// [`angle_with_scales`] rejects them after both operands have been scanned so
+/// [`VectorAngle::angle`] reports non-finite inputs before zero-vector errors.
 fn input_scale(values: &[f64], operand: VectorOperand) -> Result<f64, LaError> {
     let mut scale = 0.0_f64;
     for (index, &value) in values.iter().enumerate() {
@@ -75,12 +94,14 @@ fn input_scale(values: &[f64], operand: VectorOperand) -> Result<f64, LaError> {
     Ok(scale)
 }
 
-/// Fixed-size callers already carry finite-coordinate and equal-length proofs.
+/// Finite vectors carry coordinate and equal-length proofs across this boundary.
 #[inline]
 pub(crate) fn angle_finite<const D: usize>(
-    left: &[f64; D],
-    right: &[f64; D],
+    left: &Vector<D>,
+    right: &Vector<D>,
 ) -> Result<f64, LaError> {
+    let left = left.as_array();
+    let right = right.as_array();
     let maximum = |values: &[f64; D]| values.iter().fold(0.0_f64, |s, x| s.max(x.abs()));
     angle_with_scales(left, right, maximum(left), maximum(right))
 }
@@ -127,8 +148,8 @@ impl DirectionScale {
 /// Compensated `a*b - c*d`, symmetric under exchanging the two products.
 ///
 /// Both products are bounded by `2^1002` after direction scaling. FMA captures
-/// their residuals (reference [18]); `FastTwoSum` captures subtraction roundoff
-/// (reference [17]). Relevant tiny minors remain normal at this enlarged scale.
+/// their residuals (reference \[18\]); `FastTwoSum` captures subtraction roundoff
+/// (reference \[17\]). Relevant tiny minors remain normal at this enlarged scale.
 /// This is an approximate minor, not an exact determinant predicate.
 #[inline]
 fn difference_of_products(a: f64, b: f64, c: f64, d: f64) -> f64 {

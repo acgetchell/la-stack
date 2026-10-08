@@ -2,8 +2,8 @@
   "schema": "la-stack-angle-study-v1",
   "date": "2026-10-08",
   "issue": 249,
-  "base_commit": "09020aa18a2b233831a8975b343095d2de1670eb",
-  "source_state": "Small-angle correction measured before commit in an isolated checkout with the original locked dependencies; identified by the source digests below.",
+  "base_commit": "7ee4bdee0855aa7381ba6ace17f847feb37fa3ce",
+  "source_state": "Working tree with the VectorAngle slice extension trait and the current locked dependencies; source/build hashes verified unchanged before and after timing.",
   "delaunay_reference_commit": "55e2e260e62598cf41ff5ae75bc57d798ee592a9",
   "environment": {
     "cpu": "Apple M4 Max",
@@ -25,33 +25,38 @@
   },
   "criterion": {
     "version": "0.8.2",
-    "command": "cargo bench --locked --features bench --bench angle -- --sample-size 50 --warm-up-time 1 --measurement-time 2 --noplot --save-baseline angle-249-final",
+    "command": "cargo bench --locked --features bench --bench angle -- --sample-size 50 --warm-up-time 1 --measurement-time 2 --noplot --save-baseline angle-249-extension",
     "sample_size": 50,
     "warm_up_seconds": 1,
     "measurement_target_seconds": 2,
     "confidence_level": 0.95,
     "measurement_count": 80,
-    "baseline_name": "angle-249-final",
-    "all_raw_samples_finite_positive": true
+    "baseline_name": "angle-249-extension",
+    "all_raw_samples_finite_positive": true,
+    "raw_records": "target/criterion/angle_d*/<operation>/angle-249-extension/"
+  },
+  "validation": {
+    "command": "just ci",
+    "rust_tests_passed": 970,
+    "python_tests_passed": 502,
+    "default_doctests_passed": 80,
+    "exact_doctests_passed": 104
   },
   "retained_csv": {
     "path": "vector-angles.csv",
-    "sha256": "7f5272ef5992ad999fd0f5ecd2d5f9711f8572fa98be1ce6004dd9e237adaebe"
+    "sha256": "a7e4c5389a5ae7e0fe26ec97808bc085e634c5ff63144c6b6ca14cada3cd190a"
   },
   "source_files_sha256": {
-    "src/angle.rs": "ced29486161cbab41224a79f4323a3dfde98e23cc54668774f975939ec8ab91d",
-    "src/vector.rs": "a340c35e399a5453b9d26e81e9740296e138ee76c9b7cb171ad277b9ba1395fa",
-    "src/error.rs": "947d074681870f2359cedf713f3fb4156ce31d95292c32288db09532075adb09",
-    "src/lib.rs": "69aef89d66906ad8d1207ab74360ea70c25c239e7505fb8e385e20a07223c510",
-    "benches/angle.rs": "7f53d2fcc5a152622482cd2d0fba2ad6fae272937c441f5dd668bc80cfaba420",
-    "benches/common/angle.rs": "9b5923c773fa486caf358f731511aa63d66d066bd8860d14a167653ac1bf97e6",
+    "src/angle.rs": "0d9ab43c43eb79bca8d64490a9d03be5adc9f01f84769110f70de38bd5c5290a",
+    "src/vector.rs": "c850faa26235440b93ba0bb193ef09edc810ca00a474378fafe5670c17441213",
+    "src/error.rs": "2e55a3cd5cc50dd0c9541e48e4a889d95fd136a24407f01491f672af94e1b608",
+    "src/lib.rs": "c3f1bcc2b398dee8e9bcc5fec5289c32b4225d4a96e467de29f48f9787e24776",
+    "src/rounding.rs": "dc1a694a4572d3d1584c02aa955476a094438bddbb3309ca1231bbd91b2f3c7b",
+    "benches/angle.rs": "b9f727ddec177db694f3334b15aa15b7201c19938354c33f29104614739cc586",
+    "benches/common/angle.rs": "ffe9d57160ab98afb7b37ebd78e20867752f1b165baac8366dbf7d289d09843b",
     "benches/common/bench_utils.rs": "64d9ab8447f22dcbaad153cfe1398e21377cad0f8447296f98144ee98bd77a77",
     "Cargo.toml": "4cbaec7012b837b88413f4dedbc6c04c5304bc79c5a5736c4c17449cff8fda04",
-    "Cargo.lock": "d022968aadeb3567a137cf267bab2d6e9de8bc2518084a8a177cbb04a2d12919",
+    "Cargo.lock": "8ca5f575b24b125f6d0e86dbc812a42f06b93f9c69f6d1604a9371dfc8fa34ed",
     "rust-toolchain.toml": "30601440e2f978a051d7c07c543a5164eeb56b97906d92fac1858324ba929bce"
-  },
-  "prior_measurement": {
-    "commit": "09020aa18a2b233831a8975b343095d2de1670eb",
-    "csv_sha256": "114ac38e90479f7dc9366faab03d2f6f734a255ba103fc7bcd161f6cfe368694"
   }
 }

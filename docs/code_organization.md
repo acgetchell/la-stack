@@ -21,7 +21,7 @@ mirrors, and the public prelude. There is no `src/main.rs`.
 
 | Module | Owns |
 |--------|------|
-| [`src/angle.rs`](../src/angle.rs) | Borrowed-slice angle boundary, direction scaling, and the shared unsigned-angle kernel |
+| [`src/angle.rs`](../src/angle.rs) | `VectorAngle` slice extension trait, direction scaling, and the shared unsigned-angle kernel |
 | [`src/error.rs`](../src/error.rs) | `LaError` and typed singularity, non-finite, positive-semidefinite, tolerance, factorization, arithmetic-operation, and exact-conversion categories |
 | [`src/exact.rs`](../src/exact.rs) | Exact determinants and solves, determinant-sign filtering, and exact-to-`f64` conversion |
 | [`src/gram.rs`](../src/gram.rs) | Fixed-size Gram construction from vector dot products |

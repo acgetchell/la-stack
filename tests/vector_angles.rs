@@ -10,7 +10,7 @@ use la_stack::prelude::*;
 use pastey::paste;
 
 fn check<const D: usize>(left: [f64; D], right: [f64; D], expected: f64, tolerance: f64) {
-    let actual = angle_between(&left, &right).unwrap();
+    let actual = left.as_slice().angle(&right).unwrap();
     assert!(actual.is_finite() && (0.0..=PI).contains(&actual));
     assert!(
         (actual - expected).abs() <= tolerance,
@@ -18,7 +18,7 @@ fn check<const D: usize>(left: [f64; D], right: [f64; D], expected: f64, toleran
     );
     assert_eq!(
         actual.to_bits(),
-        angle_between(&right, &left).unwrap().to_bits()
+        right.as_slice().angle(&left).unwrap().to_bits()
     );
     let left = Vector::try_new(left).unwrap();
     let right = Vector::try_new(right).unwrap();
@@ -48,14 +48,14 @@ fn known_angles<const D: usize>() {
     check(axis, planar(1.0, t), t.atan(), t * 4.0 * f64::EPSILON);
     check(axis, planar(-1.0, t), PI - t.atan(), 2.0 * f64::EPSILON);
 
-    // Non-axis directions exercise cancellation in both weighted coordinates.
+    // Non-axis directions exercise cancellation in the planar determinant.
     // Their exact planar determinant is t and dot product is 2+t.
     let diagonal_angle = (t / (2.0 + t)).atan();
     check(
         planar::<D>(1.0, 1.0),
         planar(1.0, 1.0 + t),
         diagonal_angle,
-        2.0 * f64::EPSILON,
+        diagonal_angle * 4.0 * f64::EPSILON,
     );
     check(
         planar::<D>(1.0, 1.0),
@@ -244,9 +244,12 @@ fn nearly_proportional_directions_keep_product_cancellation_residuals() {
 #[test]
 fn typed_shape_and_zero_errors_have_deterministic_precedence() {
     for (left, right) in [(&[][..], &[1.0][..]), (&[f64::NAN][..], &[1.0, 2.0][..])] {
-        assert_matches!(angle_between(left, right), Err(LaError::DimensionMismatch { left: n, right: m, .. }) if n == left.len() && m == right.len());
+        for (left, right) in [(left, right), (right, left)] {
+            assert_matches!(left.angle(right), Err(LaError::DimensionMismatch { left: n, right: m, .. }) if n == left.len() && m == right.len());
+        }
     }
-    assert_matches!(angle_between(&[], &[]), Err(LaError::EmptyVector));
+    let empty: &[f64] = &[];
+    assert_matches!(empty.angle(empty), Err(LaError::EmptyVector));
     assert_matches!(
         Vector::<0>::zero().angle(&Vector::zero()),
         Err(LaError::EmptyVector)
@@ -256,7 +259,7 @@ fn typed_shape_and_zero_errors_have_deterministic_precedence() {
         ([0.0, -0.0], [1.0, 0.0], VectorOperand::Left),
         ([1.0, 0.0], [-0.0, 0.0], VectorOperand::Right),
     ] {
-        assert_matches!(angle_between(&left, &right), Err(LaError::ZeroVector { operand, .. }) if operand == expected);
+        assert_matches!(left.as_slice().angle(&right), Err(LaError::ZeroVector { operand, .. }) if operand == expected);
         assert_matches!(Vector::try_new(left).unwrap().angle(&Vector::try_new(right).unwrap()), Err(LaError::ZeroVector { operand, .. }) if operand == expected);
     }
 }
@@ -271,35 +274,52 @@ fn non_finite_errors_identify_operand_and_coordinate_before_zero_errors() {
                 (bad, [f64::NAN; 4], VectorOperand::Left),
                 ([0.0; 4], bad, VectorOperand::Right),
             ] {
-                assert_matches!(angle_between(&left, &right), Err(LaError::NonFinite {
+                assert_matches!(left.as_slice().angle(&right), Err(LaError::NonFinite {
                     location: NonFiniteLocation::VectorOperandEntry { operand, index: actual, .. },
                     origin: NonFiniteOrigin::Input, ..
                 }) if operand == expected && actual == index);
             }
         }
     }
+    for bad in [
+        [1.0, f64::NAN, f64::INFINITY, 1.0],
+        [1.0, f64::INFINITY, f64::NAN, 1.0],
+    ] {
+        for (left, right, expected) in [
+            (bad, [1.0; 4], VectorOperand::Left),
+            ([1.0; 4], bad, VectorOperand::Right),
+        ] {
+            assert_matches!(left.as_slice().angle(&right), Err(LaError::NonFinite {
+                location: NonFiniteLocation::VectorOperandEntry { operand, index: 1, .. },
+                origin: NonFiniteOrigin::Input, ..
+            }) if operand == expected);
+        }
+    }
 }
 
 #[test]
 fn angle_error_displays_preserve_context() {
+    let empty: &[f64] = &[];
     assert_eq!(
-        angle_between(&[], &[1.0]).unwrap_err().to_string(),
+        empty.angle(&[1.0]).unwrap_err().to_string(),
         "vector dimension mismatch: left length 0, right length 1"
     );
     assert_eq!(
-        angle_between(&[], &[]).unwrap_err().to_string(),
+        empty.angle(empty).unwrap_err().to_string(),
         "an empty vector has no direction"
     );
     assert_eq!(
-        angle_between(&[1.0], &[-0.0]).unwrap_err().to_string(),
+        [1.0].as_slice().angle(&[-0.0]).unwrap_err().to_string(),
         "the right zero vector has no direction"
     );
     assert_eq!(
-        angle_between(&[0.0], &[1.0]).unwrap_err().to_string(),
+        [0.0].as_slice().angle(&[1.0]).unwrap_err().to_string(),
         "the left zero vector has no direction"
     );
     assert_eq!(
-        angle_between(&[1.0, 1.0], &[1.0, f64::INFINITY])
+        [1.0, 1.0]
+            .as_slice()
+            .angle(&[1.0, f64::INFINITY])
             .unwrap_err()
             .to_string(),
         "non-finite input value at right vector entry 1"
@@ -308,14 +328,41 @@ fn angle_error_displays_preserve_context() {
 }
 
 #[test]
+fn slice_extension_uses_only_borrowed_coordinates() {
+    let left = [f64::NAN, 1.0, 0.0, f64::INFINITY];
+    let right = [f64::NEG_INFINITY, 0.0, 1.0, f64::NAN];
+    let left = &left[1..3];
+    let right = &right[1..3];
+    let actual = left.angle(right).unwrap();
+    assert!((actual - FRAC_PI_2).abs() <= 2.0 * f64::EPSILON);
+    assert_eq!(la_stack::VectorAngle::angle(left, right), Ok(actual));
+}
+
+#[test]
 fn borrowed_and_fixed_angles_do_not_allocate() {
-    let left = [1.0; 6];
-    let right = [2.0; 6];
-    let a = Vector::try_new(left).unwrap();
-    let b = Vector::try_new(right).unwrap();
-    let counts = allocation_counter::measure(|| {
-        assert_eq!(angle_between(black_box(&left), black_box(&right)), Ok(0.0));
-        assert_eq!(black_box(&a).angle(black_box(&b)), Ok(0.0));
-    });
-    assert_eq!(counts.count_total, 0);
+    // Cover both the small-angle quotient and general atan2 paths.
+    for (left, right, expected) in [
+        ([1.0; 6], [2.0; 6], 0.0),
+        (planar::<6>(1.0, 0.0), planar(1.0, 1.0), FRAC_PI_4),
+    ] {
+        let a = Vector::try_new(left).unwrap();
+        let b = Vector::try_new(right).unwrap();
+        let mut angles = [0.0; 2];
+        let counts = allocation_counter::measure(|| {
+            angles = [
+                black_box(left.as_slice())
+                    .angle(black_box(right.as_slice()))
+                    .unwrap(),
+                black_box(&a).angle(black_box(&b)).unwrap(),
+            ];
+        });
+        assert_eq!(counts.count_total, 0, "expected angle {expected}");
+        for actual in angles {
+            if expected == 0.0 {
+                assert_eq!(actual.to_bits(), 0);
+            } else {
+                assert!((actual - expected).abs() <= 2.0 * f64::EPSILON);
+            }
+        }
+    }
 }

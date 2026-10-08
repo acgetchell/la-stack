@@ -5,7 +5,7 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use la_stack::{Vector, angle_between};
+use la_stack::{Vector, VectorAngle};
 
 #[path = "common/angle.rs"]
 mod angle;
@@ -27,10 +27,7 @@ fn register<const D: usize>(criterion: &mut Criterion) {
         });
         group.bench_function("borrowed_slice", |b| {
             b.iter(|| {
-                angle_between(
-                    black_box(left.as_array().as_slice()),
-                    black_box(right.as_array().as_slice()),
-                )
+                black_box(left.as_array().as_slice()).angle(black_box(right.as_array().as_slice()))
             });
         });
         group.bench_function("construct_then_angle", |b| {

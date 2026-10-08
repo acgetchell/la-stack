@@ -1098,7 +1098,7 @@ pub const MAX_STACK_MATRIX_DISPATCH_DIM: usize = 7;
 #[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
 pub const MAX_RATIONAL_MATRIX_DISPATCH_DIM: usize = 8;
 
-pub use angle::angle_between;
+pub use angle::VectorAngle;
 pub use error::{
     ArithmeticOperation, FactorizationKind, IntervalBound, IntervalOperand, InvalidToleranceReason,
     LaError, NonFiniteLocation, NonFiniteOrigin, PositiveSemidefiniteViolation, SingularityReason,
@@ -1374,12 +1374,13 @@ macro_rules! try_with_rational_matrix {
 /// [`DeterminantWithErrorBound`], [`Interval`], [`IntervalMatrix`],
 /// [`IntervalDeterminantSign`], [`ScalarWithErrorBound`], [`Vector`], [`Lu`],
 /// [`Ldlt`], [`Tolerance`],
-/// and [`LaError`]. It also includes [`gram_matrix`] for constructing a symmetric
-/// matrix of pairwise vector inner products. Its typed
+/// and [`LaError`]. It also includes the [`VectorAngle`] extension trait for
+/// unsigned angles between borrowed coordinate slices and [`gram_matrix`] for
+/// constructing a symmetric matrix of pairwise vector inner products. Its typed
 /// error categories include [`ArithmeticOperation`], [`FactorizationKind`],
 /// [`IntervalBound`], [`IntervalOperand`], [`InvalidToleranceReason`],
 /// [`NonFiniteLocation`], [`NonFiniteOrigin`], [`PositiveSemidefiniteViolation`],
-/// [`SingularityReason`], and [`UnrepresentableReason`]. It also re-exports
+/// [`SingularityReason`], [`UnrepresentableReason`], and [`VectorOperand`]. It also re-exports
 /// [`DEFAULT_SINGULAR_TOL`],
 /// [`MAX_STACK_MATRIX_DISPATCH_DIM`], [`MAX_INTERVAL_MATRIX_DIM`],
 /// [`try_with_stack_matrix!`], and [`try_with_interval_matrix!`] for
@@ -1439,7 +1440,7 @@ pub mod prelude {
         InvalidToleranceReason, LaError, Ldlt, Lu, MAX_INTERVAL_MATRIX_DIM,
         MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, NonFiniteLocation, NonFiniteOrigin,
         PositiveSemidefiniteViolation, ScalarWithErrorBound, SingularityReason, Tolerance,
-        UnrepresentableReason, Vector, VectorOperand, angle_between, gram_matrix,
+        UnrepresentableReason, Vector, VectorAngle, VectorOperand, gram_matrix,
         try_with_interval_matrix, try_with_stack_matrix,
     };
 

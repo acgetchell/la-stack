@@ -56,7 +56,7 @@ Reference numbers point to [REFERENCES.md](../REFERENCES.md).
 | Exact determinant value or solve | `det_exact`, `solve_exact` | Exact for represented inputs |
 | Exact operations over preassembled rationals | `RationalMatrix::det_sign`, `det`, `solve` | No intermediate binary64 reconstruction |
 | Binary64 output from an exact result | Strict or rounded conversions | Strict conversion forbids rounding |
-| Unsigned vector angle in radians | `angle_between`, `Vector::angle` | Finite nonzero vectors; rounded, without a certified bound |
+| Unsigned vector angle in radians | `VectorAngle::angle`, `Vector::angle` | Finite nonzero vectors; rounded, without a certified bound |
 
 ## Geometry relationship and scope
 
@@ -619,7 +619,8 @@ when `norm` succeeds.
 
 ### Unsigned vector angles
 
-`angle_between(left, right)` borrows equal-length coordinate slices;
+The `VectorAngle` extension trait provides `left.angle(right)` on borrowed,
+equal-length coordinate slices;
 `Vector<D>::angle(&other)` reuses the kernel with validated finite storage.
 Both compute an unsigned angle in radians in `[0, π]`, in quadratic time and
 constant auxiliary space, without allocation or optional dependencies.
