@@ -903,6 +903,7 @@ pub mod guide {
         //! ```
     }
 }
+mod angle;
 mod error;
 #[cfg(feature = "exact")]
 mod exact;
@@ -1097,10 +1098,11 @@ pub const MAX_STACK_MATRIX_DISPATCH_DIM: usize = 7;
 #[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
 pub const MAX_RATIONAL_MATRIX_DISPATCH_DIM: usize = 8;
 
+pub use angle::angle_between;
 pub use error::{
     ArithmeticOperation, FactorizationKind, IntervalBound, IntervalOperand, InvalidToleranceReason,
     LaError, NonFiniteLocation, NonFiniteOrigin, PositiveSemidefiniteViolation, SingularityReason,
-    UnrepresentableReason,
+    UnrepresentableReason, VectorOperand,
 };
 pub use gram::gram_matrix;
 pub use interval::{Interval, IntervalDeterminantSign, IntervalMatrix, MAX_INTERVAL_MATRIX_DIM};
@@ -1437,8 +1439,8 @@ pub mod prelude {
         InvalidToleranceReason, LaError, Ldlt, Lu, MAX_INTERVAL_MATRIX_DIM,
         MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, NonFiniteLocation, NonFiniteOrigin,
         PositiveSemidefiniteViolation, ScalarWithErrorBound, SingularityReason, Tolerance,
-        UnrepresentableReason, Vector, gram_matrix, try_with_interval_matrix,
-        try_with_stack_matrix,
+        UnrepresentableReason, Vector, VectorOperand, angle_between, gram_matrix,
+        try_with_interval_matrix, try_with_stack_matrix,
     };
 
     #[cfg(feature = "exact")]

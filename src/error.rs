@@ -53,6 +53,8 @@ pub enum ArithmeticOperation {
     VectorSquaredNorm,
     /// Overflow- and underflow-safe vector Euclidean-norm calculation.
     VectorNorm,
+    /// Unsigned angle between two vectors.
+    VectorAngle,
 }
 
 impl fmt::Display for ArithmeticOperation {
@@ -75,6 +77,7 @@ impl fmt::Display for ArithmeticOperation {
             Self::VectorDotDifference => "vector dot difference",
             Self::VectorSquaredNorm => "vector squared norm",
             Self::VectorNorm => "vector Euclidean norm",
+            Self::VectorAngle => "vector angle",
         })
     }
 }
@@ -148,6 +151,25 @@ pub enum IntervalOperand {
     Right,
 }
 
+/// Operand of a binary vector operation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum VectorOperand {
+    /// Left operand (`self` for a method).
+    Left,
+    /// Right operand (the method argument).
+    Right,
+}
+
+impl fmt::Display for VectorOperand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Left => "left",
+            Self::Right => "right",
+        })
+    }
+}
+
 /// Location at which a non-finite value was observed.
 ///
 /// # Examples
@@ -177,6 +199,14 @@ pub enum NonFiniteLocation {
     #[non_exhaustive]
     VectorEntry {
         /// Vector index.
+        index: usize,
+    },
+    /// Entry in one of two borrowed vector operands.
+    #[non_exhaustive]
+    VectorOperandEntry {
+        /// Operand containing the non-finite coordinate.
+        operand: VectorOperand,
+        /// Coordinate index within that operand.
         index: usize,
     },
     /// Indexed step in a factorization, solve, or reduction.
@@ -346,6 +376,22 @@ pub enum UnrepresentableReason {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum LaError {
+    /// Two vector operands have unequal ambient lengths.
+    #[non_exhaustive]
+    DimensionMismatch {
+        /// Left operand length.
+        left: usize,
+        /// Right operand length.
+        right: usize,
+    },
+    /// An operation requiring a direction received empty vector storage.
+    EmptyVector,
+    /// An operation requiring a direction received an all-zero vector.
+    #[non_exhaustive]
+    ZeroVector {
+        /// Operand whose coordinates are all zero (of either sign).
+        operand: VectorOperand,
+    },
     /// A matrix is exactly or numerically singular.
     #[non_exhaustive]
     Singular {
@@ -729,6 +775,9 @@ fn write_non_finite_location(
             write!(f, "matrix cell ({row}, {col})")
         }
         NonFiniteLocation::VectorEntry { index } => write!(f, "vector entry {index}"),
+        NonFiniteLocation::VectorOperandEntry { operand, index } => {
+            write!(f, "{operand} vector entry {index}")
+        }
         NonFiniteLocation::Step { index } => write!(f, "step {index}"),
         NonFiniteLocation::IntervalBound {
             bound: IntervalBound::Lower,
@@ -771,9 +820,37 @@ fn write_non_finite(
     }
 }
 
+/// Write exact-conversion failures with their optional component context.
+fn write_unrepresentable(
+    f: &mut fmt::Formatter<'_>,
+    index: Option<usize>,
+    reason: UnrepresentableReason,
+) -> fmt::Result {
+    f.write_str(match reason {
+        UnrepresentableReason::RequiresRounding => {
+            "exact result requires rounding to fit finite f64"
+        }
+        UnrepresentableReason::NotFinite => {
+            "exact result has no finite f64 representation after rounding"
+        }
+    })?;
+    if let Some(index) = index {
+        write!(f, " at index {index}")?;
+    }
+    Ok(())
+}
+
 impl fmt::Display for LaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
+            Self::DimensionMismatch { left, right } => {
+                write!(
+                    f,
+                    "vector dimension mismatch: left length {left}, right length {right}"
+                )
+            }
+            Self::EmptyVector => f.write_str("an empty vector has no direction"),
+            Self::ZeroVector { operand } => write!(f, "the {operand} zero vector has no direction"),
             Self::Singular {
                 pivot_col,
                 reason: SingularityReason::Exact,
@@ -795,28 +872,7 @@ impl fmt::Display for LaError {
                 f,
                 "exact-real intermediate or result of {operation} has no enclosure with finite binary64 endpoints"
             ),
-            Self::Unrepresentable {
-                index: Some(index),
-                reason: UnrepresentableReason::RequiresRounding,
-            } => write!(
-                f,
-                "exact result requires rounding to fit finite f64 at index {index}"
-            ),
-            Self::Unrepresentable {
-                index: None,
-                reason: UnrepresentableReason::RequiresRounding,
-            } => f.write_str("exact result requires rounding to fit finite f64"),
-            Self::Unrepresentable {
-                index: Some(index),
-                reason: UnrepresentableReason::NotFinite,
-            } => write!(
-                f,
-                "exact result has no finite f64 representation after rounding at index {index}"
-            ),
-            Self::Unrepresentable {
-                index: None,
-                reason: UnrepresentableReason::NotFinite,
-            } => f.write_str("exact result has no finite f64 representation after rounding"),
+            Self::Unrepresentable { index, reason } => write_unrepresentable(f, index, reason),
             Self::InvertedInterval { lower, upper } => write!(
                 f,
                 "invalid interval bounds [{lower}, {upper}]; expected lower <= upper"

@@ -20,6 +20,7 @@
   - [Outward-rounded interval expressions](#outward-rounded-interval-expressions)
   - [Scaled determinant products](#scaled-determinant-products)
   - [Scaled Euclidean vector norm](#scaled-euclidean-vector-norm)
+  - [Unsigned vector angles](#unsigned-vector-angles)
 
 ## Introduction
 
@@ -55,6 +56,7 @@ Reference numbers point to [REFERENCES.md](../REFERENCES.md).
 | Exact determinant value or solve | `det_exact`, `solve_exact` | Exact for represented inputs |
 | Exact operations over preassembled rationals | `RationalMatrix::det_sign`, `det`, `solve` | No intermediate binary64 reconstruction |
 | Binary64 output from an exact result | Strict or rounded conversions | Strict conversion forbids rounding |
+| Unsigned vector angle in radians | `angle_between`, `Vector::angle` | Finite nonzero vectors; rounded, without a certified bound |
 
 ## Geometry relationship and scope
 
@@ -65,6 +67,9 @@ primitives; callers still own problem-specific matrix assembly and semantic
 classification. The crate originated to support
 [`delaunay`](https://crates.io/crates/delaunay), but its matrix, factorization,
 and exact-arithmetic APIs are general numerical infrastructure.
+The borrowed-slice angle API also supports runtime ambient coordinate lengths
+without changing the const-generic storage model. Spherical callers retain
+radius validation and angle-to-arc-length conversion.
 
 The deliberate anti-goals are dynamically sized or rectangular matrices,
 sparse storage, broad decomposition coverage, alternate floating scalar
@@ -611,3 +616,74 @@ A scalar `LaError::NonFinite` tagged with `ArithmeticOperation::VectorNorm`
 therefore means the exact norm rounds to infinity. `Vector::norm_squared`
 intentionally remains the direct FMA sum `Σᵢ xᵢ²` and may therefore fail even
 when `norm` succeeds.
+
+### Unsigned vector angles
+
+`angle_between(left, right)` borrows equal-length coordinate slices;
+`Vector<D>::angle(&other)` reuses the kernel with validated finite storage.
+Both compute an unsigned angle in radians in `[0, π]`, in quadratic time and
+constant auxiliary space, without allocation or optional dependencies.
+Every positive ambient length is accepted, including Delaunay's lengths 3–6
+and lengths beyond the matrix dispatch limit. Shape mismatch is checked
+before coordinates; non-finite coordinates are checked left operand first,
+then right, in index order. Two empty vectors return `EmptyVector`; an all-zero
+operand returns `ZeroVector`, left before right. Non-finite input metadata
+retains `VectorOperandEntry { operand, index }` and `NonFiniteOrigin::Input`.
+
+For nonzero vectors `u, v`, Lagrange's identity gives
+
+```text
+w² = Σᵢ<ⱼ (uᵢvⱼ - uⱼvᵢ)² = ‖u‖² ‖v‖² - (u·v)²,
+θ = atan2(w, u·v).
+```
+
+The exterior-product norm `w` is `‖u‖ ‖v‖ sin(θ)`; the dot is the same
+positive norm factor times `cos(θ)`. `atan2` cancels that factor without forming
+the norms and remains well-conditioned near both endpoints and `π/2`.
+The implementation reduces the minors with `hypot`; it never subtracts rounded
+Gram products or squares a tiny minor. For length one the exterior sum is empty
+and the sign of the dot selects zero or `π`.
+
+Each input has its own positive maximum magnitude `m`. Extract its binary
+exponent `e = floor(log2(m))` and scale its coordinates by `2^(500-e)`, using
+up to two power-of-two multiplications. The largest coordinate is then in
+`[2^500, 2^501)`. This preserves significands without dividing by a rounded norm
+or non-power-of-two maximum. Coordinates below roughly `2^-1574` relative to
+their maximum may underflow during scaling; their total angular contribution
+stays far below the output range even for addressable slice lengths.
+
+Products of scaled coordinates stay below `2^1002`; differences stay below
+`2^1003`. Each minor uses two FMA product residuals \[18\] plus a magnitude-ordered
+`FastTwoSum` subtraction residual \[17\]. This retains small differences between
+large, nearly equal products. All dot terms and completed minors are multiplied
+by `2^-500` before reduction. Dot accumulation also tracks addition residuals.
+For 64-bit slice lengths the accumulated dot and exterior norm remain below
+roughly `2^567`, with ample overflow headroom. Minors contributing to a
+representable tiny angle stay well above underflow at the enlarged product scale.
+
+Kahan's norm-weighted half-angle formula \[19\], used in Delaunay's spherical
+implementation, was considered and is retained as a benchmark control on valid
+fixtures. General direction normalization can still erase representable tiny
+angles: with `n = 2^51`, the planar vectors `[n,n-1]` and `[n+1,n]` have
+determinant 1 and dot `2n²`, hence angle `atan(2^-103)`. Dividing each vector by
+its maximum can make the directions identical in binary64. Compensated minors
+avoid that information loss. They also preserve the least positive angle in
+`[1,0]`, `[1,2^-1074]` and the separation of `[2,t]`, `[2,-t]` with
+`t = 2^-1074`; separately dividing the latter small coordinates by 2 loses both.
+
+The exterior norm is nonnegative, so `atan2` returns `[0, π]` without clamping
+or a half-angle intermediate. Identical inputs yield exactly positive zero;
+opposite inputs yield the binary64 constant `π`, including signed-zero changes.
+The price of retaining all minors is `N(N-1)/2` compensated differences and
+`hypot` steps. This is intended for small dimensions, including Delaunay's 3–6,
+while remaining allocation-free and without an artificial dimension limit.
+
+This is approximate arithmetic over the stored inputs. There is no certified
+absolute error bound, exact parallelism classification, or correct-rounding
+promise. Products, compensated differences, reductions, and transcendental
+evaluation still round; accumulated error depends on ambient length. Subnormal
+outputs have coarse relative spacing, unrepresentable angles may round to
+zero, and deviations from `π` smaller than its output spacing are lost.
+Coordinate rescaling that itself rounds or underflows changes the input
+direction. Rust's `hypot` and `atan2` can also vary across platforms.
+The guarantees assume ordinary binary64 arithmetic with gradual underflow.

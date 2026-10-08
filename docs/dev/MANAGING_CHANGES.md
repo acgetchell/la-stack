@@ -13,9 +13,12 @@ Operational details for the Git rules in [AGENTS.md](../../AGENTS.md).
 
 ## Git operations and branch names
 
-Agents use read-only Git commands with `git --no-pager`. Never run commits,
-pushes, tags, or other commands that mutate refs or the index; suggest those
-commands for the maintainer to run manually. Preserve unrelated user changes.
+Agents use `git --no-pager` for read-only Git commands. Mutating refs or the
+index requires explicit user approval covering the intended operations, such
+as branch creation, staging, commits, pushes, or tags. Approval remains valid
+for the authorized task; do not request it again unless the scope changes.
+Without approval, suggest commands for the maintainer to run manually.
+Preserve unrelated user changes.
 
 Prefer branch names of the form `{type}/{issue}-descriptor-or-two`, for example
 `fix/307-topology-validation`, `perf/315-bench-profile`, or
@@ -31,8 +34,8 @@ When asked to generate a commit message:
 2. Use `<type>: <brief summary>` with `feat`, `fix`, `refactor`, `perf`,
    `docs`, `test`, `chore`, `style`, `ci`, or `build`.
 3. Include organized body bullets describing the changes and test results.
-4. Present the message in a code block with no language so the user can commit
-   manually.
+4. Unless committing is explicitly authorized, present the message in a code
+   block with no language so the user can commit manually.
 
 Document intentional API breaks explicitly. See the
 [contributor commit-message guide](../../CONTRIBUTING.md#commit-message-format)

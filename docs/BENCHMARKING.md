@@ -72,7 +72,20 @@ promotion in one command.
 
 ## Benchmark Suites
 
-`la-stack` has five Criterion benchmark suites.
+`la-stack` has six Criterion benchmark suites.
+
+**`angle`** (`benches/angle.rs`) measures unsigned angles in ambient dimensions
+3–6 using dense, nearly parallel, nearly antipodal, mixed-scale, and subnormal
+inputs. Each fixture checks independent analytical or integer exterior-product
+references before timing. Run it with
+`cargo bench --locked --features bench --bench angle`.
+The ordinary max-scaled Kahan control computes the same angles on these vetted
+fixtures, but lacks the public API's general input and underflow handling.
+Its timings describe kernel cost only. Prepared `Vector::angle`, checked
+`angle_between` slices, and construction followed by the method have separate
+rows so validation and adapter costs remain visible. Every row uses `iter`
+with borrowed, preconstructed inputs; only `construct_then_angle` includes
+construction. This focused signal is outside the release-report schema.
 
 Newly rendered reports use one table per selected suite. Dimension and
 adversarial-input group appear in a `Case` column instead of creating a separate

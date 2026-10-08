@@ -1,0 +1,53 @@
+{
+  "schema": "la-stack-angle-study-v1",
+  "date": "2026-10-08",
+  "issue": 249,
+  "base_commit": "b121ea33884ce73d3c5f066c859e3d75675c023f",
+  "source_state": "Uncommitted implementation identified by the source digests below.",
+  "delaunay_reference_commit": "55e2e260e62598cf41ff5ae75bc57d798ee592a9",
+  "environment": {
+    "cpu": "Apple M4 Max",
+    "os": "macOS 27.0.1",
+    "os_build": "26A434",
+    "target": "aarch64-apple-darwin",
+    "rustc": "1.99.0",
+    "rustc_commit": "b940084d7eb6a299eb4bfeb8e34901bc051e7ac4",
+    "llvm": "23.1.1",
+    "profile": "release",
+    "lto": "fat",
+    "codegen_units": 1,
+    "features": [
+      "bench"
+    ],
+    "rustflags": null,
+    "cargo_encoded_rustflags": null,
+    "cargo_build_target": null
+  },
+  "criterion": {
+    "version": "0.8.2",
+    "command": "cargo bench --locked --features bench --bench angle -- --sample-size 50 --warm-up-time 1 --measurement-time 2 --noplot --save-baseline angle-249-final",
+    "sample_size": 50,
+    "warm_up_seconds": 1,
+    "measurement_target_seconds": 2,
+    "confidence_level": 0.95,
+    "measurement_count": 80,
+    "baseline_name": "angle-249-final",
+    "all_raw_samples_finite_positive": true
+  },
+  "retained_csv": {
+    "path": "vector-angles.csv",
+    "sha256": "114ac38e90479f7dc9366faab03d2f6f734a255ba103fc7bcd161f6cfe368694"
+  },
+  "source_files_sha256": {
+    "src/angle.rs": "401227421f08194001ac870dd2c410bd2d2bfa5a232094a4395a18712088e712",
+    "src/vector.rs": "a340c35e399a5453b9d26e81e9740296e138ee76c9b7cb171ad277b9ba1395fa",
+    "src/error.rs": "a5e7affb0d6916d8dd6e991cada6c02334c0d421bd51eba79b64c3893cdc26fa",
+    "src/lib.rs": "69aef89d66906ad8d1207ab74360ea70c25c239e7505fb8e385e20a07223c510",
+    "benches/angle.rs": "7f53d2fcc5a152622482cd2d0fba2ad6fae272937c441f5dd668bc80cfaba420",
+    "benches/common/angle.rs": "9b5923c773fa486caf358f731511aa63d66d066bd8860d14a167653ac1bf97e6",
+    "benches/common/bench_utils.rs": "64d9ab8447f22dcbaad153cfe1398e21377cad0f8447296f98144ee98bd77a77",
+    "Cargo.toml": "4cbaec7012b837b88413f4dedbc6c04c5304bc79c5a5736c4c17449cff8fda04",
+    "Cargo.lock": "d022968aadeb3567a137cf267bab2d6e9de8bc2518084a8a177cbb04a2d12919",
+    "rust-toolchain.toml": "30601440e2f978a051d7c07c543a5164eeb56b97906d92fac1858324ba929bce"
+  }
+}

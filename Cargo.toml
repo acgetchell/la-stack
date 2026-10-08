@@ -72,6 +72,11 @@ name = "rational_input_5x5"
 required-features = [ "exact" ]
 
 [[bench]]
+name = "angle"
+harness = false
+required-features = [ "bench" ]
+
+[[bench]]
 name = "exact"
 harness = false
 required-features = [ "bench", "exact" ]
