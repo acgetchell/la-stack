@@ -485,6 +485,34 @@ impl<const D: usize> Vector<D> {
         self.data
     }
 
+    /// Unsigned angle to another nonzero vector, in radians in `[0, π]`.
+    ///
+    /// Shares the allocation-free numerical implementation and rounded semantics
+    /// of [`crate::VectorAngle::angle`], using this type's finite-storage invariant.
+    /// Arbitrary finite magnitudes are supported even when a norm would overflow.
+    /// No certified absolute error bound or exact parallelism test is provided.
+    ///
+    /// # Errors
+    /// Returns [`LaError::EmptyVector`] for `D = 0`, [`LaError::ZeroVector`] for
+    /// an all-zero operand (`self` first), or [`LaError::NonFinite`] for a
+    /// non-finite computed angle, with vector-angle computation provenance.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let x = Vector::try_new([1.0, 0.0, 0.0])?;
+    /// let y = Vector::try_new([1.0, 2.0_f64.powi(-30), 0.0])?;
+    /// assert!((x.angle(&y)? - 2.0_f64.powi(-30)).abs() < 1e-24);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[inline]
+    pub fn angle(&self, other: &Self) -> Result<f64, LaError> {
+        crate::angle::angle_finite(self, other)
+    }
+
     /// Dot product.
     ///
     /// Terms are accumulated in `f64` using [`f64::mul_add`] at each index.

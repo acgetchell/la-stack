@@ -21,6 +21,7 @@ mirrors, and the public prelude. There is no `src/main.rs`.
 
 | Module | Owns |
 |--------|------|
+| [`src/angle.rs`](../src/angle.rs) | `VectorAngle` slice extension trait, direction scaling, and the shared unsigned-angle kernel |
 | [`src/error.rs`](../src/error.rs) | `LaError` and typed singularity, non-finite, positive-semidefinite, tolerance, factorization, arithmetic-operation, and exact-conversion categories |
 | [`src/exact.rs`](../src/exact.rs) | Exact determinants and solves, determinant-sign filtering, and exact-to-`f64` conversion |
 | [`src/gram.rs`](../src/gram.rs) | Fixed-size Gram construction from vector dot products |
@@ -74,11 +75,14 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
 ## Tests and examples
 
 - Rust unit tests live in inline `#[cfg(test)]` modules in `src/*.rs`.
-- `tests/proptest_*.rs` covers matrix, vector, factorization, exact, rational,
+- `tests/proptest_*.rs` covers angles, matrix, vector, factorization, exact, rational,
   interval, and Gram properties. Exact and rational suites require `exact`.
 - Other `tests/*.rs` suites cover regressions, API contracts, allocation
   behavior, conversion boundaries, and benchmark inputs. Shared property-test
   configuration lives in `tests/common/`.
+- `tests/vector_angles.rs` owns independent analytical angle regressions,
+  typed operand/shape errors, and allocation evidence. `tests/angle_bench_inputs.rs`
+  runs the independent fixture gates shared with the angle benchmark.
 - `benches/comparison/tests/vs_linalg_inputs.rs` checks the shared comparison
   fixtures. `just test-bench-inputs` and the full CI test pass include both
   workspace packages.
@@ -94,11 +98,14 @@ and [Documentation guidance](dev/docs.md) for executable-example ownership.
 
 ## Benchmarks and support tooling
 
-`benches/` contains Criterion suites for exact arithmetic, Gram construction,
+`benches/` contains Criterion suites for angles, exact arithmetic, Gram construction,
 intervals, linear forms, and nalgebra/faer comparisons. Helpers under
 `benches/common/` own fixture and oracle validation. Exact benchmark helpers
 accept only `ValidatedExactInput`, after independent validation outside timing.
 Adversarial groups include near-singular, large-entry, and Hilbert inputs.
+`benches/common/angle.rs` owns the independently checked angle fixtures and
+the stable comparison kernel; `benches/angle.rs` separates prepared vectors,
+borrowed slices, and construction costs.
 
 The root package is the default workspace member. `benches/comparison/Cargo.toml`
 owns the `vs_linalg` target at `benches/vs_linalg.rs` and its input test. Select
@@ -189,6 +196,8 @@ migration baseline and its retained measurements; it is separate from generated
 release-to-release reports.
 The [interval and certified-reduction study](archive/performance/studies/interval-reductions.md)
 owns the #247/#248 same-toolchain comparisons and downstream adoption evidence.
+The [vector-angle study](archive/performance/studies/vector-angles.md) owns the
+#249 formulation decision, comparative timings, and retained source provenance.
 
 When adding, removing, renaming, or moving files, update the applicable ownership
 rows here. Prefer links to the detailed owner over copying its procedure into

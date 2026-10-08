@@ -41,6 +41,7 @@ while keeping the API intentionally small and explicit.
   - [LU solve](#lu-solve)
   - [Outward-rounded interval determinants](#outward-rounded-interval-determinants)
   - [Overflow-safe Euclidean norms](#overflow-safe-euclidean-norms)
+  - [Unsigned vector angles](#unsigned-vector-angles)
 - [Mathematical basis](#-mathematical-basis)
 - [Design goals](#-design-goals)
 - [Anti-goals](#-anti-goals)
@@ -57,6 +58,8 @@ while keeping the API intentionally small and explicit.
 
 `la-stack` provides a handful of const-generic, stack-backed building blocks:
 
+- `VectorAngle::angle` on coordinate slices and `Vector::angle` for allocation-free,
+  unsigned vector angles with arbitrary finite nonzero magnitudes
 - `gram_matrix(&[Vector<N>; M])` for allocation-free `Matrix<M>` construction
   from pairwise vector inner products, with bit-for-bit symmetry. Gram matrices
   encode lengths and angles and support simplex/facet volume calculations; see
@@ -195,6 +198,7 @@ to combine operations.
 | Gram matrix construction | [`gram_matrix`][api-gram] |
 | Interval expressions and determinant signs | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
 | Runtime selection of a const-generic matrix dimension | [Dimension dispatch examples][api-dispatch] |
+| Unsigned angle in radians | [`VectorAngle::angle`][api-angle], [`Vector::angle`][api-vector-angle] |
 | Vector operations and norms | [`Vector<D>`][api-vector] |
 
 [`Tolerance`][api-tolerance] validates numerical rejection thresholds.
@@ -208,6 +212,8 @@ for the full contracts.
 [api-reference]: https://docs.rs/la-stack/latest/la_stack/
 [api-guide]: https://docs.rs/la-stack/latest/la_stack/guide/index.html
 [api-vector]: https://docs.rs/la-stack/latest/la_stack/struct.Vector.html
+[api-angle]: https://docs.rs/la-stack/latest/la_stack/trait.VectorAngle.html#tymethod.angle
+[api-vector-angle]: https://docs.rs/la-stack/latest/la_stack/struct.Vector.html#method.angle
 [api-matrix]: https://docs.rs/la-stack/latest/la_stack/struct.Matrix.html
 [api-lu]: https://docs.rs/la-stack/latest/la_stack/struct.Lu.html
 [api-ldlt]: https://docs.rs/la-stack/latest/la_stack/struct.Ldlt.html
@@ -299,6 +305,17 @@ the unreleased `Vector::norm2()` API is named `Vector::norm()`, and
 are removed; their numerical behavior and error contracts are unchanged by
 the renames. `Matrix::norm_inf()` remains the maximum absolute row sum.
 
+### Unsigned vector angles
+
+Import `VectorAngle` directly or through `la_stack::prelude::*` to call
+`left.angle(right)` on borrowed coordinate slices. `Vector::angle` uses finite
+fixed-size storage. Both return radians in `[0, π]`, with no
+allocation or matrix dispatch limit. Independent magnitude scaling supports
+overflowing input norms and subnormal separations. Empty, zero, unequal-length,
+and non-finite inputs have typed errors. Results are rounded, without a certified
+error bound; see the [angle contract and derivation][math-angles].
+
+[math-angles]: https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#unsigned-vector-angles
 [guide-lu]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#solving-and-reusing-factors
 [guide-ldlt]: https://docs.rs/la-stack/latest/la_stack/guide/ldlt/index.html
 [guide-compile-time]: https://docs.rs/la-stack/latest/la_stack/guide/compile_time/index.html

@@ -50,9 +50,10 @@ Favor the invariant over a convenient edit or faster implementation.
 
 ### Git and Editing
 
-- **Never mutate version-control state.** Do not run `git commit`, `git push`,
-  `git tag`, or other ref/index-mutating commands. Suggest those commands for
-  the user to run manually.
+- **Mutate version-control state only with explicit user approval.** Keep
+  branch creation, staging, commits, pushes, tags, and other ref/index changes
+  within the approved scope. Approval remains valid for the authorized task;
+  without it, suggest commands for the user to run manually.
 - Use `git --no-pager` for read-only Git commands, including status, diff, log,
   show, and blame.
 - Preserve user changes. The worktree may be dirty; work around overlapping

@@ -18,6 +18,7 @@
   - [Outward-rounded interval determinant sign](#outward-rounded-interval-determinant-sign)
   - [Scaled determinant products](#scaled-determinant-products)
   - [Scaled Euclidean vector norm](#scaled-euclidean-vector-norm)
+  - [Unsigned vector angles](#unsigned-vector-angles)
 - [References](#references)
 
 ## How to cite this library
@@ -229,6 +230,17 @@ fixed-size integer sum of exact binary64 squares handles the upper range, using
 the representation and nearest-even rounding model in \[[9], [10]\] to distinguish
 finite results from overflow.
 
+### Unsigned vector angles
+
+Kahan's §12, "Mangled Angles," pp. 46–48 \[[19]\] motivates avoiding `acos`
+and discusses cross-product and norm-weighted alternatives. `VectorAngle::angle`
+and `Vector::angle` use an exterior-product norm with `atan2`, independently
+scaled by powers of two. Minor evaluation uses FMA product residuals \[[18]\]
+and a magnitude-ordered subtraction residual \[[17]\]. The
+[derivation](docs/mathematical_basis.md#unsigned-vector-angles) explains the
+identity, range analysis, choice over normalized half-angle evaluation, and
+rounded limitations. Binary64 scaling follows \[[9], [10]\].
+
 ## References
 
 Reference numbers are stable citation keys used throughout the code and documentation.
@@ -308,6 +320,10 @@ alphabetized for navigation without renumbering citations.
     26.6 (2005): 1955–1988. Algorithm 3.5 (`TwoProductFMA`).
     [DOI](https://doi.org/10.1137/030601818) ·
     [Authors' PDF](https://www.tuhh.de/ti3/paper/rump/OgRuOi05.pdf)
+19. <a name="ref-19"></a> Kahan, William. "How Futile are Mindless Assessments of Roundoff in
+    Floating-Point Computation?" January 11, 2006. §12, "Mangled Angles,"
+    pp. 46–48.
+    [Author's PDF](https://people.eecs.berkeley.edu/~wkahan/Mindless.pdf)
 
 [1]: #ref-1
 [2]: #ref-2
@@ -326,3 +342,4 @@ alphabetized for navigation without renumbering citations.
 [16]: #ref-16
 [17]: #ref-17
 [18]: #ref-18
+[19]: #ref-19
