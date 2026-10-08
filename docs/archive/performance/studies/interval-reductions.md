@@ -99,7 +99,13 @@ uses Delaunay's default features and its `exact` la-stack dependency, with the
 debug information. No relaxed floating-point or target-CPU flags are used.
 
 The [measurement script](interval-reductions/measure.sh) runs prebuilt binaries
-serially after correctness validation. Upstream uses 100 samples, a 0.2-second
+serially after correctness validation. The maintained helper now resolves input
+directories before changing working directory and saves every invocation's logs
+and raw Criterion data under a fresh `<phase>.*` directory beside the binaries.
+It sets `CRITERION_HOME` separately for each comparison, preserving `new` and
+`change` when later phases run. The original script remains in the unchanged
+evidence archive; these reproduction fixes did not produce the historical tables.
+Upstream uses 100 samples, a 0.2-second
 warmup, a one-second measurement window, and 10,000 resamples. Downstream uses
 100 samples, a one-second warmup, three seconds of measurement, and 10,000
 resamples. Every downstream case is repeated in reverse order. No build,
@@ -115,8 +121,11 @@ unfavorable or inconclusive comparisons.
 The [provenance record](interval-reductions/provenance.json) includes full
 revision and lockfile hashes. The final source/benchmark inventory SHA-256 is
 `3d963d404299248fe0edd93bdcae375c105daef5bbe77afbc16064482a815725`.
-It remained unchanged through full CI and final measurement. Both baseline
-benchmark files have the same SHA-256 as their candidate counterparts.
+It remained unchanged through the recorded full CI and final measurement. Both
+baseline benchmark files had the same SHA-256 as their candidate counterparts.
+Subsequent review added regression tests, helper documentation, and stronger
+scalar benchmark setup assertions. The archive retains the measured source and
+harness; the arithmetic implementation and timed closures are unchanged.
 
 The [evidence archive](interval-reductions/evidence.tar.gz) retains raw Criterion
 samples and confidence intervals, profiles, validation/build logs, source
@@ -156,6 +165,22 @@ controls with longer windows. The historical `flat` phase uses separately saved
 with the identical [sampling-mode patch](interval-reductions/flat-sampling.patch).
 Their only harness change selects Criterion's `Flat` sampling for narrow-phase
 cases. Fixture construction and correctness assertions remain outside timing.
+
+The helper prints its output directory. Within it, export the preserved data
+using `compare.py` from the evidence archive, running from the repository root:
+
+```sh
+uv run --locked <extracted>/compare.py <measure-output>/upstream-data issue-before
+uv run --locked <extracted>/compare.py <measure-output>/downstream-data private-final
+uv run --locked <extracted>/compare.py <repeat-output>/downstream-repeat-data adopted-repeat reverse
+uv run --locked <extracted>/compare.py <control-output>/control-3d-data control-3d reverse 200
+```
+
+The `downstream` phase also writes `downstream-data`. For `confirm`, export
+`upstream-confirm-data` with `adopted-confirm reverse`, `confirm-forward-data`
+with `confirm-forward`, and `confirm-reverse-data` with `confirm-reverse reverse`.
+The `flat` phase similarly writes `flat-forward-data` and `flat-reverse-data`
+with their matching baseline labels; only the reverse export takes `reverse`.
 
 ## Library measurements
 

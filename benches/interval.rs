@@ -14,24 +14,60 @@ use bench_utils::OrAbort;
 
 fn scalar_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("interval_scalar");
-    for (name, left, right) in [
-        ("point", 0.1, 0.3),
-        ("exact", 0.125, 2.0),
-        ("zero", 0.0, 0.3),
-        ("subnormal", f64::from_bits(1), 0.5),
-        ("cancellation", 1.0, -1.0),
+    // Endpoint bits were derived independently from exact rationals of these
+    // binary64 inputs, in addition/multiplication/square order. Checking only
+    // rounded values would accept [0, 0] for positive underflowed products.
+    for (name, left, right, expected) in [
+        (
+            "point",
+            0.1,
+            0.3,
+            [
+                [0x3fd9_9999_9999_9999, 0x3fd9_9999_9999_999a],
+                [0x3f9e_b851_eb85_1eb8, 0x3f9e_b851_eb85_1eb9],
+                [0x3f84_7ae1_47ae_147b, 0x3f84_7ae1_47ae_147c],
+            ],
+        ),
+        (
+            "exact",
+            0.125,
+            2.0,
+            [
+                [2.125_f64.to_bits(); 2],
+                [0.25_f64.to_bits(); 2],
+                [0.015_625_f64.to_bits(); 2],
+            ],
+        ),
+        ("zero", 0.0, 0.3, [[0.3_f64.to_bits(); 2], [0; 2], [0; 2]]),
+        (
+            "subnormal",
+            f64::from_bits(1),
+            0.5,
+            [
+                [0.5_f64.to_bits(), 0.5_f64.next_up().to_bits()],
+                [0, 1],
+                [0, 1],
+            ],
+        ),
+        (
+            "cancellation",
+            1.0,
+            -1.0,
+            [[0; 2], [(-1.0_f64).to_bits(); 2], [1.0_f64.to_bits(); 2]],
+        ),
     ] {
         let x = Interval::point(left).or_abort("scalar left");
         let y = Interval::point(right).or_abort("scalar right");
-        // Each result must enclose its rounded value; fixture checks stay out
-        // of timing, including the underflow-to-zero square.
-        for (result, rounded) in [
-            (x.try_add(&y), left + right),
-            (x.try_mul(&y), left * right),
-            (x.try_square(), left * left),
-        ] {
+        // Fixture checks stay outside timing.
+        for (result, endpoints) in [x.try_add(&y), x.try_mul(&y), x.try_square()]
+            .into_iter()
+            .zip(expected)
+        {
             let result = result.or_abort("scalar enclosure");
-            assert!(result.lower() <= rounded && rounded <= result.upper());
+            assert_eq!(
+                [result.lower().to_bits(), result.upper().to_bits()],
+                endpoints
+            );
         }
         group.bench_function(format!("{name}/add"), |b| {
             b.iter(|| black_box(&x).try_add(black_box(&y)));

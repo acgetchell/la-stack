@@ -196,8 +196,8 @@ storing infinity. For the broader standardized interval arithmetic model, see
 \[[14]\]; this crate does not claim IEEE 1788 conformance.
 
 `IntervalMatrix::det()` evaluates the Leibniz expansion with a division-free
-column-subset dynamic program. It uses `2^D` inline interval states and
-`D × 2^(D-1)` coefficient products through D=7. A determinant interval strictly
+column-subset dynamic program. It uses `max(2, 2^D)` inline interval states and
+`D × 2^(D-1)` coefficient products for positive D through D=7. A determinant interval strictly
 separated from zero certifies its sign; `[0, 0]` certifies zero; every other
 overlap is explicitly inconclusive. The determinant identity is standard
 linear algebra \[[12]\]; the interval evaluation and subset-DP

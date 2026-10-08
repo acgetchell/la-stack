@@ -899,6 +899,11 @@ impl<const D: usize> IntervalMatrix<D> {
     }
 
     /// Evaluate with the state count established by the dimension dispatch.
+    ///
+    /// Only `det` calls this helper, after proving D is supported and STATES
+    /// covers all `2^D` subsets. Its D=0 and D=1 arms reserve two slots. These
+    /// preconditions keep shifts and indexing in range while preserving the
+    /// same expansion order for every workspace size.
     #[inline]
     const fn det_with_workspace<const STATES: usize>(&self) -> Result<Interval, LaError> {
         let state_count = 1_usize << D;
@@ -1141,6 +1146,88 @@ mod tests {
     }
 
     #[test]
+    fn subtraction_by_or_from_zero_preserves_exact_endpoint_bits() -> Result<(), LaError> {
+        for value in [
+            -f64::MAX,
+            -1.0,
+            -f64::MIN_POSITIVE,
+            -f64::from_bits(1),
+            -0.0,
+            0.0,
+            f64::from_bits(1),
+            f64::MIN_POSITIVE,
+            1.0,
+            f64::MAX,
+        ] {
+            for zero in [0.0, -0.0] {
+                for (left, right, expected) in [(value, zero, value), (zero, value, -value)] {
+                    let result = Interval::try_from_subtraction(left, right)?;
+                    let expected_bits = if expected == 0.0 {
+                        0
+                    } else {
+                        expected.to_bits()
+                    };
+                    assert_eq!(result.lower().to_bits(), expected_bits);
+                    assert_eq!(result.upper().to_bits(), expected_bits);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn singleton_squares_keep_tight_bounds_including_underflow() -> Result<(), LaError> {
+        for (value, lower, upper) in [
+            (0.0, 0.0_f64, 0.0),
+            (-0.0, 0.0, 0.0),
+            (2.0, 4.0, 4.0),
+            (-2.0, 4.0, 4.0),
+            (f64::from_bits(1), 0.0, f64::from_bits(1)),
+            (-f64::from_bits(1), 0.0, f64::from_bits(1)),
+        ] {
+            let squared = Interval::point(value)?.try_square()?;
+            assert_eq!(squared.lower().to_bits(), lower.to_bits());
+            assert_eq!(squared.upper().to_bits(), upper.to_bits());
+        }
+        // Squaring the exact stored binary64 0.1 lies strictly between these
+        // adjacent values; the expected bits come from its rational square.
+        for value in [0.1, -0.1] {
+            let squared = Interval::point(value)?.try_square()?;
+            assert_eq!(squared.lower().to_bits(), 0x3f84_7ae1_47ae_147b);
+            assert_eq!(squared.upper().to_bits(), 0x3f84_7ae1_47ae_147c);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn same_sign_squares_select_the_nearest_and_farthest_endpoints() -> Result<(), LaError> {
+        let expected = Interval::try_new(4.0, 9.0)?;
+        for (lower, upper) in [(-3.0, -2.0), (2.0, 3.0)] {
+            assert_eq!(Interval::try_new(lower, upper)?.try_square()?, expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn wide_addition_rounds_only_the_required_endpoints() -> Result<(), LaError> {
+        let left = Interval::try_new(-1.0, 1.0)?;
+        // A quarter ULP rounds both sums inward; three quarters rounds them
+        // outward already. Both exact dyadic sums have the same tight bounds.
+        for radius in [f64::EPSILON / 4.0, 3.0 * f64::EPSILON / 4.0] {
+            let right = Interval::try_new(-radius, radius)?;
+            assert_eq!(
+                left.try_add(&right)?,
+                Interval::try_new((-1.0_f64).next_down(), 1.0_f64.next_up())?
+            );
+        }
+        assert_eq!(
+            left.try_add(&Interval::try_new(-2.0, 2.0)?)?,
+            Interval::try_new(-3.0, 3.0)?
+        );
+        Ok(())
+    }
+
+    #[test]
     fn underflowed_product_still_encloses_the_positive_exact_result() -> Result<(), LaError> {
         let least_subnormal = f64::from_bits(1);
         let product = Interval::point(least_subnormal)?.try_mul(&Interval::point(0.5)?)?;
@@ -1336,12 +1423,46 @@ mod tests {
         };
     }
 
+    gen_interval_identity_tests!(0);
+    gen_interval_identity_tests!(1);
     gen_interval_identity_tests!(2);
     gen_interval_identity_tests!(3);
     gen_interval_identity_tests!(4);
     gen_interval_identity_tests!(5);
     gen_interval_identity_tests!(6);
     gen_interval_identity_tests!(7);
+
+    #[test]
+    fn smallest_determinants_preserve_const_evaluation_and_interval_signs() -> Result<(), LaError> {
+        const EMPTY: Result<Interval, LaError> = IntervalMatrix::<0>::zero().det();
+        const WIDE: Interval = match Interval::try_new(-f64::MAX, f64::MAX) {
+            Ok(interval) => interval,
+            Err(_) => panic!("finite ordered literal bounds"),
+        };
+        const SINGLE: Result<Interval, LaError> = IntervalMatrix::from_rows([[WIDE]]).det();
+        assert_eq!(EMPTY, Ok(Interval::ONE));
+        assert_eq!(SINGLE, Ok(WIDE));
+        for (lower, upper, sign) in [
+            (
+                -f64::MAX,
+                -f64::from_bits(1),
+                IntervalDeterminantSign::Negative,
+            ),
+            (
+                f64::from_bits(1),
+                f64::MAX,
+                IntervalDeterminantSign::Positive,
+            ),
+            (0.0, 0.0, IntervalDeterminantSign::Zero),
+            (-f64::MAX, f64::MAX, IntervalDeterminantSign::Inconclusive),
+        ] {
+            let interval = Interval::try_new(lower, upper)?;
+            let matrix = IntervalMatrix::from_rows([[interval]]);
+            assert_eq!(matrix.det()?, interval);
+            assert_eq!(matrix.det_sign()?, sign);
+        }
+        Ok(())
+    }
 
     #[test]
     fn determinant_sign_handles_row_swap_and_exact_singularity() -> Result<(), LaError> {

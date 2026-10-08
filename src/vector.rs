@@ -1355,10 +1355,12 @@ mod tests {
 
     #[test]
     fn certified_dot_withholds_bound_when_finite_endpoints_cannot_be_published() {
-        let maximum = Vector::<2>::new([f64::MAX, 1.0]);
+        // The magnitude bound reaches MAX but stays finite, so rejection must
+        // come from publishing the estimate plus its positive error bound.
+        let maximum = Vector::<2>::new([f64::MAX.next_down(), 1.0]);
         let one = Vector::<2>::new([1.0, 1.0]);
 
-        assert_eq!(maximum.dot(&one), Ok(f64::MAX));
+        assert_eq!(maximum.dot(&one), Ok(f64::MAX.next_down()));
         assert_eq!(maximum.dot_with_errbound(&one), Ok(None));
     }
 
@@ -1484,6 +1486,30 @@ mod tests {
         assert!(inconclusive.absolute_error_bound() > 0.0);
         assert!(inconclusive.lower_bound() < 0.0);
         assert!(inconclusive.upper_bound() > 0.0);
+    }
+
+    #[test]
+    fn certified_dot_withholds_bound_when_finite_magnitude_sum_cannot_be_widened() {
+        let large = Vector::<2>::new([f64::MAX / 2.0, f64::MAX / 2.0]);
+        let cancelling = Vector::<2>::new([1.0, -1.0]);
+
+        // The magnitude FMA reaches finite MAX; its upward successor is
+        // infinite. Exact estimate cancellation cannot bypass proof loss.
+        assert_eq!(large.dot(&cancelling), Ok(0.0));
+        assert_eq!(large.dot_with_errbound(&cancelling), Ok(None));
+    }
+
+    #[test]
+    fn certified_proof_loss_survives_repeated_underflow_and_a_normal_final_estimate() {
+        let axis = Vector::<3>::new([f64::from_bits(1), f64::from_bits(1), 1.0]);
+        let values = Vector::<3>::new([0.5, 0.5, 2.0]);
+        let zero = Vector::<3>::zero();
+
+        // Both tiny products round to zero. The final term produces a normal
+        // estimate, but cannot restore a proof lost before that term.
+        assert_eq!(axis.dot(&values), Ok(2.0));
+        assert_eq!(axis.dot_with_errbound(&values), Ok(None));
+        assert_eq!(axis.dot_difference_with_errbound(&values, &zero), Ok(None));
     }
 
     #[test]
