@@ -5,12 +5,14 @@
 - [Decision](#decision)
 - [Environment and method](#environment-and-method)
 - [Measurements](#measurements)
+  - [Before and after the small-angle correction](#before-and-after-the-small-angle-correction)
 - [Evidence and limitations](#evidence-and-limitations)
 
 ## Decision
 
 Use power-of-two scaling and compensated exterior minors, followed by
-`atan2(exterior_norm, dot)`. The
+`atan2(exterior_norm, dot)` except for sufficiently small positive angles,
+where a bounded direct quotient avoids platform transcendental underflow. The
 [mathematical basis](../../../mathematical_basis.md#unsigned-vector-angles)
 owns the derivation, range analysis, and rounded contract.
 
@@ -40,7 +42,11 @@ The starting la-stack revision was
 `src/topology/spaces/spherical.rs` contains the corrected norm-weighted
 distance calculation. Delaunay was inspected without modification.
 
-The single final Criterion 0.8.2 invocation used this command:
+After Windows CI exposed subnormal failures in the initial implementation
+`09020aa18a2b233831a8975b343095d2de1670eb`, the corrected kernel was measured
+in an isolated checkout with the original locked dependencies. This avoids
+concurrent dependency edits in the development checkout. The Criterion 0.8.2
+invocation repeated the original command:
 
 ```bash
 cargo bench --locked --features bench --bench angle -- \
@@ -49,8 +55,8 @@ cargo bench --locked --features bench --bench angle -- \
 ```
 
 All 80 measurements used 50 samples, a one-second warmup, and a two-second
-measurement target. No other agent-owned compilation, validation, or benchmark
-job ran during timing. An earlier exploratory run was interrupted when the
+measurement target. No other compilation, validation, or benchmark job from
+this task ran during timing. An earlier exploratory run was interrupted when the
 normalization counterexample was identified; it is excluded from these results.
 
 The benchmark uses the same fixture arrays for four paths:
@@ -77,37 +83,64 @@ The table reports arithmetic mean point estimates in nanoseconds. The
 
 | Ambient length | Fixture | Stable control (ns) | Prepared Vector (ns) | Borrowed slice (ns) | Construct + angle (ns) |
 |---|---|---:|---:|---:|---:|
-| 3 | dense | 25.84 | 22.56 | 23.80 | 22.63 |
-| 3 | near parallel | 21.48 | 18.53 | 19.99 | 18.54 |
-| 3 | near antipodal | 21.69 | 18.80 | 20.23 | 18.80 |
-| 3 | mixed scale | 16.79 | 14.15 | 15.16 | 14.16 |
-| 3 | subnormal | 19.46 | 15.81 | 17.07 | 15.92 |
-| 4 | dense | 39.10 | 32.57 | 34.03 | 32.62 |
-| 4 | near parallel | 26.42 | 27.14 | 28.48 | 27.46 |
-| 4 | near antipodal | 26.59 | 27.24 | 28.92 | 27.78 |
-| 4 | mixed scale | 21.58 | 23.37 | 25.18 | 23.72 |
-| 4 | subnormal | 24.44 | 24.91 | 26.54 | 25.17 |
-| 5 | dense | 48.96 | 45.31 | 50.12 | 48.63 |
-| 5 | near parallel | 32.81 | 38.68 | 41.39 | 40.29 |
-| 5 | near antipodal | 30.15 | 36.44 | 38.37 | 36.84 |
-| 5 | mixed scale | 24.90 | 33.54 | 35.79 | 33.82 |
-| 5 | subnormal | 27.80 | 34.42 | 36.70 | 34.82 |
-| 6 | dense | 66.77 | 59.52 | 62.46 | 60.10 |
-| 6 | near parallel | 33.26 | 47.74 | 50.37 | 48.25 |
-| 6 | near antipodal | 33.72 | 47.85 | 50.31 | 48.41 |
-| 6 | mixed scale | 29.04 | 44.93 | 48.04 | 45.56 |
-| 6 | subnormal | 31.75 | 45.98 | 52.28 | 49.80 |
+| 3 | dense | 26.27 | 22.84 | 24.04 | 23.29 |
+| 3 | near parallel | 21.53 | 13.64 | 14.43 | 13.67 |
+| 3 | near antipodal | 21.56 | 19.45 | 21.02 | 19.36 |
+| 3 | mixed scale | 16.76 | 14.43 | 15.30 | 14.61 |
+| 3 | subnormal | 19.97 | 13.71 | 14.74 | 13.66 |
+| 4 | dense | 39.69 | 33.43 | 35.77 | 34.13 |
+| 4 | near parallel | 27.81 | 22.94 | 25.07 | 23.36 |
+| 4 | near antipodal | 27.68 | 28.44 | 30.20 | 28.94 |
+| 4 | mixed scale | 22.63 | 24.59 | 26.47 | 25.04 |
+| 4 | subnormal | 25.69 | 23.05 | 25.21 | 23.45 |
+| 5 | dense | 52.06 | 47.91 | 50.21 | 47.71 |
+| 5 | near parallel | 30.93 | 34.79 | 37.14 | 34.81 |
+| 5 | near antipodal | 31.16 | 37.88 | 40.25 | 38.64 |
+| 5 | mixed scale | 26.10 | 34.87 | 36.88 | 34.96 |
+| 5 | subnormal | 28.92 | 34.17 | 36.55 | 34.48 |
+| 6 | dense | 70.78 | 61.33 | 64.72 | 61.72 |
+| 6 | near parallel | 34.39 | 45.91 | 48.67 | 46.42 |
+| 6 | near antipodal | 34.50 | 49.02 | 51.43 | 49.48 |
+| 6 | mixed scale | 29.64 | 46.39 | 49.44 | 46.70 |
+| 6 | subnormal | 32.81 | 45.70 | 48.88 | 46.31 |
 
-The prepared dense path averaged 22.6–59.5 ns across lengths 3–6. Sparse
+The prepared dense path averaged 22.8–61.3 ns across lengths 3–6. Sparse
 length-six cases cost more than the linear Kahan control, consistent with
 enumerating all 15 exterior minors. Borrowed-slice and construction-inclusive
 rows expose caller costs separately. These estimates are descriptive:
 subtracting them does not isolate a guaranteed adapter cost, and marginal
 intervals do not provide a paired confidence interval for a performance change.
 
+### Before and after the small-angle correction
+
+The [initial measurements at `09020aa`](https://github.com/acgetchell/la-stack/blob/09020aa18a2b233831a8975b343095d2de1670eb/docs/archive/performance/studies/vector-angles.csv)
+used the same machine, compiler, dependencies, harness, fixtures, command, and
+sampling settings. The prepared-vector means below show representative costs
+before and after the correction. Percentage changes describe point estimates;
+they do not isolate the code change from run-to-run variation or establish a
+paired statistical speedup claim.
+
+| Ambient length | Fixture | Before (ns) | After (ns) | Change |
+|---|---|---:|---:|---:|
+| 3 | dense | 22.56 | 22.84 | +1.2% |
+| 3 | near parallel | 18.53 | 13.64 | -26.4% |
+| 3 | subnormal | 15.81 | 13.71 | -13.3% |
+| 4 | dense | 32.57 | 33.43 | +2.6% |
+| 4 | near parallel | 27.14 | 22.94 | -15.5% |
+| 4 | subnormal | 24.91 | 23.05 | -7.5% |
+| 5 | dense | 45.31 | 47.91 | +5.7% |
+| 5 | near parallel | 38.68 | 34.79 | -10.0% |
+| 5 | subnormal | 34.42 | 34.17 | -0.7% |
+| 6 | dense | 59.52 | 61.33 | +3.0% |
+| 6 | near parallel | 47.74 | 45.91 | -3.8% |
+| 6 | subnormal | 45.98 | 45.70 | -0.6% |
+
 ## Evidence and limitations
 
-The focused tests passed before timing: analytical boundary regressions,
+Full `just ci` passed before timing (963 Rust and 502 Python tests, default/exact
+doctests, Clippy, static checks, benchmark compilation, and examples). Tests include
+small-angle transition and normal/subnormal boundary cases. Existing strict
+subnormal assertions remain unchanged. The focused tests also passed: analytical boundary regressions,
 integer Gram-determinant properties, full-binary64-range properties, and all
 benchmark input gates. The regression corpus includes lengths 0, 1, 2–6, 8,
 and 64, signed zero, invalid operands and lengths, overflowing norms, independent
@@ -116,7 +149,8 @@ Allocation counting confirms both public paths allocate zero times.
 
 The [provenance sidecar](vector-angles.provenance.json) records source and harness
 SHA-256 digests. Raw Criterion estimates and 50-sample records remain locally
-under `target/criterion/angle_d*/<operation>/angle-249-final/`; the retained CSV
+under `/private/tmp/la-stack-274-validation/target/criterion/angle_d*/<operation>/angle-249-final/`;
+the retained CSV
 does not include raw samples. Every final sample file was checked for 50 finite,
 positive iteration counts and times.
 

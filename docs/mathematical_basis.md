@@ -671,7 +671,17 @@ avoid that information loss. They also preserve the least positive angle in
 `[1,0]`, `[1,2^-1074]` and the separation of `[2,t]`, `[2,-t]` with
 `t = 2^-1074`; separately dividing the latter small coordinates by 2 loses both.
 
-The exterior norm is nonnegative, so `atan2` returns `[0, π]` without clamping
+For a positive dot and ratio `r = w / (u·v) ≤ 2^-27`, the implementation
+returns the quotient directly. The alternating arctangent series gives
+`0 ≤ r - atan(r) ≤ r³/3 ≤ r × 2^-55`; this approximation error is below
+half an ulp for normal results and negligible for subnormal results. Division
+avoids platform-dependent `atan2` underflow, observed in Windows CI for
+`[3,t]`, `[3,-t]` and `[1,1,0]`, `[1,1,t]` with `t = 2^-1074`.
+Both true angles round to the least positive subnormal. The bound here concerns
+only replacing arctangent by its argument, not the preceding dot and exterior
+reductions or their rounding. Larger ratios and nonpositive dots use `atan2`.
+
+The exterior norm is nonnegative, so the result stays in `[0, π]` without clamping
 or a half-angle intermediate. Identical inputs yield exactly positive zero;
 opposite inputs yield the binary64 constant `π`, including signed-zero changes.
 The price of retaining all minors is `N(N-1)/2` compensated differences and

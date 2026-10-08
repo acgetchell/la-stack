@@ -1115,6 +1115,30 @@ mod tests {
     }
 
     #[test]
+    fn unrepresentable_display_propagates_writer_failure() {
+        struct RejectWrites;
+
+        impl fmt::Write for RejectWrites {
+            fn write_str(&mut self, _: &str) -> fmt::Result {
+                Err(fmt::Error)
+            }
+        }
+
+        for reason in [
+            UnrepresentableReason::RequiresRounding,
+            UnrepresentableReason::NotFinite,
+        ] {
+            for index in [None, Some(2)] {
+                let error = LaError::unrepresentable(index, reason);
+                assert_eq!(
+                    fmt::write(&mut RejectWrites, format_args!("{error}")),
+                    Err(fmt::Error)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn invalid_tolerance_classifies_non_finite_before_negative() {
         assert_eq!(
             LaError::invalid_tolerance(-1.0),

@@ -149,6 +149,7 @@ fn angle_with_scales(
     right_scale: f64,
 ) -> Result<f64, LaError> {
     const REDUCE: f64 = f64::from_bits((1023 - 500) << 52);
+    const SMALL_RATIO: f64 = f64::from_bits((1023 - 27) << 52);
 
     if left.is_empty() {
         return Err(LaError::EmptyVector);
@@ -187,7 +188,15 @@ fn angle_with_scales(
     // Lagrange's identity: ||left ∧ right|| = ||left|| ||right|| sin(θ).
     // The dot product has the same norm factor times cos(θ). atan2 cancels it
     // without forming the norm product or halving a subnormal angle.
-    let angle = exterior_norm.atan2(dot + dot_error);
+    let dot = dot + dot_error;
+    // Some platform atan2 implementations lose subnormal outputs. For
+    // 0 <= r <= 2^-27, 0 <= r - atan(r) <= r^3/3 <= r*2^-55;
+    // direct division retains tiny outputs without a transcendental underflow.
+    let angle = if dot > 0.0 && exterior_norm <= dot * SMALL_RATIO {
+        exterior_norm / dot
+    } else {
+        exterior_norm.atan2(dot)
+    };
     if angle.is_finite() {
         Ok(angle)
     } else {

@@ -145,6 +145,33 @@ fn subnormal_angles<const D: usize>() {
     check(planar::<D>(f64::MAX, 0.0), planar(f64::MAX, tiny), 0.0, 0.0);
 }
 
+fn small_angle_transition<const D: usize>() {
+    let boundary = 2.0_f64.powi(-27);
+    for slope in [
+        boundary.next_down(),
+        boundary,
+        boundary.next_up(),
+        2.0 * boundary,
+        2.0_f64.powi(-20),
+    ] {
+        // The alternating series bounds atan(slope) between this cubic
+        // approximation and itself plus slope^5/5 (< 2e-31 here).
+        let expected = slope - slope.powi(3) / 3.0;
+        check(
+            planar::<D>(1.0, 0.0),
+            planar(1.0, slope),
+            expected,
+            expected * 4.0 * f64::EPSILON,
+        );
+    }
+    for bits in [(1_u64 << 52) - 1, 1_u64 << 52, (1_u64 << 52) + 1] {
+        let slope = f64::from_bits(bits);
+        // The cubic correction cannot affect these adjacent floats on either
+        // side of the normal/subnormal boundary.
+        check(planar::<D>(1.0, 0.0), planar(1.0, slope), slope, 0.0);
+    }
+}
+
 macro_rules! gen_angle_tests {
     ($d:literal) => {
         paste! {
@@ -154,6 +181,8 @@ macro_rules! gen_angle_tests {
             fn [<extreme_angles_ $d d>]() { extreme_angles::<$d>(); }
             #[test]
             fn [<subnormal_angles_ $d d>]() { subnormal_angles::<$d>(); }
+            #[test]
+            fn [<small_angle_transition_ $d d>]() { small_angle_transition::<$d>(); }
         }
     };
 }
