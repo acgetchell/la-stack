@@ -1,0 +1,4 @@
+schema = 2
+current = "docs/performance-runs/current.md"
+archive = "docs/performance-runs"
+title = "la-stack complete benchmark measurements"

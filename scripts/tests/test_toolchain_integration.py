@@ -171,7 +171,7 @@ def test_python_update_preserves_shared_pin_and_tools_with_explicit_dev_sync(tmp
     run_safe_command("uv", ["lock", "--upgrade"], cwd=root)
     lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
     packages = {package["name"]: package["version"] for package in lock["package"]}
-    assert packages["research-repo-tools"] == "0.1.7"
+    assert packages["research-repo-tools"] == "0.1.8"
     assert packages["ruff"] == "99.0.0"
     run_safe_command("uv", ["sync", "--locked", "--group", "dev"], cwd=root)
     installed = run_safe_command(

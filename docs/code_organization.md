@@ -117,8 +117,9 @@ baselines, output locations, and report promotion. The [Scripts guide](../script
 owns the Python script inventory and entry points for comparisons and plotting.
 The pinned published `research-repo-tools` dependency
 owns changelog generation, normalization, minor-series archiving, note lookup,
-and tag preparation through its CLI. Consumer policy stays in `cliff.toml`,
-`changelog-rumdl.toml`, and `[tool.research-repo-tools]` in `pyproject.toml`;
+and tag preparation through its CLI. Consumer identity and dependency-body policy
+stay in `[tool.research-repo-tools.changelog]` in `pyproject.toml`, with
+formatting in `changelog-rumdl.toml`; no common template is copied locally.
 focused integration checks live in `scripts/tests/test_changelog_integration.py`.
 The same dependency owns CodeRabbit review orchestration through thin Just
 wrappers. `scripts/tests/test_review_integration.py` owns consumer wiring checks
@@ -155,23 +156,31 @@ Performance consumers use shared Criterion parsing and estimate/comparison
 validation, digest verification, archive extraction, byte-preserving document
 sections, and multi-file transactions. Local rendering produces complete candidate
 outputs before publication. Historical artifact schemas and fingerprint framing,
-benchmark selection and eligibility, common-harness orchestration, and complete
-run retention remain in the consumer pending the corresponding shared workflow
-contract. Generic parsing, staging, and rollback tests belong upstream; local
+benchmark selection and eligibility remain in the consumer. Published v0.1.8
+owns common-harness orchestration, completeness, worktrees, complete run retention,
+validated latest selection, and transactional report publication.
+Generic parsing, staging, and rollback tests belong upstream; local
 tests verify the scientific and retained-artifact integration boundaries.
 
 Hosted Dependabot approvals use the pinned shared
 GitHub workflow; the [rollout guide](dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
 owns settings and deployment verification.
 
-`scripts/release_baseline.py` owns release-suite inventory and complete raw
-Criterion validation. The release workflow packages only datasets that pass
+`scripts/release_baseline.py` owns release-suite inventory and delegates complete
+raw Criterion validation to the shared policy. The release workflow packages only datasets that pass
 that gate; its regression and archive tests live in
 `scripts/tests/test_release_baseline.py`.
 
-`scripts/criterion_measurements.py` owns raw sample validation shared by hosted
-archives and local summaries. `scripts/benchmark_summaries.py` owns complete
-local summary serialization, snapshot identity, and lookup after cleanup.
+`scripts/performance_phase.py` declares native Cargo commands, features, and
+input gates. `scripts/performance_runs.py` declares scientific coverage,
+release compatibility, and named reference phases, and renders the local tables.
+`scripts/archive_performance.py` composes the shared APIs for consumer commands.
+`.config/performance-report.toml` owns the new retention paths.
+`scripts/benchmark_summaries.py` only reads historical CSV/JSON snapshots;
+`scripts/criterion_measurements.py` and the old generic measurement/retention
+engines are removed. `scripts/tests/test_performance_workflow.py` verifies
+installed-package integration and offline replay. The retained local
+`criterion_dim_plot.py` preserves the multi-library figure format.
 
 `.github/actions/prepare-release-benchmarks/action.yml` groups tool installation,
 input validation, and inventory under the release workflow's shared setup timeout.

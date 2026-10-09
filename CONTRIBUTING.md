@@ -28,11 +28,11 @@ change files. Run bare `just` for the complete generated command list, including
 arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
 owns recipe naming and documentation placement.
 
-Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.1.7` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.1.8` package,
 locked in the `tooling` dependency group and included by `dev`. Normal setup
 and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
 checkout is unnecessary. To upgrade it deliberately, review the exact
-`tooling` requirement and refresh `uv.lock` together, then run the consumer
+`tooling` and project runtime requirements and refresh `uv.lock` together, then run the consumer
 integration tests and `just ci`. See the [Scripts guide](scripts/README.md#changelog-and-release-tooling)
 for the retained changelog policy and ownership boundary.
 

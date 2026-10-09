@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 
 import release_baseline
-from criterion_measurements import validate_measurement
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/release-benchmarks.yml"
@@ -104,8 +103,8 @@ def test_missing_raw_file_blocks_publication(dataset: tuple[Path, Path], sample:
     criterion, manifest = dataset
     missing = criterion / "diagnostic/peer" / sample / filename
     missing.unlink()
-    if sample == "new" and filename == "benchmark.json":
-        with pytest.raises(ValueError, match="incomplete Criterion dataset: diagnostic/peer"):
+    if sample == "new" and filename != "tukey.json":
+        with pytest.raises(ValueError, match="incomplete Criterion sample"):
             release_baseline.validate(criterion, manifest, BASELINE)
     else:
         with pytest.raises(FileNotFoundError) as error:
@@ -116,7 +115,7 @@ def test_missing_raw_file_blocks_publication(dataset: tuple[Path, Path], sample:
 def test_missing_entire_suite_blocks_publication(dataset: tuple[Path, Path]) -> None:
     criterion, manifest = dataset
     shutil.rmtree(criterion / "exact_d2")
-    with pytest.raises(ValueError, match="incomplete Criterion dataset: exact_d2/det_exact"):
+    with pytest.raises(ValueError, match=r"inventory differs: missing=.*exact_d2/det_exact"):
         release_baseline.validate(criterion, manifest, BASELINE)
 
 
@@ -132,51 +131,6 @@ def test_report_consumers_require_canonical_paths(dataset: tuple[Path, Path]) ->
     (criterion / "d2/la_stack_dot").rename(criterion / "d2/misplaced")
     with pytest.raises(ValueError, match="outside its consumer path"):
         release_baseline.validate(criterion, manifest, BASELINE)
-
-
-@pytest.mark.parametrize("corruption", ["short-samples", "nonfinite", "reversed-interval", "wrong-confidence", "malformed"])
-def test_invalid_measurement_blocks_publication(dataset: tuple[Path, Path], corruption: str) -> None:
-    criterion, manifest = dataset
-    for sample in ("new", BASELINE):
-        directory = criterion / "d2/la_stack_dot" / sample
-        if corruption == "malformed":
-            (directory / "estimates.json").write_text("{broken", encoding="utf-8", newline="\n")
-        elif corruption in {"short-samples", "nonfinite"}:
-            times = [2.0] * 99 if corruption == "short-samples" else [float("inf")] * 100
-            write_json(directory / "sample.json", {"iters": [1.0] * 100, "times": times})
-        else:
-            estimates = json.loads((directory / "estimates.json").read_text(encoding="utf-8"))
-            interval = estimates["median"]["confidence_interval"]
-            interval["lower_bound" if corruption == "reversed-interval" else "confidence_level"] = 4.0
-            write_json(directory / "estimates.json", estimates)
-    errors = {
-        "short-samples": "times must contain 100 samples",
-        "nonfinite": "finite positive number",
-        "reversed-interval": "lower bound exceeds upper bound",
-        "wrong-confidence": "confidence_level requires an interval",
-        "malformed": "Expecting property name",
-    }
-    with pytest.raises(ValueError, match=errors[corruption]):
-        release_baseline.validate(criterion, manifest, BASELINE)
-
-
-@pytest.mark.parametrize(("filename", "location"), [("sample.json", "times[9]"), ("estimates.json", "mean")])
-def test_measurement_error_identifies_file_and_field(dataset: tuple[Path, Path], filename: str, location: str) -> None:
-    criterion, _manifest = dataset
-    directory = criterion / "d2/la_stack_dot/new"
-    path = directory / filename
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if filename == "sample.json":
-        data["times"][9] = -1.0
-    else:
-        data["mean"]["point_estimate"] = -1.0
-    write_json(path, data)
-
-    with pytest.raises(ValueError, match="finite positive number") as error:
-        validate_measurement(directory)
-
-    assert str(path) in str(error.value)
-    assert location in str(error.value)
 
 
 @pytest.mark.parametrize("baseline", ["../escape", "", "new", "base", "change", "report", "/absolute"])

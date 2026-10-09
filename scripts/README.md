@@ -90,21 +90,24 @@ The local release workflows run the independent benchmark-input correctness gate
 and then measure both library revisions with one hashed current benchmark
 harness. Reports record source-state, environment, toolchain, dependency,
 Criterion, harness, and validation provenance and fail on incomplete selected
-coverage. `performance-local` writes Markdown plus schema-versioned
-`performance.csv` and `performance.provenance.json` inputs under
-`target/bench-reports/`, plus `performance.full.csv` and its provenance JSON
-containing every recorded case from both measurement phases.
-`performance-release` does the same measurement work, requires distinct releases,
-and preserves all four files under `docs/performance/<release-pair>/<run-digest>/`
-when promoting the validated result. `performance-doc` consumes the retained pair
-from either workflow without Cargo or temporary worktrees, then promotes the
-result into `docs/performance.md` and the archive. Same-version local artifacts
-remain valid comparison evidence but cannot be promoted as a release report.
-Scratch files may be removed with `target/`. After cleanup, `performance-doc` and
-`performance-readme` resolve `docs/performance/latest.json` to the most recently
-promoted complete snapshot. Existing partial scratch inputs fail validation.
-The [local summary index](../docs/performance/README.md) owns the saved-data
-schema and retention contract. Native Criterion release archives remain the
+coverage. `performance-local` writes `performance.md`, `performance.run.json`,
+and `performance.evidence.json` under `target/bench-reports/`. The shared
+complete-run payload preserves every semantic Criterion case, 100 raw samples,
+mean and median estimates, and 95% intervals from both phases.
+`performance-release` requires distinct releases and publishes immutable
+`run.json`, `evidence.json`, and `report.md` files under
+`docs/performance-runs/runs/<content-id>/`, with a validated index and latest
+pointer. Its scientific tables are published to `docs/performance.md` in the
+same transaction. Repeated runs for one pair coexist; publication failures
+preserve the previous reports and selection. `performance-doc` replays this
+evidence without Cargo. Same-version local comparisons require distinct source
+identities and cannot be promoted as release reports.
+
+After `target/` cleanup, report and README commands select validated shared
+history. Any partial scratch bundle fails instead of selecting older evidence.
+Legacy CSV/JSON bytes, hashes, and rendered reports remain readable through
+their original schema under `docs/performance/`; new runs never overwrite or
+reinterpret that history. Native Criterion release archives remain the
 durable raw baselines from the GitHub runner. Direct comparisons
 of separately published artifacts retain their original per-release harnesses
 and label unavailable historical measurement metadata explicitly.
@@ -171,8 +174,8 @@ just performance-release
 just performance-readme lu_solve median new true
 ```
 
-The README recipe consumes `target/bench-reports/performance.csv` and its
-adjacent provenance JSON, or the latest committed snapshot after cleanup;
+The README recipe consumes the complete-run payload and evidence envelope,
+or the validated latest committed run after cleanup;
 it does not run the benchmark-input gate or Criterion
 again. It uses the current la-stack timing and retained same-current-harness
 nalgebra/faer timings, requires all three at every canonical dimension, and then
@@ -298,7 +301,7 @@ just changelog-check
 just release-notes vX.Y.Z
 ```
 
-The exact published `research-repo-tools==0.1.7` dependency is in `tooling`,
+The exact published `research-repo-tools==0.1.8` dependency is in `tooling`,
 included by `dev`, and resolved from PyPI in `uv.lock`. Thin Just recipes use
 the documented `research-repo-tools changelog` CLI. Its implementation and
 common regressions belong to the shared package; this repository owns the
@@ -321,15 +324,12 @@ Preview validates root and archive candidates without publishing them.
 Malformed versions/dates, duplicate releases, conflicting retained notes,
 and formatter failures stop publication with diagnostics.
 
-`cliff.toml` is materialized from the installed package's common 0.1.7 template.
-It adopts the shared categories, SemVer tag grammar, compare links, and
-Markdown-aware code handling. Its only semantic exception retains bodies for
-`deps-dev` commits when grouped as Dependencies, preserving historical Ruff,
-Ty, and setuptools release-note, changelog, and comparison links. A focused
-integration check compares the parsed configuration with the installed template
-plus that single condition, preventing unrelated local policy drift.
-The exception can retire after adopting a published shared solution to
-[research-repo-tools#62](https://github.com/acgetchell/research-repo-tools/issues/62).
+The shared changelog table in `pyproject.toml` declares the repository owner,
+repository name, formatter, and `dependency-bodies = "preserve"`. The installed
+v0.1.8 common template owns grouping, tag grammar, links, and Markdown handling;
+there is no local `cliff.toml` or template exception. Installed-package tests
+exercise Ruff, Ty, and setuptools authored text, links, and fenced code across
+repeat generation, and check retained historical notes.
 The shared normalizer preserves complete breaking-change descriptions, Markdown
 links, and literal code in the input while adding merged-PR summaries.
 It retains embedded conventional headings that the old normalizer deduplicated.
@@ -353,8 +353,9 @@ and recipe forwarding. `tests/test_cargo_update_integration.py` executes native
 Cargo upgrades against a disposable local registry; Python updates have a
 matching real-uv fixture in the toolchain tests. Common parser, transaction,
 Markdown, and fixture regressions belong to the shared package. Scientific
-eligibility, benchmark orchestration, retained schemas, and report layouts remain
-consumer-owned. Shared performance primitives are adopted below.
+eligibility, Cargo commands/features, release adapters, selected rows, and report
+layouts remain consumer-owned. The shared package owns common-harness phases,
+completeness, worktrees, run identities, retention, and publication.
 Notebook tooling remains outside scope.
 
 The same pinned release owns opt-in CodeRabbit review orchestration through
@@ -387,13 +388,14 @@ preview an annotation without creating a tag.
 
 | Script | Purpose |
 |---|---|
-| `archive_performance.py` | Promote release performance docs and archive older comparisons |
+| `archive_performance.py` | Select eligible releases and compose shared measurement/publication APIs |
 | `bench_compare.py` | Compare Criterion benchmark baselines and render Markdown reports |
 | `benchmark_contract.py` | Define and hash the consumer's benchmark inventory contract |
 | `benchmark_process.py` | Thin benchmark phase adapters over the published shared process API, plus consumer root selection |
-| `benchmark_summaries.py` | Preserve every local case summary, bind provenance, and resolve saved report inputs after cleanup |
+| `benchmark_summaries.py` | Read historical complete CSV/JSON summaries without changing framing |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
-| `criterion_measurements.py` | Validate full Criterion sampling and estimates for local summaries and hosted archives |
+| `performance_phase.py` | Declare native Cargo inventory, gate, and timing commands |
+| `performance_runs.py` | Declare scientific run policy and adapt retained series to local tables |
 | `performance_artifacts.py` | Validate and publish schema-versioned performance-comparison CSV/JSON inputs |
 | `release_baseline.py` | Inventory full Criterion suites and validate complete raw release baselines before packaging |
 
@@ -402,6 +404,13 @@ and zizmor authentication belong to research-repo-tools. The former
 `subprocess_utils.py` and `run_zizmor.sh` implementations and their duplicated
 unit tests are removed. Consumer tests retain native adapter checks, benchmark
 contracts, caller file-policy coverage, and recipe forwarding.
+
+The superseded `criterion_measurements.py`, archive/worktree measurement engine,
+summary retention writer, and their duplicate generic tests are removed.
+`test_performance_workflow.py` exercises the installed package through consumer
+policies, failure preservation, historical golden bytes, and offline replay.
+The shared multi-series plotting extension is deferred, so the existing local
+CSV/SVG/README adapter preserves figure format and baseline-phase peer labels.
 
 Performance scripts also use the published shared Criterion parser and estimate
 validation, comparison arithmetic, exact-byte digest verification, safe archive
@@ -415,16 +424,12 @@ replaces the report, evidence, archive index, and retained summaries. Shared
 recovery errors identify preserved backups if rollback fails.
 
 The remaining modules own la-stack's historical CSV/JSON schemas and fingerprints,
-scientific eligibility, benchmark inventories, current-harness installation,
-release selection policy, complete run retention, and multi-library plot layout.
+scientific eligibility, benchmark inventories, Cargo commands, release adapters,
+release selection policy, and multi-library plot layout.
 Existing evidence keeps its schema and digest framing. Generic parser and
 transaction regressions belong upstream; consumer tests check retained-schema
 round trips, complete output groups, failure preservation, and scientific policy.
-The remaining workflow migration requires a published shared contract for common
-harnesses, configurable measurement completeness, and immutable per-run retention.
-[research-repo-tools#64](https://github.com/acgetchell/research-repo-tools/issues/64)
-tracks that contract;
-[la-stack#268](https://github.com/acgetchell/la-stack/issues/268) tracks adoption
-after publication.
+The published v0.1.8 contract owns common-harness installation, independent
+gates, measurement freshness, configurable completeness, and immutable retention.
 
 See `docs/RELEASING.md` for the full release workflow.

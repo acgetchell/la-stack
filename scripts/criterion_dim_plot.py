@@ -28,10 +28,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, TypeGuard, cast
 
+from research_repo_tools.complete_runs import run_identity
 from research_repo_tools.criterion import Statistic, read_estimate
+from research_repo_tools.evidence import serialize_evidence
 from research_repo_tools.files import replace_many
 from research_repo_tools.process import ExecutableNotFoundError, cpu_description, format_exception_diagnostics
-from research_repo_tools.publication import MarkerPair, replace_section
+from research_repo_tools.publication import MarkerPair, plan_outputs, publish_publication, replace_section
 
 from benchmark_contract import benchmark_contract_digest
 from benchmark_process import find_project_root, run_git_command, run_safe_command
@@ -1131,7 +1133,7 @@ def _update_staged_readme_publication(
     staged_readme.write_bytes(updated_readme.encode("utf-8"))
 
 
-def _stage_and_publish_outputs(  # noqa: PLR0913
+def _stage_and_publish_outputs(  # noqa: C901, PLR0913
     *,
     root: Path,
     args: PlotCliArgs,
@@ -1139,6 +1141,7 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
     req: PlotRequest,
     provenance: dict[str, object],
     skipped: list[str],
+    validated_inputs: Mapping[Path, bytes] | None = None,
 ) -> int:
     """Render every output in isolation, then replace publication files together."""
     final_provenance = req.csv_path.with_suffix(".provenance.json")
@@ -1186,8 +1189,17 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
                 return 2
             pairs.append((staged_readme, readme_path))
 
-        if not _publish_staged_files(pairs):
-            return 2
+        if validated_inputs is None:
+            if not _publish_staged_files(pairs):
+                return 2
+        else:
+            outputs = {destination.relative_to(root).as_posix(): staged.read_bytes() for staged, destination in pairs}
+            inputs = {path.relative_to(root).as_posix(): data for path, data in validated_inputs.items() if path.relative_to(root).as_posix() not in outputs}
+            plan = plan_outputs(root, outputs, inputs=inputs)
+            if any(dict(plan.originals).get(path.relative_to(root).as_posix()) != data for path, data in validated_inputs.items()):
+                msg = "README publication inputs changed during rendering"
+                raise ValueError(msg)
+            publish_publication(plan)
 
     if skipped:
         print("Warning: some dimension groups were skipped:")
@@ -1200,6 +1212,66 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
     if args.update_readme:
         print(f"Updated README benchmark publication: {_resolve_under_root(root, args.readme)}")
     return 0
+
+
+def _complete_readme(root: Path, args: PlotCliArgs) -> int:
+    """Render the established figure format directly from shared complete runs."""
+    # The report registry imports this module's metric definitions.
+    import performance_runs as complete  # noqa: PLC0415
+
+    evidence = complete.retained_run(root, root / "target/bench-reports/performance")
+    run = complete.validate_scientific_run(evidence, release=True)
+    complete.verify_current_source(root, evidence)
+    values = complete.estimates_by_series(run, args.stat)
+    metric = METRICS[args.metric]
+    rows = []
+    for dimension in CANONICAL_DIMS:
+        name = f"d{dimension}/{metric.la_bench}"
+        estimates = [values[series][name] for series in ("la-stack current", "nalgebra", "faer")]
+        numbers = [value for estimate in estimates for value in (estimate.point, estimate.lower, estimate.upper)]
+        if any(value is None for value in numbers):
+            msg = "README requires complete confidence intervals"
+            raise ValueError(msg)
+        rows.append(Row(dimension, *(float(value) for value in numbers if value is not None)))
+    sources = dict(evidence.sources)
+    context = dict(sources["current"].context)
+    baseline_context = dict(sources["baseline"].context)
+    inputs = {root / "README.md": (root / "README.md").read_bytes()}
+    for field in ("source-inventory", "harness-inventory"):
+        inputs.update({root / name: (root / name).read_bytes() for name in json.loads(context[field])})
+    payload, manifest = complete.scratch_paths(root / "target/bench-reports/performance")
+    identity = run_identity(evidence)
+    if not payload.exists():
+        payload = root / complete.ARCHIVE / "runs" / identity / "run.json"
+        manifest = payload.with_name("evidence.json")
+        for name in ("index.json", "latest.json"):
+            path = root / complete.ARCHIVE / name
+            inputs[path] = path.read_bytes()
+    inputs.update(zip((payload, manifest), serialize_evidence(evidence), strict=True))
+    provenance: dict[str, object] = {
+        "schema": 3,
+        "artifact": "README vs_linalg dimension plot",
+        "run_id": identity,
+        "criterion": {"statistic": args.stat, "metric": args.metric, "dimensions": list(CANONICAL_DIMS), "log_y": args.log_y},
+        "measurement": {"la_stack_phase": "current", "peer_phase": "baseline", "peer_release_context": baseline_context["release"]},
+        "sources": {
+            phase: {"revision": source.revision, "source_sha256": source.source_sha256, "harness_sha256": source.harness_sha256}
+            for phase, source in evidence.sources
+        },
+    }
+    out_svg, out_csv = _resolve_output_paths(root, args.metric, args.stat, args.out, args.csv)
+    request = PlotRequest(
+        csv_path=out_csv,
+        out_svg=out_svg,
+        title=f"{metric.title}: {args.stat} time vs dimension",
+        stat=args.stat,
+        dims=CANONICAL_DIMS,
+        la_label=_format_legend_label("la-stack", context["release"].removeprefix("v")),
+        na_label=_format_legend_label("nalgebra", baseline_context["dependency.nalgebra"]),
+        fa_label=_format_legend_label("faer", baseline_context["dependency.faer"]),
+        log_y=args.log_y,
+    )
+    return _stage_and_publish_outputs(root=root, args=args, rows=rows, req=request, provenance=provenance, skipped=[], validated_inputs=inputs)
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912, PLR0915
@@ -1219,6 +1291,19 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
         return 2
     if rc != 0:
         return rc
+    if (
+        args.update_readme
+        and args.performance_csv == _DEFAULT_PERFORMANCE_CSV
+        and any(
+            (root / path).exists() or (root / path).is_symlink()
+            for path in ("target/bench-reports/performance.run.json", "target/bench-reports/performance.evidence.json", "docs/performance-runs")
+        )
+    ):
+        try:
+            return _complete_readme(root, args)
+        except (OSError, ValueError, TypeError, KeyError, ExceptionGroup) as error:
+            print(f"Invalid complete performance run: {format_exception_diagnostics(error)}", file=sys.stderr)
+            return 2
     versions = _detect_versions(root)
     _print_versions(versions)
 

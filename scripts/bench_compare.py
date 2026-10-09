@@ -31,7 +31,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from research_repo_tools.criterion import Comparison as TimingComparison, Estimate, read_estimate
 from research_repo_tools.files import replace_many
@@ -54,6 +54,9 @@ from performance_artifacts import (
     load_bundle,
     resolve_shared_harness_compatibility,
 )
+
+if TYPE_CHECKING:
+    from research_repo_tools.release_pairs import ReleasePair as SharedReleasePair
 
 # ---------------------------------------------------------------------------
 # Benchmark group / bench discovery
@@ -797,7 +800,7 @@ def _validate_schema2_consistency(
         raise ValueError(msg)
 
 
-def _assess_change(baseline: CriterionEstimate, current: CriterionEstimate) -> ChangeAssessment:
+def assess_change(baseline: CriterionEstimate, current: CriterionEstimate) -> ChangeAssessment:
     """Classify a change conservatively from non-overlapping Criterion intervals."""
     if not baseline.has_confidence_interval or not current.has_confidence_interval:
         return "unknown"
@@ -947,7 +950,7 @@ def _collect_exact_comparisons(
                     bench=bench,
                     baseline=baseline,
                     current=current,
-                    assessment=_assess_change(baseline, current),
+                    assessment=assess_change(baseline, current),
                 )
             )
 
@@ -1077,7 +1080,7 @@ def _collect_vs_linalg_comparisons(
                     bench=bench,
                     baseline=baseline,
                     current=current,
-                    assessment=_assess_change(baseline, current),
+                    assessment=assess_change(baseline, current),
                     baseline_nalgebra=baseline_nalgebra,
                     baseline_faer=baseline_faer,
                 )
@@ -1186,7 +1189,7 @@ def _collect_comparisons(
 # ---------------------------------------------------------------------------
 
 
-def _format_time(ns: float) -> str:
+def format_time(ns: float) -> str:
     """Format nanoseconds into a human-readable string."""
     if ns < 1_000:
         return f"{ns:.1f} ns"
@@ -1205,12 +1208,12 @@ def _format_confidence_interval(estimate: CriterionEstimate) -> str:
     """Format a Criterion confidence interval without inventing missing bounds."""
     if estimate.ci_lo_ns is None or estimate.ci_hi_ns is None:
         return "unavailable"
-    return f"[{_format_time(estimate.ci_lo_ns)}, {_format_time(estimate.ci_hi_ns)}]"
+    return f"[{format_time(estimate.ci_lo_ns)}, {format_time(estimate.ci_hi_ns)}]"
 
 
 def _format_estimate(estimate: CriterionEstimate) -> str:
     """Format a point estimate together with its Criterion interval."""
-    return f"{_format_time(estimate.point_ns)} {_format_confidence_interval(estimate)}"
+    return f"{format_time(estimate.point_ns)} {_format_confidence_interval(estimate)}"
 
 
 def _assessment_label(assessment: ChangeAssessment) -> str:
@@ -1302,13 +1305,13 @@ def _snapshot_tables(results: list[BenchResult], stat: str) -> str:
             case = _group_heading_for_suite(suite, group)
             for r in items:
                 ci_range = _format_confidence_interval(r.estimate)
-                lines.append(f"| {case} | {r.bench} | {_format_time(r.point_ns)} | {ci_range} |")
+                lines.append(f"| {case} | {r.bench} | {format_time(r.point_ns)} | {ci_range} |")
         sections.append("\n".join(lines))
 
     return "\n\n".join(sections)
 
 
-def _comparison_tables(comparisons: list[Comparison], baseline_name: str) -> str:
+def comparison_tables(comparisons: list[Comparison], baseline_name: str) -> str:
     """Generate one Markdown comparison table per suite."""
     sections: list[str] = []
 
@@ -1485,7 +1488,7 @@ def _artifact_comparisons(rows: tuple[PerformanceRow, ...]) -> list[Comparison]:
                 bench=row.benchmark,
                 baseline=baseline,
                 current=current,
-                assessment=_assess_change(baseline, current),
+                assessment=assess_change(baseline, current),
                 baseline_bench=(row.baseline_benchmark if row.baseline_benchmark != row.benchmark else None),
                 baseline_nalgebra=(None if row.baseline_nalgebra is None else _criterion_timing(row.baseline_nalgebra)),
                 baseline_faer=None if row.baseline_faer is None else _criterion_timing(row.baseline_faer),
@@ -1519,7 +1522,7 @@ def _artifact_tables(bundle: PerformanceBundle) -> str:
     comparisons = _artifact_comparisons(bundle.sorted_rows)
     sections: list[str] = []
     if comparisons:
-        sections.append(_comparison_tables(comparisons, bundle.context.release.baseline))
+        sections.append(comparison_tables(comparisons, bundle.context.release.baseline))
     coverage = _artifact_coverage_table(bundle.sorted_rows, bundle.context.release.baseline)
     if coverage:
         sections.append(coverage)
@@ -1842,6 +1845,23 @@ def render_release_artifacts(paths: ArtifactPaths) -> str:
     return render_bundle(load_bundle(paths), paths)
 
 
+def render_historical_assets(criterion: Path, pair: SharedReleasePair, suite: str, scope: str) -> bytes:
+    """Render native release assets without assigning local measurement provenance."""
+    policy = ComparisonPolicy(scope=scope, shared_harness_rational_inputs=False)
+    collection = _collect_comparisons(criterion, pair.baseline, "median", suite, policy)
+    if collection.gaps or not collection.comparisons:
+        msg = "historical assets omit required la-stack report rows"
+        raise ValueError(msg)
+    return (
+        f"# Published benchmark assets\n\n**la-stack** {pair.current}; baseline **{pair.baseline}**.\n\n"
+        "Each release retains its original harness. Historical host, toolchain, source fingerprints, and correctness gates are unknown.\n"
+        "These assets cannot be promoted as a common-harness run. Use `just performance-local` for controlled measurements.\n\n"
+        "Negative change means a smaller point estimate. Marginal interval separation is not a paired confidence interval or a significance claim.\n\n"
+        + comparison_tables(collection.comparisons, pair.baseline)
+        + "\n"
+    ).encode()
+
+
 def render_bundle(bundle: PerformanceBundle, paths: ArtifactPaths) -> str:
     """Render validated retained data before publishing any output."""
     context = bundle.context
@@ -2110,7 +2130,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
             )
             return 2
         try:
-            table = _comparison_tables(collection.comparisons, baseline_name)
+            table = comparison_tables(collection.comparisons, baseline_name)
         except ValueError as err:
             print(f"Invalid Criterion comparison data: {err}", file=sys.stderr)
             return 2

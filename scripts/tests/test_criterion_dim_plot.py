@@ -3,7 +3,6 @@
 import hashlib
 import json
 import re
-import shutil
 import subprocess
 import tomllib
 from dataclasses import replace
@@ -14,7 +13,6 @@ from typing import cast
 import pytest
 
 import criterion_dim_plot
-from benchmark_summaries import retained_outputs, summary_outputs
 from performance_artifacts import (
     ArtifactContext,
     ArtifactPaths,
@@ -23,7 +21,6 @@ from performance_artifacts import (
     ReleasePair,
     ReportSource,
     TimingEstimate,
-    load_bundle,
     write_bundle,
 )
 
@@ -475,34 +472,6 @@ def _write_performance_bundle(
     return paths
 
 
-def _retain_complete_plot_inputs(root: Path, paths: ArtifactPaths) -> None:
-    bundle = load_bundle(paths)
-    baseline = bundle.context.release.baseline
-    criterion = root / "target/criterion"
-    for row in bundle.rows:
-        for sample, name, timing in (
-            (baseline, row.benchmark, row.baseline),
-            ("new", row.benchmark, row.current),
-            (baseline, "nalgebra_lu_solve", row.baseline_nalgebra),
-            (baseline, "faer_lu_solve", row.baseline_faer),
-        ):
-            assert timing is not None
-            directory = criterion / row.group / name / sample
-            directory.mkdir(parents=True)
-            estimate = {
-                "point_estimate": timing.median_ns,
-                "confidence_interval": {"confidence_level": 0.95, "lower_bound": timing.ci_lower_ns, "upper_bound": timing.ci_upper_ns},
-            }
-            (directory / "benchmark.json").write_text(json.dumps({"full_id": f"{row.group}/{name}"}), encoding="utf-8")
-            (directory / "estimates.json").write_text(json.dumps({"mean": estimate, "median": estimate}), encoding="utf-8")
-            (directory / "sample.json").write_text(json.dumps({"iters": [1.0] * 100, "times": [timing.median_ns] * 100}), encoding="utf-8")
-    for path, payload in summary_outputs(criterion, baseline, paths).items():
-        path.write_text(payload, encoding="utf-8", newline="\n")
-    for path, payload in retained_outputs(root / "docs/performance", paths).items():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(payload, encoding="utf-8", newline="\n")
-
-
 def test_main_update_readme_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_benchmark_checkout(tmp_path)
     performance_paths = _write_performance_bundle(tmp_path)
@@ -569,33 +538,6 @@ def test_main_update_readme_happy_path(tmp_path: Path, monkeypatch: pytest.Monke
     first = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in published}
     assert criterion_dim_plot.main(["--metric", "lu_solve", "--stat", "median", "--sample", "new", "--update-readme"]) == 0
     assert {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in published} == first
-
-
-def test_main_readme_replays_saved_measurements_after_artifact_commit_and_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _write_benchmark_checkout(tmp_path)
-    performance_paths = _write_performance_bundle(tmp_path)
-    readme = tmp_path / "README.md"
-    readme.write_text(_canonical_benchmark_readme("0.0.8"), encoding="utf-8")
-    _mock_publication_environment(tmp_path, monkeypatch)
-    monkeypatch.setattr(criterion_dim_plot, "_render_svg_with_gnuplot", lambda request: request.out_svg.write_text("<svg/>\n", encoding="utf-8"))
-    assert criterion_dim_plot.main(["--update-readme"]) == 0
-    out_csv = tmp_path / "docs/assets/bench/vs_linalg_lu_solve_median.csv"
-    out_svg = out_csv.with_suffix(".svg")
-    first = {path: path.read_bytes() for path in (readme, out_csv, out_svg)}
-    provenance = json.loads(out_csv.with_suffix(".provenance.json").read_text(encoding="utf-8"))
-    _retain_complete_plot_inputs(tmp_path, performance_paths)
-    shutil.rmtree(tmp_path / "target")
-    # Committing only the saved results advances HEAD without changing the
-    # measured source, lockfile, release, or benchmark contract.
-    publication_commit = "b" * 40
-    monkeypatch.setattr(criterion_dim_plot, "run_git_command", lambda *_args, **_kwargs: SimpleNamespace(stdout=f"{publication_commit}\n"))
-    assert criterion_dim_plot.main(["--update-readme"]) == 0
-    assert {path: path.read_bytes() for path in first} == first
-    saved_provenance = json.loads(out_csv.with_suffix(".provenance.json").read_text(encoding="utf-8"))
-    assert saved_provenance["performance_artifact"]["csv"].startswith("docs/performance/v0.4.6-vs-v0.4.5/")
-    assert saved_provenance["performance_artifact"]["csv_sha256"] == provenance["performance_artifact"]["csv_sha256"]
-    assert saved_provenance["measurement"]["current_commit"] == _TEST_COMMIT
-    assert saved_provenance["publication"]["commit"] == publication_commit
 
 
 def test_dim_parsing_and_discovery(tmp_path: Path) -> None:

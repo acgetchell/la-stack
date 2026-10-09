@@ -119,17 +119,15 @@ just performance-release
 
 The no-argument form compares the current package version with the previous
 stable published release. Review `docs/performance.md`, any archived comparison
-under `docs/archive/performance/`, and the complete versioned local summary
-snapshot and `latest.json` under `docs/performance/`. Include those CSV and JSON
-files in the release commit; they preserve every recorded case, including the
-measurements outside the readable report's selection.
-
-The temporary current worktree includes staged and unstaged changes to tracked
-files, but excludes untracked files. Stage any new benchmark-relevant file before
-running the comparison. Successful release promotion preserves the selected
-report inputs and complete summaries under `docs/performance/`, so cleanup no
-longer removes the data needed to regenerate the reports. Local experiments
-from `performance-local` remain scratch until explicitly promoted.
+under `docs/archive/performance/`, and the immutable complete-run evidence,
+reports, index, and latest pointer under `docs/performance-runs/`. Include the
+entire new run and index changes in the release PR. Shared complete evidence
+retains both phases, mean and median estimates, 100 raw samples per case, and
+95% intervals. It survives target cleanup and supports offline report/README
+replay. Multiple runs for one release pair coexist without rewriting older
+evidence. Historical CSV/JSON snapshots under `docs/performance/` remain
+readable with unchanged hashes. Results from `performance-local` remain
+scratch until explicitly promoted.
 
 ### 5. Refresh the README benchmark comparison
 
