@@ -130,13 +130,14 @@ def promote(root: Path, stem: Path) -> None:
         msg = "selected evidence changed while composing scientific report"
         raise ValueError(msg)
     outputs["docs/performance.md"] = render_scientific_report(evidence)
-    # Retain the exact previous curated report at its established archive path.
+    # Same-pair reruns are retained in shared history. Archive the previous
+    # curated pair when advancing releases, validating even existing archives.
     previous = root / "docs/performance.md"
     previous_bytes = previous.read_bytes() if previous.exists() else None
     if previous_bytes is not None and previous_bytes != outputs["docs/performance.md"]:
         identity = parse_report_id(previous_bytes.decode("utf-8"))
-        name = f"docs/archive/performance/{identity.current_tag}-vs-{identity.baseline_tag}.md"
-        if not (root / name).exists():
+        if identity != parse_report_id(outputs["docs/performance.md"].decode("utf-8")):
+            name = f"docs/archive/performance/{identity.current_tag}-vs-{identity.baseline_tag}.md"
             outputs[name] = previous_bytes
     originals = dict(history.originals)
     inputs = {name: value for name, value in originals.items() if name not in outputs and value is not None}
@@ -154,12 +155,12 @@ def promote(root: Path, stem: Path) -> None:
 
 def parse_report_id(text: str) -> ReportId:
     """Read the established scientific report header without modifying its bytes."""
-    current = re.search(r"^\*\*la-stack\*\* (v[^\s]+)", text, re.MULTILINE)
-    baseline = re.search(r"^Comparison against baseline \*\*([^*]+)\*\*:", text, re.MULTILINE)
-    if current is None or baseline is None:
-        msg = "performance report has no release identity"
+    current = re.findall(r"^\*\*la-stack\*\* (v[^\s]+)", text, re.MULTILINE)
+    baseline = re.findall(r"^Comparison against baseline \*\*([^*]+)\*\*:", text, re.MULTILINE)
+    if len(current) != 1 or len(baseline) != 1:
+        msg = "performance report must contain exactly one current and baseline release identity"
         raise ValueError(msg)
-    return ReportId(normalize_tag(current[1]), normalize_tag(baseline[1]))
+    return ReportId(normalize_tag(current[0]), normalize_tag(baseline[0]))
 
 
 def render_and_promote_artifacts(*, artifacts: ArtifactPaths, output: Path, current: Path, archive_dir: Path) -> ReportId:
@@ -174,8 +175,9 @@ def render_and_promote_artifacts(*, artifacts: ArtifactPaths, output: Path, curr
     outputs = {current.relative_to(root).as_posix(): text, output.relative_to(root).as_posix(): text}
     if current.exists() and current.read_bytes() != text:
         identity = parse_report_id(current.read_text(encoding="utf-8"))
-        archived = archive_dir / f"{identity.current_tag}-vs-{identity.baseline_tag}.md"
-        outputs[archived.relative_to(root).as_posix()] = current.read_bytes()
+        if identity != ReportId(release.current, release.baseline):
+            archived = archive_dir / f"{identity.current_tag}-vs-{identity.baseline_tag}.md"
+            outputs[archived.relative_to(root).as_posix()] = current.read_bytes()
     inputs = {path.relative_to(root).as_posix(): path.read_bytes() for path in (artifacts.csv, artifacts.provenance)}
     publish_publication(plan_outputs(root, outputs, inputs=inputs, immutable=tuple(name for name in outputs if name.startswith("docs/archive/"))))
     return ReportId(release.current, release.baseline)

@@ -1,4 +1,5 @@
 schema = 2
 current = "docs/performance-runs/current.md"
+# Keep the generated-archive exclusions in both Markdown recipes aligned.
 archive = "docs/performance-runs"
 title = "la-stack complete benchmark measurements"

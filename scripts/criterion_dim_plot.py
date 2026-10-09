@@ -17,7 +17,6 @@ import hashlib
 import json
 import platform
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -1117,6 +1116,8 @@ def _stage_and_publish_outputs(  # noqa: C901, PLR0913
 ) -> int:
     """Render every output in isolation, then replace publication files together."""
     final_provenance = req.csv_path.with_suffix(".provenance.json")
+    readme_path = _resolve_under_root(root, args.readme)
+    readme_original = readme_path.read_bytes() if args.update_readme else b""
     with tempfile.TemporaryDirectory(prefix=".criterion-dim-plot-", dir=root) as tmp:
         stage_dir = Path(tmp)
         staged_csv = stage_dir / "benchmark.csv"
@@ -1150,9 +1151,8 @@ def _stage_and_publish_outputs(  # noqa: C901, PLR0913
             pairs.append((staged_svg, req.out_svg))
 
         if args.update_readme:
-            readme_path = _resolve_under_root(root, args.readme)
             staged_readme = stage_dir / "README.md"
-            shutil.copy2(readme_path, staged_readme)
+            staged_readme.write_bytes(readme_original)
             try:
                 _update_staged_readme_publication(root=root, args=args, rows=rows, staged_readme=staged_readme)
             except (OSError, ValueError) as exc:
@@ -1166,9 +1166,12 @@ def _stage_and_publish_outputs(  # noqa: C901, PLR0913
                 return 2
         else:
             outputs = {destination.relative_to(root).as_posix(): staged.read_bytes() for staged, destination in pairs}
-            inputs = {path.relative_to(root).as_posix(): data for path, data in validated_inputs.items() if path.relative_to(root).as_posix() not in outputs}
+            ensure_distinct_paths(
+                {**{f"input {path}": path for path in validated_inputs}, **{f"output {destination}": destination for _, destination in pairs}}
+            )
+            inputs = {path.relative_to(root).as_posix(): data for path, data in validated_inputs.items()}
             plan = plan_outputs(root, outputs, inputs=inputs)
-            if any(dict(plan.originals).get(path.relative_to(root).as_posix()) != data for path, data in validated_inputs.items()):
+            if args.update_readme and dict(plan.originals)[readme_path.relative_to(root).as_posix()] != readme_original:
                 msg = "README publication inputs changed during rendering"
                 raise ValueError(msg)
             publish_publication(plan)
@@ -1208,7 +1211,8 @@ def _complete_readme(root: Path, args: PlotCliArgs) -> int:
     sources = dict(evidence.sources)
     context = dict(sources["current"].context)
     baseline_context = dict(sources["baseline"].context)
-    inputs = {root / "README.md": (root / "README.md").read_bytes()}
+    report_config = root / complete.REPORT_CONFIG
+    inputs = {report_config: report_config.read_bytes()}
     for field in ("source-inventory", "harness-inventory"):
         inputs.update({root / name: (root / name).read_bytes() for name in json.loads(context[field])})
     payload, manifest = complete.scratch_paths(root / "target/bench-reports/performance")
@@ -1217,7 +1221,7 @@ def _complete_readme(root: Path, args: PlotCliArgs) -> int:
         archive = root / complete.archive_directory(root)
         payload = archive / "runs" / identity / "run.json"
         manifest = payload.with_name("evidence.json")
-        for name in ("index.json", "latest.json"):
+        for name in ("index.json", "latest.json", f"runs/{identity}/report.md"):
             path = archive / name
             inputs[path] = path.read_bytes()
     inputs.update(zip((payload, manifest), serialize_evidence(evidence), strict=True))
@@ -1264,16 +1268,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
         return 2
     if rc != 0:
         return rc
-    if (
-        args.update_readme
-        and args.performance_csv == _DEFAULT_PERFORMANCE_CSV
-        and any(
-            (root / path).exists() or (root / path).is_symlink()
-            for path in ("target/bench-reports/performance.run.json", "target/bench-reports/performance.evidence.json", "docs/performance-runs")
-        )
-    ):
+    if args.update_readme and _resolve_under_root(root, args.performance_csv).resolve() == (root / _DEFAULT_PERFORMANCE_CSV).resolve():
         try:
-            return _complete_readme(root, args)
+            # The report registry imports this module's metric definitions.
+            import performance_runs as complete  # noqa: PLC0415
+
+            candidates = list(complete.scratch_paths(root / "target/bench-reports/performance"))
+            if (root / complete.REPORT_CONFIG).exists():
+                candidates.append(root / complete.archive_directory(root))
+            if any(path.exists() or path.is_symlink() for path in candidates):
+                return _complete_readme(root, args)
         except (OSError, ValueError, TypeError, KeyError, ExceptionGroup) as error:
             print(f"Invalid complete performance run: {format_exception_diagnostics(error)}", file=sys.stderr)
             return 2

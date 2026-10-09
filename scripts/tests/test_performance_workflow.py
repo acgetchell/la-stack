@@ -118,6 +118,20 @@ def measured(tmp_path: Path) -> tuple[Path, Evidence]:
     return current, evidence
 
 
+@pytest.fixture(scope="module")
+def measured_run(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Evidence]:
+    """Measure once; publication regressions operate on independent copies."""
+    return measured(tmp_path_factory.mktemp("measured-run"))
+
+
+@pytest.fixture
+def complete_run(tmp_path: Path, measured_run: tuple[Path, Evidence]) -> tuple[Path, Evidence]:
+    root, evidence = measured_run
+    destination = tmp_path / "current"
+    shutil.copytree(root, destination)
+    return destination, evidence
+
+
 def test_common_harness_and_reference_phase(tmp_path: Path) -> None:
     baseline, current, plan = prepared(tmp_path)
     (baseline / "benches/exact.rs").write_text("obsolete harness\n", encoding="utf-8")
@@ -162,7 +176,11 @@ def test_shared_retention_repeated_runs_and_offline_report(tmp_path: Path) -> No
     workflow.promote(root, stem)
     assert len(list((root / policy.archive_directory(root) / "runs").iterdir())) == 2
     assert {path: path.read_bytes() for path in original} == original
-    assert (root / "docs/archive/performance/v0.4.6-vs-v0.4.5.md").read_bytes() == first_report
+    assert (retained / "run.json").is_file()
+    assert first_report != (root / "docs/performance.md").read_bytes()
+    # Same-pair reruns live in complete-run history, leaving the canonical
+    # release-pair archive available for a later release transition.
+    assert not (root / "docs/archive/performance/v0.4.6-vs-v0.4.5.md").exists()
     shutil.rmtree(root / "target")
     assert run_identity(policy.retained_run(root, stem)) == run_identity(second)
     before = (root / "docs/performance.md").read_bytes()
@@ -171,6 +189,60 @@ def test_shared_retention_repeated_runs_and_offline_report(tmp_path: Path) -> No
     (root / policy.archive_directory(root) / "latest.json").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match=r"latest|pointer|fields|schema"):
         policy.retained_run(root, stem)
+
+
+@pytest.mark.parametrize("destination", ["missing", "identical", "different", "directory", "symlink"])
+def test_promotion_preserves_prior_report_on_archive_collision(complete_run: tuple[Path, Evidence], destination: str) -> None:
+    root, evidence = complete_run
+    stem = root / "target/bench-reports/performance"
+    workflow.save_scratch(root, stem, evidence)
+    current = root / "docs/performance.md"
+    current.parent.mkdir(parents=True, exist_ok=True)
+    previous = b"**la-stack** v0.4.5\n\nComparison against baseline **v0.4.4**:\n\nPrior curated report.\n"
+    current.write_bytes(previous)
+    archived = root / "docs/archive/performance/v0.4.5-vs-v0.4.4.md"
+    archived.parent.mkdir(parents=True)
+    if destination in {"identical", "different"}:
+        archived.write_bytes(previous if destination == "identical" else b"Conflicting archive.\n")
+    elif destination == "directory":
+        archived.mkdir()
+    elif destination == "symlink":
+        archived.symlink_to(current)
+    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts}
+    if destination in {"missing", "identical"}:
+        workflow.promote(root, stem)
+        assert archived.read_bytes() == previous
+        assert current.read_bytes() == policy.render_scientific_report(evidence)
+        assert run_identity(policy.retained_run(root, stem)) == run_identity(evidence)
+    else:
+        errors = {"different": "immutable output differs", "directory": "regular file", "symlink": "symlink"}
+        with pytest.raises(ValueError, match=errors[destination]):
+            workflow.promote(root, stem)
+        assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts} == before
+        assert not (root / policy.archive_directory(root)).exists()
+        if destination == "directory":
+            assert archived.is_dir()
+        elif destination == "symlink":
+            assert archived.is_symlink()
+            assert archived.readlink() == current
+
+
+@pytest.mark.parametrize("duplicate", ["**la-stack** v0.4.4", "Comparison against baseline **v0.4.3**:"])
+def test_duplicate_report_identity_prevents_publication(complete_run: tuple[Path, Evidence], duplicate: str) -> None:
+    root, evidence = complete_run
+    stem = root / "target/bench-reports/performance"
+    workflow.save_scratch(root, stem, evidence)
+    current = root / "docs/performance.md"
+    current.parent.mkdir(parents=True, exist_ok=True)
+    text = f"**la-stack** v0.4.5\n\nComparison against baseline **v0.4.4**:\n\n{duplicate}\n"
+    current.write_text(text, encoding="utf-8")
+    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts}
+    with pytest.raises(ValueError, match="exactly one"):
+        workflow.parse_report_id(text)
+    with pytest.raises(ValueError, match="exactly one"):
+        workflow.promote(root, stem)
+    assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts} == before
+    assert not (root / policy.archive_directory(root)).exists()
 
 
 def test_partial_scratch_and_stale_source_cannot_select_old_history(tmp_path: Path) -> None:
@@ -186,8 +258,14 @@ def test_partial_scratch_and_stale_source_cannot_select_old_history(tmp_path: Pa
         policy.verify_current_source(root, evidence)
 
 
-def test_readme_uses_retained_reference_estimates_after_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    root, evidence = measured(tmp_path)
+@pytest.mark.parametrize("archive", ["docs/performance-runs", "docs/performance-history"])
+@pytest.mark.parametrize("csv_path", ["relative", "dot-relative", "absolute"])
+def test_readme_uses_retained_reference_estimates_after_cleanup(
+    complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, archive: str, csv_path: str
+) -> None:
+    root, evidence = complete_run
+    config = root / policy.REPORT_CONFIG
+    config.write_text(config.read_text(encoding="utf-8").replace("docs/performance-runs", archive), encoding="utf-8")
     stem = root / "target/bench-reports/performance"
     workflow.save_scratch(root, stem, evidence)
     workflow.promote(root, stem)
@@ -195,7 +273,13 @@ def test_readme_uses_retained_reference_estimates_after_cleanup(tmp_path: Path, 
     shutil.rmtree(root / "target")
     monkeypatch.setattr(plot, "_repo_root", lambda: root)
     monkeypatch.setattr(plot, "_render_svg_with_gnuplot", lambda request: request.out_svg.write_bytes(b"<svg/>\n"))
-    assert plot.main(["--update-readme", "--log-y"]) == 0
+    performance_csv = "target/bench-reports/performance.csv"
+    if csv_path == "absolute":
+        performance_csv = str(root / performance_csv)
+    elif csv_path == "dot-relative":
+        performance_csv = f"./{performance_csv}"
+    arguments = ["--update-readme", "--log-y", "--performance-csv", performance_csv]
+    assert plot.main(arguments) == 0
     assets = root / "docs/assets/bench"
     csv = assets / "vs_linalg_lu_solve_median.csv"
     assert "2,8.0,7.2,8.8,10.0,9.0,11.0,10.0,9.0,11.0" in csv.read_text(encoding="utf-8")
@@ -203,8 +287,84 @@ def test_readme_uses_retained_reference_estimates_after_cleanup(tmp_path: Path, 
     assert provenance["measurement"]["peer_phase"] == "baseline"
     assert provenance["run_id"] == run_identity(evidence)
     before = {path: path.read_bytes() for path in (*assets.iterdir(), root / "README.md")}
-    assert plot.main(["--update-readme", "--log-y"]) == 0
+    assert plot.main(arguments) == 0
     assert {path: path.read_bytes() for path in before} == before
+
+
+@pytest.mark.parametrize(
+    ("cleanup", "destination"),
+    [
+        (False, "run"),
+        (False, "evidence"),
+        (False, "alias"),
+        (False, "source"),
+        (False, "harness"),
+        (False, "configuration"),
+        (True, "run"),
+        (True, "evidence"),
+        (True, "report"),
+        (True, "index"),
+        (True, "latest"),
+    ],
+)
+def test_readme_outputs_cannot_replace_complete_run_inputs(
+    complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], cleanup: bool, destination: str
+) -> None:
+    root, evidence = complete_run
+    stem = root / "target/bench-reports/performance"
+    workflow.save_scratch(root, stem, evidence)
+    workflow.promote(root, stem)
+    archive = root / policy.archive_directory(root)
+    retained = archive / "runs" / run_identity(evidence)
+    payload, manifest = policy.scratch_paths(stem)
+    if cleanup:
+        shutil.rmtree(root / "target")
+        payload, manifest = retained / "run.json", retained / "evidence.json"
+    alias = root / "docs/alias.csv"
+    if destination == "alias":
+        alias.hardlink_to(payload)
+    targets = {
+        "run": payload,
+        "evidence": manifest,
+        "alias": alias,
+        "source": root / "src/lib.rs",
+        "harness": root / "tooling/performance.just",
+        "configuration": root / policy.REPORT_CONFIG,
+        "report": retained / "report.md",
+        "index": archive / "index.json",
+        "latest": archive / "latest.json",
+    }
+    shutil.copyfile(ROOT / "README.md", root / "docs/custom.md")
+    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts}
+    monkeypatch.setattr(plot, "_repo_root", lambda: root)
+    monkeypatch.setattr(plot, "_render_svg_with_gnuplot", lambda request: request.out_svg.write_bytes(b"<svg/>\n"))
+    assert plot.main(["--update-readme", "--readme", "docs/custom.md", "--csv", str(targets[destination])]) == 2
+    assert "must use distinct paths" in capsys.readouterr().err
+    assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts} == before
+
+
+def test_complete_report_passes_markdown_recipes_without_rewriting_history(complete_run: tuple[Path, Evidence]) -> None:
+    root, evidence = complete_run
+    stem = root / "target/bench-reports/performance"
+    workflow.save_scratch(root, stem, evidence)
+    workflow.promote(root, stem)
+    # Exercise the real recipes against generated, nonignored Markdown in a
+    # disposable checkout, reusing the already locked test environment.
+    for name in ("pyproject.toml", "uv.lock", ".python-version"):
+        shutil.copyfile(ROOT / name, root / name)
+    history = root / policy.archive_directory(root)
+    originals = {path: path.read_bytes() for path in history.rglob("*") if path.is_file()}
+    for recipe in ("markdown-check", "markdown-fix", "markdown-check"):
+        result = run_command(
+            "just",
+            ["--no-deps", "--justfile", str(ROOT / "justfile"), "--working-directory", str(root), recipe],
+            env={**os.environ, "UV_NO_SYNC": "1", "UV_PROJECT_ENVIRONMENT": sys.prefix},
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+    assert {path: path.read_bytes() for path in originals} == originals
+    shutil.rmtree(root / "target")
+    assert run_identity(policy.retained_run(root, stem)) == run_identity(evidence)
 
 
 def test_legacy_bytes_hashes_and_report_are_unchanged() -> None:
@@ -238,7 +398,9 @@ def test_native_command_policy_and_compatibility_adapter() -> None:
     assert environment["CRITERION_HOME"] == "target/criterion"
 
 
-def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("baseline_tag", ["v0.4.4", "v0.4.5", "v0.4.6"])
+@pytest.mark.parametrize("scope", ["release-signal", "all-benches"])
+def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, baseline_tag: str, scope: str) -> None:
     """Exercise the configured Justfile, stubbing only the expensive Cargo boundary."""
     root = tmp_path / "checkout with spaces"
     shutil.copytree(ROOT / "tooling", root / "tooling")
@@ -246,13 +408,35 @@ def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path:
     binary = tmp_path / "bin"
     binary.mkdir()
     cargo = binary / "cargo"
+    # These are the registrations guarded by the historical API cfg in
+    # benches/vs_linalg.rs, including the two reference scenario kernels.
+    norm_rows = {
+        f"d{dimension}/{bench}"
+        for dimension in (2, 3, 4, 5)
+        for bench in (
+            "la_stack_norm2",
+            *(
+                f"{kernel}_norm2_scenario_{scenario}"
+                for kernel in ("la_stack", "iterative_f64_hypot", "delaunay_scaled_norm")
+                for scenario in ("descending", "repeated_scale", "sparse", "wide_dynamic_range")
+            ),
+        )
+    }
+    ordinary_norm_peers = {
+        f"d{dimension}/{bench}" for dimension in (2, 3, 4, 5) for bench in ("iterative_f64_hypot", "delaunay_scaled_norm", "nalgebra_norm", "faer_norm_l2")
+    }
+    ids = required_report_ids() | norm_rows | ordinary_norm_peers
+    exact = sorted(name for name in ids if not name.startswith("d"))
+    baseline_ids = sorted(name for name in ids if name.startswith("d"))
+    current_ids = sorted(name for name in baseline_ids if "/la_stack_" in name)
     cargo.write_text(
         "#!/bin/sh\n"
-        'printf "%s|%s\\n" "$PWD" "$*" >> "$CARGO_RECORD"\n'
+        "directory=$(pwd -W 2>/dev/null || pwd -P)\n"
+        'printf "%s|%s\\n" "$directory" "$*" >> "$CARGO_RECORD"\n'
         'case "$*" in\n'
-        '  *"--bench exact"*) printf "exact_d2/det: benchmark\\n" ;;\n'
-        '  *"la_stack --noplot"*) printf "d2/la_stack_lu_solve: benchmark\\n" ;;\n'
-        '  *"--bench vs_linalg"*) printf "%s: benchmark\\n" d2/la_stack_lu_solve d2/nalgebra_lu_solve d2/faer_lu_solve ;;\n'
+        f'  *"--bench exact"*) printf "%s: benchmark\\n" {shlex.join(exact)} ;;\n'
+        f'  *"la_stack --noplot"*) printf "%s: benchmark\\n" {shlex.join(current_ids)} ;;\n'
+        f'  *"--bench vs_linalg"*) printf "%s: benchmark\\n" {shlex.join(baseline_ids)} ;;\n'
         "esac\n",
         encoding="utf-8",
     )
@@ -260,14 +444,27 @@ def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path:
     record = tmp_path / "commands.txt"
     monkeypatch.setenv("PATH", f"{binary}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("CARGO_RECORD", str(record))
-    plan = policy.measurement_plan(root, PAIR, "all", "all-benches", tmp_path / "inventory")
-    assert plan.current.policy.expected == ("d2/la_stack_lu_solve", "exact_d2/det")
-    assert set(plan.baseline.policy.expected) == {"d2/la_stack_lu_solve", "d2/nalgebra_lu_solve", "d2/faer_lu_solve", "exact_d2/det"}
+    pair = ReleasePair("v0.4.6", baseline_tag)
+    plan = policy.measurement_plan(root, pair, "all", scope, tmp_path / "inventory")
+    assert set(plan.current.policy.expected) == set(current_ids) | set(exact)
+    unavailable = norm_rows | {name for name in exact if name.startswith(("rational_input_", "canonical_conversion_", "det4_diagnostic_"))}
+    assert set(plan.baseline.policy.expected) == (ids if baseline_tag == "v0.4.6" else ids - unavailable)
+    assert ordinary_norm_peers <= set(plan.baseline.policy.expected)
+    assert "d2/la_stack_norm2_sq" in plan.baseline.policy.expected
+    series = {item.name: {name for name, _ in item.rows} for item in plan.series}
+    assert series["la-stack baseline"] == (series["la-stack current"] if baseline_tag == "v0.4.6" else series["la-stack current"] - unavailable)
+    if scope == "all-benches":
+        assert "d2/la_stack_norm2" in series["la-stack current"]
+        assert "d2/la_stack_norm2_scenario_sparse" in series["la-stack current"]
     for command in (plan.baseline.gate, plan.baseline.command, plan.current.command):
         run_command(command[0], command[1:], cwd=root)
     lines = record.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 9
-    assert all(line.startswith(f"{root}|") and "--locked" in line for line in lines)
+    for line in lines:
+        directory, separator, arguments = line.partition("|")
+        assert separator == "|"
+        assert Path(directory).samefile(root)
+        assert "--locked" in arguments.split()
     assert all("--list" in line for line in lines[:4])
     assert all("--list" not in line for line in lines[4:])
     assert "test --locked --workspace --features bench,exact --test vs_linalg_inputs --test exact_bench_config" in lines[4]

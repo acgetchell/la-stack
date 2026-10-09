@@ -349,6 +349,12 @@ published reports and selection. Review and commit the whole new run and index.
 Legacy snapshots under `docs/performance/` retain their original bytes,
 hashes, framing, and reader; see the [legacy index](performance/README.md).
 
+The Markdown check and format recipes exclude the generated
+`docs/performance-runs/` archive because shared validation requires exact report
+bytes. Keep both recipe exclusions aligned with `archive` in
+`tooling/performance-report.toml` when relocating it. The curated
+`docs/performance.md` remains subject to active Markdown checks.
+
 To reproduce and promote the report without running Cargo or creating Git
 worktrees, use:
 

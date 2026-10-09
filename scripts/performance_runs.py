@@ -81,6 +81,16 @@ def phase_environment(root: Path, adapter: str = NO_API_COMPATIBILITY) -> tuple[
     return tuple(sorted(env.items()))
 
 
+def _historical_case_available(full_id: str) -> bool:
+    """Mirror the groups and norm cases disabled by the historical harness cfg."""
+    bench = full_id.partition("/")[2]
+    return (
+        not full_id.startswith(UNAVAILABLE_PREFIXES)
+        and bench != "la_stack_norm2"
+        and not bench.startswith(("la_stack_norm2_scenario_", "iterative_f64_hypot_norm2_scenario_", "delaunay_scaled_norm_norm2_scenario_"))
+    )
+
+
 def measurement_plan(root: Path, pair: ReleasePair, suite: str, scope: str, listing: Path) -> CommonHarnessPlan:
     """Build the shared plan from native inventories and consumer API policy."""
     compatibility = resolve_shared_harness_compatibility(current=pair.current, baseline=pair.baseline, shared_harness_rational_inputs=True)
@@ -102,7 +112,7 @@ def measurement_plan(root: Path, pair: ReleasePair, suite: str, scope: str, list
             msg = "duplicate semantic benchmark IDs"
             raise ValueError(msg)
         old_api = phase == "baseline" and compatibility.baseline_api_compatibility != NO_API_COMPATIBILITY
-        inventories[phase] = tuple(sorted(name for name in ids if not (old_api and name.startswith(UNAVAILABLE_PREFIXES))))
+        inventories[phase] = tuple(sorted(name for name in ids if not old_api or _historical_case_available(name)))
     return declared_plan(pair, suite, scope, inventories, baseline_env=baseline_env, current_env=current_env, config=config)
 
 
@@ -121,7 +131,7 @@ def declared_plan(  # noqa: PLR0913
     compatibility = resolve_shared_harness_compatibility(current=pair.current, baseline=pair.baseline, shared_harness_rational_inputs=True)
     selected = selected_ids(suite, scope, inventories["current"])
     unavailable = compatibility.baseline_api_compatibility != NO_API_COMPATIBILITY
-    baseline_rows = tuple(name for name in selected if not (unavailable and name.startswith(UNAVAILABLE_PREFIXES)))
+    baseline_rows = tuple(name for name in selected if not unavailable or _historical_case_available(name))
     missing = set(baseline_rows) - set(inventories["baseline"])
     if missing:
         raise ValueError(f"baseline inventory omits selected rows: {sorted(missing)}")
@@ -313,8 +323,13 @@ def render_scientific_report(evidence: Evidence) -> bytes:
         context = dict(source.context)
         lines.extend(
             [
-                f"- {phase}: revision `{source.revision}`, source `{source.source_sha256}`, harness `{source.harness_sha256}`.",
-                f"  Gate `{context['gate-command']}`: {context['gate-status']}; command `{context['command']}`.",
+                f"- {phase}:",
+                f"  - Revision: `{source.revision}`.",
+                f"  - Source: `{source.source_sha256}`.",
+                f"  - Harness: `{source.harness_sha256}`.",
+                f"  - Gate status: {context['gate-status']}.",
+                f"  - Gate: `{context['gate-command']}`.",
+                f"  - Command: `{context['command']}`.",
             ]
         )
     lines.extend(
