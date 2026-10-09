@@ -116,7 +116,7 @@ def test_markdown_table_formats_values_and_pct() -> None:
 
 
 def test_row_rejects_zero_peer_time_before_markdown_rendering() -> None:
-    with pytest.raises(ValueError, match="na_time must be finite and positive"):
+    with pytest.raises(ValueError, match="finite positive number"):
         criterion_dim_plot.Row(
             dim=2,
             la_time=10.0,
@@ -162,42 +162,6 @@ def test_update_readme_table_replaces_only_between_markers(tmp_path: Path) -> No
     # Re-running with the same content should be a no-op.
     changed_again = criterion_dim_plot._update_readme_table(readme, marker_begin, marker_end, table_md)
     assert changed_again is False
-
-
-def test_update_readme_table_errors_on_missing_markers(tmp_path: Path) -> None:
-    readme = tmp_path / "README.md"
-    readme.write_text("# Title\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="exactly one ordered publication marker pair"):
-        criterion_dim_plot._update_readme_table(
-            readme,
-            "<!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->",
-            "<!-- BENCH_TABLE:lu_solve:median:new:END -->",
-            "| x |",
-        )
-
-
-def test_update_readme_table_errors_on_out_of_order_markers(tmp_path: Path) -> None:
-    marker_begin, marker_end = criterion_dim_plot._readme_table_markers("lu_solve", "median", "new")
-
-    readme = tmp_path / "README.md"
-    readme.write_text(f"{marker_end}\n{marker_begin}\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="exactly one ordered publication marker pair"):
-        criterion_dim_plot._update_readme_table(readme, marker_begin, marker_end, "| x |")
-
-
-def test_update_readme_table_errors_on_non_unique_markers(tmp_path: Path) -> None:
-    marker_begin, marker_end = criterion_dim_plot._readme_table_markers("lu_solve", "median", "new")
-
-    readme = tmp_path / "README.md"
-    readme.write_text(
-        f"{marker_begin}\n{marker_begin}\n{marker_end}\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="exactly one ordered publication marker pair"):
-        criterion_dim_plot._update_readme_table(readme, marker_begin, marker_end, "| x |")
 
 
 def _canonical_benchmark_readme(version: str) -> str:
@@ -478,11 +442,11 @@ def test_main_update_readme_happy_path(tmp_path: Path, monkeypatch: pytest.Monke
     readme = tmp_path / "README.md"
     readme.write_text(_canonical_benchmark_readme("0.0.8"), encoding="utf-8")
 
-    def fake_run_git(args: list[str], **_kwargs: object) -> SimpleNamespace:
+    def fake_run_git(_command: str, args: list[str], **_kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(stdout=f"{_TEST_COMMIT}\n")
 
     monkeypatch.setattr(criterion_dim_plot, "_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(criterion_dim_plot, "run_git_command", fake_run_git)
+    monkeypatch.setattr(criterion_dim_plot, "run_command", fake_run_git)
 
     def fake_render(request: criterion_dim_plot.PlotRequest) -> None:
         request.out_svg.write_text("<svg/>\n", encoding="utf-8")
@@ -582,26 +546,6 @@ def test_format_legend_label() -> None:
     assert criterion_dim_plot._format_legend_label("faer", "unknown") == "faer"
 
 
-def test_read_estimate_errors_and_success(tmp_path: Path) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(
-        json.dumps(
-            {
-                "median": {
-                    "point_estimate": 5.0,
-                    "confidence_interval": {"lower_bound": 4.0, "upper_bound": 6.0},
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    point, lo, hi = criterion_dim_plot._read_estimate(estimates, "median")
-    assert (point, lo, hi) == (5.0, 4.0, 6.0)
-
-    with pytest.raises(ValueError, match="Criterion mean must be a JSON object"):
-        criterion_dim_plot._read_estimate(estimates, "mean")
-
-
 @pytest.mark.parametrize("interval", [None, {"lower_bound": 4.0}])
 def test_plot_adapter_requires_complete_confidence_interval(tmp_path: Path, interval: dict[str, float] | None) -> None:
     estimates = tmp_path / "estimates.json"
@@ -609,23 +553,6 @@ def test_plot_adapter_requires_complete_confidence_interval(tmp_path: Path, inte
 
     with pytest.raises(ValueError, match=r"confidence interval|upper_bound"):
         criterion_dim_plot._read_estimate(estimates, "median")
-
-
-def test_read_estimate_allows_point_outside_percentile_confidence_interval(tmp_path: Path) -> None:
-    estimates = tmp_path / "estimates.json"
-    estimates.write_text(
-        json.dumps(
-            {
-                "median": {
-                    "point_estimate": 5.0,
-                    "confidence_interval": {"lower_bound": 1.0, "upper_bound": 4.0},
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    assert criterion_dim_plot._read_estimate(estimates, "median") == (5.0, 1.0, 4.0)
 
 
 def test_row_rejects_invalid_dimension_and_times() -> None:
@@ -643,7 +570,7 @@ def test_row_rejects_invalid_dimension_and_times() -> None:
             fa_hi=1.0,
         )
 
-    with pytest.raises(ValueError, match="la_time must be finite and positive"):
+    with pytest.raises(ValueError, match="finite positive number"):
         criterion_dim_plot.Row(
             dim=2,
             la_time=float("inf"),
@@ -890,21 +817,21 @@ def test_provenance_helpers_treat_timeout_and_os_error_as_unavailable(
     def fail_command(*_args: object, **_kwargs: object) -> SimpleNamespace:
         raise failure
 
-    monkeypatch.setattr(criterion_dim_plot, "run_git_command", fail_command)
+    monkeypatch.setattr(criterion_dim_plot, "run_command", fail_command)
     assert criterion_dim_plot._git_value(tmp_path, ["rev-parse", "HEAD"]) == "unavailable"
     git_clean, _status_digest = criterion_dim_plot._git_status_metadata(tmp_path)
     assert git_clean is None
 
-    monkeypatch.setattr(criterion_dim_plot, "run_safe_command", fail_command)
+    monkeypatch.setattr(criterion_dim_plot, "run_command", fail_command)
     assert criterion_dim_plot._rustc_version(tmp_path) == "unavailable"
 
 
 def _mock_publication_environment(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run_git(args: list[str], **_kwargs: object) -> SimpleNamespace:
+    def fake_run_git(_command: str, args: list[str], **_kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(stdout=f"{_TEST_COMMIT}\n")
 
     monkeypatch.setattr(criterion_dim_plot, "_repo_root", lambda: root)
-    monkeypatch.setattr(criterion_dim_plot, "run_git_command", fake_run_git)
+    monkeypatch.setattr(criterion_dim_plot, "run_command", fake_run_git)
 
 
 def test_main_publication_fails_closed_when_git_commit_is_unavailable(
@@ -922,7 +849,7 @@ def test_main_publication_fails_closed_when_git_commit_is_unavailable(
         message = "git unavailable"
         raise OSError(message)
 
-    monkeypatch.setattr(criterion_dim_plot, "run_git_command", unavailable_git)
+    monkeypatch.setattr(criterion_dim_plot, "run_command", unavailable_git)
 
     assert criterion_dim_plot.main(["--update-readme"]) == 2
     assert "current checkout commit 'unavailable'" in capsys.readouterr().err
@@ -1045,7 +972,7 @@ def test_main_publication_rejects_stale_measurement_identity(
         manifest = tmp_path / "Cargo.toml"
         manifest.write_text(manifest.read_text(encoding="utf-8").replace("0.4.6", "0.4.7"), encoding="utf-8")
     else:
-        monkeypatch.setattr(criterion_dim_plot, "run_git_command", lambda *_args, **_kwargs: SimpleNamespace(stdout="b" * 40))
+        monkeypatch.setattr(criterion_dim_plot, "run_command", lambda *_args, **_kwargs: SimpleNamespace(stdout="b" * 40))
 
     assert criterion_dim_plot.main(["--update-readme"]) == 2
     assert readme.read_text(encoding="utf-8") == original

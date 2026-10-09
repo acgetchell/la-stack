@@ -14,8 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-
-from benchmark_process import run_safe_command
+from research_repo_tools.process import run_command
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -93,7 +92,7 @@ def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 def test_native_updates_advance_eligible_dependencies_and_preserve_coupled_requirements(consumer: Path, recipe: str) -> None:
     """Cargo upgrade and cargo update run through the installed checked toolchain."""
     before = tomllib.loads((consumer / "Cargo.toml").read_text(encoding="utf-8"))["dependencies"]
-    result = run_safe_command(
+    result = run_command(
         "just",
         ["--justfile", str(consumer / "recipes.just"), "--working-directory", str(consumer), recipe],
         cwd=consumer,

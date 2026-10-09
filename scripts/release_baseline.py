@@ -18,7 +18,7 @@ from bench_compare import (
     VS_LINALG_STANDARD_BENCH_ORDER,
 )
 
-SUITES = {"vs_linalg": "bench", "exact": "bench,exact"}
+SUITES = ("vs_linalg", "exact")
 RAW_FILES = ("benchmark.json", "estimates.json", "sample.json", "tukey.json")
 
 
@@ -66,12 +66,11 @@ def discover(root: Path, manifest: Path, criterion: Path) -> None:
     if criterion.exists() and any(criterion.iterdir()):
         raise ValueError(f"release inventory requires a fresh Criterion directory: {criterion}")
     inventory: dict[str, list[str]] = {}
-    for suite, features in SUITES.items():
+    for suite in SUITES:
         print(f"[release-baseline] Discovering {suite}", flush=True)
-        package = ["-p", "la-stack-comparison"] if suite == "vs_linalg" else []
         result = run_command(
-            "cargo",
-            ["bench", "--locked", *package, "--features", features, "--bench", suite, "--", "--list"],
+            "just",
+            ["--justfile", "tooling/performance.just", "--working-directory", ".", f"baseline-{suite}", "list"],
             cwd=root,
             timeout=None,  # The workflow bounds compilation and discovery together.
         )

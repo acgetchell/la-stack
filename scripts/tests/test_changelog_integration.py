@@ -1,6 +1,5 @@
 """Consumer policy and authored history against the installed published CLI."""
 
-import json
 import shutil
 import tomllib
 from importlib.metadata import version
@@ -8,8 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from research_repo_tools.cli import main
-
-from benchmark_process import run_git_command, run_safe_command
+from research_repo_tools.just_inspect import dry_run, inspect_justfile
+from research_repo_tools.process import run_command
 
 if TYPE_CHECKING:
     import pytest
@@ -43,11 +42,11 @@ def test_authored_dependency_notes_survive_generation(tmp_path: Path, capsys: py
     """Exercise the consumer policy with Ruff, Ty and setuptools notes and code."""
     for name in ("pyproject.toml", "changelog-rumdl.toml", ".python-version", "rust-toolchain.toml"):
         shutil.copyfile(ROOT / name, tmp_path / name)
-    run_git_command(["init", "--quiet"], cwd=tmp_path)
+    run_command("git", ["--no-pager", "init", "--quiet"], cwd=tmp_path)
     for key, value in (("user.name", "Fixture"), ("user.email", "fixture@example.invalid"), ("commit.gpgsign", "false"), ("tag.gpgsign", "false")):
-        run_git_command(["config", key, value], cwd=tmp_path)
-    run_git_command(["commit", "--quiet", "--allow-empty", "-m", "feat: initial history"], cwd=tmp_path)
-    run_git_command(["tag", "v0.4.5"], cwd=tmp_path)
+        run_command("git", ["--no-pager", "config", key, value], cwd=tmp_path)
+    run_command("git", ["--no-pager", "commit", "--quiet", "--allow-empty", "-m", "feat: initial history"], cwd=tmp_path)
+    run_command("git", ["--no-pager", "tag", "v0.4.5"], cwd=tmp_path)
     notes = (
         ("ruff", "deps-dev", "Read [release notes](https://github.com/astral-sh/ruff/compare/0.16.1...0.16.2) before changing `Vector<D>` checks."),
         ("ty", "deps-dev", "Keep [changelog](https://github.com/astral-sh/ty/releases) context and `--error all`."),
@@ -58,7 +57,7 @@ def test_authored_dependency_notes_survive_generation(tmp_path: Path, capsys: py
         ),
     )
     for dependency, scope, body in notes:
-        run_git_command(["commit", "--quiet", "--allow-empty", "-m", f"chore({scope}): bump {dependency}\n\n{body}"], cwd=tmp_path)
+        run_command("git", ["--no-pager", "commit", "--quiet", "--allow-empty", "-m", f"chore({scope}): bump {dependency}\n\n{body}"], cwd=tmp_path)
     (tmp_path / "CHANGELOG.md").write_text("# Changelog\n\n## [0.4.5] - 2000-01-02\n\n- Historical date.\n", encoding="utf-8")
     args = ["--root", str(tmp_path), "changelog", "generate", "--tag", "v0.4.6", "--date", "2026-10-09"]
     assert main([*args, "--dry-run"]) == 0
@@ -83,9 +82,9 @@ def test_authored_dependency_notes_survive_generation(tmp_path: Path, capsys: py
 
 def test_consumer_recipes_and_retained_history(capsys: pytest.CaptureFixture[str]) -> None:
     """Native recipes delegate generation and all historical notes remain readable."""
-    recipes = json.loads(run_safe_command("just", ["--dump", "--dump-format", "json"], cwd=ROOT).stdout)
-    assert recipes["aliases"]["changelog-unreleased"]["target"] == "changelog-release"
-    result = run_safe_command("just", ["--dry-run", "changelog-preview", "--tag", "v0.4.7", "--date", "2026-10-09"], cwd=ROOT)
+    recipes = inspect_justfile(ROOT)
+    assert recipes.aliases["changelog-unreleased"] == "changelog-release"
+    result = dry_run(ROOT, "changelog-preview", ["--tag", "v0.4.7", "--date", "2026-10-09"])
     assert 'research-repo-tools changelog generate --dry-run "$@"' in result.stderr
     assert main(["--root", str(ROOT), "changelog", "check"]) == 0
     for tag in ("v0.1.0", "v0.2.0", "v0.3.0", "v0.4.6"):

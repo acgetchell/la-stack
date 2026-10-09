@@ -2,39 +2,48 @@
 
 import json
 import os
-import sys
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from research_repo_tools.common_measurement import CommonHarnessPlan, MeasurementPhase
 from research_repo_tools.complete_runs import CompletePolicy, CompleteRun, RunSeries, run_identity, validate_run_evidence
 from research_repo_tools.evidence import Evidence, fingerprint_files, load_evidence
-from research_repo_tools.measurement import MeasurementConfig
+from research_repo_tools.measurement import MeasurementConfig, load_measurement
+from research_repo_tools.process import run_command
 from research_repo_tools.release_pairs import ReleasePair
 from research_repo_tools.run_reports import load_latest_run
 
 import bench_compare as report
+from benchmark_contract import find_project_root
 from performance_artifacts import NO_API_COMPATIBILITY, resolve_shared_harness_compatibility
-from performance_phase import commands, discover
+from release_baseline import parse_benchmark_list
 
 if TYPE_CHECKING:
     from research_repo_tools.criterion import Estimate
 
-ARCHIVE = "docs/performance-runs"
-REPORT_CONFIG = ".config/performance-report.toml"
-SOURCES = ("src/**/*.rs", "Cargo.toml")
-HARNESS = (
-    "benches/**/*.rs",
-    "benches/comparison/Cargo.toml",
-    "examples/**/*.rs",
-    "Cargo.toml",
-    "Cargo.lock",
-    "rust-toolchain.toml",
-    "tests/exact_bench_config.rs",
-    "scripts/performance_phase.py",
-)
+REPORT_CONFIG = "tooling/performance-report.toml"
+MEASUREMENT_CONFIG = "tooling/performance.toml"
 UNAVAILABLE_PREFIXES = ("rational_input_", "canonical_conversion_", "det4_diagnostic_")
+
+
+def configuration(root: Path | None = None) -> MeasurementConfig:
+    """Load the shared measurement schema from the consumer checkout."""
+    config = load_measurement(root or find_project_root(), MEASUREMENT_CONFIG)
+    if not isinstance(config, MeasurementConfig):
+        msg = "la-stack requires schema 1 with dynamically discovered Criterion inventories"
+        raise ValueError(msg)  # noqa: TRY004 - wrong configuration schema, not a caller type error
+    return config
+
+
+def archive_directory(root: Path) -> str:
+    """Read the history path; shared report APIs validate its path and contents."""
+    archive = tomllib.loads((root / REPORT_CONFIG).read_text(encoding="utf-8")).get("archive")
+    if not isinstance(archive, str) or not archive:
+        msg = "performance report configuration requires an archive path"
+        raise ValueError(msg)
+    return archive
 
 
 def selected_ids(suite: str, scope: str, expected: tuple[str, ...]) -> tuple[str, ...]:
@@ -77,16 +86,24 @@ def measurement_plan(root: Path, pair: ReleasePair, suite: str, scope: str, list
     compatibility = resolve_shared_harness_compatibility(current=pair.current, baseline=pair.baseline, shared_harness_rational_inputs=True)
     baseline_env = phase_environment(root, compatibility.baseline_api_compatibility)
     current_env = phase_environment(root)
+    config = configuration(root)
     inventories = {}
     for phase in ("baseline", "current"):
         # Discover against the current API, then apply the exact groups excluded
         # by the historical cfg. Old method names cannot compile on current code.
         # The shared collector later checks this entire inventory on each source.
         env = os.environ | dict(current_env) | {"CRITERION_HOME": str(listing / phase)}
-        ids = discover(root, suite, phase, env)
+        ids = []
+        for selected in ("vs_linalg", "exact") if suite == "all" else (suite,):
+            command = (*config.command[:-1], f"{phase}-{selected}", "list")
+            result = run_command(command[0], command[1:], cwd=root, env=env, timeout=config.timeout)
+            ids.extend(parse_benchmark_list(result.stdout))
+        if len(ids) != len(set(ids)):
+            msg = "duplicate semantic benchmark IDs"
+            raise ValueError(msg)
         old_api = phase == "baseline" and compatibility.baseline_api_compatibility != NO_API_COMPATIBILITY
-        inventories[phase] = tuple(name for name in ids if not (old_api and name.startswith(UNAVAILABLE_PREFIXES)))
-    return declared_plan(pair, suite, scope, inventories, baseline_env=baseline_env, current_env=current_env)
+        inventories[phase] = tuple(sorted(name for name in ids if not (old_api and name.startswith(UNAVAILABLE_PREFIXES))))
+    return declared_plan(pair, suite, scope, inventories, baseline_env=baseline_env, current_env=current_env, config=config)
 
 
 def declared_plan(  # noqa: PLR0913
@@ -97,8 +114,10 @@ def declared_plan(  # noqa: PLR0913
     *,
     baseline_env: tuple[tuple[str, str], ...],
     current_env: tuple[tuple[str, str], ...],
+    config: MeasurementConfig | None = None,
 ) -> CommonHarnessPlan:
     """Bind exact case inventories, reference phases, commands and completeness."""
+    config = config or configuration()
     compatibility = resolve_shared_harness_compatibility(current=pair.current, baseline=pair.baseline, shared_harness_rational_inputs=True)
     selected = selected_ids(suite, scope, inventories["current"])
     unavailable = compatibility.baseline_api_compatibility != NO_API_COMPATIBILITY
@@ -120,38 +139,36 @@ def declared_plan(  # noqa: PLR0913
             series.append(RunSeries(library, "baseline", rows))
     phases = {
         phase: MeasurementPhase(
-            (sys.executable, "scripts/performance_phase.py", "measure", suite, phase),
-            (sys.executable, "scripts/performance_phase.py", "gate", suite, phase),
+            (*config.command[:-1], f"{phase}-{suite}"),
+            (*config.command[:-1], "gate"),
             CompletePolicy(inventories[phase], sample_count=100, statistics=("mean", "median"), confidence_level=0.95),
             environment,
         )
         for phase, environment in (("baseline", baseline_env), ("current", current_env))
     }
-    dependencies = tuple((name, "Cargo.lock") for name in ("criterion", "nalgebra", "faer"))
-    probes = (("rustc", ("rustc", "-vV")), ("cargo", ("cargo", "--version")))
-    config = MeasurementConfig(
-        phases["current"].command,
-        SOURCES,
-        HARNESS,
-        probes=probes,
-        dependencies=dependencies,
+    config = replace(
+        config,
+        command=phases["current"].command,
         context=(
+            *config.context,
             ("suite", suite),
             ("scope", scope),
             ("baseline-api-compatibility", compatibility.baseline_api_compatibility),
-            ("baseline-cargo-commands", json.dumps(commands(suite, "baseline"))),
-            ("current-cargo-commands", json.dumps(commands(suite, "current"))),
-        ),
-        compatible=(
-            "harness_sha256",
-            "context.os",
-            "context.architecture",
-            "context.cpu",
-            *(f"context.tool.{name}" for name, _ in probes),
-            *(f"context.dependency.{name}" for name, _ in dependencies),
         ),
     )
     return CommonHarnessPlan(config, phases["baseline"], phases["current"], tuple(series))
+
+
+def _legacy_cargo_commands(suite: str, phase: str) -> str:
+    """Validate the frozen pre-Just evidence contract without running its driver."""
+    suites = {"vs_linalg": ("-p", "la-stack-comparison", "--features", "bench"), "exact": ("--features", "bench,exact")}
+    return json.dumps(
+        [
+            ("cargo", "bench", "--locked", *features, "--bench", name, "--", *(("la_stack",) if phase == "current" and name == "vs_linalg" else ()), "--noplot")
+            for name, features in suites.items()
+            if suite in {"all", name}
+        ]
+    )
 
 
 def validate_scientific_run(evidence: Evidence, *, release: bool = False) -> CompleteRun:  # noqa: C901
@@ -178,18 +195,28 @@ def validate_scientific_run(evidence: Evidence, *, release: bool = False) -> Com
     if run.series != expected.series or context["baseline-api-compatibility"] != compatibility.baseline_api_compatibility:
         msg = "retained series or compatibility policy differs from la-stack declarations"
         raise ValueError(msg)
-    if set(run.compatible) != set(expected.measurement.compatible):
+    legacy = "phase-driver" not in context
+    compatible = set(expected.measurement.compatible) - ({"context.tool.just"} if legacy else set())
+    if set(run.compatible) != compatible:
         msg = "retained run omits required host, toolchain, or dependency compatibility"
         raise ValueError(msg)
+    required = dict(expected.measurement.context)
+    if legacy:
+        del required["phase-driver"]
+        required.update((f"{phase}-cargo-commands", _legacy_cargo_commands(context["suite"], phase)) for phase in ("baseline", "current"))
     for phase, source in evidence.sources:
         actual = dict(source.context)
-        if any(actual.get(key) != value for key, value in expected.measurement.context):
+        if actual.get("phase-driver") != context.get("phase-driver") or any(actual.get(key) != value for key, value in required.items()):
             msg = "retained phase differs from the declared consumer policy"
             raise ValueError(msg)
         for key, command in (("command", getattr(expected, phase).command), ("gate-command", getattr(expected, phase).gate)):
-            # Interpreter paths vary across hosts; retain them without executing
-            # evidence-supplied commands during offline rendering.
-            if tuple(json.loads(actual[key]))[1:] != command[1:]:
+            recorded = tuple(json.loads(actual[key]))
+            if legacy:
+                # Interpreter paths varied across hosts. Old evidence remains
+                # readable without retaining or executing the Python driver.
+                command = ("scripts/performance_phase.py", "measure" if key == "command" else "gate", context["suite"], phase)
+                recorded = recorded[1:]
+            if recorded != command:
                 raise ValueError(f"retained {phase} {key} differs from the declared Cargo phase")
     return run
 
@@ -205,7 +232,7 @@ def retained_run(root: Path, stem: Path) -> Evidence:
     legacy = (stem.with_suffix(".csv"), stem.with_suffix(".provenance.json"), stem.with_suffix(".full.csv"), stem.with_suffix(".full.provenance.json"))
     # Partial new or legacy scratch must never silently select older history.
     present = any(path.exists() or path.is_symlink() for path in (*paths, *legacy))
-    evidence = load_evidence(*paths) if present else load_latest_run(root, ARCHIVE)
+    evidence = load_evidence(*paths) if present else load_latest_run(root, archive_directory(root))
     validate_scientific_run(evidence)
     return evidence
 
@@ -214,9 +241,10 @@ def verify_current_source(root: Path, evidence: Evidence) -> None:
     """Bind README publication to the measured current library and captured harness."""
     source = dict(evidence.sources)["current"]
     context = dict(source.context)
+    config = configuration(root)
     for key, expected in (("source-inventory", source.source_sha256), ("harness-inventory", source.harness_sha256)):
         names = json.loads(context[key])
-        patterns = SOURCES if key == "source-inventory" else HARNESS
+        patterns = config.sources if key == "source-inventory" else config.harness
         actual = {path.relative_to(root).as_posix() for pattern in patterns for path in root.glob(pattern)}
         if actual != set(names):
             raise ValueError(f"current {key} has stale file membership")
@@ -251,22 +279,17 @@ def render_scientific_report(evidence: Evidence) -> bytes:
             current_only.append(f"- `{name}`: current {report.format_time(estimate.point)}; baseline API unavailable.")
             continue
 
-        def converted(value: Estimate | None) -> report.CriterionEstimate | None:
-            return report.CriterionEstimate(value.point, value.lower, value.upper) if value is not None else None
-
         comparisons.append(
             report.Comparison(
                 suite="exact" if group.startswith(("exact_", *UNAVAILABLE_PREFIXES)) else "vs_linalg",
                 group=group,
                 bench=bench,
                 baseline_bench=bench,
-                baseline=report.CriterionEstimate(prior.point, prior.lower, prior.upper),
-                current=report.CriterionEstimate(estimate.point, estimate.lower, estimate.upper),
-                assessment=report.assess_change(
-                    report.CriterionEstimate(prior.point, prior.lower, prior.upper), report.CriterionEstimate(estimate.point, estimate.lower, estimate.upper)
-                ),
-                baseline_nalgebra=converted(values.get("nalgebra", {}).get(name)),
-                baseline_faer=converted(values.get("faer", {}).get(name)),
+                baseline=prior,
+                current=estimate,
+                assessment=report.assess_change(prior, estimate),
+                baseline_nalgebra=values.get("nalgebra", {}).get(name),
+                baseline_faer=values.get("faer", {}).get(name),
             )
         )
     lines = [

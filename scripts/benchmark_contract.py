@@ -1,10 +1,21 @@
 """Stable content identity for release benchmark measurements."""
 
 import hashlib
-from typing import TYPE_CHECKING, Final
+from pathlib import Path
+from typing import Final
 
-if TYPE_CHECKING:
-    from pathlib import Path
+
+def find_project_root(start: Path | None = None) -> Path:
+    """Find the nearest Cargo manifest from the caller's working directory."""
+    directory = (start or Path.cwd()).resolve()
+    if directory.is_file():
+        directory = directory.parent
+    for candidate in (directory, *directory.parents):
+        if (candidate / "Cargo.toml").is_file():
+            return candidate
+    msg = "Could not locate Cargo.toml to determine benchmark root"
+    raise FileNotFoundError(msg)
+
 
 BENCHMARK_CONTRACT_DIRS: Final[tuple[str, ...]] = ("benches",)
 BENCHMARK_CONTRACT_FILES: Final[tuple[str, ...]] = (

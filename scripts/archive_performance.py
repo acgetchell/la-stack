@@ -18,7 +18,7 @@ from research_repo_tools.complete_runs import run_identity
 from research_repo_tools.evidence import Evidence, serialize_evidence
 from research_repo_tools.files import replace_many
 from research_repo_tools.measurement import resolve_revision
-from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics, run_git_command, run_safe_command
+from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics, run_command
 from research_repo_tools.publication import plan_outputs, publish_publication
 from research_repo_tools.release_assets import download_release_asset
 from research_repo_tools.release_discovery import normalize_tag, stable_published_releases
@@ -27,12 +27,12 @@ from research_repo_tools.run_reports import load_run_report_plan
 from research_repo_tools.worktrees import apply_snapshot, capture_snapshot, temporary_worktree
 
 from bench_compare import render_historical_assets, render_release_artifacts
-from benchmark_process import find_project_root
+from benchmark_contract import find_project_root
 from benchmark_summaries import resolve_report_paths
 from performance_artifacts import ArtifactPaths, load_bundle, resolve_shared_harness_compatibility
 from performance_runs import (
-    ARCHIVE,
     REPORT_CONFIG,
+    archive_directory,
     measurement_plan,
     render_scientific_report,
     retained_run,
@@ -54,7 +54,7 @@ def select_pair(root: Path, mode: PairMode, current: str | None, baseline: str |
     package = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
     releases = ()
     if mode != "explicit":
-        response = run_safe_command(
+        response = run_command(
             "gh",
             ["release", "list", "--repo", "acgetchell/la-stack", "--limit", "1000", "--json", "tagName,isDraft,isPrerelease,publishedAt"],
             cwd=root,
@@ -78,7 +78,7 @@ def measure(root: Path, pair: ReleasePair, suite: str, scope: str) -> Evidence:
         raise ValueError(msg)
     snapshot = replace(capture_snapshot(root), untracked=())
     # The existing consumer contract deliberately excludes untracked files.
-    run_git_command(["fetch", "origin", f"refs/tags/{pair.baseline}:refs/tags/{pair.baseline}"], cwd=root)
+    run_command("git", ["--no-pager", "fetch", "origin", f"refs/tags/{pair.baseline}:refs/tags/{pair.baseline}"], cwd=root)
     baseline_revision = resolve_revision(root, pair.baseline)
     parent = Path(tempfile.mkdtemp(prefix="la-stack-performance-"))
     try:
@@ -126,7 +126,7 @@ def promote(root: Path, stem: Path) -> None:
         kwargs = {"payload": payload.relative_to(root).as_posix(), "manifest": manifest.relative_to(root).as_posix()}
     history = load_run_report_plan(root, REPORT_CONFIG, **kwargs)
     outputs = dict(history.outputs)
-    if json.loads(outputs[f"{ARCHIVE}/latest.json"])["run"]["id"] != run_identity(evidence):
+    if json.loads(outputs[f"{archive_directory(root)}/latest.json"])["run"]["id"] != run_identity(evidence):
         msg = "selected evidence changed while composing scientific report"
         raise ValueError(msg)
     outputs["docs/performance.md"] = render_scientific_report(evidence)
@@ -218,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "report":
             if args.current or args.baseline:
                 parser.error("report reads retained evidence and takes no release labels")
-            if any(path.exists() or path.is_symlink() for path in (*scratch_paths(stem), root / ARCHIVE)):
+            if any(path.exists() or path.is_symlink() for path in (*scratch_paths(stem), root / archive_directory(root))):
                 promote(root, stem)
             else:
                 paths = resolve_report_paths(root, ArtifactPaths(stem.with_suffix(".csv"), stem.with_suffix(".provenance.json")))

@@ -11,18 +11,11 @@ from typing import TYPE_CHECKING
 from research_repo_tools import process as shared_process
 from research_repo_tools.process import run_command, run_git_bytes as git_input
 
-import benchmark_process as utils
-from benchmark_process import run_git_command, run_safe_command
-
 if TYPE_CHECKING:
     from pathlib import Path
 
 
 def git_input_routing(payload: str, argv: list[str]) -> None:
-    # ruleid: la-stack.python.git-stdin-use-shared-helper
-    run_safe_command("git", argv, input=payload)
-    # ruleid: la-stack.python.git-stdin-use-shared-helper
-    utils.run_safe_command("git", argv, input=payload)
     # ruleid: la-stack.python.git-stdin-use-shared-helper
     run_command("git", argv, input=payload)
     # ruleid: la-stack.python.git-stdin-use-shared-helper
@@ -44,12 +37,10 @@ def git_input_routing(payload: str, argv: list[str]) -> None:
     # ok: la-stack.python.git-stdin-use-shared-helper
     shared_process.run_git_bytes(argv, input=payload.encode("utf-8"))
     # ok: la-stack.python.git-stdin-use-shared-helper
-    run_git_command(argv)
+    run_command("git", ["--no-pager", *argv])
     # ok: la-stack.python.git-stdin-use-shared-helper
     shared_process.run_command("git", argv, input=None)
     # Ordinary text input to non-Git commands is outside this rule's scope.
-    # ok: la-stack.python.git-stdin-use-shared-helper
-    run_safe_command("ruff", ["check", "-"], input=payload)
     # ok: la-stack.python.git-stdin-use-shared-helper
     run_command("ruff", ["check", "-"], input=payload)
     # ok: la-stack.python.git-stdin-use-shared-helper

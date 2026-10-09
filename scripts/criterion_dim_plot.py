@@ -15,7 +15,6 @@ Rust linear algebra crates across dimensions.
 import argparse
 import hashlib
 import json
-import math
 import platform
 import re
 import shutil
@@ -29,14 +28,13 @@ from pathlib import Path
 from typing import Final, TypeGuard, cast
 
 from research_repo_tools.complete_runs import run_identity
-from research_repo_tools.criterion import Statistic, read_estimate
+from research_repo_tools.criterion import Comparison, Estimate, Statistic, read_estimate
 from research_repo_tools.evidence import serialize_evidence
 from research_repo_tools.files import replace_many
-from research_repo_tools.process import ExecutableNotFoundError, cpu_description, format_exception_diagnostics
+from research_repo_tools.process import ExecutableNotFoundError, cpu_description, format_exception_diagnostics, run_command
 from research_repo_tools.publication import MarkerPair, plan_outputs, publish_publication, replace_section
 
-from benchmark_contract import benchmark_contract_digest
-from benchmark_process import find_project_root, run_git_command, run_safe_command
+from benchmark_contract import benchmark_contract_digest, find_project_root
 from benchmark_summaries import report_input_paths, resolve_report_paths
 from performance_artifacts import ArtifactPaths, PerformanceBundle, TimingEstimate, ensure_distinct_paths, load_bundle
 
@@ -113,21 +111,9 @@ class Row:
         if self.dim <= 0:
             msg = f"dimension must be positive: {self.dim}"
             raise ValueError(msg)
-        for field, value in (
-            ("la_time", self.la_time),
-            ("la_lo", self.la_lo),
-            ("la_hi", self.la_hi),
-            ("na_time", self.na_time),
-            ("na_lo", self.na_lo),
-            ("na_hi", self.na_hi),
-            ("fa_time", self.fa_time),
-            ("fa_lo", self.fa_lo),
-            ("fa_hi", self.fa_hi),
-        ):
-            _require_positive_finite_time(value, field)
-        _require_confidence_interval(self.la_lo, self.la_hi, "la_stack row")
-        _require_confidence_interval(self.na_lo, self.na_hi, "nalgebra row")
-        _require_confidence_interval(self.fa_lo, self.fa_hi, "faer row")
+        Estimate(self.la_time, self.la_lo, self.la_hi)
+        Estimate(self.na_time, self.na_lo, self.na_hi)
+        Estimate(self.fa_time, self.fa_lo, self.fa_hi)
 
 
 class ReadmeBenchmarkLinkError(ValueError):
@@ -310,19 +296,6 @@ def _read_estimate(estimates_json: Path, stat: str) -> tuple[float, float, float
     return estimate.point, estimate.lower, estimate.upper
 
 
-def _require_positive_finite_time(value: float, context: str) -> float:
-    if not math.isfinite(value) or value <= 0.0:
-        msg = f"{context} must be finite and positive: {value!r}"
-        raise ValueError(msg)
-    return value
-
-
-def _require_confidence_interval(lo: float, hi: float, context: str) -> None:
-    if lo > hi:
-        msg = f"{context} lower bound must be <= upper bound: {lo!r} > {hi!r}"
-        raise ValueError(msg)
-
-
 def _write_csv(out_csv: Path, rows: list[Row]) -> None:
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     with out_csv.open("w", encoding="utf-8", newline="\n") as f:
@@ -333,9 +306,7 @@ def _write_csv(out_csv: Path, rows: list[Row]) -> None:
 
 def _pct_reduction(baseline: float, value: float) -> str:
     """Percent time reduction relative to baseline (positive = value is faster)."""
-    if baseline == 0.0:
-        return "n/a"
-    pct = ((baseline - value) / baseline) * 100.0
+    pct = Comparison("dimension", Estimate(baseline), Estimate(value)).percent_reduction
     return f"{pct:+.1f}%"
 
 
@@ -430,7 +401,7 @@ def _render_svg_with_gnuplot(req: PlotRequest) -> None:
     )
 
     try:
-        run_safe_command("gnuplot", [], input="\n".join(gp_lines))
+        run_command("gnuplot", [], input="\n".join(gp_lines))
     except ExecutableNotFoundError as exc:
         msg = "gnuplot not found. Install it (macOS: `brew install gnuplot`) or re-run with --no-plot."
         raise FileNotFoundError(msg) from exc
@@ -616,7 +587,7 @@ def _collect_rows(criterion_dir: Path, dims: list[int], metric: Metric, stat: st
 def _git_value(root: Path, args: list[str]) -> str:
     """Return deterministic Git provenance or an explicit unavailable label."""
     try:
-        value = run_git_command(args, cwd=root).stdout.strip()
+        value = run_command("git", ["--no-pager", *args], cwd=root).stdout.strip()
     except (
         ExecutableNotFoundError,
         OSError,
@@ -630,7 +601,8 @@ def _git_value(root: Path, args: list[str]) -> str:
 def _git_status_metadata(root: Path) -> tuple[bool | None, str]:
     """Return checkout cleanliness and a deterministic digest of porcelain status."""
     try:
-        status = run_git_command(
+        status = run_command(
+            "git",
             ["--no-pager", "status", "--porcelain=v1", "--untracked-files=all"],
             cwd=root,
         ).stdout
@@ -708,7 +680,7 @@ def _provenance_harness_digest(root: Path) -> tuple[str, list[str]]:
 def _rustc_version(root: Path) -> str:
     """Return the rustc version used by the publication workflow."""
     try:
-        value = run_safe_command(
+        value = run_command(
             "rustc",
             ["--version"],
             cwd=root,
@@ -1242,10 +1214,11 @@ def _complete_readme(root: Path, args: PlotCliArgs) -> int:
     payload, manifest = complete.scratch_paths(root / "target/bench-reports/performance")
     identity = run_identity(evidence)
     if not payload.exists():
-        payload = root / complete.ARCHIVE / "runs" / identity / "run.json"
+        archive = root / complete.archive_directory(root)
+        payload = archive / "runs" / identity / "run.json"
         manifest = payload.with_name("evidence.json")
         for name in ("index.json", "latest.json"):
-            path = root / complete.ARCHIVE / name
+            path = archive / name
             inputs[path] = path.read_bytes()
     inputs.update(zip((payload, manifest), serialize_evidence(evidence), strict=True))
     provenance: dict[str, object] = {

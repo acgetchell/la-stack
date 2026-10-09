@@ -3,7 +3,10 @@
 import hashlib
 import io
 import json
+import os
+import shlex
 import shutil
+import sys
 import tarfile
 from dataclasses import replace
 from pathlib import Path
@@ -12,7 +15,8 @@ from typing import TYPE_CHECKING
 import pytest
 from research_repo_tools.common_measurement import CommonHarnessPlan, measure_prepared_pair
 from research_repo_tools.complete_runs import RunSeries, run_identity, serialize_run
-from research_repo_tools.process import run_git_command
+from research_repo_tools.just_inspect import dry_run
+from research_repo_tools.process import run_command
 from research_repo_tools.release_pairs import ReleasePair
 
 import archive_performance as workflow
@@ -20,7 +24,6 @@ import criterion_dim_plot as plot
 import performance_runs as policy
 from bench_compare import render_release_artifacts
 from performance_artifacts import ArtifactPaths
-from performance_phase import commands
 from release_baseline import required_report_ids
 
 if TYPE_CHECKING:
@@ -30,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PAIR = ReleasePair("v0.4.6", "v0.4.5")
 DRIVER = """import json, os, sys
 from pathlib import Path
-action, suite, phase = sys.argv[1:]
+action, phase = sys.argv[1:]
 fault = os.environ.get("FIXTURE_FAULT", "")
 if action == "gate":
     if fault == "gate":
@@ -64,15 +67,28 @@ def prepared(tmp_path: Path, fault: str = "") -> tuple[Path, Path, CommonHarness
         root.mkdir(parents=True)
         (root / "src").mkdir()
         (root / "src/lib.rs").write_text(f"// {phase}\n", encoding="utf-8")
-        for pattern in policy.HARNESS:
+        for pattern in policy.configuration(ROOT).harness:
             for source in ROOT.glob(pattern):
                 destination = root / source.relative_to(ROOT)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, destination)
-        (root / "scripts/performance_phase.py").write_text(f"INVENTORIES = {inventories!r}\n" + DRIVER, encoding="utf-8")
-        run_git_command(["init", "--quiet"], cwd=root)
-        run_git_command(
+        (root / "tooling/fixture.py").write_text(f"INVENTORIES = {inventories!r}\n" + DRIVER, encoding="utf-8")
+        (root / "tooling/performance.just").write_text(
+            "\n".join(
+                f"{recipe}:\n    {shlex.quote(sys.executable)} tooling/fixture.py {action} {phase}\n"
+                for recipe, action, phase in (("gate", "gate", "current"), ("baseline-all", "measure", "baseline"), ("current-all", "measure", "current"))
+            ),
+            encoding="utf-8",
+        )
+        config = (root / policy.MEASUREMENT_CONFIG).read_text(encoding="utf-8")
+        (root / policy.MEASUREMENT_CONFIG).write_text(
+            config.replace('    "tooling/performance.just",', '    "tooling/performance.just", "tooling/fixture.py",'), encoding="utf-8"
+        )
+        run_command("git", ["--no-pager", "init", "--quiet"], cwd=root)
+        run_command(
+            "git",
             [
+                "--no-pager",
                 "-c",
                 "user.name=Fixture",
                 "-c",
@@ -88,14 +104,16 @@ def prepared(tmp_path: Path, fault: str = "") -> tuple[Path, Path, CommonHarness
             cwd=root,
         )
     baseline, current = tmp_path / "baseline", tmp_path / "current"
-    plan = policy.declared_plan(PAIR, "all", "release-signal", inventories, baseline_env=(("FIXTURE_FAULT", fault),), current_env=())
+    plan = policy.declared_plan(
+        PAIR, "all", "release-signal", inventories, baseline_env=(("FIXTURE_FAULT", fault),), current_env=(), config=policy.configuration(current)
+    )
     return baseline, current, plan
 
 
 def measured(tmp_path: Path) -> tuple[Path, Evidence]:
     baseline, current, plan = prepared(tmp_path)
     evidence = measure_prepared_pair(baseline, current, plan, PAIR, working_tree=True)
-    (current / ".config").mkdir(exist_ok=True)
+    (current / "tooling").mkdir(exist_ok=True)
     shutil.copyfile(ROOT / policy.REPORT_CONFIG, current / policy.REPORT_CONFIG)
     return current, evidence
 
@@ -129,18 +147,20 @@ def test_declared_gates_and_completeness_fail_closed(tmp_path: Path, fault: str)
 
 def test_shared_retention_repeated_runs_and_offline_report(tmp_path: Path) -> None:
     root, first = measured(tmp_path)
+    config = root / policy.REPORT_CONFIG
+    config.write_text(config.read_text(encoding="utf-8").replace("docs/performance-runs", "docs/performance-history"), encoding="utf-8")
     stem = root / "target/bench-reports/performance"
     workflow.save_scratch(root, stem, first)
     workflow.promote(root, stem)
     first_report = (root / "docs/performance.md").read_bytes()
-    retained = root / policy.ARCHIVE / "runs" / run_identity(first)
+    retained = root / policy.archive_directory(root) / "runs" / run_identity(first)
     original = {path: path.read_bytes() for path in retained.iterdir()}
     # A second valid measurement with the same release pair has new provenance.
     sources = tuple((phase, replace(source, context=(*source.context, ("experiment", "second")))) for phase, source in first.sources)
     second = replace(first, sources=sources)
     workflow.save_scratch(root, stem, second)
     workflow.promote(root, stem)
-    assert len(list((root / policy.ARCHIVE / "runs").iterdir())) == 2
+    assert len(list((root / policy.archive_directory(root) / "runs").iterdir())) == 2
     assert {path: path.read_bytes() for path in original} == original
     assert (root / "docs/archive/performance/v0.4.6-vs-v0.4.5.md").read_bytes() == first_report
     shutil.rmtree(root / "target")
@@ -148,7 +168,7 @@ def test_shared_retention_repeated_runs_and_offline_report(tmp_path: Path) -> No
     before = (root / "docs/performance.md").read_bytes()
     workflow.promote(root, stem)
     assert (root / "docs/performance.md").read_bytes() == before
-    (root / policy.ARCHIVE / "latest.json").write_text("{}", encoding="utf-8")
+    (root / policy.archive_directory(root) / "latest.json").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match=r"latest|pointer|fields|schema"):
         policy.retained_run(root, stem)
 
@@ -201,13 +221,89 @@ def test_legacy_bytes_hashes_and_report_are_unchanged() -> None:
 
 
 def test_native_command_policy_and_compatibility_adapter() -> None:
-    assert all("--locked" in command and "--noplot" in command for command in commands("all", "baseline"))
-    assert "la_stack" in commands("vs_linalg", "current")[0]
-    assert "la_stack" not in commands("vs_linalg", "baseline")[0]
+    justfile = Path("tooling/performance.just")
+    baseline = dry_run(ROOT, "baseline-all", justfile=justfile).stderr
+    current = dry_run(ROOT, "current-all", justfile=justfile).stderr
+    assert baseline.count("cargo bench --locked") == current.count("cargo bench --locked") == 2
+    assert baseline.count("--noplot") == current.count("--noplot") == 2
+    assert "la_stack" in current
+    assert "la_stack" not in baseline
+    assert "--list" not in baseline
+    assert dry_run(ROOT, "baseline-all", ["list"], justfile=justfile).stderr.count("--list") == 2
+    gate = dry_run(ROOT, "gate", justfile=justfile).stderr
+    assert "--test vs_linalg_inputs --test exact_bench_config" in gate
     environment = dict(policy.phase_environment(ROOT, "la_stack_pre_rational_input_api"))
     assert "--cfg=la_stack_pre_rational_input_api" in environment.get("CARGO_ENCODED_RUSTFLAGS", environment.get("RUSTFLAGS", ""))
     assert environment["CARGO_TARGET_DIR"] == "target"
     assert environment["CRITERION_HOME"] == "target/criterion"
+
+
+def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise the configured Justfile, stubbing only the expensive Cargo boundary."""
+    root = tmp_path / "checkout with spaces"
+    shutil.copytree(ROOT / "tooling", root / "tooling")
+    shutil.copyfile(ROOT / "rust-toolchain.toml", root / "rust-toolchain.toml")
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    cargo = binary / "cargo"
+    cargo.write_text(
+        "#!/bin/sh\n"
+        'printf "%s|%s\\n" "$PWD" "$*" >> "$CARGO_RECORD"\n'
+        'case "$*" in\n'
+        '  *"--bench exact"*) printf "exact_d2/det: benchmark\\n" ;;\n'
+        '  *"la_stack --noplot"*) printf "d2/la_stack_lu_solve: benchmark\\n" ;;\n'
+        '  *"--bench vs_linalg"*) printf "%s: benchmark\\n" d2/la_stack_lu_solve d2/nalgebra_lu_solve d2/faer_lu_solve ;;\n'
+        "esac\n",
+        encoding="utf-8",
+    )
+    cargo.chmod(0o755)
+    record = tmp_path / "commands.txt"
+    monkeypatch.setenv("PATH", f"{binary}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("CARGO_RECORD", str(record))
+    plan = policy.measurement_plan(root, PAIR, "all", "all-benches", tmp_path / "inventory")
+    assert plan.current.policy.expected == ("d2/la_stack_lu_solve", "exact_d2/det")
+    assert set(plan.baseline.policy.expected) == {"d2/la_stack_lu_solve", "d2/nalgebra_lu_solve", "d2/faer_lu_solve", "exact_d2/det"}
+    for command in (plan.baseline.gate, plan.baseline.command, plan.current.command):
+        run_command(command[0], command[1:], cwd=root)
+    lines = record.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 9
+    assert all(line.startswith(f"{root}|") and "--locked" in line for line in lines)
+    assert all("--list" in line for line in lines[:4])
+    assert all("--list" not in line for line in lines[4:])
+    assert "test --locked --workspace --features bench,exact --test vs_linalg_inputs --test exact_bench_config" in lines[4]
+
+
+def test_pre_just_run_remains_readable_without_its_python_driver(tmp_path: Path) -> None:
+    _, evidence = measured(tmp_path)
+    run = policy.validate_scientific_run(evidence)
+    cargo = {
+        "baseline": [
+            ["cargo", "bench", "--locked", "-p", "la-stack-comparison", "--features", "bench", "--bench", "vs_linalg", "--", "--noplot"],
+            ["cargo", "bench", "--locked", "--features", "bench,exact", "--bench", "exact", "--", "--noplot"],
+        ],
+        "current": [
+            ["cargo", "bench", "--locked", "-p", "la-stack-comparison", "--features", "bench", "--bench", "vs_linalg", "--", "la_stack", "--noplot"],
+            ["cargo", "bench", "--locked", "--features", "bench,exact", "--bench", "exact", "--", "--noplot"],
+        ],
+    }
+    sources = []
+    for phase, source in evidence.sources:
+        context = dict(source.context)
+        del context["phase-driver"]
+        del context["tool.just"]
+        context.update((f"{name}-cargo-commands", json.dumps(commands)) for name, commands in cargo.items())
+        for key, action in (("command", "measure"), ("gate-command", "gate")):
+            context[key] = json.dumps(["/retired/venv/python", "scripts/performance_phase.py", action, "all", phase])
+        sources.append((phase, replace(source, context=tuple(context.items()))))
+    legacy = replace(
+        evidence,
+        sources=tuple(sources),
+        payload=serialize_run(replace(run, compatible=tuple(field for field in run.compatible if field != "context.tool.just"))),
+    )
+    assert b"not rerun in the current phase" in policy.render_scientific_report(legacy)
+    bad = replace(sources[0][1], context=tuple((key, "[]" if key == "baseline-cargo-commands" else value) for key, value in sources[0][1].context))
+    with pytest.raises(ValueError, match="consumer policy"):
+        policy.validate_scientific_run(replace(legacy, sources=(("baseline", bad), sources[1])))
 
 
 def test_local_explicit_labels_and_release_eligibility() -> None:
@@ -243,8 +339,8 @@ def test_reference_phase_and_same_version_policy(tmp_path: Path) -> None:
     # current selection allows a narrow all-benches same-version comparison.
     inventories["current"] = tuple(name for name in inventories["current"] if name in inventories["baseline"])
     driver = f"INVENTORIES = {inventories!r}\n" + DRIVER
-    (current / "scripts/performance_phase.py").write_text(driver, encoding="utf-8")
-    plan = policy.declared_plan(pair, "all", "all-benches", inventories, baseline_env=(), current_env=())
+    (current / "tooling/fixture.py").write_text(driver, encoding="utf-8")
+    plan = policy.declared_plan(pair, "all", "all-benches", inventories, baseline_env=(), current_env=(), config=policy.configuration(current))
     same = measure_prepared_pair(baseline, current, plan, pair, working_tree=True)
     policy.validate_scientific_run(same)
     with pytest.raises(ValueError, match="same-version"):
@@ -272,7 +368,7 @@ def test_publication_io_failure_preserves_all_published_outputs(tmp_path: Path, 
 
     def fail_once(source: Path, destination: Path) -> Path:
         nonlocal failed
-        if destination == root / policy.ARCHIVE / "latest.json" and not failed:
+        if destination == root / policy.archive_directory(root) / "latest.json" and not failed:
             failed = True
             msg = "injected publication failure"
             raise OSError(msg)

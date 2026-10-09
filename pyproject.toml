@@ -41,7 +41,7 @@ criterion-dim-plot = "criterion_dim_plot:main"
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-py-modules = [ "archive_performance", "bench_compare", "benchmark_contract", "benchmark_process", "benchmark_summaries", "criterion_dim_plot", "performance_artifacts", "performance_phase", "performance_runs", "release_baseline" ]
+py-modules = [ "archive_performance", "bench_compare", "benchmark_contract", "benchmark_summaries", "criterion_dim_plot", "performance_artifacts", "performance_runs", "release_baseline" ]
 
 [tool.ruff]
 line-length = 160
@@ -88,11 +88,9 @@ known-first-party = [
     "archive_performance",
     "bench_compare",
     "benchmark_contract",
-    "benchmark_process",
     "benchmark_summaries",
     "criterion_dim_plot",
     "performance_artifacts",
-    "performance_phase",
     "performance_runs",
     "release_baseline",
 ]
@@ -140,7 +138,7 @@ line-length = 160
 
 [tool.uv]
 package = true
-required-version = "==0.12.23"
+required-version = "==0.12.24"
 # Semgrep wheels bundle the native engine; building its sdist does not.
 no-build-package = [ "semgrep" ]
 # Semgrep 1.178.0 restricts PyJWT to 2.13.x; 2.15.1 contains the OSV fixes.

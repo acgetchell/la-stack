@@ -152,7 +152,10 @@ just performance-local
 
 This creates isolated temporary worktrees and runs both library revisions on the
 same machine with the current checkout's benchmark sources, manifests, lockfile,
-benchmark-input tests, phase driver, and Rust toolchain. Current example sources are
+benchmark-input tests, native Just recipes, measurement configuration, and Rust
+toolchain. The declarations live in `tooling/performance.just` and
+`tooling/performance.toml`; `tooling/performance-report.toml` owns shared report
+and retention paths. Current example sources are
 also copied so Cargo can resolve every target declared by the shared manifest;
 the comparison does not build or time those examples. Staged and unstaged changes
 to tracked files are applied to the current worktree. Untracked files are

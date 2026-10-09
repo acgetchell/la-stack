@@ -270,34 +270,6 @@ def test_exact_registry_tracks_every_rational_input_release_dimension() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_read_estimate_success(tmp_path: Path) -> None:
-    est = tmp_path / "estimates.json"
-    _write_estimates(est, "median", 42.0)
-    estimate = bench_compare._read_estimate(est, "median")
-    assert estimate.point_ns == 42.0
-    assert estimate.ci_lo_ns == pytest.approx(42.0 * 0.9)
-    assert estimate.ci_hi_ns == pytest.approx(42.0 * 1.1)
-
-
-def test_read_estimate_no_ci(tmp_path: Path) -> None:
-    """Missing confidence bounds remain unavailable rather than implying certainty."""
-    est = tmp_path / "estimates.json"
-    est.parent.mkdir(parents=True, exist_ok=True)
-    est.write_text(
-        json.dumps({"median": {"point_estimate": 99.0}}),
-        encoding="utf-8",
-    )
-    estimate = bench_compare._read_estimate(est, "median")
-    assert estimate.point_ns == 99.0
-    assert estimate.ci_lo_ns is None
-    assert estimate.ci_hi_ns is None
-
-
-# ---------------------------------------------------------------------------
-# collect_results / collect_comparisons
-# ---------------------------------------------------------------------------
-
-
 def test_collect_results(tmp_path: Path) -> None:
     _build_criterion_tree(tmp_path)
     results = bench_compare._collect_results(tmp_path, "new", "median")
@@ -581,8 +553,8 @@ def test_comparison_table_preserves_signed_change(current_ns: float, change: str
         suite="exact",
         group="exact_d2",
         bench="det",
-        baseline=bench_compare.CriterionEstimate(10.0, None, None),
-        current=bench_compare.CriterionEstimate(current_ns, None, None),
+        baseline=bench_compare.Estimate(10.0, None, None),
+        current=bench_compare.Estimate(current_ns, None, None),
         assessment="unknown",
     )
 
@@ -1355,7 +1327,7 @@ def test_generate_markdown_labels_absent_provenance_unavailable(tmp_path: Path, 
 def test_git_source_date_is_normalized_to_unambiguous_utc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         bench_compare,
-        "run_git_command",
+        "run_command",
         lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout="2026-06-01T05:34:56-07:00\n"),
     )
 

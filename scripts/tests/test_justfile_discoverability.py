@@ -3,17 +3,17 @@
 import json
 import re
 import shlex
-import shutil
-import subprocess
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+from research_repo_tools.just_inspect import dry_run, inspect_justfile
 from research_repo_tools.process import run_command
 
-from benchmark_process import run_safe_command
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+if TYPE_CHECKING:
+    import subprocess
 
 
 def run_just(
@@ -22,24 +22,12 @@ def run_just(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run the repository's installed Just executable without a shell."""
-    executable = shutil.which("just")
-    assert executable is not None
-    return subprocess.run(  # noqa: S603 - executable is resolved; arguments are fixed by tests.
-        [executable, *args],
-        cwd=REPO_ROOT,
-        check=check,
-        capture_output=True,
-        encoding="utf-8",
-        env=env,
-    )
+    return run_command("just", args, cwd=REPO_ROOT, check=check, env=env)
 
 
 def just_recipes() -> dict[str, dict[str, Any]]:
     """Return parsed recipe metadata from the pinned Just executable."""
-    result = run_just("--dump", "--dump-format", "json")
-    recipes = json.loads(result.stdout)["recipes"]
-    assert isinstance(recipes, dict)
-    return recipes
+    return inspect_justfile(REPO_ROOT).recipes
 
 
 def test_exact_benchmark_package_excludes_peer_libraries() -> None:
@@ -66,11 +54,11 @@ def test_exact_benchmark_package_excludes_peer_libraries() -> None:
 
 
 def test_release_runs_each_suite_once_and_reuses_peer_measurements() -> None:
-    baseline = run_just("--dry-run", "bench-save-baseline", "v0.4.5", "all")
+    baseline = dry_run(REPO_ROOT, "bench-save-baseline", ["v0.4.5", "all"])
     # Execute the real recipe's shell branching while replacing only Cargo.
     runner = run_just("--evaluate", "_run").stdout.strip()
     script = 'cargo() { printf "%s\\n" "$*"; }\n' + baseline.stderr.replace(runner + " ", "")
-    baseline_run = run_safe_command("bash", ["--noprofile", "--norc", "-euc", script], cwd=REPO_ROOT)
+    baseline_run = run_command("bash", ["--noprofile", "--norc", "-euc", script], cwd=REPO_ROOT)
     baseline_commands = [shlex.split(line) for line in baseline_run.stdout.splitlines()]
     recipes = just_recipes()
     current = recipes["bench-latest"]
@@ -79,7 +67,7 @@ def test_release_runs_each_suite_once_and_reuses_peer_measurements() -> None:
     for dependency in current["dependencies"]:
         recipe = recipes[dependency["recipe"]]
         assert not recipe["dependencies"]
-        commands = run_just("--dry-run", dependency["recipe"]).stderr
+        commands = dry_run(REPO_ROOT, dependency["recipe"]).stderr
         current_commands.extend(shlex.split(line.removeprefix(runner + " ")) for line in commands.splitlines())
 
     assert len(baseline_commands) == len(current_commands) == 2

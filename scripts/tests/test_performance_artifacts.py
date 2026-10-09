@@ -478,23 +478,6 @@ def test_bundle_rejects_duplicate_benchmark_keys() -> None:
         PerformanceBundle(context=bundle.context, rows=(bundle.rows[0], bundle.rows[0]))
 
 
-@pytest.mark.parametrize("value", [0.0, -1.0, float("inf"), float("nan")])
-def test_timing_rejects_non_positive_or_non_finite_values(value: float) -> None:
-    with pytest.raises(ValueError, match="finite positive number"):
-        TimingEstimate(median_ns=value, ci_lower_ns=1.0, ci_upper_ns=2.0)
-
-
-def test_timing_accepts_ordered_bootstrap_interval_that_excludes_point_estimate() -> None:
-    estimate = TimingEstimate(median_ns=12.0, ci_lower_ns=9.0, ci_upper_ns=11.0)
-
-    assert estimate.median_ns == 12.0
-
-
-def test_timing_rejects_reversed_interval() -> None:
-    with pytest.raises(ValueError, match="lower bound exceeds upper bound"):
-        TimingEstimate(median_ns=10.0, ci_lower_ns=11.0, ci_upper_ns=9.0)
-
-
 def test_artifact_context_freezes_nested_provenance() -> None:
     context = _context()
 

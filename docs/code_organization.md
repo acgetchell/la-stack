@@ -146,11 +146,11 @@ actual release selectors and preservation of scientific evidence.
 upgrades and coupled exclusions against a disposable local registry.
 
 The shared package also owns process discovery, captured/live execution, exact
-byte transport, CPU metadata, diagnostics, and zizmor authentication. The thin
-`scripts/benchmark_process.py` adapter retains benchmark phase signatures and
-consumer root selection. Generic `subprocess_utils.py` and `run_zizmor.sh`
-implementations and their duplicate tests are retired; scientific schemas and
-benchmark policy remain here.
+byte transport, CPU metadata, diagnostics, and zizmor authentication. Consumers
+call its public process API directly; `scripts/benchmark_contract.py` retains
+Cargo checkout selection and historical digest framing. Shared Criterion
+estimates replace local timing wrappers. Tests use shared Just inspection and
+retain scientific schemas and consumer policy checks.
 
 Performance consumers use shared Criterion parsing and estimate/comparison
 validation, digest verification, archive extraction, byte-preserving document
@@ -171,11 +171,14 @@ raw Criterion validation to the shared policy. The release workflow packages onl
 that gate; its regression and archive tests live in
 `scripts/tests/test_release_baseline.py`.
 
-`scripts/performance_phase.py` declares native Cargo commands, features, and
-input gates. `scripts/performance_runs.py` declares scientific coverage,
+`tooling/performance.just` declares native Cargo commands, features, and input
+gates for both local measurements and release inventories.
+`tooling/performance.toml` uses the shared measurement schema for source/harness
+inputs, probes, timeouts, and compatibility fields.
+`scripts/performance_runs.py` declares scientific coverage,
 release compatibility, and named reference phases, and renders the local tables.
 `scripts/archive_performance.py` composes the shared APIs for consumer commands.
-`.config/performance-report.toml` owns the new retention paths.
+`tooling/performance-report.toml` owns the new retention paths.
 `scripts/benchmark_summaries.py` only reads historical CSV/JSON snapshots;
 `scripts/criterion_measurements.py` and the old generic measurement/retention
 engines are removed. `scripts/tests/test_performance_workflow.py` verifies

@@ -1,0 +1,41 @@
+# Shared measurement inputs; scientific row selection stays in performance_runs.
+schema = 1
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "current-all" ]
+sources = [ "src/**/*.rs", "Cargo.toml" ]
+harness = [
+    "benches/**/*.rs",
+    "benches/comparison/Cargo.toml",
+    "examples/**/*.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "tests/exact_bench_config.rs",
+    "tooling/performance.toml",
+    "tooling/performance.just",
+]
+timeout = 7200
+compatible = [
+    "harness_sha256",
+    "context.os",
+    "context.architecture",
+    "context.cpu",
+    "context.tool.rustc",
+    "context.tool.cargo",
+    "context.tool.just",
+    "context.dependency.criterion",
+    "context.dependency.nalgebra",
+    "context.dependency.faer",
+]
+
+[probes]
+rustc = [ "rustc", "-vV" ]
+cargo = [ "cargo", "--version" ]
+just = [ "just", "--version" ]
+
+[dependencies]
+criterion = "Cargo.lock"
+nalgebra = "Cargo.lock"
+faer = "Cargo.lock"
+
+[context]
+phase-driver = "just-v1"

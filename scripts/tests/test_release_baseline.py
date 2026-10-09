@@ -165,9 +165,9 @@ def test_discovery_uses_full_suites_and_never_times_inputs(tmp_path: Path, monke
         return write_text(path, data, encoding=encoding, errors=errors, newline=host_newline if newline is None else newline)
 
     def run(command: str, args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        assert command == "cargo"
+        assert command == "just"
         calls.append(args)
-        suite = args[args.index("--bench") + 1]
+        suite = args[-2].removeprefix("baseline-")
         return subprocess.CompletedProcess(args, 0, stdout="\n".join(f"{name}: benchmark" for name in IDS[suite]))
 
     monkeypatch.setattr(release_baseline, "run_command", run)
@@ -177,8 +177,8 @@ def test_discovery_uses_full_suites_and_never_times_inputs(tmp_path: Path, monke
     release_baseline.discover(tmp_path, manifest, tmp_path / "criterion")
     assert manifest.read_bytes() == (json.dumps(IDS, indent=2) + "\n").encode("utf-8")
     assert calls == [
-        ["bench", "--locked", "-p", "la-stack-comparison", "--features", "bench", "--bench", "vs_linalg", "--", "--list"],
-        ["bench", "--locked", "--features", "bench,exact", "--bench", "exact", "--", "--list"],
+        ["--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-vs_linalg", "list"],
+        ["--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-exact", "list"],
     ]
 
 

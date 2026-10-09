@@ -78,9 +78,8 @@ just performance-doc
 just performance-github-assets
 ```
 
-Local benchmark generation streams Cargo and Criterion progress while retaining
-the existing fail-closed report and provenance checks. Lines prefixed with
-`[performance]` identify the active validation or timing phase. Staged and
+Local benchmark generation streams native Just, Cargo, and Criterion progress
+while retaining the existing fail-closed report and provenance checks. Staged and
 unstaged changes to tracked files participate. Untracked files are excluded;
 stage a new file before running the command if it must participate. A local
 current-vs-latest report may use the same package and release identifier because
@@ -361,8 +360,8 @@ Notebook tooling remains outside scope.
 The same pinned release owns opt-in CodeRabbit review orchestration through
 `research-repo-tools review branch --base=REF` and `review uncommitted`.
 Thin Just wrappers retain the common implementation upstream; consumer checks
-in `tests/test_review_integration.py` exercise recipe forwarding, instruction
-discovery, freshness diagnostics, and failure propagation with local stubs.
+in `tests/test_review_integration.py` exercise recipe forwarding, argument
+quoting, and failure propagation with local stubs.
 CodeRabbit remains externally installed and authenticated. See the
 [contributor review workflow](../CONTRIBUTING.md#coderabbit-review) for scopes
 and invocation policy.
@@ -390,20 +389,34 @@ preview an annotation without creating a tag.
 |---|---|
 | `archive_performance.py` | Select eligible releases and compose shared measurement/publication APIs |
 | `bench_compare.py` | Compare Criterion benchmark baselines and render Markdown reports |
-| `benchmark_contract.py` | Define and hash the consumer's benchmark inventory contract |
-| `benchmark_process.py` | Thin benchmark phase adapters over the published shared process API, plus consumer root selection |
+| `benchmark_contract.py` | Select the Cargo checkout and hash the historical benchmark inventory contract |
 | `benchmark_summaries.py` | Read historical complete CSV/JSON summaries without changing framing |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
-| `performance_phase.py` | Declare native Cargo inventory, gate, and timing commands |
 | `performance_runs.py` | Declare scientific run policy and adapt retained series to local tables |
 | `performance_artifacts.py` | Validate and publish schema-versioned performance-comparison CSV/JSON inputs |
 | `release_baseline.py` | Inventory full Criterion suites and validate complete raw release baselines before packaging |
 
 Shared process discovery, execution, byte transport, CPU detection, diagnostics,
-and zizmor authentication belong to research-repo-tools. The former
-`subprocess_utils.py` and `run_zizmor.sh` implementations and their duplicated
-unit tests are removed. Consumer tests retain native adapter checks, benchmark
-contracts, caller file-policy coverage, and recipe forwarding.
+and zizmor authentication belong to research-repo-tools. Callers use its public
+process API directly. Shared Criterion estimates and comparisons also replace
+local timing wrappers and numerical validators. Consumer tests use the shared
+Just inspection API and retain benchmark contracts, caller file-policy coverage,
+and recipe forwarding; common parser and review regressions belong upstream.
+
+The `tooling/` directory owns declarative performance configuration:
+
+- `performance.toml`: shared measurement inputs, harness files, tool/dependency
+  probes, timeout, and provenance compatibility.
+- `performance.just`: native Cargo inventory, independent gates, and timing
+  recipes, including baseline-only peer measurements.
+- `performance-report.toml`: shared report and immutable-history paths.
+
+Both local measurement and release inventory use the native recipes. The shared
+runner streams them in the measured checkout, with the recipes and measurement
+configuration included in the harness fingerprint. Scientific row selection,
+sampling requirements, historical API adapters, and figure layout remain Python.
+Old evidence naming the retired Python phase driver can still be validated and
+rendered offline; its recorded commands are never executed.
 
 The superseded `criterion_measurements.py`, archive/worktree measurement engine,
 summary retention writer, and their duplicate generic tests are removed.

@@ -308,6 +308,7 @@ github-actions-check: action-lint zizmor
 # Keep the command-memory layer itself canonically formatted.
 justfile-fmt-check:
     just --fmt --check
+    just --justfile tooling/performance.just --fmt --check
 
 # Check code, documentation, and configuration without changing sources.
 lint: lint-code lint-docs lint-config
