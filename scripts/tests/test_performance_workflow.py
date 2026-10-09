@@ -191,7 +191,7 @@ def test_shared_retention_repeated_runs_and_offline_report(tmp_path: Path) -> No
         policy.retained_run(root, stem)
 
 
-@pytest.mark.parametrize("destination", ["missing", "identical", "different", "directory", "symlink"])
+@pytest.mark.parametrize("destination", ["missing", "identical", "different", "directory", "symlink", "relative-symlink"])
 def test_promotion_preserves_prior_report_on_archive_collision(complete_run: tuple[Path, Evidence], destination: str) -> None:
     root, evidence = complete_run
     stem = root / "target/bench-reports/performance"
@@ -208,6 +208,9 @@ def test_promotion_preserves_prior_report_on_archive_collision(complete_run: tup
         archived.mkdir()
     elif destination == "symlink":
         archived.symlink_to(current)
+    elif destination == "relative-symlink":
+        archived.symlink_to(os.path.relpath(current, archived.parent))
+    original_link_target = archived.readlink() if archived.is_symlink() else None
     before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts}
     if destination in {"missing", "identical"}:
         workflow.promote(root, stem)
@@ -215,16 +218,17 @@ def test_promotion_preserves_prior_report_on_archive_collision(complete_run: tup
         assert current.read_bytes() == policy.render_scientific_report(evidence)
         assert run_identity(policy.retained_run(root, stem)) == run_identity(evidence)
     else:
-        errors = {"different": "immutable output differs", "directory": "regular file", "symlink": "symlink"}
+        errors = {"different": "immutable output differs", "directory": "regular file", "symlink": "symlink", "relative-symlink": "symlink"}
         with pytest.raises(ValueError, match=errors[destination]):
             workflow.promote(root, stem)
         assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts} == before
         assert not (root / policy.archive_directory(root)).exists()
         if destination == "directory":
             assert archived.is_dir()
-        elif destination == "symlink":
+        elif destination in {"symlink", "relative-symlink"}:
             assert archived.is_symlink()
-            assert archived.readlink() == current
+            assert archived.readlink() == original_link_target
+            assert archived.samefile(current)
 
 
 @pytest.mark.parametrize("duplicate", ["**la-stack** v0.4.4", "Comparison against baseline **v0.4.3**:"])
