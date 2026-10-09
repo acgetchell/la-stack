@@ -210,6 +210,23 @@ def test_native_command_policy_and_compatibility_adapter() -> None:
     assert environment["CRITERION_HOME"] == "target/criterion"
 
 
+def test_local_explicit_labels_and_release_eligibility() -> None:
+    assert workflow.select_pair(ROOT, "explicit", "v0.4.6", "v0.4.6", local=True) == ReleasePair("v0.4.6", "v0.4.6")
+    with pytest.raises(ValueError, match="must differ"):
+        workflow.select_pair(ROOT, "explicit", "v0.4.6", "v0.4.6")
+    with pytest.raises(ValueError, match=r"v0.4.4|unsupported"):
+        workflow.select_pair(ROOT, "explicit", "v0.4.6", "v0.4.3", local=True)
+
+
+def test_current_gate_failure_prevents_both_timing_phases(tmp_path: Path) -> None:
+    baseline, current, plan = prepared(tmp_path)
+    plan = replace(plan, current=replace(plan.current, environment=(("FIXTURE_FAULT", "gate"),)))
+    with pytest.raises(ValueError, match="current preflight gate failed"):
+        measure_prepared_pair(baseline, current, plan, PAIR, working_tree=True)
+    assert not (baseline / "target/criterion").exists()
+    assert not (current / "target/criterion").exists()
+
+
 def test_reference_phase_and_same_version_policy(tmp_path: Path) -> None:
     _, evidence = measured(tmp_path)
     run = policy.validate_scientific_run(evidence)

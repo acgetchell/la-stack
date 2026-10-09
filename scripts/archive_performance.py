@@ -49,7 +49,7 @@ class ReportId:
     baseline_tag: str
 
 
-def select_pair(root: Path, mode: PairMode, current: str | None, baseline: str | None) -> ReleasePair:
+def select_pair(root: Path, mode: PairMode, current: str | None, baseline: str | None, *, local: bool = False) -> ReleasePair:
     """Use publication chronology while retaining la-stack release eligibility."""
     package = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
     releases = ()
@@ -60,7 +60,12 @@ def select_pair(root: Path, mode: PairMode, current: str | None, baseline: str |
             cwd=root,
         )
         releases = stable_published_releases(json.loads(response.stdout))
-    pair = resolve_pair(mode, package_tag=package, releases=releases, current=current, baseline=baseline, order="published")
+    # Shared explicit selection describes release pairs. Consumer local audits
+    # additionally permit two different sources carrying the same package label.
+    if local and current is not None and baseline is not None and normalize_tag(current) == normalize_tag(baseline):
+        pair = ReleasePair(current, baseline)
+    else:
+        pair = resolve_pair(mode, package_tag=package, releases=releases, current=current, baseline=baseline, order="published")
     resolve_shared_harness_compatibility(current=pair.current, baseline=pair.baseline, shared_harness_rational_inputs=True)
     return pair
 
@@ -223,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         modes: dict[str, PairMode] = {"local": "current-vs-latest", "release": "infer-release", "assets": "published-latest"}
         mode: PairMode = "explicit" if args.current or args.baseline else modes[args.command]
-        pair = select_pair(root, mode, args.current or None, args.baseline or None)
+        pair = select_pair(root, mode, args.current or None, args.baseline or None, local=args.command == "local")
         if args.command == "assets":
             compare_assets(root, pair, root / "target/bench-reports/github-assets-performance.md", args.suite, args.scope)
         else:
