@@ -107,7 +107,8 @@ Use `just changelog-preview --tag "$TAG" --date "$RELEASE_DATE"` for a read-only
 preview, and `just changelog-check` to validate the root and every archive.
 Review the generated changelog and any archive changes. The
 [Scripts guide](../scripts/README.md#changelog-and-release-tooling) explains
-the consumer policy exception that preserves historical dependency-note links.
+the supported `dependency-bodies = "preserve"` policy in `pyproject.toml`, which
+preserves authored dependency-note links, text, and code without a local template.
 
 ### 4. Generate the release performance comparison
 
@@ -135,12 +136,13 @@ scratch until explicitly promoted.
 just performance-readme
 ```
 
-This consumes the validated CSV and provenance JSON retained by
+This consumes the complete-run payload and evidence envelope retained by
 `just performance-release`; it does not run benchmarks again. It atomically
 updates the table and tag-pinned benchmark links in `README.md` with the CSV,
 SVG, and provenance JSON under `docs/assets/bench/`. Until it succeeds, those
 README links continue to reference the previous published artifacts.
-If scratch inputs were cleaned, it uses the committed local snapshot. Existing
+If scratch inputs were cleaned, it uses the validated
+`docs/performance-runs/latest.json` run. Existing
 partial or corrupt scratch inputs remain errors and never trigger a fallback.
 
 See `docs/BENCHMARKING.md` for repair commands, local comparison modes, artifact
@@ -167,7 +169,8 @@ git --no-pager diff
 
 Expected release artifacts include package metadata and lockfiles,
 `CITATION.cff`, `CHANGELOG.md`, `README.md`, `docs/performance.md`, and generated
-files under `docs/archive/`, `docs/archives/changelog/`, and `docs/assets/bench/`. Stage only the reviewed
+files under `docs/archive/`, `docs/archives/changelog/`, `docs/assets/bench/`, and
+`docs/performance-runs/`. Stage only the reviewed
 paths that were intentionally changed; do not stage the entire `docs/` tree.
 Then inspect the staged diff and commit it:
 

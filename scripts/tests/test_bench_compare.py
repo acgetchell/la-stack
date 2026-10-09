@@ -631,7 +631,7 @@ def test_comparison_uses_one_table_per_suite_with_case_column(tmp_path: Path) ->
     assert "| solve_exact_f64_result |" in tables
 
 
-def testcomparison_tables_include_vs_linalg_peer_context(tmp_path: Path) -> None:
+def test_comparison_tables_include_vs_linalg_peer_context(tmp_path: Path) -> None:
     _build_vs_linalg_tree(tmp_path)
     comparisons = bench_compare._collect_comparisons(tmp_path, "last", "median", suite="vs_linalg").comparisons
     tables = bench_compare.comparison_tables(comparisons, "last")
