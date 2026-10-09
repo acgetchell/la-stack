@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from research_repo_tools.complete_runs import CompletePolicy, collect_complete_sample
 from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics, run_command
 
 from bench_compare import (
@@ -16,9 +17,8 @@ from bench_compare import (
     VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM,
     VS_LINALG_STANDARD_BENCH_ORDER,
 )
-from criterion_measurements import read_object, validate_measurement
 
-SUITES = {"vs_linalg": "bench", "exact": "bench,exact"}
+SUITES = ("vs_linalg", "exact")
 RAW_FILES = ("benchmark.json", "estimates.json", "sample.json", "tukey.json")
 
 
@@ -66,12 +66,11 @@ def discover(root: Path, manifest: Path, criterion: Path) -> None:
     if criterion.exists() and any(criterion.iterdir()):
         raise ValueError(f"release inventory requires a fresh Criterion directory: {criterion}")
     inventory: dict[str, list[str]] = {}
-    for suite, features in SUITES.items():
+    for suite in SUITES:
         print(f"[release-baseline] Discovering {suite}", flush=True)
-        package = ["-p", "la-stack-comparison"] if suite == "vs_linalg" else []
         result = run_command(
-            "cargo",
-            ["bench", "--locked", *package, "--features", features, "--bench", suite, "--", "--list"],
+            "just",
+            ["--justfile", "tooling/performance.just", "--working-directory", ".", f"baseline-{suite}", "list"],
             cwd=root,
             timeout=None,  # The workflow bounds compilation and discovery together.
         )
@@ -95,14 +94,12 @@ def validate(criterion: Path, manifest: Path, baseline: str) -> int:
         raise ValueError(msg)
     expected = inventory_ids(json.loads(manifest.read_text(encoding="utf-8")))
     report_ids = required_report_ids()
-    observed: set[str] = set()
-    for metadata in sorted(criterion.glob("**/new/benchmark.json")):
-        benchmark = read_object(metadata).get("full_id")
-        if not isinstance(benchmark, str) or benchmark not in expected or benchmark in observed:
-            raise ValueError(f"unexpected or duplicate benchmark ID in {metadata}: {benchmark!r}")
-        directory = metadata.parent
+    complete = collect_complete_sample(criterion, "new", CompletePolicy(tuple(sorted(expected))))
+    for case in complete.cases:
+        benchmark = case.full_id
+        directory = criterion / case.storage_path / "new"
         if benchmark in report_ids and directory.parent != criterion / benchmark:
-            raise ValueError(f"report benchmark is outside its consumer path: {metadata}")
+            raise ValueError(f"report benchmark is outside its consumer path: {directory}")
         saved = directory.parent / baseline
         for filename in RAW_FILES:
             # Criterion can log a write/copy error and still exit successfully.
@@ -112,12 +109,7 @@ def validate(criterion: Path, manifest: Path, baseline: str) -> int:
             if source.read_bytes() != destination.read_bytes():
                 raise ValueError(f"saved baseline differs from new measurement: {destination}")
             json.loads(source.read_text(encoding="utf-8"))
-        validate_measurement(directory)
-        observed.add(benchmark)
-    missing = expected - observed
-    if missing:
-        raise ValueError(f"incomplete Criterion dataset: {', '.join(sorted(missing))}")
-    return len(observed)
+    return len(complete.cases)
 
 
 def main(argv: list[str] | None = None) -> int:

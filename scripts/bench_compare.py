@@ -31,13 +31,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from research_repo_tools.criterion import Comparison as TimingComparison, Estimate, read_estimate
 from research_repo_tools.files import replace_many
-from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics
+from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics, run_command
 
-from benchmark_process import find_project_root, run_git_command
+from benchmark_contract import find_project_root
 from criterion_dim_plot import METRICS
 from performance_artifacts import (
     PRE_RATIONAL_INPUT_API_COMPATIBILITY,
@@ -54,6 +54,9 @@ from performance_artifacts import (
     load_bundle,
     resolve_shared_harness_compatibility,
 )
+
+if TYPE_CHECKING:
+    from research_repo_tools.release_pairs import ReleasePair as SharedReleasePair
 
 # ---------------------------------------------------------------------------
 # Benchmark group / bench discovery
@@ -221,46 +224,13 @@ type Statistic = Literal["mean", "median"]
 
 
 @dataclass(frozen=True, slots=True)
-class CriterionEstimate:
-    """A Criterion point estimate and its optional confidence interval."""
-
-    point_ns: float
-    ci_lo_ns: float | None
-    ci_hi_ns: float | None
-
-    def __post_init__(self) -> None:
-        """Keep every stored timing finite, positive, and interval-complete."""
-        Estimate(self.point_ns, self.ci_lo_ns, self.ci_hi_ns)
-
-    @property
-    def has_confidence_interval(self) -> bool:
-        """Return whether both confidence bounds were present."""
-        return self.ci_lo_ns is not None and self.ci_hi_ns is not None
-
-
-@dataclass(frozen=True, slots=True)
 class BenchResult:
     """A single benchmark measurement (point estimate + confidence interval)."""
 
     suite: str
     group: str
     bench: str
-    estimate: CriterionEstimate
-
-    @property
-    def point_ns(self) -> float:
-        """Return the point estimate in nanoseconds."""
-        return self.estimate.point_ns
-
-    @property
-    def ci_lo_ns(self) -> float | None:
-        """Return the lower confidence bound, when Criterion recorded it."""
-        return self.estimate.ci_lo_ns
-
-    @property
-    def ci_hi_ns(self) -> float | None:
-        """Return the upper confidence bound, when Criterion recorded it."""
-        return self.estimate.ci_hi_ns
+    estimate: Estimate
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,42 +240,42 @@ class Comparison:
     suite: str
     group: str
     bench: str
-    baseline: CriterionEstimate
-    current: CriterionEstimate
+    baseline: Estimate
+    current: Estimate
     assessment: ChangeAssessment
     baseline_bench: str | None = None
-    baseline_nalgebra: CriterionEstimate | None = None
-    baseline_faer: CriterionEstimate | None = None
+    baseline_nalgebra: Estimate | None = None
+    baseline_faer: Estimate | None = None
 
     @property
     def baseline_ns(self) -> float:
         """Return the baseline point estimate."""
-        return self.baseline.point_ns
+        return self.baseline.point
 
     @property
     def current_ns(self) -> float:
         """Return the current point estimate."""
-        return self.current.point_ns
+        return self.current.point
 
     @property
     def speedup(self) -> float:
         """Return baseline/current, where values above one are faster."""
-        return TimingComparison(self.bench, Estimate(self.baseline_ns), Estimate(self.current_ns)).speedup
+        return TimingComparison(self.bench, self.baseline, self.current).speedup
 
     @property
     def pct_change(self) -> float:
         """Return signed point-estimate change, where negative is faster."""
-        return 0.0 - TimingComparison(self.bench, Estimate(self.baseline_ns), Estimate(self.current_ns)).percent_reduction
+        return 0.0 - TimingComparison(self.bench, self.baseline, self.current).percent_reduction
 
     @property
     def baseline_nalgebra_ns(self) -> float | None:
         """Return the baseline nalgebra point estimate, when available."""
-        return None if self.baseline_nalgebra is None else self.baseline_nalgebra.point_ns
+        return None if self.baseline_nalgebra is None else self.baseline_nalgebra.point
 
     @property
     def baseline_faer_ns(self) -> float | None:
         """Return the baseline faer point estimate, when available."""
-        return None if self.baseline_faer is None else self.baseline_faer.point_ns
+        return None if self.baseline_faer is None else self.baseline_faer.point
 
 
 @dataclass(frozen=True, slots=True)
@@ -444,12 +414,6 @@ def _is_selected_comparison_row(
 
     dim = _dim_from_vs_linalg_group(group)
     return dim is not None and (bench in VS_LINALG_LA_STACK_BENCHES or bench in VS_LINALG_RELEASE_SIGNAL_BENCHES_BY_DIM.get(dim, []))
-
-
-def _read_estimate(estimates_json: Path, stat: str = "median") -> CriterionEstimate:
-    """Adapt shared Criterion parsing to the retained report schema."""
-    estimate = read_estimate(estimates_json, statistic=cast("Statistic", stat))
-    return CriterionEstimate(estimate.point, estimate.lower, estimate.upper)
 
 
 def _read_harness_provenance(
@@ -797,17 +761,13 @@ def _validate_schema2_consistency(
         raise ValueError(msg)
 
 
-def _assess_change(baseline: CriterionEstimate, current: CriterionEstimate) -> ChangeAssessment:
+def assess_change(baseline: Estimate, current: Estimate) -> ChangeAssessment:
     """Classify a change conservatively from non-overlapping Criterion intervals."""
-    if not baseline.has_confidence_interval or not current.has_confidence_interval:
+    if baseline.lower is None or baseline.upper is None or current.lower is None or current.upper is None:
         return "unknown"
-
-    if baseline.ci_lo_ns is None or baseline.ci_hi_ns is None or current.ci_lo_ns is None or current.ci_hi_ns is None:
-        msg = "confidence-interval presence invariant violated"
-        raise AssertionError(msg)
-    if current.ci_hi_ns < baseline.ci_lo_ns:
+    if current.upper < baseline.lower:
         return "improvement"
-    if current.ci_lo_ns > baseline.ci_hi_ns:
+    if current.lower > baseline.upper:
         return "regression"
     return "inconclusive"
 
@@ -826,7 +786,7 @@ def _collect_exact_results(criterion_dir: Path, sample: str, stat: str) -> list[
             if not est_path.exists():
                 continue
 
-            estimate = _read_estimate(est_path, stat)
+            estimate = read_estimate(est_path, statistic=cast("Statistic", stat))
             results.append(BenchResult(suite="exact", group=group, bench=bench, estimate=estimate))
 
     return results
@@ -856,7 +816,7 @@ def _collect_vs_linalg_results(criterion_dir: Path, sample: str, stat: str) -> l
     for _dim, group_dir in sorted(dim_groups, key=lambda item: item[0]):
         for bench in _ordered_vs_linalg_benches(group_dir, sample):
             est_path = group_dir / bench / sample / "estimates.json"
-            estimate = _read_estimate(est_path, stat)
+            estimate = read_estimate(est_path, statistic=cast("Statistic", stat))
             results.append(BenchResult(suite="vs_linalg", group=group_dir.name, bench=bench, estimate=estimate))
 
     return results
@@ -921,7 +881,7 @@ def _collect_exact_comparisons(
                         )
                     )
                 else:
-                    _read_estimate(new_path, stat)
+                    read_estimate(new_path, statistic=cast("Statistic", stat))
                 continue
 
             if missing_current or missing_baseline:
@@ -937,8 +897,8 @@ def _collect_exact_comparisons(
                 )
                 continue
 
-            current = _read_estimate(new_path, stat)
-            baseline = _read_estimate(base_path, stat)
+            current = read_estimate(new_path, statistic=cast("Statistic", stat))
+            baseline = read_estimate(base_path, statistic=cast("Statistic", stat))
 
             comparisons.append(
                 Comparison(
@@ -947,7 +907,7 @@ def _collect_exact_comparisons(
                     bench=bench,
                     baseline=baseline,
                     current=current,
-                    assessment=_assess_change(baseline, current),
+                    assessment=assess_change(baseline, current),
                 )
             )
 
@@ -998,11 +958,11 @@ def _vs_linalg_dimension_groups(criterion_dir: Path, scope: str) -> list[tuple[i
     return groups
 
 
-def _read_optional_estimate(estimates_json: Path, stat: str) -> CriterionEstimate | None:
+def _read_optional_estimate(estimates_json: Path, stat: str) -> Estimate | None:
     """Read an optional Criterion estimate."""
     if not estimates_json.exists():
         return None
-    return _read_estimate(estimates_json, stat)
+    return read_estimate(estimates_json, statistic=cast("Statistic", stat))
 
 
 def _baseline_peer_estimates(
@@ -1010,7 +970,7 @@ def _baseline_peer_estimates(
     bench: str,
     baseline_name: str,
     stat: str,
-) -> tuple[CriterionEstimate | None, CriterionEstimate | None]:
+) -> tuple[Estimate | None, Estimate | None]:
     """Return last-release nalgebra/faer context for a la-stack vs_linalg bench."""
     peers = VS_LINALG_BASELINE_PEERS.get(bench)
     if peers is None:
@@ -1066,8 +1026,8 @@ def _collect_vs_linalg_comparisons(
                 )
                 continue
 
-            current = _read_estimate(new_path, stat)
-            baseline = _read_estimate(base_path, stat)
+            current = read_estimate(new_path, statistic=cast("Statistic", stat))
+            baseline = read_estimate(base_path, statistic=cast("Statistic", stat))
             baseline_nalgebra, baseline_faer = _baseline_peer_estimates(group_dir, bench, baseline_name, stat)
 
             comparisons.append(
@@ -1077,7 +1037,7 @@ def _collect_vs_linalg_comparisons(
                     bench=bench,
                     baseline=baseline,
                     current=current,
-                    assessment=_assess_change(baseline, current),
+                    assessment=assess_change(baseline, current),
                     baseline_nalgebra=baseline_nalgebra,
                     baseline_faer=baseline_faer,
                 )
@@ -1186,7 +1146,7 @@ def _collect_comparisons(
 # ---------------------------------------------------------------------------
 
 
-def _format_time(ns: float) -> str:
+def format_time(ns: float) -> str:
     """Format nanoseconds into a human-readable string."""
     if ns < 1_000:
         return f"{ns:.1f} ns"
@@ -1201,16 +1161,16 @@ def _format_pct(pct: float, assessment: ChangeAssessment) -> str:
     return f"{pct:+.1f}%"
 
 
-def _format_confidence_interval(estimate: CriterionEstimate) -> str:
+def _format_confidence_interval(estimate: Estimate) -> str:
     """Format a Criterion confidence interval without inventing missing bounds."""
-    if estimate.ci_lo_ns is None or estimate.ci_hi_ns is None:
+    if estimate.lower is None or estimate.upper is None:
         return "unavailable"
-    return f"[{_format_time(estimate.ci_lo_ns)}, {_format_time(estimate.ci_hi_ns)}]"
+    return f"[{format_time(estimate.lower)}, {format_time(estimate.upper)}]"
 
 
-def _format_estimate(estimate: CriterionEstimate) -> str:
+def _format_estimate(estimate: Estimate) -> str:
     """Format a point estimate together with its Criterion interval."""
-    return f"{_format_time(estimate.point_ns)} {_format_confidence_interval(estimate)}"
+    return f"{format_time(estimate.point)} {_format_confidence_interval(estimate)}"
 
 
 def _assessment_label(assessment: ChangeAssessment) -> str:
@@ -1302,13 +1262,13 @@ def _snapshot_tables(results: list[BenchResult], stat: str) -> str:
             case = _group_heading_for_suite(suite, group)
             for r in items:
                 ci_range = _format_confidence_interval(r.estimate)
-                lines.append(f"| {case} | {r.bench} | {_format_time(r.point_ns)} | {ci_range} |")
+                lines.append(f"| {case} | {r.bench} | {format_time(r.estimate.point)} | {ci_range} |")
         sections.append("\n".join(lines))
 
     return "\n\n".join(sections)
 
 
-def _comparison_tables(comparisons: list[Comparison], baseline_name: str) -> str:
+def comparison_tables(comparisons: list[Comparison], baseline_name: str) -> str:
     """Generate one Markdown comparison table per suite."""
     sections: list[str] = []
 
@@ -1381,24 +1341,24 @@ def _coverage_table(gaps: list[CoverageGap], baseline_name: str) -> str:
     return "\n".join(lines)
 
 
-def _artifact_timing(estimate: CriterionEstimate) -> TimingEstimate:
+def _artifact_timing(estimate: Estimate) -> TimingEstimate:
     """Convert a Criterion estimate into the stricter persisted timing model."""
-    if estimate.ci_lo_ns is None or estimate.ci_hi_ns is None:
+    if estimate.lower is None or estimate.upper is None:
         msg = "release-performance artifacts require complete Criterion confidence intervals"
         raise ValueError(msg)
     return TimingEstimate(
-        median_ns=estimate.point_ns,
-        ci_lower_ns=estimate.ci_lo_ns,
-        ci_upper_ns=estimate.ci_hi_ns,
+        median_ns=estimate.point,
+        ci_lower_ns=estimate.lower,
+        ci_upper_ns=estimate.upper,
     )
 
 
-def _criterion_timing(estimate: TimingEstimate) -> CriterionEstimate:
+def _criterion_timing(estimate: TimingEstimate) -> Estimate:
     """Convert a validated persisted timing back into the report model."""
-    return CriterionEstimate(
-        point_ns=estimate.median_ns,
-        ci_lo_ns=estimate.ci_lower_ns,
-        ci_hi_ns=estimate.ci_upper_ns,
+    return Estimate(
+        point=estimate.median_ns,
+        lower=estimate.ci_lower_ns,
+        upper=estimate.ci_upper_ns,
     )
 
 
@@ -1447,7 +1407,7 @@ def _unavailable_artifact_rows(  # noqa: PLR0913
         current_path = criterion_dir / group / bench / "new" / "estimates.json"
         if not current_path.is_file():
             continue
-        current = _read_estimate(current_path, stat)
+        current = read_estimate(current_path, statistic=cast("Statistic", stat))
         rows.append(
             PerformanceRow(
                 suite=row_suite,
@@ -1485,7 +1445,7 @@ def _artifact_comparisons(rows: tuple[PerformanceRow, ...]) -> list[Comparison]:
                 bench=row.benchmark,
                 baseline=baseline,
                 current=current,
-                assessment=_assess_change(baseline, current),
+                assessment=assess_change(baseline, current),
                 baseline_bench=(row.baseline_benchmark if row.baseline_benchmark != row.benchmark else None),
                 baseline_nalgebra=(None if row.baseline_nalgebra is None else _criterion_timing(row.baseline_nalgebra)),
                 baseline_faer=None if row.baseline_faer is None else _criterion_timing(row.baseline_faer),
@@ -1519,7 +1479,7 @@ def _artifact_tables(bundle: PerformanceBundle) -> str:
     comparisons = _artifact_comparisons(bundle.sorted_rows)
     sections: list[str] = []
     if comparisons:
-        sections.append(_comparison_tables(comparisons, bundle.context.release.baseline))
+        sections.append(comparison_tables(comparisons, bundle.context.release.baseline))
     coverage = _artifact_coverage_table(bundle.sorted_rows, bundle.context.release.baseline)
     if coverage:
         sections.append(coverage)
@@ -1547,7 +1507,7 @@ def _get_git_info(root: Path) -> tuple[str, str]:
     short_hash = "unknown"
     branch = "unknown"
     try:
-        result = run_git_command(["--no-pager", "rev-parse", "--short", "HEAD"], cwd=root)
+        result = run_command("git", ["--no-pager", "rev-parse", "--short", "HEAD"], cwd=root)
         short_hash = result.stdout.strip()
     except (
         ExecutableNotFoundError,
@@ -1557,7 +1517,7 @@ def _get_git_info(root: Path) -> tuple[str, str]:
     ):
         pass
     try:
-        result = run_git_command(["--no-pager", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
+        result = run_command("git", ["--no-pager", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
         branch = result.stdout.strip()
     except (
         ExecutableNotFoundError,
@@ -1572,7 +1532,7 @@ def _get_git_info(root: Path) -> tuple[str, str]:
 def _get_git_source_date(root: Path) -> str:
     """Return the reproducible source revision timestamp normalized to UTC."""
     try:
-        result = run_git_command(["--no-pager", "show", "-s", "--format=%cI", "HEAD"], cwd=root)
+        result = run_command("git", ["--no-pager", "show", "-s", "--format=%cI", "HEAD"], cwd=root)
     except (
         ExecutableNotFoundError,
         OSError,
@@ -1840,6 +1800,23 @@ def _release_artifact_bundle(
 def render_release_artifacts(paths: ArtifactPaths) -> str:
     """Reload, validate, and render a report without Criterion, Cargo, or Git."""
     return render_bundle(load_bundle(paths), paths)
+
+
+def render_historical_assets(criterion: Path, pair: SharedReleasePair, suite: str, scope: str) -> bytes:
+    """Render native release assets without assigning local measurement provenance."""
+    policy = ComparisonPolicy(scope=scope, shared_harness_rational_inputs=False)
+    collection = _collect_comparisons(criterion, pair.baseline, "median", suite, policy)
+    if collection.gaps or not collection.comparisons:
+        msg = "historical assets omit required la-stack report rows"
+        raise ValueError(msg)
+    return (
+        f"# Published benchmark assets\n\n**la-stack** {pair.current}; baseline **{pair.baseline}**.\n\n"
+        "Each release retains its original harness. Historical host, toolchain, source fingerprints, and correctness gates are unknown.\n"
+        "These assets cannot be promoted as a common-harness run. Use `just performance-local` for controlled measurements.\n\n"
+        "Negative change means a smaller point estimate. Marginal interval separation is not a paired confidence interval or a significance claim.\n\n"
+        + comparison_tables(collection.comparisons, pair.baseline)
+        + "\n"
+    ).encode()
 
 
 def render_bundle(bundle: PerformanceBundle, paths: ArtifactPaths) -> str:
@@ -2110,7 +2087,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
             )
             return 2
         try:
-            table = _comparison_tables(collection.comparisons, baseline_name)
+            table = comparison_tables(collection.comparisons, baseline_name)
         except ValueError as err:
             print(f"Invalid Criterion comparison data: {err}", file=sys.stderr)
             return 2

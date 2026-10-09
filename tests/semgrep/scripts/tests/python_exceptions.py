@@ -4,8 +4,6 @@ from unittest.mock import MagicMock, Mock
 
 from research_repo_tools.process import run_command
 
-from benchmark_process import run_safe_command
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -86,5 +84,3 @@ def direct_subprocess_run() -> None:
 def shared_process_runners() -> None:
     # ok: la-stack.python.no-direct-subprocess-run-outside-wrapper
     run_command("git", ["status"], check=False)
-    # ok: la-stack.python.no-direct-subprocess-run-outside-wrapper
-    run_safe_command("git", ["status"], check=False)

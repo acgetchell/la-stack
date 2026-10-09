@@ -25,7 +25,7 @@ classifiers = [
 ]
 
 # Benchmark adapters use only the installed shared package and the standard library.
-dependencies = [ "research-repo-tools==0.1.7" ]
+dependencies = [ "research-repo-tools==0.1.8" ]
 
 [project.urls]
 "Homepage" = "https://github.com/acgetchell/la-stack"
@@ -41,7 +41,7 @@ criterion-dim-plot = "criterion_dim_plot:main"
 # Configure setuptools to find modules in scripts/ directory.
 [tool.setuptools]
 package-dir = { "" = "scripts" }
-py-modules = [ "archive_performance", "bench_compare", "benchmark_contract", "benchmark_process", "benchmark_summaries", "criterion_dim_plot", "criterion_measurements", "performance_artifacts" ]
+py-modules = [ "archive_performance", "bench_compare", "benchmark_contract", "benchmark_summaries", "criterion_dim_plot", "performance_artifacts", "performance_runs", "release_baseline" ]
 
 [tool.ruff]
 line-length = 160
@@ -88,11 +88,11 @@ known-first-party = [
     "archive_performance",
     "bench_compare",
     "benchmark_contract",
-    "benchmark_process",
     "benchmark_summaries",
     "criterion_dim_plot",
-    "criterion_measurements",
     "performance_artifacts",
+    "performance_runs",
+    "release_baseline",
 ]
 force-single-line = false
 split-on-trailing-comma = true
@@ -138,7 +138,7 @@ line-length = 160
 
 [tool.uv]
 package = true
-required-version = "==0.12.23"
+required-version = "==0.12.24"
 # Semgrep wheels bundle the native engine; building its sdist does not.
 no-build-package = [ "semgrep" ]
 # Semgrep 1.178.0 restricts PyJWT to 2.13.x; 2.15.1 contains the OSV fixes.
@@ -146,7 +146,7 @@ no-build-package = [ "semgrep" ]
 override-dependencies = [ "pyjwt[crypto]>=2.15.1,<3" ]
 
 [dependency-groups]
-tooling = [ "research-repo-tools==0.1.7" ]
+tooling = [ "research-repo-tools==0.1.8" ]
 dev = [
     { include-group = "tooling" },
     "actionlint-py==1.7.12.25",
@@ -174,7 +174,7 @@ cargo-nextest = "0.9.148"
 clippy-sarif = "0.8.0"
 dprint = "0.61.1"
 git-cliff = "2.14.2"
-rumdl = "0.2.78"
+rumdl = "0.2.79"
 sarif-fmt = "0.8.0"
 taplo-cli = "0.10.0"
 typos-cli = "1.51.1"
@@ -184,8 +184,7 @@ zizmor = "1.30.1"
 owner = "acgetchell"
 repository = "la-stack"
 formatter = "changelog-rumdl.toml"
-# Packaged 0.1.7 template plus one deps-dev body-preservation exception.
-cliff-config = "cliff.toml"
+dependency-bodies = "preserve"
 
 [tool.research-repo-tools.zizmor]
 persona = "regular"

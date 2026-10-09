@@ -493,13 +493,13 @@ tooling = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "research-repo-tools", specifier = "==0.1.7" }]
+requires-dist = [{ name = "research-repo-tools", specifier = "==0.1.8" }]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "actionlint-py", specifier = "==1.7.12.25" },
     { name = "pytest", specifier = "==9.1.1" },
-    { name = "research-repo-tools", specifier = "==0.1.7" },
+    { name = "research-repo-tools", specifier = "==0.1.8" },
     { name = "ruff", specifier = "==0.16.10" },
     { name = "semgrep", specifier = "==1.180.0" },
     { name = "shellcheck-py", specifier = "==0.11.0.1" },
@@ -507,7 +507,7 @@ dev = [
     { name = "ty", specifier = "==0.0.85" },
     { name = "yamllint", specifier = "==1.38.0" },
 ]
-tooling = [{ name = "research-repo-tools", specifier = "==0.1.7" }]
+tooling = [{ name = "research-repo-tools", specifier = "==0.1.8" }]
 
 [[package]]
 name = "markdown-it-py"
@@ -743,11 +743,11 @@ wheels = [
 
 [[package]]
 name = "pycparser"
-version = "3.1"
+version = "3.11"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ac/d3/eb1d3bc30dda12f7e69640ae2ac8cb10240b71fb73024ad528b7d2ae73da/pycparser-3.1.tar.gz", hash = "sha256:b3fc6dec06a8b2fefa0ed4ff92285306a5e3be9987bc5603c9edbdc4e492418f", size = 105946, upload-time = "2026-10-08T12:26:34.349Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/a8/c5fdbeee588bb8ada9458774f43adf1bdd30bd59157055142183e769a024/pycparser-3.11.tar.gz", hash = "sha256:d875f09c3507d00e1aba0eecc6dcadc1352f30fff09dc6bff2f1c2935e97c2bc", size = 113796, upload-time = "2026-10-09T12:56:59.539Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/ce/b3ae9ee0324d991c860187be2a6ee436d27a3d02397eaddbb101ec901f3d/pycparser-3.1-py3-none-any.whl", hash = "sha256:f09d358c840bd147b79e55f2bc494f18ea869dc897f5852a8f5766b74f787882", size = 48709, upload-time = "2026-10-08T12:26:32.97Z" },
+    { url = "https://files.pythonhosted.org/packages/90/11/0e6f11117525ff0eec40ebac3d313376f102df93ca44ad9e893ee85e4f89/pycparser-3.11-py3-none-any.whl", hash = "sha256:51d5a8ba2be0bbe440b99d2112604c95bbbc3c2748a64260186c541e1729cd80", size = 51178, upload-time = "2026-10-09T12:56:58.131Z" },
 ]
 
 [[package]]
@@ -974,16 +974,16 @@ wheels = [
 
 [[package]]
 name = "research-repo-tools"
-version = "0.1.7"
+version = "0.1.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "rust-just" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/28/bf/ee8d41dab3fe80da99147b7caebae7eb72a4001606fef588273bd369312b/research_repo_tools-0.1.7.tar.gz", hash = "sha256:2a8aa607a6ffccf2c5e2a48565e1eceb4ab3f361ebbf2136d6fa5a197ce68a19", size = 540024, upload-time = "2026-09-26T20:01:09.301Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/fd/f804affa973b85f455b20d5f129527fc2176f78bbc05ab710906f4242034/research_repo_tools-0.1.8.tar.gz", hash = "sha256:bc855aa930ee04301dceebc8340a22576bb25712e322b51d7afaf20f5fab1ba0", size = 765360, upload-time = "2026-10-09T04:38:42.035Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/e7/58faeb7238ea1276471670ca5e746834da07b67e201eb9ef4c8a5a24f8d3/research_repo_tools-0.1.7-py3-none-any.whl", hash = "sha256:ff60397c563d5a7a89d73ddba219e741dd3f4936bfa001ea498c4607aea05cb6", size = 232872, upload-time = "2026-09-26T20:01:07.556Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/2c/f37ffb902034866dd03c3f939c580f2d151e51955669c7d9bc4d00cf4858/research_repo_tools-0.1.8-py3-none-any.whl", hash = "sha256:9db45f09a33cac4ff32ddf010d30523e295f607e24c680bcfc3d3d9786991293", size = 339758, upload-time = "2026-10-09T04:38:39.806Z" },
 ]
 
 [[package]]

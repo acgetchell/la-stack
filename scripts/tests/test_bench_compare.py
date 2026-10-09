@@ -191,13 +191,13 @@ def _build_vs_linalg_tree(criterion_dir: Path, stat: str = "median") -> None:
 
 class TestFormatTime:
     def test_nanoseconds(self) -> None:
-        assert bench_compare._format_time(42.5) == "42.5 ns"
+        assert bench_compare.format_time(42.5) == "42.5 ns"
 
     def test_microseconds(self) -> None:
-        assert bench_compare._format_time(1_500.0) == "1.50 µs"
+        assert bench_compare.format_time(1_500.0) == "1.50 µs"
 
     def test_milliseconds(self) -> None:
-        assert bench_compare._format_time(2_500_000.0) == "2.50 ms"
+        assert bench_compare.format_time(2_500_000.0) == "2.50 ms"
 
 
 class TestFormatPct:
@@ -267,34 +267,6 @@ def test_exact_registry_tracks_every_rational_input_release_dimension() -> None:
 
 # ---------------------------------------------------------------------------
 # read_estimate
-# ---------------------------------------------------------------------------
-
-
-def test_read_estimate_success(tmp_path: Path) -> None:
-    est = tmp_path / "estimates.json"
-    _write_estimates(est, "median", 42.0)
-    estimate = bench_compare._read_estimate(est, "median")
-    assert estimate.point_ns == 42.0
-    assert estimate.ci_lo_ns == pytest.approx(42.0 * 0.9)
-    assert estimate.ci_hi_ns == pytest.approx(42.0 * 1.1)
-
-
-def test_read_estimate_no_ci(tmp_path: Path) -> None:
-    """Missing confidence bounds remain unavailable rather than implying certainty."""
-    est = tmp_path / "estimates.json"
-    est.parent.mkdir(parents=True, exist_ok=True)
-    est.write_text(
-        json.dumps({"median": {"point_estimate": 99.0}}),
-        encoding="utf-8",
-    )
-    estimate = bench_compare._read_estimate(est, "median")
-    assert estimate.point_ns == 99.0
-    assert estimate.ci_lo_ns is None
-    assert estimate.ci_hi_ns is None
-
-
-# ---------------------------------------------------------------------------
-# collect_results / collect_comparisons
 # ---------------------------------------------------------------------------
 
 
@@ -581,12 +553,12 @@ def test_comparison_table_preserves_signed_change(current_ns: float, change: str
         suite="exact",
         group="exact_d2",
         bench="det",
-        baseline=bench_compare.CriterionEstimate(10.0, None, None),
-        current=bench_compare.CriterionEstimate(current_ns, None, None),
+        baseline=bench_compare.Estimate(10.0, None, None),
+        current=bench_compare.Estimate(current_ns, None, None),
         assessment="unknown",
     )
 
-    table = bench_compare._comparison_tables([comparison], "last")
+    table = bench_compare.comparison_tables([comparison], "last")
 
     assert f"| {change} |" in table
 
@@ -623,7 +595,7 @@ def test_comparison_uses_one_table_per_suite_with_case_column(tmp_path: Path) ->
             _write_estimates(group / bench / "v0.4.4" / "estimates.json", "median", det_exact * 1.3)
 
     comparisons = bench_compare._collect_comparisons(tmp_path, "v0.4.4", "median").comparisons
-    tables = bench_compare._comparison_tables(comparisons, "v0.4.4")
+    tables = bench_compare.comparison_tables(comparisons, "v0.4.4")
     assert tables.count("| Case | Benchmark | v0.4.4 (point + CI)") == 1
     assert "| D=2 |" in tables
     assert "| D=3 |" in tables
@@ -634,7 +606,7 @@ def test_comparison_uses_one_table_per_suite_with_case_column(tmp_path: Path) ->
 def test_comparison_tables_include_vs_linalg_peer_context(tmp_path: Path) -> None:
     _build_vs_linalg_tree(tmp_path)
     comparisons = bench_compare._collect_comparisons(tmp_path, "last", "median", suite="vs_linalg").comparisons
-    tables = bench_compare._comparison_tables(comparisons, "last")
+    tables = bench_compare.comparison_tables(comparisons, "last")
 
     assert (
         "| Case | Benchmark | last (point + CI) | Latest (point + CI) | Point-estimate change | CI relation | "
@@ -1151,7 +1123,7 @@ def test_main_preserves_artifact_exception_group_diagnostics(
         "_collect_comparisons",
         lambda *_args, **_kwargs: SimpleNamespace(comparisons=[object()], gaps=[]),
     )
-    monkeypatch.setattr(bench_compare, "_comparison_tables", lambda *_args, **_kwargs: "table")
+    monkeypatch.setattr(bench_compare, "comparison_tables", lambda *_args, **_kwargs: "table")
 
     def fail_publication(*_args: object, **_kwargs: object) -> None:
         message = "artifact publication and rollback failed"
@@ -1355,7 +1327,7 @@ def test_generate_markdown_labels_absent_provenance_unavailable(tmp_path: Path, 
 def test_git_source_date_is_normalized_to_unambiguous_utc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         bench_compare,
-        "run_git_command",
+        "run_command",
         lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout="2026-06-01T05:34:56-07:00\n"),
     )
 

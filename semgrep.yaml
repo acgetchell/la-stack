@@ -1042,8 +1042,6 @@ rules:
         - "/tests/semgrep/scripts/tests/**"
     patterns:
       - pattern-either:
-          - pattern: run_safe_command("git", ..., input=$INPUT, ...)
-          - pattern: benchmark_process.run_safe_command("git", ..., input=$INPUT, ...)
           - pattern: research_repo_tools.process.run_command("git", ..., input=$INPUT, ...)
           - pattern: subprocess.run(["git", ...], ..., input=$INPUT, ...)
           - pattern: subprocess.Popen(["git", ...], ..., stdin=subprocess.PIPE, ...)
@@ -1247,7 +1245,7 @@ rules:
     languages:
       - python
     severity: WARNING
-    message: "Use research_repo_tools.process runners or benchmark_process adapters instead of calling subprocess.run directly."
+    message: "Use research_repo_tools.process runners instead of calling subprocess.run directly."
     metadata:
       category: security
       rationale: "Support scripts should inherit the repository's subprocess hardening."

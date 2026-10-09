@@ -4,8 +4,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
-
-from benchmark_process import run_safe_command
+from research_repo_tools.process import run_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -28,7 +27,7 @@ def test_historical_alias_exception_is_limited_to_its_assignment_and_path(tmp_pa
         token = hashlib.sha256(b"public Gitleaks regression fixture").hexdigest()
         contents += "api_" + f'key = "{token}"\n'
     source.write_text(contents, encoding="utf-8")
-    result = run_safe_command(
+    result = run_command(
         "uv",
         [
             "run",

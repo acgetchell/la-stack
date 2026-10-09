@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 from research_repo_tools.cli import main
-
-from benchmark_process import run_git_command, run_safe_command
+from research_repo_tools.just_inspect import dry_run
+from research_repo_tools.process import run_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -18,7 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 @pytest.fixture
 def consumer(tmp_path: Path) -> Path:
     """Copy release inputs and real documentation, without live repository state."""
-    files = run_git_command(["ls-files", "-co", "--exclude-standard", "-z"], cwd=REPO_ROOT).stdout.split("\0")
+    files = run_command("git", ["--no-pager", "ls-files", "-co", "--exclude-standard", "-z"], cwd=REPO_ROOT).stdout.split("\0")
     metadata = {"Cargo.toml", "Cargo.lock", "pyproject.toml", "uv.lock", "CITATION.cff", ".python-version", "rust-toolchain.toml"}
     for name in files:
         source = REPO_ROOT / name
@@ -103,7 +103,7 @@ def test_update_recipe_runs_the_installed_cli_with_preview_arguments(consumer: P
     )
     before = snapshot(consumer)
     args = release_args(consumer, "--dry-run")[4:]
-    result = run_safe_command(
+    result = run_command(
         "just",
         ["--justfile", str(wrapper), "--working-directory", str(consumer), "update-version", *args],
         cwd=consumer,
@@ -113,16 +113,11 @@ def test_update_recipe_runs_the_installed_cli_with_preview_arguments(consumer: P
     assert snapshot(consumer) == before
 
 
-def test_markdown_recipe_uses_the_published_checker_and_retains_character_limit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Verify the consumer boundary with Unicode, tables, spaces, and path quoting."""
-    path = tmp_path / "document with spaces.md"
-    path.write_text("é" * 160 + "\n|" + "x" * 200 + "\n", encoding="utf-8")
-    assert main(["--root", str(tmp_path), "docs", "check-lines", str(path)]) == 0
-    path.write_text("é" * 161 + "\n", encoding="utf-8")
-    assert main(["--root", str(tmp_path), "docs", "check-lines", str(path)]) == 1
-    assert "line length 161 exceeds 160" in capsys.readouterr().err
-    dry_run = run_safe_command("just", ["--dry-run", "markdown-check"], cwd=REPO_ROOT)
-    assert 'research-repo-tools docs check-lines "${files[@]}"' in dry_run.stderr
+def test_markdown_recipe_uses_the_published_checker() -> None:
+    """Retain the consumer's tracked-file selection and quoted path forwarding."""
+    result = dry_run(REPO_ROOT, "markdown-check")
+    assert 'research-repo-tools docs check-lines "${files[@]}"' in result.stderr
+    assert "git ls-files -co --exclude-standard -z" in result.stderr
 
 
 def test_semgrep_adapter_uses_real_consumer_rules_and_fixtures() -> None:
@@ -131,5 +126,5 @@ def test_semgrep_adapter_uses_real_consumer_rules_and_fixtures() -> None:
     assert config["config"] == "semgrep.yaml"
     assert config["fixtures"] == "tests/semgrep"
     assert config["namespace"] == "la-stack."
-    result = run_safe_command("just", ["--dry-run", "semgrep-test"], cwd=REPO_ROOT)
+    result = dry_run(REPO_ROOT, "semgrep-test")
     assert "research-repo-tools semgrep check-fixtures" in result.stderr

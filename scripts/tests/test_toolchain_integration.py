@@ -12,8 +12,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from research_repo_tools.cli import main
-
-from benchmark_process import run_safe_command
+from research_repo_tools.process import run_command
 
 if TYPE_CHECKING:
     import subprocess
@@ -76,7 +75,7 @@ def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def invoke(root: Path, recipe: str) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
     """Run Just's actual dependency sequencing without live upgrades."""
-    result = run_safe_command("just", ["--justfile", str(root / "recipes.just"), "--working-directory", str(root), recipe], cwd=root, check=False)
+    result = run_command("just", ["--justfile", str(root / "recipes.just"), "--working-directory", str(root), recipe], cwd=root, check=False)
     calls = [cast("list[str]", json.loads(line)) for line in (root / "calls.jsonl").read_text(encoding="utf-8").splitlines()]
     return result, calls
 
@@ -103,7 +102,7 @@ def test_declared_tools_are_verified_and_cargo_edit_runs_from_managed_store(caps
     assert main(["--root", str(REPO_ROOT), "toolchain", "check", "--json"]) == 0
     report = json.loads(capsys.readouterr().out)
     assert all(status["ok"] for status in report)
-    result = run_safe_command("uv", [*CHECKED, "cargo", "upgrade", "--version"], cwd=REPO_ROOT)
+    result = run_command("uv", [*CHECKED, "cargo", "upgrade", "--version"], cwd=REPO_ROOT)
     declared = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["research-repo-tools"]["toolchain"]["cargo"]
     names = {"cargo-edit": "cargo-edit-upgrade", "taplo-cli": "taplo"}
     for package, expected in declared.items():
@@ -115,9 +114,7 @@ def test_declared_tools_are_verified_and_cargo_edit_runs_from_managed_store(caps
         assert directory.parent.parent.name == package
     assert result.stdout.strip() == f"cargo-edit-upgrade {declared['cargo-edit']}"
     # The checked runner supplies the same managed Rust to subprocesses, including native Python builds.
-    result = run_safe_command(
-        "uv", [*CHECKED, "uv", "run", "--locked", "--no-sync", "python", "-c", "import shutil; print(shutil.which('cargo'))"], cwd=REPO_ROOT
-    )
+    result = run_command("uv", [*CHECKED, "uv", "run", "--locked", "--no-sync", "python", "-c", "import shutil; print(shutil.which('cargo'))"], cwd=REPO_ROOT)
     rustup = next(status for status in report if status["name"] == "rustup")
     assert Path(result.stdout.strip()).parent == Path(rustup["path"]).parent
 
@@ -168,13 +165,11 @@ def test_python_update_preserves_shared_pin_and_tools_with_explicit_dev_sync(tmp
     assert after["dependency-groups"]["tooling"] == groups["tooling"]
     assert after["tool"]["research-repo-tools"] == before["tool"]["research-repo-tools"]
     assert after["tool"]["uv"] == before["tool"]["uv"]
-    run_safe_command("uv", ["lock", "--upgrade"], cwd=root)
+    run_command("uv", ["lock", "--upgrade"], cwd=root)
     lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
     packages = {package["name"]: package["version"] for package in lock["package"]}
-    assert packages["research-repo-tools"] == "0.1.7"
+    assert packages["research-repo-tools"] == "0.1.8"
     assert packages["ruff"] == "99.0.0"
-    run_safe_command("uv", ["sync", "--locked", "--group", "dev"], cwd=root)
-    installed = run_safe_command(
-        "uv", ["run", "--locked", "--no-sync", "python", "-c", "from importlib.metadata import version; print(version('ruff'))"], cwd=root
-    )
+    run_command("uv", ["sync", "--locked", "--group", "dev"], cwd=root)
+    installed = run_command("uv", ["run", "--locked", "--no-sync", "python", "-c", "from importlib.metadata import version; print(version('ruff'))"], cwd=root)
     assert installed.stdout.strip() == "99.0.0"

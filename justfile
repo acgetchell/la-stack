@@ -308,6 +308,7 @@ github-actions-check: action-lint zizmor
 # Keep the command-memory layer itself canonically formatted.
 justfile-fmt-check:
     just --fmt --check
+    just --justfile tooling/performance.just --fmt --check
 
 # Check code, documentation, and configuration without changing sources.
 lint: lint-code lint-docs lint-config
@@ -328,7 +329,7 @@ markdown-check: tools-check _ensure-uv
     files=()
     while IFS= read -r -d '' file; do
         case "$file" in
-            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*) continue ;;
+            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*|docs/performance-runs/*) continue ;;
         esac
         if [ -f "$file" ]; then
             files+=("$file")
@@ -352,7 +353,7 @@ markdown-fix: tools-check
     files=()
     while IFS= read -r -d '' file; do
         case "$file" in
-            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*) continue ;;
+            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*|docs/performance-runs/*) continue ;;
         esac
         if [ -f "$file" ]; then
             files+=("$file")
@@ -365,47 +366,23 @@ markdown-fix: tools-check
         echo "No markdown files found to format."
     fi
 
-# Build release docs from retained scratch inputs or the latest docs/performance snapshot.
+# Render release docs from complete runs, or read historical CSV/JSON evidence.
 performance-doc: python-sync
-    {{ _run }} uv run --locked archive-performance --promote-artifacts
+    {{ _run }} uv run --locked archive-performance report
 
-# Compare stored GitHub Actions release benchmark assets without local cargo runs.
+# Compare published release archives with their original per-release harnesses.
 performance-github-assets current_tag="" baseline_tag="": _ensure-gh python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    current_tag={{ quote(current_tag) }}
-    baseline_tag={{ quote(baseline_tag) }}
-    if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
-        if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
-            echo "current_tag and baseline_tag must be provided together" >&2
-            exit 2
-        fi
-        {{ _run }} uv run --locked archive-performance "$current_tag" "$baseline_tag" --github-assets --generate-in-temp-worktree --worktree-ref "$current_tag" --output-only --output target/bench-reports/github-assets-performance.md --artifact-csv target/bench-reports/github-assets-performance.csv --artifact-provenance target/bench-reports/github-assets-performance.provenance.json
-    else
-        {{ _run }} uv run --locked archive-performance --published-latest --github-assets --generate-in-temp-worktree --output-only --output target/bench-reports/github-assets-performance.md --artifact-csv target/bench-reports/github-assets-performance.csv --artifact-provenance target/bench-reports/github-assets-performance.provenance.json
-    fi
+    {{ _run }} uv run --locked archive-performance assets {{ quote(current_tag) }} {{ quote(baseline_tag) }}
 
-# Compare the current tree against the latest release; untracked files are excluded.
+# Measure tracked current inputs and the latest release with the captured current harness.
 performance-local: _ensure-gh python-sync
-    {{ _run }} uv run --locked archive-performance --current-vs-latest --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance.md
+    {{ _run }} uv run --locked archive-performance local
 
-# Compare current non-exact kernels locally without rerunning current peer crates.
+# Measure the comparison suite while retaining baseline-phase nalgebra/faer context.
 performance-local-non-exact current_tag="" baseline_tag="": _ensure-gh python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    current_tag={{ quote(current_tag) }}
-    baseline_tag={{ quote(baseline_tag) }}
-    if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
-        if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
-            echo "current_tag and baseline_tag must be provided together" >&2
-            exit 2
-        fi
-        {{ _run }} uv run --locked archive-performance "$current_tag" "$baseline_tag" --suite vs_linalg --generate-in-temp-worktree --worktree-ref HEAD --output-only --local-report --output target/bench-reports/performance-non-exact.md --artifact-csv target/bench-reports/performance-non-exact.csv --artifact-provenance target/bench-reports/performance-non-exact.provenance.json
-    else
-        {{ _run }} uv run --locked archive-performance --current-vs-latest --suite vs_linalg --generate-in-temp-worktree --output-only --local-report --output target/bench-reports/performance-non-exact.md --artifact-csv target/bench-reports/performance-non-exact.csv --artifact-provenance target/bench-reports/performance-non-exact.provenance.json
-    fi
+    {{ _run }} uv run --locked archive-performance local {{ quote(current_tag) }} {{ quote(baseline_tag) }} --suite vs_linalg --stem target/bench-reports/performance-non-exact
 
-# Publish README assets/table from retained measurements, including after target cleanup.
+# Publish the existing README plot format from retained measurements after cleanup.
 performance-readme metric="lu_solve" stat="median" sample="new" log_y="true": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
@@ -415,21 +392,9 @@ performance-readme metric="lu_solve" stat="median" sample="new" log_y="true": py
     fi
     {{ _run }} uv run --locked criterion-dim-plot "${args[@]}"
 
-# Measure locally, preserve complete summaries in docs/performance, and promote/archive docs.
+# Measure, retain an immutable complete run, and promote distinct-release documentation.
 performance-release current_tag="" baseline_tag="": _ensure-gh python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    current_tag={{ quote(current_tag) }}
-    baseline_tag={{ quote(baseline_tag) }}
-    if [[ -n "$current_tag" || -n "$baseline_tag" ]]; then
-        if [[ -z "$current_tag" || -z "$baseline_tag" ]]; then
-            echo "current_tag and baseline_tag must be provided together" >&2
-            exit 2
-        fi
-        {{ _run }} uv run --locked archive-performance "$current_tag" "$baseline_tag" --generate-in-temp-worktree --worktree-ref HEAD
-    else
-        {{ _run }} uv run --locked archive-performance --infer-release --generate-in-temp-worktree --worktree-ref HEAD
-    fi
+    {{ _run }} uv run --locked archive-performance release {{ quote(current_tag) }} {{ quote(baseline_tag) }}
 
 # Plot: generate a single time-vs-dimension SVG from Criterion results.
 plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_partial="false": python-sync

@@ -15,10 +15,8 @@ Rust linear algebra crates across dimensions.
 import argparse
 import hashlib
 import json
-import math
 import platform
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -28,13 +26,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, TypeGuard, cast
 
-from research_repo_tools.criterion import Statistic, read_estimate
+from research_repo_tools.complete_runs import run_identity
+from research_repo_tools.criterion import Comparison, Estimate, Statistic, read_estimate
+from research_repo_tools.evidence import serialize_evidence
 from research_repo_tools.files import replace_many
-from research_repo_tools.process import ExecutableNotFoundError, cpu_description, format_exception_diagnostics
-from research_repo_tools.publication import MarkerPair, replace_section
+from research_repo_tools.process import ExecutableNotFoundError, cpu_description, format_exception_diagnostics, run_command
+from research_repo_tools.publication import MarkerPair, plan_outputs, publish_publication, replace_section
 
-from benchmark_contract import benchmark_contract_digest
-from benchmark_process import find_project_root, run_git_command, run_safe_command
+from benchmark_contract import benchmark_contract_digest, find_project_root
 from benchmark_summaries import report_input_paths, resolve_report_paths
 from performance_artifacts import ArtifactPaths, PerformanceBundle, TimingEstimate, ensure_distinct_paths, load_bundle
 
@@ -111,21 +110,9 @@ class Row:
         if self.dim <= 0:
             msg = f"dimension must be positive: {self.dim}"
             raise ValueError(msg)
-        for field, value in (
-            ("la_time", self.la_time),
-            ("la_lo", self.la_lo),
-            ("la_hi", self.la_hi),
-            ("na_time", self.na_time),
-            ("na_lo", self.na_lo),
-            ("na_hi", self.na_hi),
-            ("fa_time", self.fa_time),
-            ("fa_lo", self.fa_lo),
-            ("fa_hi", self.fa_hi),
-        ):
-            _require_positive_finite_time(value, field)
-        _require_confidence_interval(self.la_lo, self.la_hi, "la_stack row")
-        _require_confidence_interval(self.na_lo, self.na_hi, "nalgebra row")
-        _require_confidence_interval(self.fa_lo, self.fa_hi, "faer row")
+        Estimate(self.la_time, self.la_lo, self.la_hi)
+        Estimate(self.na_time, self.na_lo, self.na_hi)
+        Estimate(self.fa_time, self.fa_lo, self.fa_hi)
 
 
 class ReadmeBenchmarkLinkError(ValueError):
@@ -308,19 +295,6 @@ def _read_estimate(estimates_json: Path, stat: str) -> tuple[float, float, float
     return estimate.point, estimate.lower, estimate.upper
 
 
-def _require_positive_finite_time(value: float, context: str) -> float:
-    if not math.isfinite(value) or value <= 0.0:
-        msg = f"{context} must be finite and positive: {value!r}"
-        raise ValueError(msg)
-    return value
-
-
-def _require_confidence_interval(lo: float, hi: float, context: str) -> None:
-    if lo > hi:
-        msg = f"{context} lower bound must be <= upper bound: {lo!r} > {hi!r}"
-        raise ValueError(msg)
-
-
 def _write_csv(out_csv: Path, rows: list[Row]) -> None:
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     with out_csv.open("w", encoding="utf-8", newline="\n") as f:
@@ -331,9 +305,7 @@ def _write_csv(out_csv: Path, rows: list[Row]) -> None:
 
 def _pct_reduction(baseline: float, value: float) -> str:
     """Percent time reduction relative to baseline (positive = value is faster)."""
-    if baseline == 0.0:
-        return "n/a"
-    pct = ((baseline - value) / baseline) * 100.0
+    pct = Comparison("dimension", Estimate(baseline), Estimate(value)).percent_reduction
     return f"{pct:+.1f}%"
 
 
@@ -428,7 +400,7 @@ def _render_svg_with_gnuplot(req: PlotRequest) -> None:
     )
 
     try:
-        run_safe_command("gnuplot", [], input="\n".join(gp_lines))
+        run_command("gnuplot", [], input="\n".join(gp_lines))
     except ExecutableNotFoundError as exc:
         msg = "gnuplot not found. Install it (macOS: `brew install gnuplot`) or re-run with --no-plot."
         raise FileNotFoundError(msg) from exc
@@ -614,7 +586,7 @@ def _collect_rows(criterion_dir: Path, dims: list[int], metric: Metric, stat: st
 def _git_value(root: Path, args: list[str]) -> str:
     """Return deterministic Git provenance or an explicit unavailable label."""
     try:
-        value = run_git_command(args, cwd=root).stdout.strip()
+        value = run_command("git", ["--no-pager", *args], cwd=root).stdout.strip()
     except (
         ExecutableNotFoundError,
         OSError,
@@ -628,7 +600,8 @@ def _git_value(root: Path, args: list[str]) -> str:
 def _git_status_metadata(root: Path) -> tuple[bool | None, str]:
     """Return checkout cleanliness and a deterministic digest of porcelain status."""
     try:
-        status = run_git_command(
+        status = run_command(
+            "git",
             ["--no-pager", "status", "--porcelain=v1", "--untracked-files=all"],
             cwd=root,
         ).stdout
@@ -706,7 +679,7 @@ def _provenance_harness_digest(root: Path) -> tuple[str, list[str]]:
 def _rustc_version(root: Path) -> str:
     """Return the rustc version used by the publication workflow."""
     try:
-        value = run_safe_command(
+        value = run_command(
             "rustc",
             ["--version"],
             cwd=root,
@@ -1131,7 +1104,7 @@ def _update_staged_readme_publication(
     staged_readme.write_bytes(updated_readme.encode("utf-8"))
 
 
-def _stage_and_publish_outputs(  # noqa: PLR0913
+def _stage_and_publish_outputs(  # noqa: C901, PLR0913
     *,
     root: Path,
     args: PlotCliArgs,
@@ -1139,9 +1112,12 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
     req: PlotRequest,
     provenance: dict[str, object],
     skipped: list[str],
+    validated_inputs: Mapping[Path, bytes] | None = None,
 ) -> int:
     """Render every output in isolation, then replace publication files together."""
     final_provenance = req.csv_path.with_suffix(".provenance.json")
+    readme_path = _resolve_under_root(root, args.readme)
+    readme_original = readme_path.read_bytes() if args.update_readme else b""
     with tempfile.TemporaryDirectory(prefix=".criterion-dim-plot-", dir=root) as tmp:
         stage_dir = Path(tmp)
         staged_csv = stage_dir / "benchmark.csv"
@@ -1175,9 +1151,8 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
             pairs.append((staged_svg, req.out_svg))
 
         if args.update_readme:
-            readme_path = _resolve_under_root(root, args.readme)
             staged_readme = stage_dir / "README.md"
-            shutil.copy2(readme_path, staged_readme)
+            staged_readme.write_bytes(readme_original)
             try:
                 _update_staged_readme_publication(root=root, args=args, rows=rows, staged_readme=staged_readme)
             except (OSError, ValueError) as exc:
@@ -1186,8 +1161,20 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
                 return 2
             pairs.append((staged_readme, readme_path))
 
-        if not _publish_staged_files(pairs):
-            return 2
+        if validated_inputs is None:
+            if not _publish_staged_files(pairs):
+                return 2
+        else:
+            outputs = {destination.relative_to(root).as_posix(): staged.read_bytes() for staged, destination in pairs}
+            ensure_distinct_paths(
+                {**{f"input {path}": path for path in validated_inputs}, **{f"output {destination}": destination for _, destination in pairs}}
+            )
+            inputs = {path.relative_to(root).as_posix(): data for path, data in validated_inputs.items()}
+            plan = plan_outputs(root, outputs, inputs=inputs)
+            if args.update_readme and dict(plan.originals)[readme_path.relative_to(root).as_posix()] != readme_original:
+                msg = "README publication inputs changed during rendering"
+                raise ValueError(msg)
+            publish_publication(plan)
 
     if skipped:
         print("Warning: some dimension groups were skipped:")
@@ -1200,6 +1187,68 @@ def _stage_and_publish_outputs(  # noqa: PLR0913
     if args.update_readme:
         print(f"Updated README benchmark publication: {_resolve_under_root(root, args.readme)}")
     return 0
+
+
+def _complete_readme(root: Path, args: PlotCliArgs) -> int:
+    """Render the established figure format directly from shared complete runs."""
+    # The report registry imports this module's metric definitions.
+    import performance_runs as complete  # noqa: PLC0415
+
+    evidence = complete.retained_run(root, root / "target/bench-reports/performance")
+    run = complete.validate_scientific_run(evidence, release=True)
+    complete.verify_current_source(root, evidence)
+    values = complete.estimates_by_series(run, args.stat)
+    metric = METRICS[args.metric]
+    rows = []
+    for dimension in CANONICAL_DIMS:
+        name = f"d{dimension}/{metric.la_bench}"
+        estimates = [values[series][name] for series in ("la-stack current", "nalgebra", "faer")]
+        numbers = [value for estimate in estimates for value in (estimate.point, estimate.lower, estimate.upper)]
+        if any(value is None for value in numbers):
+            msg = "README requires complete confidence intervals"
+            raise ValueError(msg)
+        rows.append(Row(dimension, *(float(value) for value in numbers if value is not None)))
+    sources = dict(evidence.sources)
+    context = dict(sources["current"].context)
+    baseline_context = dict(sources["baseline"].context)
+    report_config = root / complete.REPORT_CONFIG
+    inputs = {report_config: report_config.read_bytes()}
+    for field in ("source-inventory", "harness-inventory"):
+        inputs.update({root / name: (root / name).read_bytes() for name in json.loads(context[field])})
+    payload, manifest = complete.scratch_paths(root / "target/bench-reports/performance")
+    identity = run_identity(evidence)
+    if not payload.exists():
+        archive = root / complete.archive_directory(root)
+        payload = archive / "runs" / identity / "run.json"
+        manifest = payload.with_name("evidence.json")
+        for name in ("index.json", "latest.json", f"runs/{identity}/report.md"):
+            path = archive / name
+            inputs[path] = path.read_bytes()
+    inputs.update(zip((payload, manifest), serialize_evidence(evidence), strict=True))
+    provenance: dict[str, object] = {
+        "schema": 3,
+        "artifact": "README vs_linalg dimension plot",
+        "run_id": identity,
+        "criterion": {"statistic": args.stat, "metric": args.metric, "dimensions": list(CANONICAL_DIMS), "log_y": args.log_y},
+        "measurement": {"la_stack_phase": "current", "peer_phase": "baseline", "peer_release_context": baseline_context["release"]},
+        "sources": {
+            phase: {"revision": source.revision, "source_sha256": source.source_sha256, "harness_sha256": source.harness_sha256}
+            for phase, source in evidence.sources
+        },
+    }
+    out_svg, out_csv = _resolve_output_paths(root, args.metric, args.stat, args.out, args.csv)
+    request = PlotRequest(
+        csv_path=out_csv,
+        out_svg=out_svg,
+        title=f"{metric.title}: {args.stat} time vs dimension",
+        stat=args.stat,
+        dims=CANONICAL_DIMS,
+        la_label=_format_legend_label("la-stack", context["release"].removeprefix("v")),
+        na_label=_format_legend_label("nalgebra", baseline_context["dependency.nalgebra"]),
+        fa_label=_format_legend_label("faer", baseline_context["dependency.faer"]),
+        log_y=args.log_y,
+    )
+    return _stage_and_publish_outputs(root=root, args=args, rows=rows, req=request, provenance=provenance, skipped=[], validated_inputs=inputs)
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912, PLR0915
@@ -1219,6 +1268,19 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0912,
         return 2
     if rc != 0:
         return rc
+    if args.update_readme and _resolve_under_root(root, args.performance_csv).resolve() == (root / _DEFAULT_PERFORMANCE_CSV).resolve():
+        try:
+            # The report registry imports this module's metric definitions.
+            import performance_runs as complete  # noqa: PLC0415
+
+            candidates = list(complete.scratch_paths(root / "target/bench-reports/performance"))
+            if (root / complete.REPORT_CONFIG).exists():
+                candidates.append(root / complete.archive_directory(root))
+            if any(path.exists() or path.is_symlink() for path in candidates):
+                return _complete_readme(root, args)
+        except (OSError, ValueError, TypeError, KeyError, ExceptionGroup) as error:
+            print(f"Invalid complete performance run: {format_exception_diagnostics(error)}", file=sys.stderr)
+            return 2
     versions = _detect_versions(root)
     _print_versions(versions)
 
