@@ -154,8 +154,9 @@ retain scientific schemas and consumer policy checks.
 
 Performance consumers use shared Criterion parsing and estimate/comparison
 validation, digest verification, archive extraction, byte-preserving document
-sections, and multi-file transactions. Local rendering produces complete candidate
-outputs before publication. Historical artifact schemas and fingerprint framing,
+sections, and multi-file transactions. Shared rendering produces complete-run
+reports; local rendering remains for historical reports and dimension plots.
+Historical artifact schemas and fingerprint framing,
 benchmark selection and eligibility remain in the consumer. Published v0.1.8
 owns common-harness orchestration, completeness, worktrees, complete run retention,
 validated latest selection, and transactional report publication.
@@ -176,9 +177,9 @@ gates for both local measurements and release inventories.
 `tooling/performance.toml` uses the shared measurement schema for source/harness
 inputs, probes, timeouts, and compatibility fields.
 `scripts/performance_runs.py` declares scientific coverage,
-release compatibility, and named reference phases, and renders the local tables.
+release compatibility, and named reference phases used by shared reports and local plots.
 `scripts/archive_performance.py` composes the shared APIs for consumer commands.
-`tooling/performance-report.toml` owns the new retention paths.
+`tooling/performance-report.toml` owns the canonical report path, title, and shared history path.
 `scripts/benchmark_summaries.py` only reads historical CSV/JSON snapshots;
 `scripts/criterion_measurements.py` and the old generic measurement/retention
 engines are removed. `scripts/tests/test_performance_workflow.py` verifies

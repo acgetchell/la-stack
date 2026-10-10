@@ -1,4 +1,4 @@
-"""la-stack scientific policy and rendering over shared complete-run contracts."""
+"""la-stack scientific policy and series selection over shared complete runs."""
 
 import json
 import os
@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from research_repo_tools.common_measurement import CommonHarnessPlan, MeasurementPhase
-from research_repo_tools.complete_runs import CompletePolicy, CompleteRun, RunSeries, run_identity, validate_run_evidence
+from research_repo_tools.complete_runs import CompletePolicy, CompleteRun, RunSeries, validate_run_evidence
 from research_repo_tools.evidence import Evidence, fingerprint_files, load_evidence
 from research_repo_tools.measurement import MeasurementConfig, load_measurement
 from research_repo_tools.process import run_command
@@ -272,75 +272,3 @@ def estimates_by_series(run: CompleteRun, statistic: str = "median") -> dict[str
         raise ValueError(f"unsupported statistic: {statistic}")
     phases = {phase: {case.full_id: case for case in sample.cases} for phase, sample in run.phases}
     return {series.name: {label: phases[series.phase][full_id].estimate(statistic) for label, full_id in series.rows} for series in run.series}
-
-
-def render_scientific_report(evidence: Evidence) -> bytes:
-    """Retain la-stack's comparison tables and cautious statistical interpretation."""
-    run = validate_scientific_run(evidence)
-    sources = dict(evidence.sources)
-    current, baseline = (dict(sources[phase].context)["release"] for phase in ("current", "baseline"))
-    values = estimates_by_series(run)
-    comparisons = []
-    current_only = []
-    for name, estimate in values["la-stack current"].items():
-        group, bench = name.split("/", 1)
-        prior = values["la-stack baseline"].get(name)
-        if prior is None:
-            current_only.append(f"- `{name}`: current {report.format_time(estimate.point)}; baseline API unavailable.")
-            continue
-
-        comparisons.append(
-            report.Comparison(
-                suite="exact" if group.startswith(("exact_", *UNAVAILABLE_PREFIXES)) else "vs_linalg",
-                group=group,
-                bench=bench,
-                baseline_bench=bench,
-                baseline=prior,
-                current=estimate,
-                assessment=report.assess_change(prior, estimate),
-                baseline_nalgebra=values.get("nalgebra", {}).get(name),
-                baseline_faer=values.get("faer", {}).get(name),
-            )
-        )
-    lines = [
-        "# Benchmark Performance",
-        "",
-        f"**la-stack** {current} · `{sources['current'].revision}`",
-        "",
-        f"Comparison against baseline **{baseline}**:",
-        "",
-        "**Statistic**: median; complete mean and median measurements are retained.",
-        "",
-        "Negative point-estimate change means a smaller current estimate; a baseline/current ratio above 1 has the same meaning.",
-        "Marginal Criterion interval separation is not a paired confidence interval or a statistical-significance claim.",
-        "",
-        "nalgebra/faer reference measurements originate in the baseline phase under the captured current harness; they were not rerun in the current phase.",
-        "",
-        f"**Complete run**: `{run_identity(evidence)}`",
-        "",
-    ]
-    for phase, source in evidence.sources:
-        context = dict(source.context)
-        lines.extend(
-            [
-                f"- {phase}:",
-                f"  - Revision: `{source.revision}`.",
-                f"  - Source: `{source.source_sha256}`.",
-                f"  - Harness: `{source.harness_sha256}`.",
-                f"  - Gate status: {context['gate-status']}.",
-                f"  - Gate: `{context['gate-command']}`.",
-                f"  - Command: `{context['command']}`.",
-            ]
-        )
-    lines.extend(
-        [
-            "",
-            report.comparison_tables(comparisons, baseline),
-            "",
-            *current_only,
-            "",
-            "Regenerate from retained evidence with `just performance-doc`; update README with `just performance-readme`.",
-            "",
-        ]
-    )
-    return "\n".join(lines).encode()
