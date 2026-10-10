@@ -119,8 +119,8 @@ just performance-release
 ```
 
 The no-argument form compares the current package version with the previous
-stable published release. Review `docs/performance.md`, any archived comparison
-under `docs/archive/performance/`, and the immutable complete-run evidence,
+stable published release. Review the shared report at `docs/performance.md`
+and the immutable complete-run evidence,
 reports, index, and latest pointer under `docs/performance-runs/`. Include the
 entire new run and index changes in the release PR. Shared complete evidence
 retains both phases, mean and median estimates, 100 raw samples per case, and

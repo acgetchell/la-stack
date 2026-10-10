@@ -57,7 +57,7 @@ Rule of thumb:
 The three canonical workflows compose around one artifact schema, metric set,
 and renderer:
 
-| Recipe | Measure | Retain CSV/JSON | Promote release docs |
+| Recipe | Measure | Retain complete-run JSON | Promote release docs |
 |--------|---------|-----------------|----------------------|
 | `performance-local` | Yes | Yes | No |
 | `performance-doc` | No | Consumes retained inputs | Yes |
@@ -87,10 +87,10 @@ rows so validation and adapter costs remain visible. Every row uses `iter`
 with borrowed, preconstructed inputs; only `construct_then_angle` includes
 construction. This focused signal is outside the release-report schema.
 
-Newly rendered reports use one table per selected suite. Dimension and
-adversarial-input group appear in a `Case` column instead of creating a separate
-table for every group. The `vs_linalg` table is the one wider variant because it
-adds nalgebra and faer context columns where matching peer measurements exist.
+Complete-run reports use a table for each statistic, with columns for the
+selected series. Benchmark identifiers retain the suite, dimension, and input
+case. Saved-baseline comparisons and historical reports retain their separate
+layouts.
 
 **`vs_linalg`** (`benches/vs_linalg.rs`) compares `la-stack` against
 `nalgebra` and `faer` across D=2-64 for LU, solve, determinant, dot, norm, and
@@ -166,8 +166,9 @@ tag. Both revisions must pass the same benchmark-input tests used by
 correctness gate over the deterministic fixtures and operations, not validation
 of each timed Criterion sample. It writes
 `target/bench-reports/performance.md` plus retained `performance.run.json` and
-`performance.evidence.json` complete-run inputs. The report and sidecar embed
-both commits, CPU, operating system, Rust toolchain, lockfile and harness
+`performance.evidence.json` complete-run inputs. The Markdown report includes
+the run identity and each series' phase, release, and revision. The evidence
+JSON retains the CPU, operating system, Rust toolchain, lockfile and harness
 digests, Criterion selection/commands, and both correctness-gate results. The
 report reader rejects malformed or mismatched provenance and incomplete
 selected-suite coverage.
@@ -315,7 +316,7 @@ See `uv run --locked criterion-dim-plot --help` for plotting options.
 
 ### Create The Release Performance Report
 
-Release PRs promote one curated release-to-release comparison into committed
+Release PRs promote one complete release-to-release comparison into committed
 docs:
 
 ```bash
@@ -342,18 +343,31 @@ dependency versions, host identity, and independent gate results.
 Promotion publishes immutable `run.json`, `evidence.json`, and `report.md`
 under `docs/performance-runs/runs/<content-id>/`, plus the shared index, latest
 pointer, history index, and `docs/performance.md` in one transaction.
-Repeated runs for one release pair coexist. The previous curated report is
-retained under `docs/archive/performance/` when its archive path is new.
+Repeated runs for one release pair coexist. `tooling/performance-report.toml`
+selects the current report path and title. The shared renderer produces mean
+and median tables with named series and recorded marginal intervals; unavailable
+cases appear as an em dash. Each series identifies its measurement phase,
+release, and revision. Full environment, harness, command, and gate provenance
+remains in that run's `evidence.json`, beside `run.json` and `report.md`.
+New reports no longer use the custom percentage-change, ratio, or interval-overlap
+columns. The README dimension plot and its table retain their existing format.
 Serialization, validation, rendering, and promotion failures preserve existing
 published reports and selection. Review and commit the whole new run and index.
 Legacy snapshots under `docs/performance/` retain their original bytes,
 hashes, framing, and reader; see the [legacy index](performance/README.md).
+The last published legacy report is preserved in the
+[Markdown archive](archive/performance/README.md). The checked-in current report
+keeps its historical format until a complete run is promoted; old summaries do
+not contain the raw samples required to reconstruct complete-run evidence.
+Existing history and optimization studies are retained. No automatic pruning is
+performed; removing indexed runs requires a coordinated change to the shared
+index and latest pointer, while preserving evidence referenced by active reports.
 
 The Markdown check and format recipes exclude the generated
-`docs/performance-runs/` archive because shared validation requires exact report
-bytes. Keep both recipe exclusions aligned with `archive` in
-`tooling/performance-report.toml` when relocating it. The curated
-`docs/performance.md` remains subject to active Markdown checks.
+`docs/performance-runs/` archive and `docs/performance.md` because these outputs
+belong to the shared renderer. Shared validation requires exact retained report
+bytes. Keep both recipe exclusions aligned with `archive` and `current` in
+`tooling/performance-report.toml` when relocating them.
 
 To reproduce and promote the report without running Cargo or creating Git
 worktrees, use:
@@ -366,7 +380,7 @@ This command fails closed on a missing, partial, malformed, mismatched, or
 unsupported artifact pair. It consumes the default complete-run payload/envelope
 or follows the validated `docs/performance-runs/latest.json` when all scratch
 inputs are absent. A repository with only legacy evidence continues through
-the historical reader. Report replay runs offline and updates the curated
+the historical reader. Report replay runs offline and updates the current
 document and shared history transactionally. Promotion requires distinct
 current and baseline package versions, so a same-version local comparison is
 retained and reproducible but cannot become release documentation. Use promotion
@@ -406,10 +420,10 @@ shared-harness workflow before attributing a difference solely to library code.
 | `target/bench-reports/performance.evidence.json` | No | `performance-local`, `performance-release` | Shared evidence envelope with source/harness and phase provenance. |
 | `target/bench-reports/performance-non-exact.*` | No | `performance-local-non-exact` | Narrowed non-exact report and retained peer-context comparison inputs. |
 | `target/bench-reports/github-assets-performance.md` | No | `performance-github-assets` | Local report from published release artifacts. |
-| `docs/performance.md` | Yes | `performance-release`, `performance-doc` | Latest curated release-to-release comparison. |
+| `docs/performance.md` | Yes | `performance-release`, `performance-doc` | Current shared full report; last legacy report until complete-run promotion. |
 | `docs/performance-runs/` | Yes | `performance-release`, `performance-doc` | Immutable complete runs, reports, index, and validated latest pointer. |
 | `docs/performance/` | Yes | Legacy reader | Unchanged historical CSV/JSON evidence and hashes. |
-| `docs/archive/performance/` | Yes | `performance-release`, `performance-doc` | Older curated release-to-release comparisons. |
+| `docs/archive/performance/` | Yes | Legacy reader | Preserved reports in the historical format. |
 | `docs/archive/performance/studies/` | Yes | Maintainer investigations | Completed optimization studies and decisions. |
 | `docs/assets/bench/` | Yes | `performance-readme` | README benchmark CSV/SVG assets and JSON provenance. |
 | GitHub Release | Remote | `.github/workflows/release-benchmarks.yml` | Criterion baseline archive. |

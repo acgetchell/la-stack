@@ -1,8 +1,9 @@
-# Local Benchmark Summaries
+# Legacy Local Benchmark Summaries
 
-This directory preserves complete local measurement summaries across releases
-and `just clean`. The generated [performance report](../performance.md) is a
-selected view of those measurements; the README chart uses its LU-solve subset.
+This directory preserves historical local measurement summaries across
+`just clean`. The last published report and README chart used these inputs.
+New measurements use shared complete-run evidence under `docs/performance-runs/`;
+the [Benchmarking guide](../BENCHMARKING.md) owns the current workflow.
 
 ## Contents
 
@@ -13,10 +14,10 @@ selected view of those measurements; the README chart uses its LU-solve subset.
 
 ## Saved runs
 
-`just performance-release` saves each successful local comparison under
-`<current>-vs-<baseline>/<run-digest>/`. The digest identifies the complete
-contents, so another run or machine creates a separate snapshot. Identical
-promotion is idempotent. Earlier snapshots remain available.
+Historical comparisons were saved under
+`<current>-vs-<baseline>/<run-digest>/`. The digest identifies the snapshot's
+contents. These files retain their original schemas and hashes; new runs do not
+write this format.
 
 Each snapshot contains:
 
@@ -34,14 +35,13 @@ Markdown. Each recorded case must have valid metadata, estimates, and 100 raw
 samples before publication. Baseline-only peers remain explicitly baseline
 measurements; missing current measurements are never filled from an older run.
 
-`latest.json` points to the most recently promoted complete snapshot. It is
-updated with the report in the same rollback-protected publication operation.
-Review and commit the snapshot and pointer along with the release report.
+`latest.json` identifies the last saved legacy snapshot. New complete-run
+publication maintains its own shared index and latest pointer instead.
 
 ## Regenerating reports
 
-After a successful release promotion, these commands can use the committed
-snapshot when the scratch report inputs are absent:
+While no shared complete run has been retained, these commands can use the
+committed legacy snapshot when scratch report inputs are absent:
 
 ```bash
 just performance-doc
@@ -56,10 +56,9 @@ release version. Committing only the saved artifacts does not invalidate a
 snapshot: its original measurement commit remains in provenance. Legacy inputs
 without a benchmark-contract digest also require the original commit.
 
-`performance-local` initially keeps complete summaries beside its selected
-inputs under `target/bench-reports/`. Promote a distinct-release comparison with
-`performance-doc` before cleaning if it should become committed release history.
-Same-version local experiments remain scratch output.
+Once a shared complete run is promoted, the commands select that history.
+Legacy summaries cannot be converted losslessly into complete-run evidence:
+they retain aggregate statistics and sample counts, but not the raw samples.
 
 ## Comparing measurements
 

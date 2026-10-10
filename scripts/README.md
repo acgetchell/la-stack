@@ -68,10 +68,10 @@ are excluded; historical Markdown reports remain available in the archive.
 # Local development: compare the current tree with the latest release
 just performance-local
 
-# Release PR: update docs/performance.md and archive the previous report
+# Release PR: publish docs/performance.md and retain the complete run
 just performance-release
 
-# Build release docs from retained CSV/JSON inputs
+# Build release docs from retained complete-run evidence (or historical inputs)
 just performance-doc
 
 # GitHub Actions release assets, without local cargo benchmark runs
@@ -87,8 +87,8 @@ its commit/ref and source-state provenance still distinguish the revisions.
 
 The local release workflows run the independent benchmark-input correctness gate
 and then measure both library revisions with one hashed current benchmark
-harness. Reports record source-state, environment, toolchain, dependency,
-Criterion, harness, and validation provenance and fail on incomplete selected
+harness. Retained evidence records source-state, environment, toolchain, dependency,
+Criterion, harness, and validation provenance and fails on incomplete selected
 coverage. `performance-local` writes `performance.md`, `performance.run.json`,
 and `performance.evidence.json` under `target/bench-reports/`. The shared
 complete-run payload preserves every semantic Criterion case, 100 raw samples,
@@ -96,8 +96,11 @@ mean and median estimates, and 95% intervals from both phases.
 `performance-release` requires distinct releases and publishes immutable
 `run.json`, `evidence.json`, and `report.md` files under
 `docs/performance-runs/runs/<content-id>/`, with a validated index and latest
-pointer. Its scientific tables are published to `docs/performance.md` in the
-same transaction. Repeated runs for one pair coexist; publication failures
+pointer. The shared full report is published to `docs/performance.md` in the
+same transaction, using the path and title in `tooling/performance-report.toml`.
+Its mean and median tables show named series, marginal intervals, and unavailable
+measurements, with each series attributed to its original phase.
+Full provenance remains in the evidence envelope. Repeated runs for one pair coexist; publication failures
 preserve the previous reports and selection. `performance-doc` replays this
 evidence without Cargo. Same-version local comparisons require distinct source
 identities and cannot be promoted as release reports.
@@ -352,9 +355,10 @@ and recipe forwarding. `tests/test_cargo_update_integration.py` executes native
 Cargo upgrades against a disposable local registry; Python updates have a
 matching real-uv fixture in the toolchain tests. Common parser, transaction,
 Markdown, and fixture regressions belong to the shared package. Scientific
-eligibility, Cargo commands/features, release adapters, selected rows, and report
-layouts remain consumer-owned. The shared package owns common-harness phases,
-completeness, worktrees, run identities, retention, and publication.
+eligibility, Cargo commands/features, release adapters, selected rows, historical
+report layouts, and dimension plots remain consumer-owned. The shared package
+owns complete-run reports, common-harness phases, completeness, worktrees, run
+identities, retention, and publication.
 Notebook tooling remains outside scope.
 
 The same pinned release owns opt-in CodeRabbit review orchestration through
@@ -392,7 +396,7 @@ preview an annotation without creating a tag.
 | `benchmark_contract.py` | Select the Cargo checkout and hash the historical benchmark inventory contract |
 | `benchmark_summaries.py` | Read historical complete CSV/JSON summaries without changing framing |
 | `criterion_dim_plot.py` | Plot Criterion benchmark results (CSV + SVG + README table) |
-| `performance_runs.py` | Declare scientific run policy and adapt retained series to local tables |
+| `performance_runs.py` | Declare scientific run policy and adapt retained series for dimension plots |
 | `performance_artifacts.py` | Validate and publish schema-versioned performance-comparison CSV/JSON inputs |
 | `release_baseline.py` | Inventory full Criterion suites and validate complete raw release baselines before packaging |
 
@@ -424,6 +428,10 @@ summary retention writer, and their duplicate generic tests are removed.
 policies, failure preservation, historical golden bytes, and offline replay.
 The shared multi-series plotting extension is deferred, so the existing local
 CSV/SVG/README adapter preserves figure format and baseline-phase peer labels.
+Complete-run Markdown uses the shared renderer directly. Upstream follow-ups
+cover [coordinate plots](https://github.com/acgetchell/research-repo-tools/issues/95),
+[provenance summaries](https://github.com/acgetchell/research-repo-tools/issues/96), and
+[complete-run document publication](https://github.com/acgetchell/research-repo-tools/issues/97).
 
 Performance scripts also use the published shared Criterion parser and estimate
 validation, comparison arithmetic, exact-byte digest verification, safe archive

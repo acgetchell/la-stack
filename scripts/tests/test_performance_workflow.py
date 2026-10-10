@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from research_repo_tools.common_measurement import CommonHarnessPlan, measure_prepared_pair
-from research_repo_tools.complete_runs import RunSeries, run_identity, serialize_run
+from research_repo_tools.complete_runs import RunSeries, render_run, run_identity, serialize_run
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
 from research_repo_tools.release_pairs import ReleasePair
@@ -132,6 +132,16 @@ def complete_run(tmp_path: Path, measured_run: tuple[Path, Evidence]) -> tuple[P
     return destination, evidence
 
 
+@pytest.fixture
+def legacy_artifacts(tmp_path: Path) -> ArtifactPaths:
+    """Keep historical promotion coverage on the last published CSV schema."""
+    history = ROOT / "docs/performance"
+    run = json.loads((history / "latest.json").read_bytes())["run"]
+    for name in ("performance.csv", "performance.provenance.json"):
+        shutil.copyfile(history / run / name, tmp_path / name)
+    return ArtifactPaths(tmp_path / "performance.csv", tmp_path / "performance.provenance.json")
+
+
 def test_common_harness_and_reference_phase(tmp_path: Path) -> None:
     baseline, current, plan = prepared(tmp_path)
     (baseline / "benches/exact.rs").write_text("obsolete harness\n", encoding="utf-8")
@@ -143,10 +153,6 @@ def test_common_harness_and_reference_phase(tmp_path: Path) -> None:
     assert (baseline / "benches/exact.rs").read_bytes() == (current / "benches/exact.rs").read_bytes()
     assert {series.phase for series in run.series if series.name in {"nalgebra", "faer"}} == {"baseline"}
     assert all(sample.policy.statistics == ("mean", "median") for _, sample in run.phases)
-    report = policy.render_scientific_report(evidence)
-    assert b"not rerun in the current phase" in report
-    assert b"baseline API unavailable" in report
-    assert b"paired confidence interval" in report
 
 
 @pytest.mark.parametrize("fault", ["gate", "stale", "missing-row", "missing-statistic", "missing-sample"])
@@ -159,14 +165,31 @@ def test_declared_gates_and_completeness_fail_closed(tmp_path: Path, fault: str)
         assert not (baseline / "target/criterion").exists()
 
 
-def test_shared_retention_repeated_runs_and_offline_report(tmp_path: Path) -> None:
-    root, first = measured(tmp_path)
+@pytest.mark.parametrize("report_path", ["docs/performance.md", "docs/reports/current.md"])
+def test_shared_retention_repeated_runs_and_offline_report(complete_run: tuple[Path, Evidence], report_path: str) -> None:
+    root, first = complete_run
     config = root / policy.REPORT_CONFIG
-    config.write_text(config.read_text(encoding="utf-8").replace("docs/performance-runs", "docs/performance-history"), encoding="utf-8")
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        .replace("docs/performance-runs", "docs/performance-history")
+        .replace("docs/performance.md", report_path)
+        .replace("la-stack complete benchmark measurements", "Configured performance report"),
+        encoding="utf-8",
+        newline="\n",
+    )
     stem = root / "target/bench-reports/performance"
     workflow.save_scratch(root, stem, first)
+    assert stem.with_suffix(".md").read_bytes() == render_run(first)
     workflow.promote(root, stem)
-    first_report = (root / "docs/performance.md").read_bytes()
+    first_report = (root / report_path).read_bytes()
+    assert first_report == render_run(first, title="Configured performance report")
+    assert b"## Mean (ns)" in first_report
+    assert b"## Median (ns)" in first_report
+    assert b"nalgebra: measured in **baseline** phase" in first_report
+    assert b"faer: measured in **baseline** phase" in first_report
+    assert not (root / policy.archive_directory(root) / "current.md").exists()
+    if report_path != "docs/performance.md":
+        assert not (root / "docs/performance.md").exists()
     retained = root / policy.archive_directory(root) / "runs" / run_identity(first)
     original = {path: path.read_bytes() for path in retained.iterdir()}
     # A second valid measurement with the same release pair has new provenance.
@@ -177,25 +200,22 @@ def test_shared_retention_repeated_runs_and_offline_report(tmp_path: Path) -> No
     assert len(list((root / policy.archive_directory(root) / "runs").iterdir())) == 2
     assert {path: path.read_bytes() for path in original} == original
     assert (retained / "run.json").is_file()
-    assert first_report != (root / "docs/performance.md").read_bytes()
-    # Same-pair reruns live in complete-run history, leaving the canonical
-    # release-pair archive available for a later release transition.
-    assert not (root / "docs/archive/performance/v0.4.6-vs-v0.4.5.md").exists()
+    assert first_report != (root / report_path).read_bytes()
+    assert not (root / "docs/archive/performance").exists()
     shutil.rmtree(root / "target")
     assert run_identity(policy.retained_run(root, stem)) == run_identity(second)
-    before = (root / "docs/performance.md").read_bytes()
+    before = (root / report_path).read_bytes()
     workflow.promote(root, stem)
-    assert (root / "docs/performance.md").read_bytes() == before
+    assert (root / report_path).read_bytes() == before
     (root / policy.archive_directory(root) / "latest.json").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match=r"latest|pointer|fields|schema"):
         policy.retained_run(root, stem)
 
 
 @pytest.mark.parametrize("destination", ["missing", "identical", "different", "directory", "symlink", "relative-symlink"])
-def test_promotion_preserves_prior_report_on_archive_collision(complete_run: tuple[Path, Evidence], destination: str) -> None:
-    root, evidence = complete_run
+def test_legacy_promotion_preserves_prior_report_on_archive_collision(tmp_path: Path, legacy_artifacts: ArtifactPaths, destination: str) -> None:
+    root = tmp_path
     stem = root / "target/bench-reports/performance"
-    workflow.save_scratch(root, stem, evidence)
     current = root / "docs/performance.md"
     current.parent.mkdir(parents=True, exist_ok=True)
     previous = b"**la-stack** v0.4.5\n\nComparison against baseline **v0.4.4**:\n\nPrior curated report.\n"
@@ -213,16 +233,15 @@ def test_promotion_preserves_prior_report_on_archive_collision(complete_run: tup
     original_link_target = archived.readlink() if archived.is_symlink() else None
     before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts}
     if destination in {"missing", "identical"}:
-        workflow.promote(root, stem)
+        workflow.render_and_promote_artifacts(artifacts=legacy_artifacts, output=stem.with_suffix(".md"), current=current, archive_dir=archived.parent)
         assert archived.read_bytes() == previous
-        assert current.read_bytes() == policy.render_scientific_report(evidence)
-        assert run_identity(policy.retained_run(root, stem)) == run_identity(evidence)
+        assert current.read_text(encoding="utf-8") == render_release_artifacts(legacy_artifacts)
     else:
         errors = {"different": "immutable output differs", "directory": "regular file", "symlink": "symlink", "relative-symlink": "symlink"}
         with pytest.raises(ValueError, match=errors[destination]):
-            workflow.promote(root, stem)
+            workflow.render_and_promote_artifacts(artifacts=legacy_artifacts, output=stem.with_suffix(".md"), current=current, archive_dir=archived.parent)
         assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts} == before
-        assert not (root / policy.archive_directory(root)).exists()
+        assert not (root / "docs/performance-runs").exists()
         if destination == "directory":
             assert archived.is_dir()
         elif destination in {"symlink", "relative-symlink"}:
@@ -232,21 +251,22 @@ def test_promotion_preserves_prior_report_on_archive_collision(complete_run: tup
 
 
 @pytest.mark.parametrize("duplicate", ["**la-stack** v0.4.4", "Comparison against baseline **v0.4.3**:"])
-def test_duplicate_report_identity_prevents_publication(complete_run: tuple[Path, Evidence], duplicate: str) -> None:
-    root, evidence = complete_run
+def test_duplicate_legacy_report_identity_prevents_publication(tmp_path: Path, legacy_artifacts: ArtifactPaths, duplicate: str) -> None:
+    root = tmp_path
     stem = root / "target/bench-reports/performance"
-    workflow.save_scratch(root, stem, evidence)
     current = root / "docs/performance.md"
     current.parent.mkdir(parents=True, exist_ok=True)
     text = f"**la-stack** v0.4.5\n\nComparison against baseline **v0.4.4**:\n\n{duplicate}\n"
-    current.write_text(text, encoding="utf-8")
+    current.write_text(text, encoding="utf-8", newline="\n")
     before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts}
     with pytest.raises(ValueError, match="exactly one"):
         workflow.parse_report_id(text)
     with pytest.raises(ValueError, match="exactly one"):
-        workflow.promote(root, stem)
+        workflow.render_and_promote_artifacts(
+            artifacts=legacy_artifacts, output=stem.with_suffix(".md"), current=current, archive_dir=root / "docs/archive/performance"
+        )
     assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts} == before
-    assert not (root / policy.archive_directory(root)).exists()
+    assert not (root / "docs/performance-runs").exists()
 
 
 def test_partial_scratch_and_stale_source_cannot_select_old_history(tmp_path: Path) -> None:
@@ -358,6 +378,7 @@ def test_complete_report_passes_markdown_recipes_without_rewriting_history(compl
         shutil.copyfile(ROOT / name, root / name)
     history = root / policy.archive_directory(root)
     originals = {path: path.read_bytes() for path in history.rglob("*") if path.is_file()}
+    originals[root / "docs/performance.md"] = (root / "docs/performance.md").read_bytes()
     for recipe in ("markdown-check", "markdown-fix", "markdown-check"):
         result = run_command(
             "just",
@@ -443,6 +464,7 @@ def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path:
         f'  *"--bench vs_linalg"*) printf "%s: benchmark\\n" {shlex.join(baseline_ids)} ;;\n'
         "esac\n",
         encoding="utf-8",
+        newline="\n",
     )
     cargo.chmod(0o755)
     record = tmp_path / "commands.txt"
@@ -501,7 +523,7 @@ def test_pre_just_run_remains_readable_without_its_python_driver(tmp_path: Path)
         sources=tuple(sources),
         payload=serialize_run(replace(run, compatible=tuple(field for field in run.compatible if field != "context.tool.just"))),
     )
-    assert b"not rerun in the current phase" in policy.render_scientific_report(legacy)
+    policy.validate_scientific_run(legacy)
     bad = replace(sources[0][1], context=tuple((key, "[]" if key == "baseline-cargo-commands" else value) for key, value in sources[0][1].context))
     with pytest.raises(ValueError, match="consumer policy"):
         policy.validate_scientific_run(replace(legacy, sources=(("baseline", bad), sources[1])))

@@ -329,7 +329,7 @@ markdown-check: tools-check _ensure-uv
     files=()
     while IFS= read -r -d '' file; do
         case "$file" in
-            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*|docs/performance-runs/*) continue ;;
+            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*|docs/performance.md|docs/performance-runs/*) continue ;;
         esac
         if [ -f "$file" ]; then
             files+=("$file")
@@ -353,7 +353,7 @@ markdown-fix: tools-check
     files=()
     while IFS= read -r -d '' file; do
         case "$file" in
-            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*|docs/performance-runs/*) continue ;;
+            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*|docs/performance.md|docs/performance-runs/*) continue ;;
         esac
         if [ -f "$file" ]; then
             files+=("$file")

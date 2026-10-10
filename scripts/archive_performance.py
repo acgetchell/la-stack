@@ -14,7 +14,7 @@ from pathlib import Path
 
 from research_repo_tools.archives import extract_archive
 from research_repo_tools.common_measurement import measure_prepared_pair
-from research_repo_tools.complete_runs import run_identity
+from research_repo_tools.complete_runs import render_run, run_identity
 from research_repo_tools.evidence import Evidence, serialize_evidence
 from research_repo_tools.files import replace_many
 from research_repo_tools.measurement import resolve_revision
@@ -34,7 +34,6 @@ from performance_runs import (
     REPORT_CONFIG,
     archive_directory,
     measurement_plan,
-    render_scientific_report,
     retained_run,
     scratch_paths,
     validate_scientific_run,
@@ -104,10 +103,11 @@ def measure(root: Path, pair: ReleasePair, suite: str, scope: str) -> Evidence:
 
 
 def save_scratch(root: Path, stem: Path, evidence: Evidence) -> None:
-    """Save new complete evidence and scientific prose without touching legacy files."""
+    """Save complete evidence and the shared report without touching legacy files."""
+    validate_scientific_run(evidence)
     payload, manifest = scratch_paths(stem)
     data, envelope = serialize_evidence(evidence)
-    report = render_scientific_report(evidence)
+    report = render_run(evidence)
     plan = plan_outputs(
         root,
         {path.relative_to(root).as_posix(): value for path, value in ((payload, data), (manifest, envelope), (stem.with_suffix(".md"), report))},
@@ -117,7 +117,7 @@ def save_scratch(root: Path, stem: Path, evidence: Evidence) -> None:
 
 
 def promote(root: Path, stem: Path) -> None:
-    """Publish shared history, latest selection and scientific prose in one plan."""
+    """Validate consumer policy and publish the shared report and history plan."""
     evidence = retained_run(root, stem)
     validate_scientific_run(evidence, release=True)
     payload, manifest = scratch_paths(stem)
@@ -127,30 +127,9 @@ def promote(root: Path, stem: Path) -> None:
     history = load_run_report_plan(root, REPORT_CONFIG, **kwargs)
     outputs = dict(history.outputs)
     if json.loads(outputs[f"{archive_directory(root)}/latest.json"])["run"]["id"] != run_identity(evidence):
-        msg = "selected evidence changed while composing scientific report"
+        msg = "selected evidence changed while planning report publication"
         raise ValueError(msg)
-    outputs["docs/performance.md"] = render_scientific_report(evidence)
-    # Same-pair reruns are retained in shared history. Archive the previous
-    # curated pair when advancing releases, validating even existing archives.
-    previous = root / "docs/performance.md"
-    previous_bytes = previous.read_bytes() if previous.exists() else None
-    if previous_bytes is not None and previous_bytes != outputs["docs/performance.md"]:
-        identity = parse_report_id(previous_bytes.decode("utf-8"))
-        if identity != parse_report_id(outputs["docs/performance.md"].decode("utf-8")):
-            name = f"docs/archive/performance/{identity.current_tag}-vs-{identity.baseline_tag}.md"
-            outputs[name] = previous_bytes
-    originals = dict(history.originals)
-    inputs = {name: value for name, value in originals.items() if name not in outputs and value is not None}
-    immutable = tuple(name for name in outputs if "/runs/" in name or name.startswith("docs/archive/performance/"))
-    combined = plan_outputs(root, outputs, inputs=inputs, immutable=immutable)
-    combined = replace(combined, git_checks=history.git_checks, glob_checks=history.glob_checks)
-    if dict(combined.originals)["docs/performance.md"] != previous_bytes:
-        msg = "curated report changed during publication planning"
-        raise ValueError(msg)
-    if any(dict(combined.originals).get(name) != value for name, value in history.originals):
-        msg = "publication inputs changed while composing scientific report"
-        raise ValueError(msg)
-    publish_publication(combined)
+    publish_publication(history)
 
 
 def parse_report_id(text: str) -> ReportId:
