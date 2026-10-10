@@ -138,7 +138,7 @@ line-length = 160
 
 [tool.uv]
 package = true
-required-version = "==0.12.24"
+required-version = "==0.13.0"
 # Semgrep wheels bundle the native engine; building its sdist does not.
 no-build-package = [ "semgrep" ]
 # Semgrep 1.178.0 restricts PyJWT to 2.13.x; 2.15.1 contains the OSV fixes.
@@ -151,11 +151,11 @@ dev = [
     { include-group = "tooling" },
     "actionlint-py==1.7.12.25",
     "pytest==9.1.1",
-    "ruff==0.16.10",
+    "ruff==0.17.0",
     "semgrep==1.180.0",
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.2.0",
-    "ty==0.0.85",
+    "ty==0.0.86",
     "yamllint==1.38.0",
 ]
 

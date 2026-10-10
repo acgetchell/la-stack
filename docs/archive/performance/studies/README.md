@@ -8,6 +8,7 @@ in each report.
 - [Rational row-clearing allocation study (#233)](rational-row-clearing.md)
 - [Rust 1.99 compiler migration (#251)](rust-1.99.md)
 - [Solve finalization decision (#234)](solve-finalization.md)
+- [Triangular rational solves (#246)](rational-triangular.md)
 - [Unsigned vector angle formulation and costs (#249)](vector-angles.md)
 
 [Release comparisons](../README.md) and [complete local benchmark summaries](../../../performance/README.md)

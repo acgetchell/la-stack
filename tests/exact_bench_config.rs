@@ -15,6 +15,31 @@ pub mod exact_diagnostics;
 #[path = "../benches/common/rational.rs"]
 pub mod rational_bench;
 
+#[cfg(not(la_stack_pre_rational_input_api))]
+#[path = "../benches/common/rational_solve.rs"]
+pub mod rational_solve;
+
+#[cfg(not(la_stack_pre_rational_input_api))]
+#[test]
+fn structured_rational_solve_fixtures_are_correct() {
+    fn check<const D: usize>() {
+        for structure in rational_solve::Structure::ALL {
+            for dyadic in [false, true] {
+                let _ = rational_solve::solve_input::<D>(structure, dyadic);
+            }
+        }
+    }
+    check::<0>();
+    check::<1>();
+    check::<2>();
+    check::<3>();
+    check::<4>();
+    check::<5>();
+    check::<6>();
+    check::<7>();
+    check::<8>();
+}
+
 use core::array::from_fn;
 use std::error::Error;
 

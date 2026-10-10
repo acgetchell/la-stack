@@ -72,7 +72,7 @@ promotion in one command.
 
 ## Benchmark Suites
 
-`la-stack` has six Criterion benchmark suites.
+`la-stack` has seven Criterion benchmark suites.
 
 **`angle`** (`benches/angle.rs`) measures unsigned angles in ambient dimensions
 3–6 using dense, nearly parallel, nearly antipodal, mixed-scale, and subnormal
@@ -109,6 +109,25 @@ paired `det_direct_with_errbound`, and the bound-only `det_errbound`. The same
 suite compares row-cleared Bareiss operations with direct `BigRational` Gaussian
 operations over already-exact rational inputs across D=2-8. Use it to understand
 exact-arithmetic cost and track optimization progress.
+
+**`rational_solve`** (`benches/rational_solve.rs`) measures diagonal,
+upper/lower triangular, row-permuted triangular, general sparse, and dense
+rational systems through D=8, with both dyadic and non-dyadic coefficients.
+It separates setter-based construction, prepared solves, the full runtime
+dispatch adapter, and the captured Delaunay skip-zero Gaussian reference
+(including input copies). Fixtures verify manufactured exact solutions against
+the independent reference before timing. Run it with:
+
+```bash
+cargo bench --locked --features bench,exact --bench rational_solve -- \
+  --sample-size 30 --warm-up-time 1 --measurement-time 3 --noplot
+```
+
+The non-dyadic `permuted_upper` family and dense Hilbert control reproduce #246.
+The dyadic dense control is strictly diagonally dominant; the sparse control
+is tridiagonal. `tests/exact_bench_config.rs` validates every family through
+D=8 (including empty and scalar cases). This focused suite stays outside the
+release-report schema.
 
 **`gram`** (`benches/gram.rs`) compares `gram_matrix` with checked hand-written
 assembly for square and embedded vector sets with coordinate dimensions 2-8.

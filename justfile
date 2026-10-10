@@ -80,6 +80,7 @@ bench-compare baseline="last" suite="all" scope="release-signal": python-sync
 bench-compile:
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --workspace --no-run --features bench
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench exact
+    CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench rational_solve
 
 # Run the exact-arithmetic benchmark suite.
 bench-exact:
