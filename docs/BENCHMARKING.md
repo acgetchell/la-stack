@@ -123,11 +123,12 @@ cargo bench --locked --features bench,exact --bench rational_solve -- \
   --sample-size 30 --warm-up-time 1 --measurement-time 3 --noplot
 ```
 
-The non-dyadic `permuted_upper` family and dense Hilbert control reproduce #246.
-The dyadic dense control is strictly diagonally dominant; the sparse control
-is tridiagonal. `tests/exact_bench_config.rs` validates every family through
-D=8 (including empty and scalar cases). This focused suite stays outside the
-release-report schema.
+The non-dyadic `permuted_upper` family and row-permuted Hilbert control
+reproduce #246. The dyadic dense control is a row permutation of a strictly
+diagonally dominant matrix; the sparse control is tridiagonal.
+`tests/exact_bench_config.rs` validates every family through D=8 (including
+empty and scalar cases). This focused suite stays outside the release-report
+schema.
 
 **`gram`** (`benches/gram.rs`) compares `gram_matrix` with checked hand-written
 assembly for square and embedded vector sets with coordinate dimensions 2-8.

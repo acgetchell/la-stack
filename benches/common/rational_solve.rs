@@ -24,7 +24,8 @@ pub enum Structure {
     PermutedLower,
     /// Strictly diagonally dominant tridiagonal matrix.
     Sparse,
-    /// Hilbert matrix, or a dense dyadic diagonally dominant control.
+    /// Row-permuted Hilbert matrix, or a row permutation of a strictly
+    /// diagonally dominant dense dyadic control.
     Dense,
 }
 
