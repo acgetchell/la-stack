@@ -11,8 +11,11 @@ performance, or orthogonality. The `v0.4.x` line stays on stable Rust and includ
 focused robustness APIs, downstream ergonomics, API-contract cleanup,
 documentation, validation, invariant audits, benchmark coverage, and
 release/tooling hardening. The current release is `v0.4.6`.
-The `v0.5.0` line is reserved for work that depends on stabilized
-`generic_const_exprs` or equivalent const-generic expressiveness.
+The next planned release is `v0.5.0`, consolidating the work previously targeted
+at `v0.4.7`. It remains on stable Rust and makes the Rust 1.99.0 minimum an
+explicit downstream upgrade boundary.
+Expanded const-generic work is tracked separately without an assigned release;
+it depends on the specific language capabilities required by the proposed API.
 
 ## Scalar Scope
 
@@ -232,20 +235,82 @@ rational array. `Vector::norm()` names the new Euclidean norm; raw exact solutio
 storage remains available through `as_array()` and `into_array()`.
 
 Further stable-Rust maintenance can remain in `v0.4.x`; it does not depend on
-the language stabilization reserved for `v0.5.0`.
+expanded const-generic support.
 
-### v0.5.0 Generic Const Expressions
+### v0.5.0 Stable Rust APIs and Performance (planned)
 
-`v0.5.0` is reserved for the post-stabilization const-generic API revision.
-The current anchor issue is
-[#123](https://github.com/acgetchell/la-stack/issues/123), which tracks
-refactoring determinant APIs around stable `generic_const_exprs`.
+The [v0.5.0 milestone](https://github.com/acgetchell/la-stack/milestone/3)
+replaces the planned `v0.4.7` release. It combines the completed Rust 1.99
+migration and stable vector-angle API with correctness-preserving performance
+improvements and release-tooling adoption. Expanded const-generics stabilization
+does not gate this release.
 
-That work should revisit determinant APIs after the language can express more
-dimension-dependent support at the type level. In particular, it should look for
-ways to reduce runtime `D` branching, make closed-form determinant support more
-explicit, and unify direct, LU-backed, error-bound, and exact determinant paths
-where doing so improves correctness and maintainability.
+Completed work included in this release:
+
+- Certified dot-product and affine-difference reductions
+  ([#248](https://github.com/acgetchell/la-stack/issues/248)) reduce avoidable
+  arithmetic and certificate overhead while preserving outward bounds, typed
+  failures, and exact fallback.
+- Interval arithmetic and determinant signs
+  ([#247](https://github.com/acgetchell/la-stack/issues/247)) avoid redundant work
+  while retaining containment guarantees and const evaluation.
+- Rust 1.99.0 and LLVM 23
+  ([#251](https://github.com/acgetchell/la-stack/issues/251)) establish the new
+  MSRV and strict floating-point baseline, with retained correctness, codegen,
+  and performance evidence.
+- Shared performance orchestration
+  ([#268](https://github.com/acgetchell/la-stack/issues/268)), complete-run reports
+  ([#277](https://github.com/acgetchell/la-stack/pull/277)), and opt-in review
+  recipes ([#253](https://github.com/acgetchell/la-stack/issues/253)) reduce local
+  tooling duplication while preserving scientific policy and historical evidence.
+- Stable unsigned vector angles
+  ([#249](https://github.com/acgetchell/la-stack/issues/249)) support fixed vectors
+  and allocation-free borrowed coordinate slices, including extreme magnitudes
+  and representable subnormal angles. Results remain rounded without a certified
+  error bound.
+
+A bounded algebraic floating-point evaluation
+([#250](https://github.com/acgetchell/la-stack/issues/250)) also targets `v0.5.0`.
+Evaluate one or two promising kernels against the final strict implementation
+under the Rust 1.99 / LLVM 23 baseline. A retained study and a justified
+adopt, retain-strict, or defer decision are the outcome; adoption is conditional.
+Ship a distinct opt-in API in `v0.5.0` only if its numerical contract, independent
+correctness evidence, material performance benefit, and review are complete.
+Existing APIs stay strict, and unresolved broader work must not delay the release.
+
+Remaining release sequence:
+
+1. Review and land the triangular rational-solve optimization
+   ([#246](https://github.com/acgetchell/la-stack/issues/246),
+   [draft PR #278](https://github.com/acgetchell/la-stack/pull/278)), retaining the
+   exact general-system fallback and independent regression evidence.
+2. Adopt the published research-repo-tools v0.1.9 capabilities
+   ([#276](https://github.com/acgetchell/la-stack/issues/276)) after the upstream
+   [publication gate](https://github.com/acgetchell/research-repo-tools/issues/99)
+   verifies the registry release. Preserve the dimension plot, scientific
+   eligibility rules, and historical artifacts.
+3. Complete the release validation and `v0.4.6` versus `v0.5.0` performance record
+   through the validated adopted workflow. Configure and verify the crates.io
+   publishing workflow and publisher settings
+   ([#259](https://github.com/acgetchell/la-stack/issues/259)) before publication.
+4. Publish the reviewed `v0.5.0` release and verify crates.io availability and a
+   clean downstream dependency resolution. Close #259 only after actual
+   publication succeeds and its evidence is recorded.
+
+Consumers using a `0.4` Cargo requirement must explicitly adopt `0.5` after the
+release is available. Delaunay's adoption issues remain scheduled for `v0.8.3`
+and retain their independent correctness and performance gates. Package versions
+and generated release artifacts are updated during dedicated release preparation.
+
+### v0.5.1 Follow-Up Work (planned)
+
+The [v0.5.1 milestone](https://github.com/acgetchell/la-stack/milestone/10)
+holds compatible follow-up work after `v0.5.0`. If #250 establishes a promising
+opt-in design that is not ready for `v0.5.0`, link a bounded adoption issue and
+choose its release from the resulting contract and evidence. Adoption is not
+presumed, and retaining strict arithmetic after a negative evaluation is valid.
+Changes incompatible with a published `v0.5` API require an appropriate later
+minor release.
 
 ## Longer-Term Directions
 
@@ -256,6 +321,29 @@ where doing so improves correctness and maintainability.
   workflows without making the default build dependency-heavy.
 - Use benchmarks to validate performance claims against `nalgebra` and `faer`
   within the crate's intended dimensional scope.
+
+### Expanded Const Generics (unscheduled)
+
+[#123](https://github.com/acgetchell/la-stack/issues/123) tracks the determinant
+API work in the [Future: expanded const generics milestone](https://github.com/acgetchell/la-stack/milestone/11).
+Stable const generics already support the crate's fixed dimensions. The future
+work requires richer expressions involving generic parameters and depends on
+the exact capabilities needed to express dimension-specific support in types.
+
+The Rust project's [October 2, 2026 update](https://blog.rust-lang.org/inside-rust/2026/10/02/generic-const-args-and-you/)
+describes Generic Const Arguments (GCA) as the intended replacement for
+`generic_const_exprs`. None of the discussed features were ready for stabilization
+at that time, and the post gives no stabilization date. Evaluate the relevant
+GCA features or equivalent support independently; do not assume that one
+stabilized subset will enable every proposed determinant abstraction.
+
+When sufficient support is stable, revisit determinant APIs to make closed-form
+dimension support explicit and reduce runtime `D` branching where that improves
+caller usability. Unify direct, LU-backed, error-bound, and exact determinant
+internals where justified by correctness, maintainability, and benchmark evidence.
+Assign a numbered release after confirming the required capabilities, API design,
+MSRV, and downstream migration. This work is not a prerequisite for v0.5.0 or v1.0.
+If a redesign breaks an API already published in v1.x, it requires a major release.
 
 ## Non-Goals
 

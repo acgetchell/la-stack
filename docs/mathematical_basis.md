@@ -375,11 +375,41 @@ det(A) = det(A_int) / ∏ᵢ sᵢ.
 ```
 
 The sign path reads the `BigInt` determinant sign directly and never constructs
-the rational determinant value. Solves include the corresponding right-hand
+the rational determinant value. General solves include the corresponding right-hand
 side denominator in `sᵢ`, so each augmented row is multiplied by the same
 positive factor and the solution set is unchanged. The integer determinant and
 solve states use the same direct-expansion/Bareiss backend as exact operations
 over binary64 inputs, followed by rational back-substitution for solves \[7\].
+
+Before clearing denominators, rational solves recognize row permutations of
+upper or lower triangular matrices. For an upper triangular ordering, each
+row must have a distinct first non-zero column. There are D rows and D columns,
+so these columns form a permutation of `0..D`; assigning each row to its first
+non-zero column gives a non-zero diagonal and zeros strictly below it. The
+same argument using last non-zero columns gives a lower triangular ordering.
+Only row indices are stored, and the right-hand side follows the same row map.
+
+Back- or forward-substitution then computes
+`x[k] = (b[row(k)] - Σⱼ A[row(k), j] x[j]) / A[row(k), k]`, with the sum over
+already-solved columns \[11\]. The residual is accumulated as two arbitrary-precision
+integers `N/Q`, initially the canonical RHS numerator and positive denominator.
+For a non-zero product `a × x = P/R`, cross multiplication updates
+`N ← N R - P Q` and `Q ← Q R`; equal denominators need only `N ← N - P`.
+Both `Q` and `R` remain positive. Dividing by the non-zero pivot `p/q` constructs
+and reduces `N q / (Q p)` once, so every stored solution component is canonical.
+This avoids a GCD reduction after each product and subtraction without creating
+unchecked rational values. Zero coefficients or solution components need no
+multiplication. Recognition and substitution cost at most
+`O(D²)` coefficient operations, with `O(D)` additional storage; bit complexity
+still depends on integer component growth. Deferred reduction may increase
+intermediate bit lengths relative to reducing every operation. Numerical conditioning introduces
+no rounding error in this exact domain.
+
+A zero row or repeated edge column rejects that ordering; if neither ordering
+works, the unchanged Bareiss backend handles the general system and owns exact
+singularity diagnostics. This includes singular triangular inputs. No Bareiss
+update is skipped: even a zero elimination coefficient would still require its
+pivot-ratio scaling. Empty systems retain their unique empty solution.
 
 The rational types are const-generic and shape-safe after construction. The
 `try_with_rational_matrix!` helper provides explicit runtime dispatch through

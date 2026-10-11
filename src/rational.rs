@@ -3,12 +3,14 @@
 //! Exact-input fixed-size matrices and vectors.
 //!
 //! [`RationalMatrix`] and [`RationalVector`] preserve caller-supplied
-//! [`BigRational`] coefficients without a binary64 round trip. Determinants and
-//! solves clear denominators with a positive scale per row, then reuse the
+//! [`BigRational`] coefficients without a binary64 round trip. Triangular solves
+//! (including row permutations) use direct exact substitution. Determinants
+//! and general solves clear denominators with a positive scale per row, then
+//! reuse the
 //! crate's fraction-free [`BigInt`] Bareiss backend. The positive row scales
 //! preserve determinant sign; determinant values divide by their product; and
-//! solves apply the same row scale to the matrix and right-hand side.
-//! See `REFERENCES.md` \[7\] for Bareiss elimination and \[12\] for determinant
+//! general solves apply the same row scale to the matrix and right-hand side.
+//! See `REFERENCES.md` \[7\] for Bareiss elimination and \[12\] for substitution and determinant
 //! multilinearity. The
 //! [row-clearing construction](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#exact-arithmetic-over-rational-inputs)
 //! explains how these identities apply to canonical rational inputs.
@@ -17,7 +19,7 @@ use std::array::from_fn;
 
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use crate::exact::{det_big_int, solve_big_int};
 use crate::{DeterminantSign, LaError};
@@ -271,9 +273,11 @@ impl<const D: usize> RationalMatrix<D> {
 
     /// Solve `A x = b` exactly.
     ///
-    /// Each augmented row is multiplied by one positive common denominator,
-    /// then fraction-free Bareiss forward elimination runs in [`BigInt`]. Only
-    /// the `O(D²)` back-substitution phase constructs [`BigRational`] values.
+    /// Upper/lower triangular systems, including row permutations, use direct
+    /// exact substitution after `O(D²)` structure recognition. General systems
+    /// scale each augmented row `[A[row, :], rhs[row]]` to integers once, then
+    /// use fraction-free Bareiss forward elimination in [`BigInt`] followed by
+    /// `O(D²)` rational back-substitution. No binary64 conversion is performed.
     /// For D=0, the empty matrix and vector have the unique empty solution.
     ///
     /// # Examples
@@ -299,6 +303,9 @@ impl<const D: usize> RationalMatrix<D> {
     /// Returns [`LaError::Singular`] with exact-singularity metadata when a
     /// pivot column contains no non-zero entry.
     pub fn solve(&self, rhs: &RationalVector<D>) -> Result<RationalVector<D>, LaError> {
+        if let Some(solution) = self.solve_triangular(rhs) {
+            return Ok(solution);
+        }
         let row_scales: [BigInt; D] = from_fn(|row| {
             common_denominator(
                 self.rows[row]
@@ -310,6 +317,70 @@ impl<const D: usize> RationalMatrix<D> {
             from_fn(|row| from_fn(|col| integer_at_scale(&self.rows[row][col], &row_scales[row])));
         let integer_rhs = from_fn(|row| integer_at_scale(&rhs.data[row], &row_scales[row]));
         solve_big_int(integer_rows, integer_rhs).map(RationalVector::from_canonical_array)
+    }
+
+    /// A distinct first (upper) or last (lower) non-zero column in every row
+    /// proves a row permutation to a triangular matrix with non-zero diagonal.
+    ///
+    /// D distinct indices in 0..D cover every column; no matrix copy is needed.
+    /// Dense inputs reject at the second repeated edge column.
+    fn triangular_row_order(&self, upper: bool) -> Option<[usize; D]> {
+        let mut order = [0; D];
+        let mut occupied = [false; D];
+        for (row, entries) in self.rows.iter().enumerate() {
+            let column = if upper {
+                entries.iter().position(|entry| !entry.is_zero())
+            } else {
+                entries.iter().rposition(|entry| !entry.is_zero())
+            }?;
+            if occupied[column] {
+                return None;
+            }
+            occupied[column] = true;
+            order[column] = row;
+        }
+        Some(order)
+    }
+
+    /// Substitute only after every pivot has been proven non-zero.
+    ///
+    /// Accumulate each residual as an integer numerator and positive denominator,
+    /// using cross products instead of reducing every multiply and subtraction.
+    /// Reduce once after dividing by the proven non-zero pivot; stored solution
+    /// components are always canonical. Failed recognition returns to Bareiss,
+    /// preserving its singular pivot metadata.
+    fn solve_triangular(&self, rhs: &RationalVector<D>) -> Option<RationalVector<D>> {
+        let (order, upper) = self
+            .triangular_row_order(true)
+            .map(|order| (order, true))
+            .or_else(|| self.triangular_row_order(false).map(|order| (order, false)))?;
+        let mut solution: [BigRational; D] = from_fn(|_| BigRational::zero());
+        for step in 0..D {
+            let column = if upper { D - 1 - step } else { step };
+            let row = order[column];
+            let mut numerator = rhs.data[row].numer().clone();
+            let mut denominator = rhs.data[row].denom().clone();
+            let known = if upper { column + 1..D } else { 0..column };
+            for (coefficient, component) in
+                self.rows[row][known.clone()].iter().zip(&solution[known])
+            {
+                if coefficient.is_zero() || component.is_zero() {
+                    continue;
+                }
+                let product_numerator = coefficient.numer() * component.numer();
+                let product_denominator = coefficient.denom() * component.denom();
+                if denominator == product_denominator {
+                    numerator -= product_numerator;
+                } else {
+                    numerator = numerator * &product_denominator - product_numerator * &denominator;
+                    denominator *= product_denominator;
+                }
+            }
+            let pivot = &self.rows[row][column];
+            solution[column] =
+                BigRational::new(numerator * pivot.denom(), denominator * pivot.numer());
+        }
+        Some(RationalVector::from_canonical_array(solution))
     }
 
     /// Clear matrix denominators with one positive common denominator per row.

@@ -87,6 +87,11 @@ harness = false
 required-features = [ "bench" ]
 
 [[bench]]
+name = "rational_solve"
+harness = false
+required-features = [ "bench", "exact" ]
+
+[[bench]]
 name = "linear_form"
 harness = false
 required-features = [ "bench" ]

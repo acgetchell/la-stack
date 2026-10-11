@@ -6,6 +6,17 @@ clarity, and the fixed-dimension stack-allocation model.
 
 ## Getting Started
 
+Reusable Python development tooling has moved into
+[`research-repo-tools`](https://github.com/acgetchell/research-repo-tools).
+It is a development dependency for this repository's setup, validation,
+maintenance, benchmark reporting, and release workflows. Local scripts retain
+la-stack's scientific policy and remaining benchmark adapters; see the
+[Scripts guide](scripts/README.md) for the ownership boundary.
+
+Building and using `la-stack` as a Rust library does not require Python, `uv`,
+or `research-repo-tools`. The setup below is for contributors working on this
+repository.
+
 Install Git, the
 [GitHub CLI](https://cli.github.com/), [`uv`](https://docs.astral.sh/uv/) at the
 exact version declared in `pyproject.toml`, and `jq`. Authenticate the GitHub CLI for repository operations. Bootstrap

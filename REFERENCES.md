@@ -107,9 +107,12 @@ canonicalize each quotient to lowest terms with a positive denominator. For row
 The LCM is accumulated with `lcm(a, b) = (a / gcd(a, b)) b`, using Euclidean GCD.
 Determinant multilinearity gives `det(A_int) = (Π s_i) det(A)` \[[12]\]: the
 positive scales preserve sign, and determinant values divide by their product.
-Solves include the RHS denominator in each row's LCM, preserving the solution
+General solves include the RHS denominator in each row's LCM, preserving the solution
 set of the augmented system. The resulting integer matrices reuse direct
 expansions through D=4 and the Bareiss determinant/solve backend \[[7]\].
+Triangular systems, including row permutations, instead use direct rational
+forward/back-substitution \[[11], [12]\]. Distinct first or last non-zero columns
+prove the triangular ordering and non-zero pivots before division.
 See the [rational-input construction](docs/mathematical_basis.md#exact-arithmetic-over-rational-inputs).
 
 ### Exact-to-binary64 conversion

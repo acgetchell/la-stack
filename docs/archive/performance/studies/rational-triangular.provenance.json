@@ -1,0 +1,127 @@
+{
+  "study": 246,
+  "date": "2026-10-09",
+  "timezone": "America/Los_Angeles",
+  "cpu": "Apple M4 Max",
+  "os": "macOS 27.0.1 (26A434)",
+  "target": "aarch64-apple-darwin",
+  "criterion": "0.8.2",
+  "profile": {
+    "name": "release (Cargo bench)",
+    "lto": "fat",
+    "codegen_units": 1,
+    "debug": false
+  },
+  "overrides": {
+    "RUSTFLAGS": null,
+    "CARGO_ENCODED_RUSTFLAGS": null,
+    "CARGO_BUILD_TARGET": null
+  },
+  "baseline_library_commit": "d12bdb499e0a7ee889c2a8cc7ad7871c7084d759",
+  "before_source_sha256": {
+    "src/angle.rs": "682ab7d4362eca1113c72164cc376fc3cce23f1e9022078c706c007d038f26fc",
+    "src/error.rs": "2e55a3cd5cc50dd0c9541e48e4a889d95fd136a24407f01491f672af94e1b608",
+    "src/exact.rs": "8f2b2a5779a5c68c7703de3a264e31de11585b279b9e4bf15c969bef387115c5",
+    "src/gram.rs": "e4280d1a2e7c35f37e2046b72d76fb72157092d032dc6f4ea9b4a14d480265db",
+    "src/interval.rs": "43de26aeef247d2de75d7aa20ca9eed7ec57af5d647ee8b0f43ba19de3f2840e",
+    "src/ldlt.rs": "5bdba423fe6d99a195d6a200f01c88b76641a363ffdad36bfc5101cb1b13d3e5",
+    "src/lib.rs": "c3f1bcc2b398dee8e9bcc5fec5289c32b4225d4a96e467de29f48f9787e24776",
+    "src/lu.rs": "1bade96100b88f8718271a888fc1b017b0807bf35e143c9ee59acda3edb33856",
+    "src/matrix.rs": "7b36a0f78b1a98bea5f7e09e2f6a9120fa72f8b79ec2678b77b26ee412a5a02c",
+    "src/norm.rs": "559ed88a0c36e4d038798254b27850e70342edb6ae95951ba149a7d771cf242e",
+    "src/rational.rs": "b0e016a2f939cf927d044c39c9408546cb947f18be586149f0106b3d1c865ac5",
+    "src/rounding.rs": "dc1a694a4572d3d1584c02aa955476a094438bddbb3309ca1231bbd91b2f3c7b",
+    "src/scaled_product.rs": "6041225a46cd15d3313c2fa77e87ec0068feb06452e7f640e1b27b2b14d3bfe2",
+    "src/tolerance.rs": "4ff0c7839c05348d73d7bf10264c5093c8e096a04680dec5d348ca231901cea7",
+    "src/vector.rs": "53df800814a24a2e35291e417d41091259bd288360d43de3e6e8b400810cdc6f"
+  },
+  "final_source_sha256": {
+    "src/angle.rs": "682ab7d4362eca1113c72164cc376fc3cce23f1e9022078c706c007d038f26fc",
+    "src/error.rs": "2e55a3cd5cc50dd0c9541e48e4a889d95fd136a24407f01491f672af94e1b608",
+    "src/exact.rs": "8f2b2a5779a5c68c7703de3a264e31de11585b279b9e4bf15c969bef387115c5",
+    "src/gram.rs": "e4280d1a2e7c35f37e2046b72d76fb72157092d032dc6f4ea9b4a14d480265db",
+    "src/interval.rs": "43de26aeef247d2de75d7aa20ca9eed7ec57af5d647ee8b0f43ba19de3f2840e",
+    "src/ldlt.rs": "5bdba423fe6d99a195d6a200f01c88b76641a363ffdad36bfc5101cb1b13d3e5",
+    "src/lib.rs": "c3f1bcc2b398dee8e9bcc5fec5289c32b4225d4a96e467de29f48f9787e24776",
+    "src/lu.rs": "1bade96100b88f8718271a888fc1b017b0807bf35e143c9ee59acda3edb33856",
+    "src/matrix.rs": "7b36a0f78b1a98bea5f7e09e2f6a9120fa72f8b79ec2678b77b26ee412a5a02c",
+    "src/norm.rs": "559ed88a0c36e4d038798254b27850e70342edb6ae95951ba149a7d771cf242e",
+    "src/rational.rs": "69f4bb9088e2f75fc8a85974c69760dbd22a5eb89117143f2d4b2c6c6ac1939a",
+    "src/rounding.rs": "dc1a694a4572d3d1584c02aa955476a094438bddbb3309ca1231bbd91b2f3c7b",
+    "src/scaled_product.rs": "6041225a46cd15d3313c2fa77e87ec0068feb06452e7f640e1b27b2b14d3bfe2",
+    "src/tolerance.rs": "4ff0c7839c05348d73d7bf10264c5093c8e096a04680dec5d348ca231901cea7",
+    "src/vector.rs": "53df800814a24a2e35291e417d41091259bd288360d43de3e6e8b400810cdc6f"
+  },
+  "harness_sha256": {
+    "Cargo.toml": "874903742faabc457118f166c7d759548e108126a828f18a27d6171955e23586",
+    "Cargo.lock": "8ca5f575b24b125f6d0e86dbc812a42f06b93f9c69f6d1604a9371dfc8fa34ed",
+    "rust-toolchain.toml": "30601440e2f978a051d7c07c543a5164eeb56b97906d92fac1858324ba929bce",
+    "benches/rational_solve.rs": "e5eb62f5ddf8b032e46c9d16008efd7f14e8d223ee1b54b0acc3d44a3f681764",
+    "benches/common/rational_solve.rs": "4d49cb6d3e341efeb1c952f936155f57edb0a021027b37aa44b9611c07bd579f",
+    "benches/common/bench_utils.rs": "64d9ab8447f22dcbaad153cfe1398e21377cad0f8447296f98144ee98bd77a77",
+    "tests/exact_bench_config.rs": "5b788a42fd2da0cd5036403cf0cdffd76b7d29f8a41d4668c6cff9319b43353f"
+  },
+  "regression_test_sha256": "334179114d49dd7319ad674b7298f9426b6d35917f851c7ba3319649f2f9f8d7",
+  "source_diff": "diff --git a/src/rational.rs b/src/rational.rs\nindex 95fbd37..4bc743a 100644\n--- a/src/rational.rs\n+++ b/src/rational.rs\n@@ -3,12 +3,14 @@\n //! Exact-input fixed-size matrices and vectors.\n //!\n //! [`RationalMatrix`] and [`RationalVector`] preserve caller-supplied\n-//! [`BigRational`] coefficients without a binary64 round trip. Determinants and\n-//! solves clear denominators with a positive scale per row, then reuse the\n+//! [`BigRational`] coefficients without a binary64 round trip. Triangular solves\n+//! (including row permutations) use direct exact substitution. Determinants\n+//! and general solves clear denominators with a positive scale per row, then\n+//! reuse the\n //! crate's fraction-free [`BigInt`] Bareiss backend. The positive row scales\n //! preserve determinant sign; determinant values divide by their product; and\n-//! solves apply the same row scale to the matrix and right-hand side.\n-//! See `REFERENCES.md` \\[7\\] for Bareiss elimination and \\[12\\] for determinant\n+//! general solves apply the same row scale to the matrix and right-hand side.\n+//! See `REFERENCES.md` \\[7\\] for Bareiss elimination and \\[12\\] for substitution and determinant\n //! multilinearity. The\n //! [row-clearing construction](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#exact-arithmetic-over-rational-inputs)\n //! explains how these identities apply to canonical rational inputs.\n@@ -17,7 +19,7 @@ use std::array::from_fn;\n \n use num_bigint::{BigInt, Sign};\n use num_rational::BigRational;\n-use num_traits::One;\n+use num_traits::{One, Zero};\n \n use crate::exact::{det_big_int, solve_big_int};\n use crate::{DeterminantSign, LaError};\n@@ -271,9 +273,11 @@ impl<const D: usize> RationalMatrix<D> {\n \n     /// Solve `A x = b` exactly.\n     ///\n-    /// Each augmented row is multiplied by one positive common denominator,\n-    /// then fraction-free Bareiss forward elimination runs in [`BigInt`]. Only\n-    /// the `O(D²)` back-substitution phase constructs [`BigRational`] values.\n+    /// Upper/lower triangular systems, including row permutations, use direct\n+    /// exact substitution after `O(D²)` structure recognition. General systems\n+    /// scale each augmented row `[A[row, :], rhs[row]]` to integers once, then\n+    /// use fraction-free Bareiss forward elimination in [`BigInt`] followed by\n+    /// `O(D²)` rational back-substitution. No binary64 conversion is performed.\n     /// For D=0, the empty matrix and vector have the unique empty solution.\n     ///\n     /// # Examples\n@@ -299,6 +303,9 @@ impl<const D: usize> RationalMatrix<D> {\n     /// Returns [`LaError::Singular`] with exact-singularity metadata when a\n     /// pivot column contains no non-zero entry.\n     pub fn solve(&self, rhs: &RationalVector<D>) -> Result<RationalVector<D>, LaError> {\n+        if let Some(solution) = self.solve_triangular(rhs) {\n+            return Ok(solution);\n+        }\n         let row_scales: [BigInt; D] = from_fn(|row| {\n             common_denominator(\n                 self.rows[row]\n@@ -312,6 +319,70 @@ impl<const D: usize> RationalMatrix<D> {\n         solve_big_int(integer_rows, integer_rhs).map(RationalVector::from_canonical_array)\n     }\n \n+    /// A distinct first (upper) or last (lower) non-zero column in every row\n+    /// proves a row permutation to a triangular matrix with non-zero diagonal.\n+    ///\n+    /// D distinct indices in 0..D cover every column; no matrix copy is needed.\n+    /// Dense inputs reject at the second repeated edge column.\n+    fn triangular_row_order(&self, upper: bool) -> Option<[usize; D]> {\n+        let mut order = [0; D];\n+        let mut occupied = [false; D];\n+        for (row, entries) in self.rows.iter().enumerate() {\n+            let column = if upper {\n+                entries.iter().position(|entry| !entry.is_zero())\n+            } else {\n+                entries.iter().rposition(|entry| !entry.is_zero())\n+            }?;\n+            if occupied[column] {\n+                return None;\n+            }\n+            occupied[column] = true;\n+            order[column] = row;\n+        }\n+        Some(order)\n+    }\n+\n+    /// Substitute only after every pivot has been proven non-zero.\n+    ///\n+    /// Accumulate each residual as an integer numerator and positive denominator,\n+    /// using cross products instead of reducing every multiply and subtraction.\n+    /// Reduce once after dividing by the proven non-zero pivot; stored solution\n+    /// components are always canonical. Failed recognition returns to Bareiss,\n+    /// preserving its singular pivot metadata.\n+    fn solve_triangular(&self, rhs: &RationalVector<D>) -> Option<RationalVector<D>> {\n+        let (order, upper) = self\n+            .triangular_row_order(true)\n+            .map(|order| (order, true))\n+            .or_else(|| self.triangular_row_order(false).map(|order| (order, false)))?;\n+        let mut solution: [BigRational; D] = from_fn(|_| BigRational::zero());\n+        for step in 0..D {\n+            let column = if upper { D - 1 - step } else { step };\n+            let row = order[column];\n+            let mut numerator = rhs.data[row].numer().clone();\n+            let mut denominator = rhs.data[row].denom().clone();\n+            let known = if upper { column + 1..D } else { 0..column };\n+            for (coefficient, component) in\n+                self.rows[row][known.clone()].iter().zip(&solution[known])\n+            {\n+                if coefficient.is_zero() || component.is_zero() {\n+                    continue;\n+                }\n+                let product_numerator = coefficient.numer() * component.numer();\n+                let product_denominator = coefficient.denom() * component.denom();\n+                if denominator == product_denominator {\n+                    numerator -= product_numerator;\n+                } else {\n+                    numerator = numerator * &product_denominator - product_numerator * &denominator;\n+                    denominator *= product_denominator;\n+                }\n+            }\n+            let pivot = &self.rows[row][column];\n+            solution[column] =\n+                BigRational::new(numerator * pivot.denom(), denominator * pivot.numer());\n+        }\n+        Some(RationalVector::from_canonical_array(solution))\n+    }\n+\n     /// Clear matrix denominators with one positive common denominator per row.\n     fn integer_rows(&self) -> ([[BigInt; D]; D], [BigInt; D]) {\n         let row_scales: [BigInt; D] = from_fn(|row| common_denominator(self.rows[row].iter()));\n",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+  "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)\n",
+  "commands": {
+    "before": [
+      "cargo",
+      "bench",
+      "--locked",
+      "--features",
+      "bench,exact",
+      "--bench",
+      "rational_solve",
+      "--",
+      "permuted_upper/rational_d[2-8]|(diagonal|upper|lower|permuted_lower|sparse|dense)/.*_d8|permuted_upper/dyadic_d8",
+      "--sample-size",
+      "30",
+      "--warm-up-time",
+      "1",
+      "--measurement-time",
+      "3",
+      "--noplot",
+      "--save-baseline",
+      "rational-246-before"
+    ],
+    "final": [
+      "cargo",
+      "bench",
+      "--locked",
+      "--features",
+      "bench,exact",
+      "--bench",
+      "rational_solve",
+      "--",
+      "permuted_upper/rational_d[2-8]|(diagonal|upper|lower|permuted_lower|sparse|dense)/.*_d8|permuted_upper/dyadic_d8",
+      "--sample-size",
+      "30",
+      "--warm-up-time",
+      "1",
+      "--measurement-time",
+      "3",
+      "--noplot",
+      "--save-baseline",
+      "rational-246-final"
+    ]
+  },
+  "correctness_gates": {
+    "before": {
+      "command": "cargo test --locked --features bench,exact --test exact_bench_config structured_rational_solve_fixtures_are_correct",
+      "result": "passed (all 126 fixtures at dimensions 0..=8)"
+    },
+    "final": {
+      "command": "cargo test --locked --features bench,exact --test rational_structured_solve --test exact_bench_config",
+      "result": "passed (56 tests)"
+    }
+  },
+  "timing_policy": "Compilation completed before measurement. No other compilation, validation, or benchmark job from this task ran during the selected timing phases.",
+  "artifacts_sha256": {
+    "docs/archive/performance/studies/rational-triangular.measurements.json": "e0acc8168d6371a16b26ba20d06ffe2ec8b2b7372f3ec86bc9f58cdbffffd09e",
+    "docs/archive/performance/studies/rational-triangular.csv": "22923f9bd7ad30af3fffb0240bb7ca4e394c107e0a6fcc7d60328378c6e49eec"
+  },
+  "statistics": "Original Criterion estimates and 30 raw time/iteration samples per measurement; estimates are in nanoseconds. Tables use arithmetic means and marginal 95% bootstrap intervals.",
+  "limitations": "Synthetic structural fixtures, not a measured distribution of downstream LP bases. Ratios are descriptive, not paired confidence intervals. No whole-triangulation claim."
+}
