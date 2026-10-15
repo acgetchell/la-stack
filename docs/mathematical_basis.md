@@ -85,6 +85,16 @@ finite. Arithmetic can still overflow, underflow, or round; computed non-finite
 values are reported through `LaError::NonFinite` rather than stored in a public
 matrix, vector, or factorization.
 
+The floating-point arithmetic model uses ordinary `f64` operators and deliberate
+`f64::mul_add` with defined single-rounding semantics. Here, **strict** means
+preserving those operation contracts and each algorithm's documented evaluation
+order; it does not mean exact real arithmetic or a universal bitwise
+reproducibility guarantee across all platforms and library functions.
+Rust's algebraic floating-point operations are not used. The
+[validation decision](validation/algebraic-floating-point.md) records why their
+measured speedups do not justify changed overflow behavior or unsupported
+numerical guarantees.
+
 Every finite binary64 value is a dyadic rational with an exact representation
 
 ```text
@@ -111,6 +121,9 @@ the floating-point APIs do not provide certified forward, backward, or absolute
 error bounds. This includes plain `Vector::dot`, Euclidean and squared norms,
 matrix norms, factorizations, and solves. Some kernels use FMA to reduce rounding
 steps, but that does not make them exact.
+
+The [validation index](validation/README.md#arithmetic-contracts-and-evidence)
+connects these arithmetic contracts to independent tests and retained studies.
 
 ## Tolerances and typed errors
 
