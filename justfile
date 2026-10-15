@@ -62,19 +62,15 @@ action-lint: _ensure-actionlint
 
 # Audit the repository's Python and Rust lockfiles with the managed OSV scanner.
 audit:
-    uv run --locked --group dev research-repo-tools security osv uv.lock Cargo.lock
+    uv run --locked --group dev research-repo-tools security osv uv.lock tooling/semgrep/uv.lock Cargo.lock
 
 # Run the fixed-dimension benchmark suites.
 bench:
     {{ _run }} cargo bench --locked --workspace --features bench
 
-# Compare latest measurements against a saved baseline.
-# Defaults to the `last` full-release baseline.
-bench-compare baseline="last" suite="all" scope="release-signal": python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    baseline={{ quote(baseline) }}
-    {{ _run }} uv run --locked bench-compare "$baseline" --suite {{ quote(suite) }} --scope {{ quote(scope) }}
+# Compare every available Criterion row with a saved baseline; exploratory only.
+bench-compare baseline="last": python-sync
+    {{ _run }} uv run --locked research-repo-tools performance compare target/criterion target/criterion --baseline-sample {{ quote(baseline) }} --format markdown --output target/bench-reports/performance.md
 
 # Compile benchmark targets with warnings denied; do not measure timings.
 bench-compile:
@@ -94,8 +90,8 @@ bench-interval:
 bench-latest: bench-vs-linalg-la-stack bench-exact
 
 # Run latest measurements and render the latest-vs-last performance report.
-bench-latest-vs-last baseline="last": bench-latest python-sync
-    {{ _run }} uv run --locked bench-compare {{ quote(baseline) }}
+bench-latest-vs-last baseline="last": bench-latest
+    just bench-compare {{ quote(baseline) }}
 
 # Run the certified dot-product and affine-difference benchmark suite.
 bench-linear-form:
@@ -103,11 +99,15 @@ bench-linear-form:
 
 # Check every discovered benchmark before the release workflow packages it.
 bench-release-check tag: _ensure-uv
-    {{ _run }} uv run --locked scripts/release_baseline.py validate --baseline {{ quote(tag) }}
+    {{ _run }} uv run --locked scripts/archive_performance.py release-check {{ quote(tag) }}
 
 # Discover all release benchmarks and report their expected measurement budget.
 bench-release-inventory: _ensure-uv
-    {{ _run }} uv run --locked scripts/release_baseline.py inventory
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [[ ! -e "${CRITERION_HOME:-target/criterion}" ]] || { echo "Release discovery requires a fresh Criterion directory" >&2; exit 1; }
+    {{ _run }} uv run --locked research-repo-tools performance discover tooling/criterion-inventory.toml --output target/release-benchmark-inventory.json
+    jq -r '.suites | to_entries[] | "[release-baseline] \(.key): \(.value | length) benchmarks; nominal warmup + measurement \((.value | length) * 8 / 60) min; planning estimate at 12 s/benchmark \((.value | length) * 12 / 60) min (not an upper bound)"' target/release-benchmark-inventory.json
 
 # Save a Criterion baseline. Defaults to all release-signal benchmark suites.
 bench-save-baseline tag suite="all":
@@ -150,9 +150,9 @@ bench-vs-linalg filter="":
 bench-vs-linalg-la-stack:
     {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- la_stack --noplot
 
-# Run only la-stack vs_linalg measurements and render a non-exact performance report.
-bench-vs-linalg-latest-vs baseline="last": bench-vs-linalg-la-stack python-sync
-    {{ _run }} uv run --locked bench-compare {{ quote(baseline) }} --suite vs_linalg --scope release-signal
+# Run only la-stack vs_linalg measurements, then compare available Criterion rows.
+bench-vs-linalg-latest-vs baseline="last": bench-vs-linalg-la-stack
+    just bench-compare {{ quote(baseline) }}
 
 # Quick iteration (reduced runtime, no Criterion HTML).
 bench-vs-linalg-quick filter="":
@@ -367,23 +367,23 @@ markdown-fix: tools-check
         echo "No markdown files found to format."
     fi
 
-# Render release docs from complete runs, or read historical CSV/JSON evidence.
+# Render release docs from complete runs or their validated retained history.
 performance-doc: python-sync
-    {{ _run }} uv run --locked archive-performance report
+    {{ _run }} uv run --locked scripts/archive_performance.py report
 
 # Compare published release archives with their original per-release harnesses.
 performance-github-assets current_tag="" baseline_tag="": _ensure-gh python-sync
-    {{ _run }} uv run --locked archive-performance assets {{ quote(current_tag) }} {{ quote(baseline_tag) }}
+    {{ _run }} uv run --locked scripts/archive_performance.py assets {{ quote(current_tag) }} {{ quote(baseline_tag) }}
 
 # Measure tracked current inputs and the latest release with the captured current harness.
 performance-local: _ensure-gh python-sync
-    {{ _run }} uv run --locked archive-performance local
+    {{ _run }} uv run --locked scripts/archive_performance.py local
 
 # Measure the comparison suite while retaining baseline-phase nalgebra/faer context.
 performance-local-non-exact current_tag="" baseline_tag="": _ensure-gh python-sync
-    {{ _run }} uv run --locked archive-performance local {{ quote(current_tag) }} {{ quote(baseline_tag) }} --suite vs_linalg --stem target/bench-reports/performance-non-exact
+    {{ _run }} uv run --locked scripts/archive_performance.py local {{ quote(current_tag) }} {{ quote(baseline_tag) }} --suite vs_linalg --stem target/bench-reports/performance-non-exact
 
-# Publish the existing README plot format from retained measurements after cleanup.
+# Publish the dimension plot and README section directly from complete-run evidence.
 performance-readme metric="lu_solve" stat="median" sample="new" log_y="true": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
@@ -391,24 +391,21 @@ performance-readme metric="lu_solve" stat="median" sample="new" log_y="true": py
     if [ {{ quote(log_y) }} = "true" ]; then
         args+=(--log-y)
     fi
-    {{ _run }} uv run --locked criterion-dim-plot "${args[@]}"
+    {{ _run }} uv run --locked scripts/archive_performance.py plot "${args[@]}"
 
 # Measure, retain an immutable complete run, and promote distinct-release documentation.
 performance-release current_tag="" baseline_tag="": _ensure-gh python-sync
-    {{ _run }} uv run --locked archive-performance release {{ quote(current_tag) }} {{ quote(baseline_tag) }}
+    {{ _run }} uv run --locked scripts/archive_performance.py release {{ quote(current_tag) }} {{ quote(baseline_tag) }}
 
-# Plot: generate a single time-vs-dimension SVG from Criterion results.
-plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false" allow_partial="false": python-sync
+# Plot the complete retained comparison without measuring again.
+plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     args=(--metric {{ quote(metric) }} --stat {{ quote(stat) }} --sample {{ quote(sample) }})
     if [ {{ quote(log_y) }} = "true" ]; then
         args+=(--log-y)
     fi
-    if [ {{ quote(allow_partial) }} = "true" ]; then
-        args+=(--allow-partial)
-    fi
-    {{ _run }} uv run --locked criterion-dim-plot "${args[@]}"
+    {{ _run }} uv run --locked scripts/archive_performance.py plot "${args[@]}"
 
 # Check Python formatting, lint, fixtures, and types.
 python-check: python-format-check python-lint python-fixture-lint python-typecheck
@@ -467,11 +464,11 @@ security-secrets:
 
 # Repository-owned Semgrep rules for project-specific diagnostics.
 semgrep: _ensure-uv
-    uv run --locked semgrep --metrics off --error --strict --timeout 30 --exclude tests/semgrep/src/project_rules/algebraic_float.rs --config semgrep.yaml .
+    uv run --locked --project tooling/semgrep semgrep --metrics off --error --strict --timeout 30 --exclude tests/semgrep/src/project_rules/algebraic_float.rs --config semgrep.yaml .
 
 # Fixture tests for repository-owned Semgrep rules.
 semgrep-test: python-sync
-    uv run --locked --group dev research-repo-tools semgrep check-fixtures
+    uv run --locked --project tooling/semgrep uv run --locked --project . --group dev research-repo-tools semgrep check-fixtures
 
 # Install declared managed tools and explicitly synchronize dev.
 setup: _ensure-gh _ensure-jq

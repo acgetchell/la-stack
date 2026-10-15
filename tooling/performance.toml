@@ -1,4 +1,4 @@
-# Shared measurement inputs; scientific row selection stays in performance_runs.
+# Shared measurement inputs; scientific rows are declared in performance-policy.toml.
 schema = 1
 command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "current-all" ]
 sources = [ "src/**/*.rs", "Cargo.toml" ]
@@ -11,7 +11,9 @@ harness = [
     "rust-toolchain.toml",
     "tests/exact_bench_config.rs",
     "tooling/performance.toml",
+    "tooling/performance-policy.toml",
     "tooling/performance.just",
+    "tooling/criterion-inventory.toml",
 ]
 timeout = 7200
 compatible = [

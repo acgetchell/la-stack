@@ -118,11 +118,12 @@ assignment in that file. Other assignments and paths remain checked.
 
 ### Python tool dependencies
 
-Semgrep 1.178.0 requires `pyjwt[crypto]~=2.13.0`, which retains packages affected
-by the PyJWT advisories reported by OSV. The uv override in `pyproject.toml`
-preserves the crypto extra and selects `pyjwt>=2.15.1,<3`; `uv.lock` records the
-resolved version. Remove the override when the pinned Semgrep release accepts
-the patched PyJWT versions. Validate native Semgrep scans after either change.
+Semgrep 1.180.0 accepts `pyjwt[crypto]>=2.15.0,<3`, so the older security override
+is retired. `tooling/semgrep/uv.lock` retains patched PyJWT 2.15.1 and its crypto
+dependencies. Validate native Semgrep scans when changing the scanner or lock.
+`just audit` includes both Python lockfiles, and Dependabot monitors both
+environments. The isolated scanner remains on Python 3.14 while its wheels
+exclude Python 3.15; support scripts run on Python 3.15.
 
 ### Numerical logging false positives
 

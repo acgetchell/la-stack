@@ -1,0 +1,80 @@
+# Read the retained performance.csv format; never rewrite originals or complete runs.
+schema = 1
+schema-field = "schema_version"
+schemas = [ 1 ]
+hash-field = "csv.sha256"
+benchmark = "benchmark_id"
+statistic = "median"
+unit = "ns"
+header = [
+    "schema_version",
+    "suite",
+    "scope",
+    "benchmark_id",
+    "group",
+    "benchmark",
+    "baseline_benchmark",
+    "coverage_status",
+    "coverage_note",
+    "baseline_median_ns",
+    "baseline_ci_lower_ns",
+    "baseline_ci_upper_ns",
+    "current_median_ns",
+    "current_ci_lower_ns",
+    "current_ci_upper_ns",
+    "baseline_nalgebra_median_ns",
+    "baseline_nalgebra_ci_lower_ns",
+    "baseline_nalgebra_ci_upper_ns",
+    "baseline_faer_median_ns",
+    "baseline_faer_ci_lower_ns",
+    "baseline_faer_ci_upper_ns",
+]
+equal = [
+    [ "release.baseline", "benchmark_provenance.baseline" ],
+    [ "release.current", "benchmark_provenance.current" ],
+    [ "benchmark_provenance.measurement.baseline_commit", "benchmark_provenance.validation.baseline_commit" ],
+    [ "benchmark_provenance.measurement.current_commit", "benchmark_provenance.validation.current_commit" ],
+    [ "benchmark_provenance.measurement.current_commit", "benchmark_provenance.publication.commit" ],
+    [ "benchmark_provenance.measurement.harness_sha256", "benchmark_provenance.publication.harness_sha256" ],
+    [ "benchmark_provenance.measurement.cargo_lock_sha256", "benchmark_provenance.publication.cargo_lock_sha256" ],
+]
+
+[constants]
+schema_version = "1"
+scope = "release-signal"
+
+[assertions]
+"benchmark_provenance.schema" = 2
+"benchmark_provenance.mode" = "shared-current-harness"
+"benchmark_provenance.criterion.statistic" = "median"
+"benchmark_provenance.criterion.scope" = "release-signal"
+"benchmark_provenance.validation.baseline_revision" = "passed"
+"benchmark_provenance.validation.current_revision" = "passed"
+"benchmark_provenance.validation.harness" = "shared-current"
+"benchmark_provenance.publication.correctness_gate" = "passed"
+
+[baseline]
+point = "baseline_median_ns"
+lower = "baseline_ci_lower_ns"
+upper = "baseline_ci_upper_ns"
+
+[current]
+point = "current_median_ns"
+lower = "current_ci_lower_ns"
+upper = "current_ci_upper_ns"
+
+[coverage]
+column = "coverage_status"
+common = "comparable"
+added = "current-only"
+missing = "baseline-only"
+
+[sources.baseline]
+revision = "benchmark_provenance.measurement.baseline_commit"
+release = "release.baseline"
+record = "benchmark_provenance"
+
+[sources.current]
+revision = "benchmark_provenance.measurement.current_commit"
+release = "release.current"
+record = "benchmark_provenance"

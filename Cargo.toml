@@ -47,7 +47,7 @@ allocation-counter = "0.8.1"
 approx = "0.5.1"
 criterion = { version = "0.8.2", features = [ "html_reports" ] }
 pastey = "0.2.3"
-proptest = "1.11.0"
+proptest = "1.12.0"
 
 [features]
 default = [  ]

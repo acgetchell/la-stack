@@ -155,17 +155,16 @@ upgrades and coupled exclusions against a disposable local registry.
 
 The shared package also owns process discovery, captured/live execution, exact
 byte transport, CPU metadata, diagnostics, and zizmor authentication. Consumers
-call its public process API directly; `scripts/benchmark_contract.py` retains
-Cargo checkout selection and historical digest framing. Shared Criterion
-estimates replace local timing wrappers. Tests use shared Just inspection and
-retain scientific schemas and consumer policy checks.
+call its public process API directly. Shared Criterion estimates replace local
+timing wrappers. Tests use shared Just inspection and retain scientific
+selection and consumer policy checks.
 
 Performance consumers use shared Criterion parsing and estimate/comparison
 validation, digest verification, archive extraction, byte-preserving document
 sections, and multi-file transactions. Shared rendering produces complete-run
-reports; local rendering remains for historical reports and dimension plots.
-Historical artifact schemas and fingerprint framing,
-benchmark selection and eligibility remain in the consumer. Published v0.1.8
+reports, coordinate SVG, timing CSV and document tables. Historical artifact
+bytes and fingerprint framing remain frozen; declarative shared conversion reads
+the original CSV/metadata without a legacy writer. Published v0.1.9
 owns common-harness orchestration, completeness, worktrees, complete run retention,
 validated latest selection, and transactional report publication.
 Generic parsing, staging, and rollback tests belong upstream; local
@@ -175,8 +174,10 @@ Hosted Dependabot approvals use the pinned shared
 GitHub workflow; the [rollout guide](dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
 owns settings and deployment verification.
 
-`scripts/release_baseline.py` owns release-suite inventory and delegates complete
-raw Criterion validation to the shared policy. The release workflow packages only datasets that pass
+`tooling/criterion-inventory.toml` declares native full-suite list commands and
+minimum scientific report/plot coverage. `tooling/criterion-saved.toml` declares
+complete saved-sample requirements. Shared discovery and saved-sample APIs own
+inventory parsing and exact raw-file verification. The release workflow packages only datasets that pass
 that gate; its regression and archive tests live in
 `scripts/tests/test_release_baseline.py`.
 
@@ -184,15 +185,26 @@ that gate; its regression and archive tests live in
 gates for both local measurements and release inventories.
 `tooling/performance.toml` uses the shared measurement schema for source/harness
 inputs, probes, timeouts, and compatibility fields.
-`scripts/performance_runs.py` declares scientific coverage,
-release compatibility, and named reference phases used by shared reports and local plots.
-`scripts/archive_performance.py` composes the shared APIs for consumer commands.
+`tooling/performance-policy.toml` owns the scientific metric catalog, exact groups,
+peer mappings and historical API availability. `scripts/performance_runs.py`
+binds those declarations to scientific coverage, release compatibility and
+named reference-phase assertions. `scripts/archive_performance.py` composes
+shared APIs for tracked-only measurements, metadata-free historical raw archives
+and la-stack README publication.
+`tooling/performance-plot.toml` declares dimensions, units, series and axes.
 `tooling/performance-report.toml` owns the canonical report path, title, and shared history path.
-`scripts/benchmark_summaries.py` only reads historical CSV/JSON snapshots;
-`scripts/criterion_measurements.py` and the old generic measurement/retention
-engines are removed. `scripts/tests/test_performance_workflow.py` verifies
-installed-package integration and offline replay. The retained local
-`criterion_dim_plot.py` preserves the multi-library figure format.
+`tooling/performance-legacy.toml` declares shared historical comparison conversion.
+The old comparison renderer, CSV/provenance writer, summary reader, plotter,
+release-inventory wrapper and Python packaging are removed. Only the two
+consumer adapters remain; `scripts/tests/test_performance_workflow.py` verifies
+installed-package integration and offline replay. Shared renderers preserve the
+figure’s scientific coordinates, units and originating series. The
+[adoption record](dev/performance-tooling-adoption.md) owns retained-helper
+dispositions, Python 3.15 review and native validation gates.
+
+`tooling/semgrep/` owns a locked Python 3.14 environment for Semgrep 1.180.0
+while its wheels exclude Python 3.15. Local scans, shared fixture validation
+and hosted SARIF use it; ordinary support scripts use Python 3.15.
 
 `.github/actions/prepare-release-benchmarks/action.yml` groups tool installation,
 input validation, and inventory under the release workflow's shared setup timeout.

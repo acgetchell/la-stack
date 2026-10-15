@@ -17,18 +17,20 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_published_package_and_shared_policy() -> None:
-    """Both dependency owners and the registry lock select the published package."""
+    """The dependency-only environment and registry lock select the published package."""
     manifest = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert manifest["project"]["dependencies"] == ["research-repo-tools==0.1.8"]
-    assert manifest["dependency-groups"]["tooling"] == ["research-repo-tools==0.1.8"]
+    assert manifest["project"]["dependencies"] == []
+    assert manifest["tool"]["uv"]["package"] is False
+    assert "build-system" not in manifest
+    assert manifest["dependency-groups"]["tooling"] == ["research-repo-tools==0.1.9"]
     assert {"include-group": "tooling"} in manifest["dependency-groups"]["dev"]
-    assert version("research-repo-tools") == "0.1.8"
+    assert version("research-repo-tools") == "0.1.9"
     lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
     package = next(item for item in lock["package"] if item["name"] == "research-repo-tools")
-    assert package["version"] == "0.1.8"
+    assert package["version"] == "0.1.9"
     assert package["source"] == {"registry": "https://pypi.org/simple"}
-    assert package["wheels"][0]["hash"] == "sha256:9db45f09a33cac4ff32ddf010d30523e295f607e24c680bcfc3d3d9786991293"
-    assert package["sdist"]["hash"] == "sha256:bc855aa930ee04301dceebc8340a22576bb25712e322b51d7afaf20f5fab1ba0"
+    assert package["wheels"][0]["hash"] == "sha256:c4805004e9a857c072e7b735b033dd13ad256fb283c6e1a4adca0aa59cb67540"
+    assert package["sdist"]["hash"] == "sha256:7bfb16d7a38e8b3cecd30ce526cf808b377b4480ebd512740198a0361c3d027b"
     assert manifest["tool"]["research-repo-tools"]["changelog"] == {
         "owner": "acgetchell",
         "repository": "la-stack",

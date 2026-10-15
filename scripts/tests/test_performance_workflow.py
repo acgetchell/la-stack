@@ -14,20 +14,21 @@ from typing import TYPE_CHECKING
 
 import pytest
 from research_repo_tools.common_measurement import CommonHarnessPlan, measure_prepared_pair
-from research_repo_tools.complete_runs import RunSeries, render_run, run_identity, serialize_run
+from research_repo_tools.complete_runs import CompletePolicy, RunSeries, render_run, run_identity, serialize_run
+from research_repo_tools.criterion import parse_comparison
 from research_repo_tools.just_inspect import dry_run
+from research_repo_tools.legacy_evidence import convert_csv
 from research_repo_tools.process import run_command
 from research_repo_tools.release_pairs import ReleasePair
 
+import archive_performance as plot
 import archive_performance as workflow
-import criterion_dim_plot as plot
 import performance_runs as policy
-from bench_compare import render_release_artifacts
-from performance_artifacts import ArtifactPaths
-from release_baseline import required_report_ids
+from performance_runs import required_report_ids
 
 if TYPE_CHECKING:
     from research_repo_tools.evidence import Evidence
+    from research_repo_tools.publication import PublicationPlan
 
 ROOT = Path(__file__).resolve().parents[2]
 PAIR = ReleasePair("v0.4.6", "v0.4.5")
@@ -59,7 +60,7 @@ def prepared(tmp_path: Path, fault: str = "") -> tuple[Path, Path, CommonHarness
     """Use the real consumer inventory and policies with a bounded timing fixture."""
     ids = tuple(sorted(required_report_ids()))
     inventories = {
-        "baseline": tuple(name for name in ids if not name.startswith(policy.UNAVAILABLE_PREFIXES)),
+        "baseline": tuple(name for name in ids if not name.startswith(policy.scientific_policy().unavailable_prefixes)),
         "current": tuple(name for name in ids if not name.startswith("d") or "/la_stack_" in name),
     }
     for phase in ("baseline", "current"):
@@ -115,6 +116,7 @@ def measured(tmp_path: Path) -> tuple[Path, Evidence]:
     evidence = measure_prepared_pair(baseline, current, plan, PAIR, working_tree=True)
     (current / "tooling").mkdir(exist_ok=True)
     shutil.copyfile(ROOT / policy.REPORT_CONFIG, current / policy.REPORT_CONFIG)
+    shutil.copyfile(ROOT / workflow.PLOT_CONFIG, current / workflow.PLOT_CONFIG)
     return current, evidence
 
 
@@ -130,16 +132,6 @@ def complete_run(tmp_path: Path, measured_run: tuple[Path, Evidence]) -> tuple[P
     destination = tmp_path / "current"
     shutil.copytree(root, destination)
     return destination, evidence
-
-
-@pytest.fixture
-def legacy_artifacts(tmp_path: Path) -> ArtifactPaths:
-    """Keep historical promotion coverage on the last published CSV schema."""
-    history = ROOT / "docs/performance"
-    run = json.loads((history / "latest.json").read_bytes())["run"]
-    for name in ("performance.csv", "performance.provenance.json"):
-        shutil.copyfile(history / run / name, tmp_path / name)
-    return ArtifactPaths(tmp_path / "performance.csv", tmp_path / "performance.provenance.json")
 
 
 def test_common_harness_and_reference_phase(tmp_path: Path) -> None:
@@ -179,10 +171,18 @@ def test_shared_retention_repeated_runs_and_offline_report(complete_run: tuple[P
     )
     stem = root / "target/bench-reports/performance"
     workflow.save_scratch(root, stem, first)
-    assert stem.with_suffix(".md").read_bytes() == render_run(first)
+    assert stem.with_suffix(".md").read_bytes() == render_run(
+        first,
+        report_path="target/bench-reports/performance.md",
+        payload_path="target/bench-reports/performance.run.json",
+        manifest_path="target/bench-reports/performance.evidence.json",
+    )
     workflow.promote(root, stem)
     first_report = (root / report_path).read_bytes()
-    assert first_report == render_run(first, title="Configured performance report")
+    assert b"Configured performance report" in first_report
+    assert b"Recorded measurement provenance" in first_report
+    assert b"run.json" in first_report
+    assert b"evidence.json" in first_report
     assert b"## Mean (ns)" in first_report
     assert b"## Median (ns)" in first_report
     assert b"nalgebra: measured in **baseline** phase" in first_report
@@ -212,63 +212,6 @@ def test_shared_retention_repeated_runs_and_offline_report(complete_run: tuple[P
         policy.retained_run(root, stem)
 
 
-@pytest.mark.parametrize("destination", ["missing", "identical", "different", "directory", "symlink", "relative-symlink"])
-def test_legacy_promotion_preserves_prior_report_on_archive_collision(tmp_path: Path, legacy_artifacts: ArtifactPaths, destination: str) -> None:
-    root = tmp_path
-    stem = root / "target/bench-reports/performance"
-    current = root / "docs/performance.md"
-    current.parent.mkdir(parents=True, exist_ok=True)
-    previous = b"**la-stack** v0.4.5\n\nComparison against baseline **v0.4.4**:\n\nPrior curated report.\n"
-    current.write_bytes(previous)
-    archived = root / "docs/archive/performance/v0.4.5-vs-v0.4.4.md"
-    archived.parent.mkdir(parents=True)
-    if destination in {"identical", "different"}:
-        archived.write_bytes(previous if destination == "identical" else b"Conflicting archive.\n")
-    elif destination == "directory":
-        archived.mkdir()
-    elif destination == "symlink":
-        archived.symlink_to(current)
-    elif destination == "relative-symlink":
-        archived.symlink_to(os.path.relpath(current, archived.parent))
-    original_link_target = archived.readlink() if archived.is_symlink() else None
-    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts}
-    if destination in {"missing", "identical"}:
-        workflow.render_and_promote_artifacts(artifacts=legacy_artifacts, output=stem.with_suffix(".md"), current=current, archive_dir=archived.parent)
-        assert archived.read_bytes() == previous
-        assert current.read_text(encoding="utf-8") == render_release_artifacts(legacy_artifacts)
-    else:
-        errors = {"different": "immutable output differs", "directory": "regular file", "symlink": "symlink", "relative-symlink": "symlink"}
-        with pytest.raises(ValueError, match=errors[destination]):
-            workflow.render_and_promote_artifacts(artifacts=legacy_artifacts, output=stem.with_suffix(".md"), current=current, archive_dir=archived.parent)
-        assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts} == before
-        assert not (root / "docs/performance-runs").exists()
-        if destination == "directory":
-            assert archived.is_dir()
-        elif destination in {"symlink", "relative-symlink"}:
-            assert archived.is_symlink()
-            assert archived.readlink() == original_link_target
-            assert archived.samefile(current)
-
-
-@pytest.mark.parametrize("duplicate", ["**la-stack** v0.4.4", "Comparison against baseline **v0.4.3**:"])
-def test_duplicate_legacy_report_identity_prevents_publication(tmp_path: Path, legacy_artifacts: ArtifactPaths, duplicate: str) -> None:
-    root = tmp_path
-    stem = root / "target/bench-reports/performance"
-    current = root / "docs/performance.md"
-    current.parent.mkdir(parents=True, exist_ok=True)
-    text = f"**la-stack** v0.4.5\n\nComparison against baseline **v0.4.4**:\n\n{duplicate}\n"
-    current.write_text(text, encoding="utf-8", newline="\n")
-    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts}
-    with pytest.raises(ValueError, match="exactly one"):
-        workflow.parse_report_id(text)
-    with pytest.raises(ValueError, match="exactly one"):
-        workflow.render_and_promote_artifacts(
-            artifacts=legacy_artifacts, output=stem.with_suffix(".md"), current=current, archive_dir=root / "docs/archive/performance"
-        )
-    assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts} == before
-    assert not (root / "docs/performance-runs").exists()
-
-
 def test_partial_scratch_and_stale_source_cannot_select_old_history(tmp_path: Path) -> None:
     root, evidence = measured(tmp_path)
     stem = root / "target/bench-reports/performance"
@@ -283,10 +226,7 @@ def test_partial_scratch_and_stale_source_cannot_select_old_history(tmp_path: Pa
 
 
 @pytest.mark.parametrize("archive", ["docs/performance-runs", "docs/performance-history"])
-@pytest.mark.parametrize("csv_path", ["relative", "dot-relative", "absolute"])
-def test_readme_uses_retained_reference_estimates_after_cleanup(
-    complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, archive: str, csv_path: str
-) -> None:
+def test_readme_uses_original_reference_phases_after_cleanup(complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, archive: str) -> None:
     root, evidence = complete_run
     config = root / policy.REPORT_CONFIG
     config.write_text(config.read_text(encoding="utf-8").replace("docs/performance-runs", archive), encoding="utf-8")
@@ -296,75 +236,124 @@ def test_readme_uses_retained_reference_estimates_after_cleanup(
     shutil.copyfile(ROOT / "README.md", root / "README.md")
     shutil.rmtree(root / "target")
     monkeypatch.setattr(plot, "_repo_root", lambda: root)
-    monkeypatch.setattr(plot, "_render_svg_with_gnuplot", lambda request: request.out_svg.write_bytes(b"<svg/>\n"))
-    performance_csv = "target/bench-reports/performance.csv"
-    if csv_path == "absolute":
-        performance_csv = str(root / performance_csv)
-    elif csv_path == "dot-relative":
-        performance_csv = f"./{performance_csv}"
-    arguments = ["--update-readme", "--log-y", "--performance-csv", performance_csv]
-    assert plot.main(arguments) == 0
+    monkeypatch.chdir(root.parent)
+    arguments = ["--update-readme", "--log-y"]
+    assert plot.dimension_main(arguments) == 0
     assets = root / "docs/assets/bench"
     csv = assets / "vs_linalg_lu_solve_median.csv"
-    assert "2,8.0,7.2,8.8,10.0,9.0,11.0,10.0,9.0,11.0" in csv.read_text(encoding="utf-8")
+    import csv as csv_module  # noqa: PLC0415
+
+    with csv.open(encoding="utf-8", newline="") as stream:
+        rows = list(csv_module.DictReader(stream))
+    assert len(rows) == 24
+    assert {row["phase"] for row in rows if row["series"] in {"nalgebra", "faer"}} == {"baseline"}
+    assert {row["phase"] for row in rows if row["series"] == "la-stack current"} == {"current"}
+    assert {float(row["coordinate"]) for row in rows} == {2, 3, 4, 5, 8, 16, 32, 64}
+    assert {row["unit"] for row in rows} == {"ns"}
+    dimension_two = [row for row in rows if float(row["coordinate"]) == 2]
+    assert [(float(row["point"]), float(row["lower"]), float(row["upper"])) for row in dimension_two] == [(8.0, 7.2, 8.8), (10.0, 9.0, 11.0), (10.0, 9.0, 11.0)]
     provenance = json.loads(csv.with_suffix(".provenance.json").read_bytes())
-    assert provenance["measurement"]["peer_phase"] == "baseline"
+    assert provenance["series"]["nalgebra"] == "baseline"
     assert provenance["run_id"] == run_identity(evidence)
+    assert b"<svg" in csv.with_suffix(".svg").read_bytes()
+    assert b"nalgebra" in csv.with_suffix(".svg").read_bytes()
     before = {path: path.read_bytes() for path in (*assets.iterdir(), root / "README.md")}
-    assert plot.main(arguments) == 0
+    assert plot.dimension_main(arguments) == 0
     assert {path: path.read_bytes() for path in before} == before
 
 
-@pytest.mark.parametrize(
-    ("cleanup", "destination"),
-    [
-        (False, "run"),
-        (False, "evidence"),
-        (False, "alias"),
-        (False, "source"),
-        (False, "harness"),
-        (False, "configuration"),
-        (True, "run"),
-        (True, "evidence"),
-        (True, "report"),
-        (True, "index"),
-        (True, "latest"),
-    ],
-)
-def test_readme_outputs_cannot_replace_complete_run_inputs(
-    complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], cleanup: bool, destination: str
+def test_stale_source_prevents_dimension_publication(complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch) -> None:
+    root, evidence = complete_run
+    stem = root / "target/bench-reports/performance"
+    workflow.save_scratch(root, stem, evidence)
+    shutil.copyfile(ROOT / "README.md", root / "README.md")
+    original = (root / "README.md").read_bytes()
+    (root / "src/lib.rs").write_text("// changed library\n", encoding="utf-8")
+    monkeypatch.setattr(plot, "_repo_root", lambda: root)
+    assert plot.dimension_main(["--update-readme"]) == 2
+    assert (root / "README.md").read_bytes() == original
+    assert not (root / "docs/assets/bench").exists()
+
+
+def test_readme_edit_during_rendering_is_preserved(complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch) -> None:
+    root, evidence = complete_run
+    workflow.save_scratch(root, root / "target/bench-reports/performance", evidence)
+    shutil.copyfile(ROOT / "README.md", root / "README.md")
+    document = root / "README.md"
+    edited = document.read_bytes() + b"\nConcurrent maintainer edit.\n"
+    planner = workflow.plan_outputs
+
+    def edit_before_snapshot(directory: Path, outputs: dict[str, bytes], *, inputs: dict[str, bytes]) -> PublicationPlan:
+        document.write_bytes(edited)
+        return planner(directory, outputs, inputs=inputs)
+
+    monkeypatch.setattr(workflow, "plan_outputs", edit_before_snapshot)
+    with pytest.raises(ValueError, match="README changed during rendering"):
+        workflow.publish_plot(root, "lu_solve", "median", log_y=True, update_readme=True)
+    assert document.read_bytes() == edited
+    assert not (root / "docs/assets/bench").exists()
+
+
+def test_existing_tag_cannot_receive_different_measured_assets(complete_run: tuple[Path, Evidence]) -> None:
+    root, evidence = complete_run
+    workflow.save_scratch(root, root / "target/bench-reports/performance", evidence)
+    shutil.copyfile(ROOT / "README.md", root / "README.md")
+    assets = root / "docs/assets/bench"
+    assets.mkdir(parents=True)
+    for suffix in (".svg", ".csv", ".provenance.json"):
+        (assets / f"vs_linalg_lu_solve_median{suffix}").write_bytes(b"previous tagged artifact\n")
+    run_command("git", ["--no-pager", "add", "docs/assets/bench"], cwd=root)
+    run_command(
+        "git",
+        [
+            "--no-pager",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "-m",
+            "previous artifacts",
+        ],
+        cwd=root,
+    )
+    run_command("git", ["--no-pager", "-c", "tag.gpgsign=false", "tag", "v0.4.6"], cwd=root)
+    originals = {path: path.read_bytes() for path in (*assets.iterdir(), root / "README.md")}
+    with pytest.raises(ValueError, match="exact publication artifact"):
+        workflow.publish_plot(root, "lu_solve", "median", log_y=True, update_readme=True)
+    assert {path: path.read_bytes() for path in originals} == originals
+
+
+@pytest.mark.parametrize("changed", ["source-membership", "unindexed-run"])
+def test_dimension_publication_rechecks_membership_and_retained_selection(
+    complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, changed: str
 ) -> None:
     root, evidence = complete_run
     stem = root / "target/bench-reports/performance"
     workflow.save_scratch(root, stem, evidence)
     workflow.promote(root, stem)
-    archive = root / policy.archive_directory(root)
-    retained = archive / "runs" / run_identity(evidence)
-    payload, manifest = policy.scratch_paths(stem)
-    if cleanup:
-        shutil.rmtree(root / "target")
-        payload, manifest = retained / "run.json", retained / "evidence.json"
-    alias = root / "docs/alias.csv"
-    if destination == "alias":
-        alias.hardlink_to(payload)
-    targets = {
-        "run": payload,
-        "evidence": manifest,
-        "alias": alias,
-        "source": root / "src/lib.rs",
-        "harness": root / "tooling/performance.just",
-        "configuration": root / policy.REPORT_CONFIG,
-        "report": retained / "report.md",
-        "index": archive / "index.json",
-        "latest": archive / "latest.json",
-    }
-    shutil.copyfile(ROOT / "README.md", root / "docs/custom.md")
-    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts}
-    monkeypatch.setattr(plot, "_repo_root", lambda: root)
-    monkeypatch.setattr(plot, "_render_svg_with_gnuplot", lambda request: request.out_svg.write_bytes(b"<svg/>\n"))
-    assert plot.main(["--update-readme", "--readme", "docs/custom.md", "--csv", str(targets[destination])]) == 2
-    assert "must use distinct paths" in capsys.readouterr().err
-    assert {path: path.read_bytes() for path in root.rglob("*") if path.is_file() and ".git" not in path.parts} == before
+    shutil.copyfile(ROOT / "README.md", root / "README.md")
+    shutil.rmtree(root / "target")
+    original = (root / "README.md").read_bytes()
+    publish = workflow.publish_publication
+
+    def change_before_publication(plan: PublicationPlan) -> tuple[Path, ...]:
+        if changed == "source-membership":
+            (root / "src/added.rs").write_text("// added after planning\n", encoding="utf-8")
+        else:
+            unexpected = root / policy.archive_directory(root) / "runs" / ("f" * 64)
+            unexpected.mkdir()
+            (unexpected / "run.json").write_bytes(b"{}\n")
+        return publish(plan)
+
+    monkeypatch.setattr(workflow, "_repo_root", lambda: root)
+    monkeypatch.setattr(workflow, "publish_publication", change_before_publication)
+    assert workflow.dimension_main(["--update-readme"]) == 2
+    assert (root / "README.md").read_bytes() == original
+    assert not (root / "docs/assets/bench").exists()
 
 
 def test_complete_report_passes_markdown_recipes_without_rewriting_history(complete_run: tuple[Path, Evidence]) -> None:
@@ -394,15 +383,26 @@ def test_complete_report_passes_markdown_recipes_without_rewriting_history(compl
 
 def test_legacy_bytes_hashes_and_report_are_unchanged() -> None:
     directory = ROOT / "docs/performance/v0.4.6-vs-v0.4.5/39719a1eb599d294dbbc1e46dc6fb0de2028ad2e59aab5f94fb48c7bf3d7f841"
-    paths = ArtifactPaths(directory / "performance.csv", directory / "performance.provenance.json")
     hashes = {
         "performance.csv": "b263bb34bcfd43b8fc8109110db9f2e908516aef6c01ce16f70f5ac18dc7ef2d",
         "performance.full.csv": "4fa5cc13159f5dc91e711ae67554845bcbd1ace2cfc3e31487fc85f75d3dc459",
         "performance.full.provenance.json": "a43f66e52035aecd8d235dfded916b23c3240529d0c07f793d27322521cfb0d0",
         "performance.provenance.json": "89144a2899ba73f55d009da4fa20b4e6477600902b93cde469383f719c497508",
     }
-    assert {name: hashlib.sha256((paths.csv.parent / name).read_bytes()).hexdigest() for name in hashes} == hashes
-    assert hashlib.sha256(render_release_artifacts(paths).encode()).hexdigest() == "4ea0ff9bca4c7bb92cd57bd9163b3cacabe78f502abdd2663162cf9562ec6582"
+    assert {name: hashlib.sha256((directory / name).read_bytes()).hexdigest() for name in hashes} == hashes
+
+    retained = convert_csv(
+        (directory / "performance.csv").read_bytes(),
+        (directory / "performance.provenance.json").read_bytes(),
+        (ROOT / "tooling/performance-legacy.toml").read_bytes(),
+    )
+    comparison = parse_comparison(retained.payload)
+    assert len(comparison.comparisons) == 190
+    assert len(comparison.missing_baseline) == 35
+    assert not comparison.missing_current
+    assert "rational_input_d8/solve_big_rational_gaussian" in comparison.missing_baseline
+    assert dict(retained.sources)["baseline"].source_sha256 is None
+    assert dict(dict(retained.sources)["baseline"].context)["legacy.payload-sha256"] == hashes["performance.csv"]
 
 
 def test_native_command_policy_and_compatibility_adapter() -> None:
@@ -470,8 +470,11 @@ def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path:
     record = tmp_path / "commands.txt"
     monkeypatch.setenv("PATH", f"{binary}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("CARGO_RECORD", str(record))
+    monkeypatch.chdir(tmp_path)
     pair = ReleasePair("v0.4.6", baseline_tag)
-    plan = policy.measurement_plan(root, pair, "all", scope, tmp_path / "inventory")
+    plan = policy.measurement_plan(root, pair, "all", scope)
+    assert isinstance(plan.current.policy, CompletePolicy)
+    assert isinstance(plan.baseline.policy, CompletePolicy)
     assert set(plan.current.policy.expected) == set(current_ids) | set(exact)
     unavailable = norm_rows | {name for name in exact if name.startswith(("rational_input_", "canonical_conversion_", "det4_diagnostic_"))}
     assert set(plan.baseline.policy.expected) == (ids if baseline_tag == "v0.4.6" else ids - unavailable)
@@ -529,12 +532,129 @@ def test_pre_just_run_remains_readable_without_its_python_driver(tmp_path: Path)
         policy.validate_scientific_run(replace(legacy, sources=(("baseline", bad), sources[1])))
 
 
-def test_local_explicit_labels_and_release_eligibility() -> None:
+def test_local_explicit_labels_and_release_eligibility(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
     assert workflow.select_pair(ROOT, "explicit", "v0.4.6", "v0.4.6", local=True) == ReleasePair("v0.4.6", "v0.4.6")
     with pytest.raises(ValueError, match="must differ"):
         workflow.select_pair(ROOT, "explicit", "v0.4.6", "v0.4.6")
     with pytest.raises(ValueError, match=r"v0.4.4|unsupported"):
         workflow.select_pair(ROOT, "explicit", "v0.4.6", "v0.4.3", local=True)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("minimum-release", "[]"),
+        ("minimum-release", "[0, 4]"),
+        ("minimum-release", "[0, 4, true]"),
+        ("minimum-release", "[0, 4, -1]"),
+        ("modern-api-release", "[]"),
+        ("modern-api-release", "[0, 4, 3]"),
+        ("legacy-api-cfg", '"--arbitrary-flag"'),
+    ],
+)
+def test_malformed_release_policy_is_rejected(tmp_path: Path, field: str, value: str) -> None:
+    directory = tmp_path / "tooling"
+    directory.mkdir()
+    text = (ROOT / policy.POLICY_CONFIG).read_text(encoding="utf-8")
+    import re  # noqa: PLC0415
+
+    text = re.sub(rf"(?m)^{re.escape(field)} = .*$", f"{field} = {value}", text)
+    (tmp_path / policy.POLICY_CONFIG).write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"release|cfg"):
+        policy.compatibility_adapter(PAIR, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "diagnostic"),
+    [
+        ("dimensions", "[]", "dimensions"),
+        ("dimensions", "[2, true]", "dimensions"),
+        ("dimensions", "[2, -3]", "dimensions"),
+        ("dimensions", "[3, 2]", "dimensions"),
+        ("dimensions", "[2, 2]", "dimensions"),
+        ("library-benchmarks", '"la_stack_lu"', "library-benchmarks"),
+        ("library-benchmarks", '["la_stack_lu", "la_stack_lu"]', "library-benchmarks"),
+        ("unavailable-prefixes", "[false]", "unavailable-prefixes"),
+        ("unavailable-benchmarks", '["../escape"]', "unavailable-benchmarks"),
+        ("unavailable-benchmark-prefixes", "[1]", "unavailable-benchmark-prefixes"),
+        ("exact_d2", '"det"', "exact.exact_d2"),
+        ('"8"', "[false]", "additional.8"),
+        ("la_stack_lu", '["nalgebra_lu"]', "peers.la_stack_lu"),
+        ("la_stack_lu", '["nalgebra_lu", "faer_lu", "extra"]', "peers.la_stack_lu"),
+        ("la_stack_lu", '["nalgebra_lu", "nalgebra_lu"]', "peers.la_stack_lu"),
+        ("title", '"   "', "metrics.det_via_lu.title"),
+        ("benchmarks", '["la_stack_det_via_lu", "nalgebra_det_via_lu"]', "metrics.det_via_lu.benchmarks"),
+        ("benchmarks", '["la_stack_det_via_lu", "nalgebra_det_via_lu", "wrong_peer"]', "declared peer pair"),
+    ],
+)
+def test_malformed_scientific_catalog_is_rejected(tmp_path: Path, field: str, value: str, diagnostic: str) -> None:
+    """Bad declarations fail at admission, before inventory indexing or timing."""
+    import re  # noqa: PLC0415
+
+    (tmp_path / "tooling").mkdir()
+    text = (ROOT / policy.POLICY_CONFIG).read_text(encoding="utf-8")
+    text, count = re.subn(rf"(?m)^{re.escape(field)} = .*$", f"{field} = {value}", text, count=1)
+    assert count == 1
+    (tmp_path / policy.POLICY_CONFIG).write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError, match=re.escape(diagnostic)):
+        policy.compatibility_adapter(PAIR, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("original", "replacement", "diagnostic"),
+    [
+        ("[exact]", "[renamed_exact]", "exact requires a named catalog table"),
+        ('"8" =', '"7" =', "additional benchmark dimensions"),
+        ("la_stack_lu =", "unknown_benchmark =", "peers must refer"),
+        ("[metrics.det_via_lu]", "[metrics]", "metrics.title requires a named catalog table"),
+    ],
+)
+def test_malformed_scientific_tables_are_rejected(tmp_path: Path, original: str, replacement: str, diagnostic: str) -> None:
+    """Missing tables and cross-catalog inconsistencies retain field diagnostics."""
+    (tmp_path / "tooling").mkdir()
+    text = (ROOT / policy.POLICY_CONFIG).read_text(encoding="utf-8")
+    assert original in text
+    (tmp_path / policy.POLICY_CONFIG).write_text(text.replace(original, replacement, 1), encoding="utf-8")
+    with pytest.raises(ValueError, match=diagnostic):
+        policy.scientific_policy(tmp_path)
+
+
+def test_parsed_scientific_catalog_preserves_immutable_peer_and_metric_rows() -> None:
+    """Shared planners consume stable, typed catalog rows rather than raw TOML."""
+    catalog = policy.scientific_policy(ROOT)
+    assert catalog.dimensions == (2, 3, 4, 5, 8, 16, 32, 64)
+    assert catalog.peers["la_stack_lu"] == ("nalgebra_lu", "faer_lu")
+    assert catalog.metrics["lu"].benchmarks == ("la_stack_lu", "nalgebra_lu", "faer_lu")
+    from typing import cast  # noqa: PLC0415
+
+    with pytest.raises(TypeError):
+        cast("dict[str, tuple[str, str]]", catalog.peers)["la_stack_lu"] = ("wrong", "peer")
+
+
+@pytest.mark.parametrize("flag", [("--suite", "exact"), ("--scope", "all-benches"), ("--stem", "ignored")])
+def test_assets_rejects_retired_options(flag: tuple[str, str], capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as error:
+        workflow.main(["assets", *flag])
+    assert error.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command", ["plot", "local"])
+def test_cli_help_and_missing_checkout_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], command: str) -> None:
+    monkeypatch.chdir(tmp_path)
+    cli = workflow.dimension_main if command == "plot" else workflow.main
+    arguments = [] if command == "plot" else [command]
+    with pytest.raises(SystemExit) as error:
+        cli([*arguments, "--help"])
+    assert error.value.code == 0
+    output = capsys.readouterr()
+    assert "usage:" in output.out
+    assert not output.err
+    assert cli(arguments) == (2 if command == "plot" else 1)
+    output = capsys.readouterr()
+    assert "Could not locate Cargo.toml" in output.err
+    assert "Traceback" not in output.err
 
 
 def test_current_gate_failure_prevents_both_timing_phases(tmp_path: Path) -> None:
@@ -576,34 +696,6 @@ def test_reference_phase_and_same_version_policy(tmp_path: Path) -> None:
         policy.validate_scientific_run(identical)
 
 
-def test_publication_io_failure_preserves_all_published_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    root, evidence = measured(tmp_path)
-    stem = root / "target/bench-reports/performance"
-    workflow.save_scratch(root, stem, evidence)
-    workflow.promote(root, stem)
-    originals = {path: path.read_bytes() for path in (root / "docs").rglob("*") if path.is_file()}
-    second = replace(
-        evidence, sources=tuple((phase, replace(source, context=(*source.context, ("experiment", "second")))) for phase, source in evidence.sources)
-    )
-    workflow.save_scratch(root, stem, second)
-    native_replace = Path.replace
-    failed = False
-
-    def fail_once(source: Path, destination: Path) -> Path:
-        nonlocal failed
-        if destination == root / policy.archive_directory(root) / "latest.json" and not failed:
-            failed = True
-            msg = "injected publication failure"
-            raise OSError(msg)
-        return native_replace(source, destination)
-
-    monkeypatch.setattr(Path, "replace", fail_once)
-    with pytest.raises(OSError, match="injected publication failure"):
-        workflow.promote(root, stem)
-    assert failed
-    assert {path: path.read_bytes() for path in (root / "docs").rglob("*") if path.is_file()} == originals
-
-
 def test_unsafe_release_asset_cannot_replace_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     output = tmp_path / "report.md"
     output.write_bytes(b"previous report\n")
@@ -616,5 +708,25 @@ def test_unsafe_release_asset_cannot_replace_report(tmp_path: Path, monkeypatch:
 
     monkeypatch.setattr(workflow, "download_release_asset", unsafe_asset)
     with pytest.raises(ValueError, match=r"unsafe|traversal|relative|member"):
-        workflow.compare_assets(tmp_path, PAIR, output, "all", "release-signal")
+        workflow.compare_assets(tmp_path, PAIR, output)
     assert output.read_bytes() == b"previous report\n"
+
+
+def test_shared_saved_comparison_recipe_reports_coverage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise the actual recipe and installed CLI, with no consumer package."""
+    for name in ("justfile", "pyproject.toml", "uv.lock", ".python-version", "rust-toolchain.toml"):
+        shutil.copyfile(ROOT / name, tmp_path / name)
+    for name, sample, value in (("workload/shared", "last", 10), ("workload/shared", "new", 8), ("diagnostic/new", "new", 3)):
+        path = tmp_path / "target/criterion" / name / sample
+        path.mkdir(parents=True)
+        (path / "benchmark.json").write_text(json.dumps({"full_id": name}), encoding="utf-8")
+        estimate = {"point_estimate": value, "confidence_interval": {"lower_bound": value * 0.9, "upper_bound": value * 1.1}}
+        (path / "estimates.json").write_text(json.dumps({"median": estimate}), encoding="utf-8")
+    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", sys.prefix)
+    result = run_command("just", ["--no-deps", "bench-compare", "last"], cwd=tmp_path, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = (tmp_path / "target/bench-reports/performance.md").read_text(encoding="utf-8")
+    assert "workload/shared" in report
+    assert "diagnostic/new" in report
+    assert not (tmp_path / "target/bench-reports/performance.csv").exists()
+    assert not (tmp_path / "target/bench-reports/performance.provenance.json").exists()

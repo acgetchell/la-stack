@@ -33,7 +33,7 @@ next release; measured artifact links and historical reports retain their tags.
 |------|--------|
 | Latest-release local audit | `just performance-local` |
 | Non-exact release-signal check against tags | `just performance-local-non-exact "$CURRENT_TAG" "$PREVIOUS_TAG"` |
-| Fast saved-baseline loop | `just bench-save-baseline <name> <suite>` then `just bench-compare <name> <suite> all-benches` |
+| Fast saved-baseline loop | `just bench-save-baseline <name> <suite>` then `just bench-compare <name>` |
 | Full crate comparison | `just bench-vs-linalg` |
 | Interval determinant filter | `just bench-interval` |
 | Certified dot/linear-form filter | `just bench-linear-form` |
@@ -46,8 +46,7 @@ Rule of thumb:
 
 - Use `performance-local*` for clean, self-contained answers.
 - Use `bench-save-*` plus `bench-compare` for tight local optimization loops.
-- Use `bench-vs-linalg` plus `plot-vs-linalg` for exploratory crate-to-crate
-  plots.
+- Use `plot-vs-linalg` to render dimension plots from a retained complete run.
 - Use `performance-release` only when preparing committed release artifacts.
 - After `performance-release`, use `performance-readme` to publish its
   retained crate-to-crate measurements without benchmarking again.
@@ -274,13 +273,13 @@ compare:
 
 ```bash
 just bench-vs-linalg-la-stack
-just bench-compare inf-norm-before vs_linalg all-benches
+just bench-compare inf-norm-before
 ```
 
-The `just bench-compare` recipe uses positional arguments:
-`just bench-compare <baseline> <suite> <scope>`. The underlying
-`uv run --locked bench-compare` CLI accepts the explicit `--suite` and
-`--scope` flags.
+The `just bench-compare <baseline>` recipe calls the installed shared Criterion
+comparison CLI. It reports every available row, additions and omissions; old
+suite/scope flags are retired. These exploratory ratios do not validate a common
+harness or scientific release eligibility. Use `performance-local` for that gate.
 
 `just bench-save-baseline <name>` writes Criterion samples under
 `target/criterion/`. `just bench-save-last` saves the conventional local
@@ -310,7 +309,7 @@ just performance-readme
 
 `performance-readme` does not run benchmarks. It loads the canonical
 `target/bench-reports/performance.run.json` and its evidence envelope retained by
-`performance-release`, falling back to the latest committed local snapshot when
+`performance-release`, falling back to the validated retained complete-run history when
 all scratch inputs are absent. It then uses the current la-stack result and the peer
 nalgebra/faer results measured by that same shared current harness. It requires
 all three timings for every canonical dimension (D=2, 3, 4, 5, 8, 16, 32, and
@@ -325,14 +324,20 @@ The publisher verifies the complete-run identity, release version, current
 source and harness inventories/digests, dependency resolution, complete peer
 coverage, and recorded phase provenance before writing. The derived sidecar
 records the run identity and the actual current/baseline origins of each series.
-Historical CSV/JSON evidence retains its original reader and provenance.
+Historical CSV/JSON evidence remains frozen with its original provenance.
 Missing, stale, or inconsistent input aborts publication atomically.
+An existing local release tag must contain the exact selected asset bytes.
+A future release tag may be absent during release preparation.
 
-For exploratory CSV/SVG output, run `bench-vs-linalg` and `plot-vs-linalg`.
-That path still reads raw Criterion output; `--allow-partial` remains
-exploratory-only and cannot update README.
+`plot-vs-linalg` renders the same complete-run selection without editing README.
+The raw-Criterion/gnuplot renderer and CSV-to-README transport are retired after
+complete-run integration parity. Historical figures and CSV/JSON remain unchanged;
+they cannot be relabeled as complete runs. Raw exploratory timing reports remain
+available through Criterion and `bench-compare`. Dimension publication requires
+all canonical dimensions and uses the shared SVG, long-form CSV and table
+renderers, with configured selections in `tooling/performance-plot.toml`.
 
-See `uv run --locked criterion-dim-plot --help` for plotting options.
+See `uv run --locked scripts/archive_performance.py plot --help` for plotting options.
 
 ### Create The Release Performance Report
 
@@ -370,11 +375,16 @@ cases appear as an em dash. Each series identifies its measurement phase,
 release, and revision. Full environment, harness, command, and gate provenance
 remains in that run's `evidence.json`, beside `run.json` and `report.md`.
 New reports no longer use the custom percentage-change, ratio, or interval-overlap
-columns. The README dimension plot and its table retain their existing format.
+columns. README publication uses the shared coordinate SVG, long-form timing CSV
+and per-series estimate table, retaining nanoseconds, intervals and original phases.
 Serialization, validation, rendering, and promotion failures preserve existing
 published reports and selection. Review and commit the whole new run and index.
 Legacy snapshots under `docs/performance/` retain their original bytes,
-hashes, framing, and reader; see the [legacy index](performance/README.md).
+hashes and framing; see the [legacy index](performance/README.md).
+Their custom writers and report renderer are retired. Verified comparison-only
+conversion uses `tooling/performance-legacy.toml` with the shared `performance convert`
+command, retaining the original hashes and opaque metadata. It cannot reconstruct
+raw samples or create complete-run provenance.
 The last published legacy report is preserved in the
 [Markdown archive](archive/performance/README.md). The checked-in current report
 keeps its historical format until a complete run is promoted; old summaries do
@@ -399,8 +409,9 @@ just performance-doc
 This command fails closed on a missing, partial, malformed, mismatched, or
 unsupported artifact pair. It consumes the default complete-run payload/envelope
 or follows the validated `docs/performance-runs/latest.json` when all scratch
-inputs are absent. A repository with only legacy evidence continues through
-the historical reader. Report replay runs offline and updates the current
+inputs are absent. Legacy-only input fails with a missing complete-run error;
+run `performance-release` to create the supported replacement. Frozen historical
+reports remain readable directly. Report replay runs offline and updates the current
 document and shared history transactionally. Promotion requires distinct
 current and baseline package versions, so a same-version local comparison is
 retained and reproducible but cannot become release documentation. Use promotion
@@ -442,8 +453,8 @@ shared-harness workflow before attributing a difference solely to library code.
 | `target/bench-reports/github-assets-performance.md` | No | `performance-github-assets` | Local report from published release artifacts. |
 | `docs/performance.md` | Yes | `performance-release`, `performance-doc` | Current shared full report; last legacy report until complete-run promotion. |
 | `docs/performance-runs/` | Yes | `performance-release`, `performance-doc` | Immutable complete runs, reports, index, and validated latest pointer. |
-| `docs/performance/` | Yes | Legacy reader | Unchanged historical CSV/JSON evidence and hashes. |
-| `docs/archive/performance/` | Yes | Legacy reader | Preserved reports in the historical format. |
+| `docs/performance/` | Yes | Frozen record/shared conversion | Unchanged historical CSV/JSON evidence and hashes. |
+| `docs/archive/performance/` | Yes | Frozen record | Preserved reports in the historical format. |
 | `docs/archive/performance/studies/` | Yes | Maintainer investigations | Completed optimization studies and decisions. |
 | `docs/assets/bench/` | Yes | `performance-readme` | README benchmark CSV/SVG assets and JSON provenance. |
 | GitHub Release | Remote | `.github/workflows/release-benchmarks.yml` | Criterion baseline archive. |
@@ -463,9 +474,10 @@ different machine; local summary comparisons must use their recorded environment
 ## `vs_linalg` Methodology
 
 `vs_linalg` is a per-kernel comparison, not a single aggregate score. Each row
-compares one operation for one dimension `D`, using Criterion's selected
-statistic from `target/criterion/d{D}/{benchmark}/{sample}/estimates.json`.
-The README table uses `median.point_estimate` in nanoseconds. Lower is better,
+compares one operation for one dimension `D`. Exploratory Criterion reports use
+the selected statistic from `target/criterion/d{D}/{benchmark}/{sample}/estimates.json`.
+The README table reads median estimates and intervals in nanoseconds from validated
+complete-run evidence. Lower is better,
 but point-estimate ratios alone are descriptive and do not establish a
 statistically supported performance difference. Preserve Criterion confidence
 intervals or repeat controlled runs when making a stronger claim.
@@ -755,11 +767,9 @@ baselines created before the `exact_random_corpus_d*` names were introduced do
 not have comparable full-corpus rows, so those rows appear once both sides of a
 comparison provide the stable group.
 
-To generate a current snapshot without a saved baseline:
-
-```bash
-uv run --locked bench-compare --snapshot
-```
+For a current snapshot without a saved baseline, use Criterion’s native reports
+under `target/criterion/`. The retired `bench-compare --snapshot` command is no
+longer provided.
 
 ## Release Notes
 
@@ -849,9 +859,10 @@ just markdown-ci
 just doc-check
 ```
 
-The Python suite executes the workflow's shell with simulated GitHub API
-responses to test draft rejection, commit changes, upload failures, asset
-verification, and safe reruns. Archive fixtures check the complete dataset.
+The Python suite executes the workflow's shell with the pinned installed CLI
+and a simulated GitHub provider to prove captured-target handoff, commit-change
+rejection and explicit publication. Generic provider failure matrices belong
+upstream. Archive fixtures retain scientific coverage and exact raw bytes.
 
 Every hosted dispatch now requires a real release draft and authorizes its
 publication; there is no producer-only manual mode. Use the
