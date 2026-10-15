@@ -125,7 +125,7 @@ def fixture_wheel(registry: Path, requirement: str) -> None:
     distribution = name.replace("-", "_")
     info = f"{distribution}-{version}.dist-info"
     with zipfile.ZipFile(registry / f"{distribution}-{version}-py3-none-any.whl", "w") as archive:
-        archive.writestr(f"{info}/METADATA", f"Metadata-Version: 2.3\nName: {name}\nVersion: {version}\nRequires-Python: >=3.14\n")
+        archive.writestr(f"{info}/METADATA", f"Metadata-Version: 2.3\nName: {name}\nVersion: {version}\nRequires-Python: >=3.15\n")
         archive.writestr(f"{info}/WHEEL", "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n")
         archive.writestr(f"{info}/RECORD", "")
 
@@ -138,8 +138,7 @@ def test_python_update_preserves_shared_pin_and_tools_with_explicit_dev_sync(tmp
     registry.mkdir()
     original = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     # Empty fixture wheels represent resolver candidates, not executable tools.
-    # Disable building the consumer's own scripts package in this disposable fixture.
-    source = original.replace("package = true", "package = false\ndefault-groups = []")
+    source = original.replace("package = false", "package = false\ndefault-groups = []")
     manifest = root / "pyproject.toml"
     manifest.write_text(source, encoding="utf-8")
     before = tomllib.loads(source)
@@ -168,7 +167,7 @@ def test_python_update_preserves_shared_pin_and_tools_with_explicit_dev_sync(tmp
     run_command("uv", ["lock", "--upgrade"], cwd=root)
     lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
     packages = {package["name"]: package["version"] for package in lock["package"]}
-    assert packages["research-repo-tools"] == "0.1.8"
+    assert packages["research-repo-tools"] == "0.1.9"
     assert packages["ruff"] == "99.0.0"
     run_command("uv", ["sync", "--locked", "--group", "dev"], cwd=root)
     installed = run_command("uv", ["run", "--locked", "--no-sync", "python", "-c", "from importlib.metadata import version; print(version('ruff'))"], cwd=root)

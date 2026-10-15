@@ -41,7 +41,7 @@ jobs:
         id: semgrep
         run: |
           set +e
-          uv run --locked semgrep \
+          uv run --locked --project tooling/semgrep semgrep \
             --metrics off \
             --error \
             --strict \

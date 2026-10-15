@@ -288,6 +288,13 @@ release ID and tag commit before attaching
 the archive and again before publication. Do not edit the draft, move the tag,
 or publish manually while the workflow is running.
 
+The privileged jobs install the exact published `research-repo-tools==0.1.9`
+package on Python 3.15 without repository checkout. Preflight emits versioned
+target JSON with the captured ID, commit and title assertion. Its trusted job
+output passes directly to the publisher, separately from the producer's inert
+archive. The shared writer verifies downloaded asset bytes as well as provider
+metadata and receives explicit `--publish` intent.
+
 Runs for the same tag are serialized without cancelling an active run.
 
 ### 7. Verify publication and the durable Criterion baseline

@@ -1,0 +1,80 @@
+# la-stack scientific selections; generic execution and rendering are shared.
+schema = 1
+dimensions = [ 2, 3, 4, 5, 8, 16, 32, 64 ]
+minimum-release = [ 0, 4, 4 ]
+modern-api-release = [ 0, 4, 6 ]
+legacy-api-cfg = "la_stack_pre_rational_input_api"
+library-benchmarks = [ "la_stack_det", "la_stack_det_from_ldlt", "la_stack_det_from_lu", "la_stack_det_via_lu", "la_stack_dot", "la_stack_inf_norm", "la_stack_ldlt", "la_stack_ldlt_solve", "la_stack_lu", "la_stack_lu_solve", "la_stack_norm2_sq", "la_stack_solve_from_ldlt", "la_stack_solve_from_lu" ]
+unavailable-prefixes = [ "rational_input_", "canonical_conversion_", "det4_diagnostic_" ]
+unavailable-benchmarks = [ "la_stack_norm2" ]
+unavailable-benchmark-prefixes = [ "la_stack_norm2_scenario_", "iterative_f64_hypot_norm2_scenario_", "delaunay_scaled_norm_norm2_scenario_" ]
+
+[exact]
+exact_d2 = [ "det", "det_direct", "det_direct_with_errbound", "det_errbound", "det_exact", "det_exact_f64_result", "det_exact_rounded_f64", "det_sign_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+exact_d3 = [ "det", "det_direct", "det_direct_with_errbound", "det_errbound", "det_exact", "det_exact_f64_result", "det_exact_rounded_f64", "det_sign_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+exact_d4 = [ "det", "det_direct", "det_direct_with_errbound", "det_errbound", "det_exact", "det_exact_f64_result", "det_exact_rounded_f64", "det_sign_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+exact_d5 = [ "det", "det_exact", "det_exact_f64_result", "det_exact_rounded_f64", "det_sign_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+exact_random_corpus_d2 = [ "det_sign_exact", "det_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+exact_random_corpus_d3 = [ "det_sign_exact", "det_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+exact_random_corpus_d4 = [ "det_sign_exact", "det_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+exact_random_corpus_d5 = [ "det_sign_exact", "det_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+rational_input_d2 = [ "det_sign_row_cleared_bareiss", "det_row_cleared_bareiss", "det_big_rational_gaussian", "solve_row_cleared_bareiss", "solve_big_rational_gaussian" ]
+rational_input_d3 = [ "det_sign_row_cleared_bareiss", "det_row_cleared_bareiss", "det_big_rational_gaussian", "solve_row_cleared_bareiss", "solve_big_rational_gaussian" ]
+rational_input_d4 = [ "det_sign_row_cleared_bareiss", "det_row_cleared_bareiss", "det_big_rational_gaussian", "solve_row_cleared_bareiss", "solve_big_rational_gaussian" ]
+rational_input_d5 = [ "det_sign_row_cleared_bareiss", "det_row_cleared_bareiss", "det_big_rational_gaussian", "solve_row_cleared_bareiss", "solve_big_rational_gaussian" ]
+rational_input_d6 = [ "det_sign_row_cleared_bareiss", "det_row_cleared_bareiss", "det_big_rational_gaussian", "solve_row_cleared_bareiss", "solve_big_rational_gaussian" ]
+rational_input_d7 = [ "det_sign_row_cleared_bareiss", "det_row_cleared_bareiss", "det_big_rational_gaussian", "solve_row_cleared_bareiss", "solve_big_rational_gaussian" ]
+rational_input_d8 = [ "det_sign_row_cleared_bareiss", "det_row_cleared_bareiss", "det_big_rational_gaussian", "solve_row_cleared_bareiss", "solve_big_rational_gaussian" ]
+exact_near_singular_3x3 = [ "det_sign_exact", "det_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+exact_large_entries_3x3 = [ "det_sign_exact", "det_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+exact_hilbert_4x4 = [ "det_sign_exact", "det_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+exact_hilbert_5x5 = [ "det_sign_exact", "det_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]
+
+[additional]
+"8" = [ "la_stack_lu_pivoting", "la_stack_lu_ill_conditioned", "la_stack_ldlt_ill_conditioned", "la_stack_det_from_lu_balanced_range", "la_stack_det_from_ldlt_balanced_range" ]
+
+[peers]
+la_stack_det_via_lu = [ "nalgebra_det_via_lu", "faer_det_via_lu" ]
+la_stack_lu = [ "nalgebra_lu", "faer_lu" ]
+la_stack_lu_solve = [ "nalgebra_lu_solve", "faer_lu_solve" ]
+la_stack_solve_from_lu = [ "nalgebra_solve_from_lu", "faer_solve_from_lu" ]
+la_stack_det_from_lu = [ "nalgebra_det_from_lu", "faer_det_from_lu" ]
+la_stack_dot = [ "nalgebra_dot", "faer_dot_native" ]
+la_stack_norm2_sq = [ "nalgebra_norm_squared", "faer_norm2_sq" ]
+la_stack_inf_norm = [ "nalgebra_inf_norm", "faer_inf_norm" ]
+la_stack_ldlt = [ "nalgebra_cholesky", "faer_ldlt" ]
+la_stack_ldlt_solve = [ "nalgebra_cholesky_solve", "faer_ldlt_solve" ]
+la_stack_solve_from_ldlt = [ "nalgebra_solve_from_cholesky", "faer_solve_from_ldlt" ]
+la_stack_det_from_ldlt = [ "nalgebra_det_from_cholesky", "faer_det_from_ldlt" ]
+
+[metrics.det_via_lu]
+title = "Determinant via LU (factor + det)"
+benchmarks = [ "la_stack_det_via_lu", "nalgebra_det_via_lu", "faer_det_via_lu" ]
+
+[metrics.lu]
+title = "LU factorization"
+benchmarks = [ "la_stack_lu", "nalgebra_lu", "faer_lu" ]
+
+[metrics.lu_solve]
+title = "LU solve (factor + solve)"
+benchmarks = [ "la_stack_lu_solve", "nalgebra_lu_solve", "faer_lu_solve" ]
+
+[metrics.solve_from_lu]
+title = "Solve from precomputed LU"
+benchmarks = [ "la_stack_solve_from_lu", "nalgebra_solve_from_lu", "faer_solve_from_lu" ]
+
+[metrics.det_from_lu]
+title = "Determinant from precomputed LU"
+benchmarks = [ "la_stack_det_from_lu", "nalgebra_det_from_lu", "faer_det_from_lu" ]
+
+[metrics.dot]
+title = "Vector dot product"
+benchmarks = [ "la_stack_dot", "nalgebra_dot", "faer_dot_native" ]
+
+[metrics.norm2_sq]
+title = "Vector squared 2-norm"
+benchmarks = [ "la_stack_norm2_sq", "nalgebra_norm_squared", "faer_norm2_sq" ]
+
+[metrics.inf_norm]
+title = "Matrix infinity norm (max abs row sum)"
+benchmarks = [ "la_stack_inf_norm", "nalgebra_inf_norm", "faer_inf_norm" ]

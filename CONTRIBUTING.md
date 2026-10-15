@@ -39,7 +39,7 @@ change files. Run bare `just` for the complete generated command list, including
 arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
 owns recipe naming and documentation placement.
 
-Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.1.8` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.1.9` package,
 locked in the `tooling` dependency group and included by `dev`. Normal setup
 and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
 checkout is unnecessary. To upgrade it deliberately, review the exact
@@ -100,7 +100,8 @@ adapter and authentication regressions belong to research-repo-tools. Hosted
 CI runs a blocking finding check before a separate SARIF export; native SARIF
 output alone does not fail on findings.
 
-`just security` runs the shared OSV dependency audit for `uv.lock` and `Cargo.lock`,
+`just security` runs the shared OSV dependency audit for `uv.lock`,
+`tooling/semgrep/uv.lock` and `Cargo.lock`,
 then the Gitleaks scan of reachable Git history and current tracked/nonignored
 files. Run either gate separately with `just audit` or
 `just security-secrets`. Setup installs both declared managed binaries. OSV needs
@@ -157,6 +158,9 @@ CodeRabbit's successful status on a skipped bot review is not an approval.
 The [rollout guide](docs/dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
 owns GitHub settings and post-merge verification. The workflow never executes
 PR code; dependency eligibility remains in `.github/dependabot.yml`.
+Dependabot also monitors `tooling/semgrep/`; those scanner updates require manual
+review because the trusted uv approval allowlist covers only the root manifest
+and lockfile.
 
 ### Rust Toolchain Policy
 

@@ -1,0 +1,9 @@
+# The release adapter supplies the workflow tag; all verification is shared.
+schema = 1
+saved-sample = "last"
+inventory = "target/release-benchmark-inventory.json"
+raw-files = [ "benchmark.json", "estimates.json", "sample.json", "tukey.json" ]
+sample-count = 100
+statistics = [ "mean", "median" ]
+confidence-level = 0.95
+unit = "ns"

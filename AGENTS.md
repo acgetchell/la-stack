@@ -214,7 +214,7 @@ Favor the invariant over a convenient edit or faster implementation.
 
 ## Python
 
-- Support tooling targets Python 3.14. Use `uv run --locked` for all
+- Support tooling targets Python 3.15. Use `uv run --locked` for all
   Python scripts; never invoke `python` or `python3` directly.
 - Use pytest, not unittest, and add type hints to new code.
 - `just python-check` includes blocking type checking; all code must pass.

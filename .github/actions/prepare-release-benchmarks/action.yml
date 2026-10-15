@@ -25,10 +25,10 @@ runs:
       with:
         cache: false
 
-    - name: Validate benchmark inputs
-      shell: bash
-      run: just test-bench-inputs
-
     - name: Inventory full release suites
       shell: bash
       run: just bench-release-inventory
+
+    - name: Validate benchmark inputs
+      shell: bash
+      run: just test-bench-inputs

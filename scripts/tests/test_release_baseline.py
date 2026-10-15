@@ -1,24 +1,28 @@
 """Exercise complete release archives and the workflow's publication barriers."""
 
-import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
+import sys
 import tarfile
 import textwrap
 from pathlib import Path
 
 import pytest
+from research_repo_tools.criterion_inventory import CriterionInventory, load_discovery, serialize_inventory
 
-import release_baseline
+import archive_performance as workflow
+from performance_runs import required_report_ids
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/release-benchmarks.yml"
 PREPARATION = REPO_ROOT / ".github/actions/prepare-release-benchmarks/action.yml"
 IDS = {"vs_linalg": ["d2/la_stack_dot", "diagnostic/peer"], "exact": ["exact_d2/det_exact"]}
 BASELINE = "v1.2.3"
+RAW_FILES = ("benchmark.json", "estimates.json", "sample.json", "tukey.json")
 
 
 def write_json(path: Path, data: object) -> None:
@@ -28,10 +32,18 @@ def write_json(path: Path, data: object) -> None:
 
 @pytest.fixture
 def dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
-    monkeypatch.setattr(release_baseline, "required_report_ids", lambda: {"d2/la_stack_dot", "exact_d2/det_exact"})
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "Cargo.toml").write_text('[package]\nname = "fixture"\nversion = "1.2.3"\n', encoding="utf-8")
+    tooling = tmp_path / "tooling"
+    tooling.mkdir()
+    shutil.copyfile(REPO_ROOT / "tooling/criterion-saved.toml", tooling / "criterion-saved.toml")
+    (tooling / "criterion-inventory.toml").write_text(
+        'schema = 1\nrequired = ["d2/la_stack_dot", "exact_d2/det_exact"]\n[[suites]]\nname = "release"\ncommand = ["unused"]\n', encoding="utf-8"
+    )
     criterion = tmp_path / "target/criterion"
     manifest = tmp_path / "target/release-benchmark-inventory.json"
-    write_json(manifest, IDS)
+    manifest.parent.mkdir(parents=True)
+    manifest.write_bytes(serialize_inventory(CriterionInventory(tuple((name, tuple(ids)) for name, ids in IDS.items()))))
     estimate = {"point_estimate": 2.0, "confidence_interval": {"confidence_level": 0.95, "lower_bound": 1.0, "upper_bound": 3.0}}
     for ids in IDS.values():
         for benchmark in ids:
@@ -72,8 +84,8 @@ def run_shell(script: str, cwd: Path, extra_env: dict[str, str]) -> subprocess.C
 
 
 def test_complete_dataset_round_trips_through_workflow_archive(dataset: tuple[Path, Path], tmp_path: Path) -> None:
-    criterion, manifest = dataset
-    assert release_baseline.validate(criterion, manifest, BASELINE) == 3
+    criterion, _manifest = dataset
+    assert workflow.main(["release-check", BASELINE]) == 0
     output = tmp_path / "step outputs"
     # Git Bash accepts forward-slash drive paths on Windows as well as POSIX paths.
     result = run_shell(
@@ -88,112 +100,55 @@ def test_complete_dataset_round_trips_through_workflow_archive(dataset: tuple[Pa
         for ids in IDS.values():
             for benchmark in ids:
                 for sample in ("new", BASELINE):
-                    for filename in release_baseline.RAW_FILES:
+                    for filename in RAW_FILES:
                         member = archive.extractfile(f"criterion/{benchmark}/{sample}/{filename}")
                         assert member is not None
                         assert member.read() == (criterion / benchmark / sample / filename).read_bytes()
         member = archive.extractfile("criterion/release-benchmark-inventory.json")
         assert member is not None
-        assert json.loads(member.read()) == IDS
-
-
-@pytest.mark.parametrize("filename", release_baseline.RAW_FILES)
-@pytest.mark.parametrize("sample", ["new", BASELINE])
-def test_missing_raw_file_blocks_publication(dataset: tuple[Path, Path], sample: str, filename: str) -> None:
-    criterion, manifest = dataset
-    missing = criterion / "diagnostic/peer" / sample / filename
-    missing.unlink()
-    if sample == "new" and filename != "tukey.json":
-        with pytest.raises(ValueError, match="incomplete Criterion sample"):
-            release_baseline.validate(criterion, manifest, BASELINE)
-    else:
-        with pytest.raises(FileNotFoundError) as error:
-            release_baseline.validate(criterion, manifest, BASELINE)
-        assert error.value.filename == str(missing)
-
-
-def test_missing_entire_suite_blocks_publication(dataset: tuple[Path, Path]) -> None:
-    criterion, manifest = dataset
-    shutil.rmtree(criterion / "exact_d2")
-    with pytest.raises(ValueError, match=r"inventory differs: missing=.*exact_d2/det_exact"):
-        release_baseline.validate(criterion, manifest, BASELINE)
+        assert json.loads(member.read())["suites"] == IDS
 
 
 def test_saved_baseline_must_match_fresh_samples(dataset: tuple[Path, Path]) -> None:
-    criterion, manifest = dataset
+    criterion, _manifest = dataset
     write_json(criterion / "d2/la_stack_dot" / BASELINE / "sample.json", {"iters": [1.0] * 100, "times": [3.0] * 100})
-    with pytest.raises(ValueError, match="saved baseline differs"):
-        release_baseline.validate(criterion, manifest, BASELINE)
+    assert workflow.main(["release-check", BASELINE]) == 1
 
 
-def test_report_consumers_require_canonical_paths(dataset: tuple[Path, Path]) -> None:
-    criterion, manifest = dataset
-    (criterion / "d2/la_stack_dot").rename(criterion / "d2/misplaced")
-    with pytest.raises(ValueError, match="outside its consumer path"):
-        release_baseline.validate(criterion, manifest, BASELINE)
+@pytest.mark.parametrize("relocation", ["moved", "swapped"])
+def test_report_consumers_require_canonical_paths(dataset: tuple[Path, Path], capsys: pytest.CaptureFixture[str], relocation: str) -> None:
+    criterion, _manifest = dataset
+    original = criterion / "d2/la_stack_dot"
+    moved = original.rename(criterion / "d2/misplaced")
+    if relocation == "swapped":
+        peer = criterion / "exact_d2/det_exact"
+        peer.rename(original)
+        moved.rename(peer)
+    before = {path: path.read_bytes() for path in criterion.rglob("*") if path.is_file()}
+
+    assert workflow.main(["release-check", BASELINE]) == 1
+
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "non-canonical report benchmark storage path" in output.err
+    assert "d2/la_stack_dot" in output.err
+    assert {path: path.read_bytes() for path in criterion.rglob("*") if path.is_file()} == before
 
 
-@pytest.mark.parametrize("baseline", ["../escape", "", "new", "base", "change", "report", "/absolute"])
-def test_invalid_baseline_is_rejected(dataset: tuple[Path, Path], baseline: str) -> None:
-    with pytest.raises(ValueError, match="safe, nonreserved"):
-        release_baseline.validate(*dataset, baseline)
-
-
-def test_inventory_includes_release_consumers_and_peers() -> None:
-    expected = release_baseline.required_report_ids()
+def test_configured_inventory_includes_release_consumers_and_peers() -> None:
+    expected = required_report_ids(REPO_ROOT)
     assert {"d64/faer_lu_solve", "d64/nalgebra_lu_solve", "exact_hilbert_5x5/solve_exact", "rational_input_d8/solve_big_rational_gaussian"} <= expected
     assert "d64/faer_dot_native" in expected
     assert "d64/faer_dot" not in expected
-    with pytest.raises(ValueError, match="inventory omits report consumers"):
-        release_baseline.inventory_ids(IDS)
-
-
-@pytest.mark.parametrize("output", ["", "hello", "a/b: benchmark\na/b: benchmark", "a: benchmark"])
-def test_invalid_listing_is_rejected(output: str) -> None:
-    with pytest.raises(ValueError, match="unique, nonempty"):
-        release_baseline.parse_benchmark_list(output)
-
-
-@pytest.mark.parametrize("host_newline", ["\n", "\r\n"], ids=["posix", "windows"])
-def test_discovery_uses_full_suites_and_never_times_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, host_newline: str) -> None:
-    calls: list[list[str]] = []
-    write_text = Path.write_text
-
-    def host_write_text(path: Path, data: str, encoding: str | None = None, errors: str | None = None, newline: str | None = None) -> int:
-        # Emulate Windows default text translation on every CI host. An explicit
-        # newline policy must preserve identical manifest bytes on both platforms.
-        return write_text(path, data, encoding=encoding, errors=errors, newline=host_newline if newline is None else newline)
-
-    def run(command: str, args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        assert command == "just"
-        calls.append(args)
-        suite = args[-2].removeprefix("baseline-")
-        return subprocess.CompletedProcess(args, 0, stdout="\n".join(f"{name}: benchmark" for name in IDS[suite]))
-
-    monkeypatch.setattr(release_baseline, "run_command", run)
-    monkeypatch.setattr(release_baseline, "required_report_ids", lambda: {"d2/la_stack_dot", "exact_d2/det_exact"})
-    monkeypatch.setattr(Path, "write_text", host_write_text)
-    manifest = tmp_path / "manifest.json"
-    release_baseline.discover(tmp_path, manifest, tmp_path / "criterion")
-    assert manifest.read_bytes() == (json.dumps(IDS, indent=2) + "\n").encode("utf-8")
-    assert calls == [
-        ["--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-vs_linalg", "list"],
-        ["--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-exact", "list"],
-    ]
-
-
-def test_discovery_refuses_stale_measurements(dataset: tuple[Path, Path], tmp_path: Path) -> None:
-    criterion, manifest = dataset
-    before = manifest.read_bytes()
-    with pytest.raises(ValueError, match="fresh Criterion directory"):
-        release_baseline.discover(tmp_path, manifest, criterion)
-    assert manifest.read_bytes() == before
+    discovery = load_discovery(REPO_ROOT, "tooling/criterion-inventory.toml")
+    assert {suite.name for suite in discovery.suites} == {"vs_linalg", "exact"}
+    assert all(suite.command[-1] == "list" for suite in discovery.suites)
 
 
 def test_workflow_requires_preflight_and_isolates_publication_permissions() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     preparation = PREPARATION.read_text(encoding="utf-8")
-    assert preparation.index("- name: Validate benchmark inputs") < preparation.index("- name: Inventory full release suites")
+    assert preparation.index("- name: Inventory full release suites") < preparation.index("- name: Validate benchmark inputs")
     assert "run: just test-bench-inputs" in preparation
     assert "run: just bench-release-inventory" in preparation
     assert "continue-on-error" not in preparation
@@ -228,6 +183,11 @@ def test_workflow_requires_preflight_and_isolates_publication_permissions() -> N
     assert "persist-credentials: false" in producer
     assert "contents: write" in preflight
     assert "actions/checkout@" not in preflight + publisher
+    assert "target: ${{ steps.target.outputs.target }}" in preflight
+    assert "RELEASE_TARGET: ${{ needs.validate-release.outputs.target }}" in publisher
+    assert '--expected-title "$RELEASE_TAG"' in preflight
+    assert '--target "$RUNNER_TEMP/release-target.json" --publish' in publisher
+    assert (preflight + publisher).count("--from research-repo-tools==0.1.9") == 2
     assert "uses: ./" not in preflight + publisher
     assert "--clobber" not in workflow
     assert "needs: [validate-release, release-baseline]" in publisher
@@ -285,111 +245,6 @@ def test_failed_suite_retains_timing_and_does_not_mark_completion(tmp_path: Path
     assert "| exact | skipped |" in summary.read_text(encoding="utf-8")
 
 
-# Only the GitHub boundary is substituted. jq predicates, checksums, shell
-# failure handling, and publication ordering execute from the workflow itself.
-GITHUB_STUB = r"""
-gh() {
-  printf '%s\n' "$*" >> api-calls
-  [[ "$1" == api ]] || return 90
-  case "$2" in
-    'repos/owner/repo/releases?per_page=100')
-      [[ "$*" == *'--paginate --slurp' ]] || return 91
-      cat releases.json
-      ;;
-    "repos/owner/repo/commits/refs/tags/$RELEASE_TAG")
-      [[ "${COMMIT_STATUS:-0}" == 0 ]] || return "$COMMIT_STATUS"
-      if [[ -f commit-read ]]; then
-        printf '%s\n' "${LATER_COMMIT:-$RELEASE_COMMIT}"
-      else
-        touch commit-read
-        printf '%s\n' "$RELEASE_COMMIT"
-      fi
-      ;;
-    repos/owner/repo/releases/42)
-      if [[ "$*" == *'--method PATCH -F draft=false' ]]; then
-        touch publish-called
-        [[ "${PUBLISH_STATUS:-0}" == 0 ]] || return "$PUBLISH_STATUS"
-        cat published.json
-      elif [[ -f draft-read ]]; then
-        cat later-draft.json
-      else
-        touch draft-read
-        cat draft.json
-      fi
-      ;;
-    'repos/owner/repo/releases/42/assets?per_page=100')
-      [[ "$*" == *'--paginate --slurp' ]] || return 92
-      if [[ -f upload-called ]]; then
-        cat uploaded-assets.json
-      else
-        cat assets.json
-      fi
-      ;;
-    "https://uploads.github.com/repos/owner/repo/releases/42/assets?name=$RELEASE_ASSET")
-      [[ "$*" == *'--method POST --header Content-Type: application/gzip --input '* ]] || return 93
-      touch upload-called
-      return "${UPLOAD_STATUS:-0}"
-      ;;
-    *) return 94 ;;
-  esac
-}
-"""
-
-
-def draft_release(**changes: object) -> dict[str, object]:
-    return {"id": 42, "tag_name": BASELINE, "name": BASELINE, "draft": True, "prerelease": False, "immutable": False, **changes}
-
-
-@pytest.fixture
-def github_release(tmp_path: Path) -> dict[str, str]:
-    asset = f"la-stack-{BASELINE}-criterion-baseline.tar.gz"
-    payload = b"test archive bytes\n"
-    (tmp_path / asset).write_bytes(payload)
-    metadata = {"name": asset, "state": "uploaded", "size": len(payload), "digest": f"sha256:{hashlib.sha256(payload).hexdigest()}"}
-    write_json(tmp_path / "releases.json", [[draft_release(tag_name="v0.1.0")], [draft_release()]])
-    write_json(tmp_path / "draft.json", draft_release())
-    write_json(tmp_path / "later-draft.json", draft_release())
-    write_json(tmp_path / "published.json", draft_release(draft=False, immutable=True))
-    write_json(tmp_path / "assets.json", [[]])
-    write_json(tmp_path / "uploaded-assets.json", [[{"name": "unrelated.txt"}], [metadata]])
-    return {
-        "GH_REPO": "owner/repo",
-        "RELEASE_TAG": BASELINE,
-        "RELEASE_ID": "42",
-        "RELEASE_COMMIT": "a" * 40,
-        "RELEASE_ASSET": asset,
-        "GITHUB_REF": f"refs/tags/{BASELINE}",
-        "GITHUB_SHA": "a" * 40,
-        "GITHUB_OUTPUT": (tmp_path / "outputs").as_posix(),
-    }
-
-
-def test_preflight_captures_draft_identity_and_peeled_tag_commit(tmp_path: Path, github_release: dict[str, str]) -> None:
-    result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, github_release)
-    assert result.returncode == 0, result.stderr
-    assert (tmp_path / "outputs").read_text(encoding="utf-8") == f"release-id=42\ncommit={'a' * 40}\n"
-    calls = (tmp_path / "api-calls").read_text(encoding="utf-8")
-    assert "--paginate --slurp" in calls
-    assert f"commits/refs/tags/{BASELINE}" in calls
-    assert "--method" not in calls
-
-
-@pytest.mark.parametrize("ref", ["refs/heads/main", f"refs/heads/{BASELINE}", "refs/tags/v9.9.9", ""])
-def test_preflight_rejects_dispatch_outside_release_tag(tmp_path: Path, github_release: dict[str, str], ref: str) -> None:
-    result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, {**github_release, "GITHUB_REF": ref})
-    assert result.returncode == 1
-    assert f"Dispatch with --ref {BASELINE}" in result.stdout
-    assert not (tmp_path / "api-calls").exists()
-    assert not (tmp_path / "outputs").exists()
-
-
-def test_preflight_rejects_tag_moved_since_dispatch(tmp_path: Path, github_release: dict[str, str]) -> None:
-    result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, {**github_release, "RELEASE_COMMIT": "b" * 40})
-    assert result.returncode == 1
-    assert "Release tag no longer matches the workflow commit" in result.stdout
-    assert not (tmp_path / "outputs").exists()
-
-
 @pytest.mark.parametrize("validated_attempt", ["", "1", "2"])
 def test_benchmark_retry_requires_current_preflight(tmp_path: Path, validated_attempt: str) -> None:
     result = run_shell(
@@ -398,133 +253,100 @@ def test_benchmark_retry_requires_current_preflight(tmp_path: Path, validated_at
         {"VALIDATED_ATTEMPT": validated_attempt, "GITHUB_RUN_ATTEMPT": "2"},
     )
     assert result.returncode == (0 if validated_attempt == "2" else 1)
-    if validated_attempt != "2":
-        assert "Rerun all jobs or dispatch again" in result.stdout
 
 
-@pytest.mark.parametrize("tag", ["", "1.2.3", "v01.2.3", "v1.02.3", "v1.2.03", "v1.2.3-rc.1", "v1.2.3+meta", "main", "v1.2.3\nextra", "$(touch injected)"])
-def test_preflight_rejects_invalid_tag_before_api_access(tmp_path: Path, github_release: dict[str, str], tag: str) -> None:
-    result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, {**github_release, "RELEASE_TAG": tag})
+@pytest.mark.parametrize("ref", ["refs/heads/main", f"refs/heads/{BASELINE}", "refs/tags/v9.9.9", ""])
+def test_preflight_rejects_dispatch_outside_release_tag(tmp_path: Path, ref: str) -> None:
+    output = tmp_path / "outputs"
+    result = run_shell(shell_step("Validate draft release target"), tmp_path, {"RELEASE_TAG": BASELINE, "GITHUB_REF": ref, "GITHUB_OUTPUT": output.as_posix()})
     assert result.returncode == 1
-    assert "Expected an existing stable vX.Y.Z tag" in result.stdout
-    assert not (tmp_path / "api-calls").exists()
-    assert not (tmp_path / "outputs").exists()
-    assert not (tmp_path / "injected").exists()
+    assert f"Dispatch with --ref {BASELINE}" in result.stdout
+    assert not output.exists()
 
 
-@pytest.mark.parametrize(
-    "releases",
-    [
-        [],
-        [draft_release(), draft_release(id=43)],
-        [draft_release(draft=False)],
-        [draft_release(prerelease=True)],
-        [draft_release(immutable=True)],
-        [draft_release(immutable=None)],
-        [draft_release(tag_name="v9.9.9")],
-        [draft_release(name="Wrong title")],
-        [draft_release(id="42\ncommit=injected")],
-    ],
-)
-def test_preflight_rejects_unsuitable_release(tmp_path: Path, github_release: dict[str, str], releases: list[dict[str, object]]) -> None:
-    write_json(tmp_path / "releases.json", [releases])
-    result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, github_release)
-    assert result.returncode != 0
-    assert "commits/" not in (tmp_path / "api-calls").read_text(encoding="utf-8")
-    assert not (tmp_path / "outputs").exists()
+GH_FIXTURE = r"""import hashlib, json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+root = Path(os.environ["RELEASE_FIXTURE"])
+tag = os.environ["RELEASE_TAG"]
+asset = os.environ["RELEASE_ASSET"]
+with (root / "api-calls").open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps(args) + "\n")
+metadata = {"id": 7, "name": asset, "size": len((root / asset).read_bytes()),
+            "digest": "sha256:" + hashlib.sha256((root / asset).read_bytes()).hexdigest(), "state": "uploaded"}
+assets = [metadata] if (root / "uploaded").exists() else []
+release = {"id": 42, "url": "https://api.github.com/repos/owner/repo/releases/42", "tag_name": tag,
+           "name": tag, "draft": True, "prerelease": False, "immutable": False, "assets": assets}
+if any(item.endswith("/releases?per_page=100") for item in args):
+    value = [[release]]
+elif args[0] == "release":
+    value = {"databaseId": 42, "tagName": tag}
+elif any("uploads.github.com" in item for item in args):
+    (root / "uploaded").touch()
+    value = {}
+elif "PATCH" in args:
+    (root / "published").touch()
+    value = dict(release, draft=False, immutable=True)
+elif args[1].endswith("/releases/assets/7"):
+    sys.stdout.buffer.write((root / asset).read_bytes())
+    raise SystemExit(0)
+elif "/git/ref/tags/" in args[1]:
+    value = {"ref": "refs/tags/" + tag, "object": {"type": "commit", "sha": os.environ.get("REMOTE_COMMIT", "a" * 40)}}
+elif any("/assets?" in item for item in args):
+    value = [assets]
+else:
+    value = release
+print(json.dumps(value))
+"""
 
 
-@pytest.mark.parametrize("response", ["{invalid", "null"])
-def test_preflight_rejects_malformed_api_response(tmp_path: Path, github_release: dict[str, str], response: str) -> None:
-    (tmp_path / "releases.json").write_text(response, encoding="utf-8")
-    result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, github_release)
-    assert result.returncode != 0
-    assert not (tmp_path / "outputs").exists()
-
-
-@pytest.mark.parametrize("overrides", [{"COMMIT_STATUS": "4"}, {"RELEASE_COMMIT": ""}, {"RELEASE_COMMIT": "a" * 40 + "\ninjected=true"}])
-def test_missing_or_invalid_tag_commit_stops_preflight(tmp_path: Path, github_release: dict[str, str], overrides: dict[str, str]) -> None:
-    result = run_shell(GITHUB_STUB + shell_step("Validate draft release target"), tmp_path, {**github_release, **overrides})
-    assert result.returncode != 0
-    assert not (tmp_path / "outputs").exists()
-
-
-@pytest.mark.parametrize("reuse", [False, True], ids=["fresh-upload", "interrupted-upload-rerun"])
-def test_publisher_verifies_durable_asset_before_publication(tmp_path: Path, github_release: dict[str, str], reuse: bool) -> None:
-    if reuse:
-        shutil.copyfile(tmp_path / "uploaded-assets.json", tmp_path / "assets.json")
-    result = run_shell(GITHUB_STUB + shell_step("Attach baseline and publish draft"), tmp_path, github_release)
-    assert result.returncode == 0, result.stderr
-    calls = (tmp_path / "api-calls").read_text(encoding="utf-8").splitlines()
-    assert calls[-1] == "api repos/owner/repo/releases/42 --method PATCH -F draft=false"
-    assert calls[-2] == "api repos/owner/repo/releases/42/assets?per_page=100 --paginate --slurp"
-    assert calls.count("api repos/owner/repo/releases/42") == 2
-    assert (tmp_path / "upload-called").exists() is not reuse
-    assert (tmp_path / "publish-called").exists()
-    assert "--clobber" not in " ".join(calls)
-
-
-@pytest.mark.parametrize("snapshot", ["draft.json", "later-draft.json"])
-@pytest.mark.parametrize(
-    "changes",
-    [{"draft": False}, {"prerelease": True}, {"immutable": True}, {"tag_name": "v9.9.9"}, {"name": "renamed"}, {"id": 43}],
-)
-def test_changed_release_stops_publication(tmp_path: Path, github_release: dict[str, str], snapshot: str, changes: dict[str, object]) -> None:
-    write_json(tmp_path / snapshot, draft_release(**changes))
-    result = run_shell(GITHUB_STUB + shell_step("Attach baseline and publish draft"), tmp_path, github_release)
-    assert result.returncode != 0
-    assert not (tmp_path / "publish-called").exists()
-    assert (tmp_path / "upload-called").exists() is (snapshot == "later-draft.json")
-
-
-@pytest.mark.parametrize("after_upload", [False, True])
-def test_moved_tag_stops_publication(tmp_path: Path, github_release: dict[str, str], after_upload: bool) -> None:
-    overrides = {"LATER_COMMIT": "b" * 40}
-    if not after_upload:
-        (tmp_path / "commit-read").touch()
-    result = run_shell(GITHUB_STUB + shell_step("Attach baseline and publish draft"), tmp_path, {**github_release, **overrides})
-    assert result.returncode != 0
-    assert not (tmp_path / "publish-called").exists()
-    assert (tmp_path / "upload-called").exists() is after_upload
-
-
-@pytest.mark.parametrize("existing", [False, True])
-@pytest.mark.parametrize("problem", ["missing", "duplicate", "wrong-name", "wrong-digest", "wrong-size", "starter", "no-digest"])
-def test_bad_durable_asset_stops_publication(tmp_path: Path, github_release: dict[str, str], existing: bool, problem: str) -> None:
-    metadata = json.loads((tmp_path / "uploaded-assets.json").read_text(encoding="utf-8"))[1][0]
-    assets = [metadata]
-    if problem == "missing":
-        assets = []
-    elif problem == "duplicate":
-        assets.append(metadata)
+def test_installed_cli_binds_trusted_target_and_explicit_publication(tmp_path: Path) -> None:
+    """Exercise actual preflight and writer shell with the pinned installed CLI."""
+    fixture = tmp_path / "provider with spaces"
+    fixture.mkdir()
+    program = fixture / "gh_fixture.py"
+    program.write_text(GH_FIXTURE, encoding="utf-8")
+    if os.name == "nt":
+        executable = fixture / "gh.cmd"
+        executable.write_text(f'@"{sys.executable}" "%~dp0gh_fixture.py" %*\r\n', encoding="utf-8", newline="")
     else:
-        field, value = {
-            "wrong-name": ("name", "wrong.tar.gz"),
-            "wrong-digest": ("digest", "sha256:" + "0" * 64),
-            "wrong-size": ("size", 999),
-            "starter": ("state", "starter"),
-            "no-digest": ("digest", None),
-        }[problem]
-        metadata[field] = value
-    write_json(tmp_path / "uploaded-assets.json", [assets])
-    if existing:
-        write_json(tmp_path / "assets.json", [assets])
-    result = run_shell(GITHUB_STUB + shell_step("Attach baseline and publish draft"), tmp_path, github_release)
-    assert result.returncode != 0
-    assert not (tmp_path / "publish-called").exists()
-    assert (tmp_path / "upload-called").exists() is (not existing or problem in {"missing", "wrong-name"})
-
-
-def test_upload_failure_leaves_draft_unpublished(tmp_path: Path, github_release: dict[str, str]) -> None:
-    result = run_shell(GITHUB_STUB + shell_step("Attach baseline and publish draft"), tmp_path, {**github_release, "UPLOAD_STATUS": "8"})
-    assert result.returncode == 8
-    assert (tmp_path / "upload-called").exists()
-    assert not (tmp_path / "publish-called").exists()
-
-
-def test_publication_failure_propagates_without_deleting_uploaded_asset(tmp_path: Path, github_release: dict[str, str]) -> None:
-    result = run_shell(GITHUB_STUB + shell_step("Attach baseline and publish draft"), tmp_path, {**github_release, "PUBLISH_STATUS": "9"})
-    assert result.returncode != 0
-    assert (tmp_path / "upload-called").exists()
-    assert (tmp_path / "publish-called").exists()
-    assert "DELETE" not in (tmp_path / "api-calls").read_text(encoding="utf-8")
+        executable = fixture / "gh"
+        executable.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(program))} "$@"\n', encoding="utf-8")
+        executable.chmod(0o755)
+    asset = f"la-stack-{BASELINE}-criterion-baseline.tar.gz"
+    (fixture / asset).write_bytes(b"raw archive\r\n\xff")
+    output = fixture / "outputs"
+    env = {
+        "PATH": str(fixture) + os.pathsep + os.environ["PATH"],
+        "RELEASE_FIXTURE": str(fixture),
+        "RELEASE_TAG": BASELINE,
+        "RELEASE_ASSET": asset,
+        "GH_REPO": "owner/repo",
+        "GITHUB_REF": f"refs/tags/{BASELINE}",
+        "GITHUB_SHA": "a" * 40,
+        "GITHUB_OUTPUT": output.as_posix(),
+        "RUNNER_TEMP": fixture.as_posix(),
+        "GITHUB_WORKSPACE": fixture.as_posix(),
+    }
+    # Substitute only uvx's environment acquisition; retain its exact package
+    # arguments and execute the already locked package in a real child process.
+    runner = (
+        'uvx() { [[ "$1 $2 $3 $4 $5" == "--python 3.15 --from research-repo-tools==0.1.9 research-repo-tools" ]] || return 90; '
+        f'shift 5; {shlex.quote(sys.executable)} -m research_repo_tools "$@"; }}\n'
+    )
+    result = run_shell(runner + shell_step("Validate draft release target"), fixture, env)
+    assert result.returncode == 0, result.stderr
+    target = output.read_text(encoding="utf-8").strip().removeprefix("target=")
+    assert json.loads(target)["release_id"] == 42
+    assert json.loads(target)["commit"] == "a" * 40
+    assert json.loads(target)["expected_title"] == BASELINE
+    stale = run_shell(runner + shell_step("Attach baseline and publish draft"), fixture, {**env, "RELEASE_TARGET": target, "REMOTE_COMMIT": "b" * 40})
+    assert stale.returncode != 0
+    assert not (fixture / "published").exists()
+    result = run_shell(runner + shell_step("Attach baseline and publish draft"), fixture, {**env, "RELEASE_TARGET": target})
+    assert result.returncode == 0, result.stderr
+    assert (fixture / "uploaded").exists()
+    assert (fixture / "published").exists()
+    calls = [json.loads(line) for line in (fixture / "api-calls").read_text(encoding="utf-8").splitlines()]
+    assert any("PATCH" in call for call in calls)
+    assert any("/releases/assets/7" in item for call in calls for item in call)
