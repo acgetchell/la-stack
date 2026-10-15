@@ -168,7 +168,8 @@ def compatibility_adapter(pair: ReleasePair, root: Path | None = None) -> str:
     policy = scientific_policy(root)
     versions = {phase: tuple(map(int, normalize_tag(tag)[1:].split("."))) for phase, tag in (("baseline", pair.baseline), ("current", pair.current))}
     if any(version < policy.minimum_release for version in versions.values()):
-        msg = "unsupported comparison release; requires v0.4.4 or newer"
+        minimum_release = ".".join(map(str, policy.minimum_release))
+        msg = f"unsupported comparison release; requires v{minimum_release} or newer"
         raise ValueError(msg)
     return policy.legacy_api_cfg if versions["baseline"] < policy.modern_api_release else NO_API_COMPATIBILITY
 

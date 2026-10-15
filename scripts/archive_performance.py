@@ -25,7 +25,7 @@ from research_repo_tools.release_assets import download_release_asset
 from research_repo_tools.release_discovery import normalize_tag, stable_published_releases
 from research_repo_tools.release_pairs import PairMode, ReleasePair, resolve_pair
 from research_repo_tools.run_presentation import CoordinatePlot, RunLayout, RunRow, SeriesSelection, render_coordinate_svg, render_run_table, serialize_run_csv
-from research_repo_tools.run_reports import load_run_report_plan
+from research_repo_tools.run_reports import load_latest_run, load_run_report_plan
 from research_repo_tools.worktrees import apply_snapshot, capture_snapshot, temporary_worktree
 
 from performance_runs import (
@@ -156,6 +156,23 @@ def compare_assets(root: Path, pair: ReleasePair, output: Path) -> None:
         publish_publication(plan_outputs(root, {output.relative_to(root).as_posix(): text}, inputs={"Cargo.toml": (root / "Cargo.toml").read_bytes()}))
 
 
+def check_release_sample(root: Path, name: str) -> int:
+    """Require canonical report identities and complete, matching saved bytes."""
+    from research_repo_tools.criterion_baselines import load_saved_sample, validate_saved_sample  # noqa: PLC0415
+
+    plan = load_saved_sample(root, "tooling/criterion-saved.toml")
+    required = required_report_ids(root)
+    if not required <= set(plan.policy.expected):
+        msg = "release inventory omits report consumers"
+        raise ValueError(msg)
+    saved = validate_saved_sample(Path(os.environ.get("CRITERION_HOME", str(root / plan.criterion_dir))), name, plan.policy, raw_files=plan.raw_files)
+    for case in saved.cases:
+        if case.full_id in required and case.storage_path != case.full_id:
+            msg = f"non-canonical report benchmark storage path for {case.full_id}: {case.storage_path}"
+            raise ValueError(msg)
+    return len(saved.cases)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Keep routine performance commands thin and explicit."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -174,16 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = find_project_root(Path.cwd()).resolve()
         if args.command == "release-check":
-            from research_repo_tools.criterion_baselines import load_saved_sample, validate_saved_sample  # noqa: PLC0415
-
-            plan = load_saved_sample(root, "tooling/criterion-saved.toml")
-            if not required_report_ids(root) <= set(plan.policy.expected):
-                msg = "release inventory omits report consumers"
-                raise ValueError(msg)
-            saved = validate_saved_sample(
-                Path(os.environ.get("CRITERION_HOME", str(root / plan.criterion_dir))), args.current, plan.policy, raw_files=plan.raw_files
-            )
-            print(f"Verified {len(saved.cases)} complete saved Criterion benchmarks")
+            print(f"Verified {check_release_sample(root, args.current)} complete saved Criterion benchmarks")
             return 0
         if args.command == "report":
             promote(root, root / args.stem)
@@ -290,10 +298,18 @@ def publish_plot(root: Path, metric: str, statistic: Literal["mean", "median"], 
         **verified_inputs,
     }
     archive = root / policy.archive_directory(root)
-    if from_archive:
+    if not from_archive:
+        inputs.update(zip((payload.relative_to(root).as_posix(), manifest.relative_to(root).as_posix()), serialize_evidence(evidence), strict=True))
+    # README provenance must remain valid after scratch cleanup. Require the
+    # selected measurement to have been promoted before referencing its archive.
+    use_archive = from_archive or update_readme
+    if use_archive:
+        if not from_archive and run_identity(load_latest_run(root, policy.archive_directory(root))) != identity:
+            msg = "README evidence differs from the retained latest run; run performance-doc first"
+            raise ValueError(msg)
         payload, manifest = archive / "runs" / identity / "run.json", archive / "runs" / identity / "evidence.json"
         inputs.update({path.relative_to(root).as_posix(): path.read_bytes() for path in archive.rglob("*") if path.is_file()})
-    inputs.update(zip((payload.relative_to(root).as_posix(), manifest.relative_to(root).as_posix()), serialize_evidence(evidence), strict=True))
+        inputs.update(zip((payload.relative_to(root).as_posix(), manifest.relative_to(root).as_posix()), serialize_evidence(evidence), strict=True))
     prefix = f"docs/assets/bench/vs_linalg_{metric}_{statistic}"
     provenance = {
         "schema": 4,
@@ -330,7 +346,7 @@ def publish_plot(root: Path, metric: str, statistic: Literal["mean", "median"], 
     # Preserve the shared planner's snapshots and add its public freshness
     # checks for the independently validated consumer selections.
     plan = replace(
-        plan, git_checks=git_checks, glob_checks=checks, run_checks=(RunSelectionCheck(policy.archive_directory(root), identity),) if from_archive else ()
+        plan, git_checks=git_checks, glob_checks=checks, run_checks=(RunSelectionCheck(policy.archive_directory(root), identity),) if use_archive else ()
     )
     publish_publication(plan)
 
@@ -347,7 +363,7 @@ def dimension_main(argv: list[str] | None = None) -> int:
     try:
         publish_plot(_repo_root(), args.metric, args.stat, log_y=args.log_y, update_readme=args.update_readme)
         return 0
-    except (OSError, ValueError, TypeError, KeyError, ExceptionGroup) as error:
+    except (OSError, ValueError, TypeError, KeyError, ExecutableNotFoundError, subprocess.SubprocessError, ExceptionGroup) as error:
         print(f"dimension publication: {format_exception_diagnostics(error)}", file=sys.stderr)
         return 2
 

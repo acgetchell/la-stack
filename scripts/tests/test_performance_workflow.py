@@ -6,6 +6,7 @@ import json
 import os
 import shlex
 import shutil
+import subprocess
 import sys
 import tarfile
 from dataclasses import replace
@@ -13,12 +14,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from research_repo_tools import publication
 from research_repo_tools.common_measurement import CommonHarnessPlan, measure_prepared_pair
 from research_repo_tools.complete_runs import CompletePolicy, RunSeries, render_run, run_identity, serialize_run
 from research_repo_tools.criterion import parse_comparison
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.legacy_evidence import convert_csv
-from research_repo_tools.process import run_command
+from research_repo_tools.process import ExecutableNotFoundError, run_command
 from research_repo_tools.release_pairs import ReleasePair
 
 import archive_performance as plot
@@ -234,7 +236,6 @@ def test_readme_uses_original_reference_phases_after_cleanup(complete_run: tuple
     workflow.save_scratch(root, stem, evidence)
     workflow.promote(root, stem)
     shutil.copyfile(ROOT / "README.md", root / "README.md")
-    shutil.rmtree(root / "target")
     monkeypatch.setattr(plot, "_repo_root", lambda: root)
     monkeypatch.chdir(root.parent)
     arguments = ["--update-readme", "--log-y"]
@@ -258,8 +259,67 @@ def test_readme_uses_original_reference_phases_after_cleanup(complete_run: tuple
     assert b"<svg" in csv.with_suffix(".svg").read_bytes()
     assert b"nalgebra" in csv.with_suffix(".svg").read_bytes()
     before = {path: path.read_bytes() for path in (*assets.iterdir(), root / "README.md")}
+    run_command("git", ["--no-pager", "add", "docs/assets/bench"], cwd=root)
+    run_command(
+        "git",
+        [
+            "--no-pager",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "-m",
+            "assets",
+        ],
+        cwd=root,
+    )
+    run_command("git", ["--no-pager", "-c", "tag.gpgsign=false", "tag", PAIR.current], cwd=root)
+    shutil.rmtree(root / "target")
     assert plot.dimension_main(arguments) == 0
     assert {path: path.read_bytes() for path in before} == before
+    assert provenance["payload"] == f"{archive}/runs/{run_identity(evidence)}/run.json"
+    assert provenance["manifest"] == f"{archive}/runs/{run_identity(evidence)}/evidence.json"
+
+
+@pytest.mark.parametrize(
+    ("error", "diagnostic"),
+    [
+        (ExecutableNotFoundError("Git executable not found"), "Git executable not found"),
+        (subprocess.CalledProcessError(128, ["git"], stderr=b"fatal: repository unavailable"), "fatal: repository unavailable"),
+        (subprocess.TimeoutExpired(["git"], 30), "command timed out after 30 seconds"),
+    ],
+    ids=["missing-git", "git-failure", "git-timeout"],
+)
+def test_plot_git_failure_preserves_publication(
+    complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], error: Exception, diagnostic: str
+) -> None:
+    root, evidence = complete_run
+    stem = root / "target/bench-reports/performance"
+    workflow.save_scratch(root, stem, evidence)
+    workflow.promote(root, stem)
+    shutil.copyfile(ROOT / "README.md", root / "README.md")
+    assets = root / "docs/assets/bench"
+    assets.mkdir(parents=True)
+    for suffix in (".svg", ".csv", ".provenance.json"):
+        (assets / f"vs_linalg_lu_solve_median{suffix}").write_bytes(b"previous artifact\n")
+    before = {path: path.read_bytes() for path in (*assets.iterdir(), root / "README.md")}
+
+    def fail_git(*_args: object, **_kwargs: object) -> None:
+        raise error
+
+    monkeypatch.setattr(publication, "run_git_bytes", fail_git)
+    monkeypatch.setattr(plot, "_repo_root", lambda: root)
+    assert plot.dimension_main(["--update-readme"]) == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err.startswith("dimension publication:")
+    assert diagnostic in output.err
+    assert "Traceback" not in output.err
+    assert {path: path.read_bytes() for path in (*assets.iterdir(), root / "README.md")} == before
 
 
 def test_stale_source_prevents_dimension_publication(complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -275,9 +335,35 @@ def test_stale_source_prevents_dimension_publication(complete_run: tuple[Path, E
     assert not (root / "docs/assets/bench").exists()
 
 
+@pytest.mark.parametrize("retained", [False, True])
+def test_readme_requires_matching_retained_evidence(
+    complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], retained: bool
+) -> None:
+    root, evidence = complete_run
+    stem = root / "target/bench-reports/performance"
+    workflow.save_scratch(root, stem, evidence)
+    if retained:
+        workflow.promote(root, stem)
+        sources = tuple((phase, replace(source, context=(*source.context, ("experiment", "unpromoted")))) for phase, source in evidence.sources)
+        workflow.save_scratch(root, stem, replace(evidence, sources=sources))
+    shutil.copyfile(ROOT / "README.md", root / "README.md")
+    before = {path: path.read_bytes() for path in (root / "docs").rglob("*") if path.is_file()} if retained else {}
+    before[root / "README.md"] = (root / "README.md").read_bytes()
+    monkeypatch.setattr(plot, "_repo_root", lambda: root)
+
+    assert plot.dimension_main(["--update-readme"]) == 2
+
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert ("README evidence differs from the retained latest run" if retained else "no retained latest run") in output.err
+    assert {path: path.read_bytes() for path in before} == before
+    assert not (root / "docs/assets/bench").exists()
+
+
 def test_readme_edit_during_rendering_is_preserved(complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch) -> None:
     root, evidence = complete_run
     workflow.save_scratch(root, root / "target/bench-reports/performance", evidence)
+    workflow.promote(root, root / "target/bench-reports/performance")
     shutil.copyfile(ROOT / "README.md", root / "README.md")
     document = root / "README.md"
     edited = document.read_bytes() + b"\nConcurrent maintainer edit.\n"
@@ -297,6 +383,7 @@ def test_readme_edit_during_rendering_is_preserved(complete_run: tuple[Path, Evi
 def test_existing_tag_cannot_receive_different_measured_assets(complete_run: tuple[Path, Evidence]) -> None:
     root, evidence = complete_run
     workflow.save_scratch(root, root / "target/bench-reports/performance", evidence)
+    workflow.promote(root, root / "target/bench-reports/performance")
     shutil.copyfile(ROOT / "README.md", root / "README.md")
     assets = root / "docs/assets/bench"
     assets.mkdir(parents=True)
@@ -327,22 +414,31 @@ def test_existing_tag_cannot_receive_different_measured_assets(complete_run: tup
     assert {path: path.read_bytes() for path in originals} == originals
 
 
-@pytest.mark.parametrize("changed", ["source-membership", "unindexed-run"])
+@pytest.mark.parametrize("scratch_present", [False, True])
+@pytest.mark.parametrize("changed", ["source-membership", "unindexed-run", "selected-evidence"])
 def test_dimension_publication_rechecks_membership_and_retained_selection(
-    complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, changed: str
+    complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, changed: str, scratch_present: bool
 ) -> None:
     root, evidence = complete_run
     stem = root / "target/bench-reports/performance"
     workflow.save_scratch(root, stem, evidence)
     workflow.promote(root, stem)
     shutil.copyfile(ROOT / "README.md", root / "README.md")
-    shutil.rmtree(root / "target")
+    if not scratch_present:
+        shutil.rmtree(root / "target")
     original = (root / "README.md").read_bytes()
     publish = workflow.publish_publication
 
     def change_before_publication(plan: PublicationPlan) -> tuple[Path, ...]:
         if changed == "source-membership":
             (root / "src/added.rs").write_text("// added after planning\n", encoding="utf-8")
+        elif changed == "selected-evidence":
+            # Scratch is an input only while present; the archive remains the
+            # selected source after cleanup.
+            if scratch_present:
+                policy.scratch_paths(stem)[0].write_bytes(b"{}\n")
+            else:
+                (root / policy.archive_directory(root) / "runs" / run_identity(evidence) / "run.json").write_bytes(b"{}\n")
         else:
             unexpected = root / policy.archive_directory(root) / "runs" / ("f" * 64)
             unexpected.mkdir()

@@ -115,6 +115,26 @@ def test_saved_baseline_must_match_fresh_samples(dataset: tuple[Path, Path]) -> 
     assert workflow.main(["release-check", BASELINE]) == 1
 
 
+@pytest.mark.parametrize("relocation", ["moved", "swapped"])
+def test_report_consumers_require_canonical_paths(dataset: tuple[Path, Path], capsys: pytest.CaptureFixture[str], relocation: str) -> None:
+    criterion, _manifest = dataset
+    original = criterion / "d2/la_stack_dot"
+    moved = original.rename(criterion / "d2/misplaced")
+    if relocation == "swapped":
+        peer = criterion / "exact_d2/det_exact"
+        peer.rename(original)
+        moved.rename(peer)
+    before = {path: path.read_bytes() for path in criterion.rglob("*") if path.is_file()}
+
+    assert workflow.main(["release-check", BASELINE]) == 1
+
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "non-canonical report benchmark storage path" in output.err
+    assert "d2/la_stack_dot" in output.err
+    assert {path: path.read_bytes() for path in criterion.rglob("*") if path.is_file()} == before
+
+
 def test_configured_inventory_includes_release_consumers_and_peers() -> None:
     expected = required_report_ids(REPO_ROOT)
     assert {"d64/faer_lu_solve", "d64/nalgebra_lu_solve", "exact_hilbert_5x5/solve_exact", "rational_input_d8/solve_big_rational_gaussian"} <= expected
