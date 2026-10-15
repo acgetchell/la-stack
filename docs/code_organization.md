@@ -233,6 +233,15 @@ The [vector-angle study](archive/performance/studies/vector-angles.md) owns the
 #249 formulation decision, comparative timings, and retained source provenance.
 The [triangular rational solve study](archive/performance/studies/rational-triangular.md)
 owns the #246 Rust 1.99 baseline, adapter/kernel comparisons, and retained evidence.
+The [algebraic floating-point study](archive/performance/studies/algebraic-float.md)
+owns the #250 numerical/performance experiment and its raw evidence.
+
+The [validation index](validation/README.md) maps arithmetic contracts
+to independent tests and owns dated validation decisions and their limitations.
+The [algebraic floating-point decision](validation/algebraic-floating-point.md)
+records rejection and the maintainer's closure of unperformed prototype work.
+Mathematical guarantees remain in `mathematical_basis.md`; performance archives
+retain measurement data and experimental sources.
 
 When adding, removing, renaming, or moving files, update the applicable ownership
 rows here. Prefer links to the detailed owner over copying its procedure into

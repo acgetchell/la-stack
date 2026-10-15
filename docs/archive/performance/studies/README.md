@@ -4,6 +4,7 @@ Completed optimization investigations and their decisions are retained here.
 These are historical experiments, with the environment and limitations stated
 in each report.
 
+- [Algebraic floating-point reduction evaluation (#250)](algebraic-float.md)
 - [Interval and certified-reduction optimization (#247, #248)](interval-reductions.md)
 - [Rational row-clearing allocation study (#233)](rational-row-clearing.md)
 - [Rust 1.99 compiler migration (#251)](rust-1.99.md)

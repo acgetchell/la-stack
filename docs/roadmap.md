@@ -269,14 +269,15 @@ Completed work included in this release:
   and representable subnormal angles. Results remain rounded without a certified
   error bound.
 
-A bounded algebraic floating-point evaluation
-([#250](https://github.com/acgetchell/la-stack/issues/250)) also targets `v0.5.0`.
-Evaluate one or two promising kernels against the final strict implementation
-under the Rust 1.99 / LLVM 23 baseline. A retained study and a justified
-adopt, retain-strict, or defer decision are the outcome; adoption is conditional.
-Ship a distinct opt-in API in `v0.5.0` only if its numerical contract, independent
-correctness evidence, material performance benefit, and review are complete.
-Existing APIs stay strict, and unresolved broader work must not delay the release.
+The bounded algebraic floating-point evaluation
+([#250](https://github.com/acgetchell/la-stack/issues/250)) concluded with a
+**retain-strict** decision on 2026-10-15. The selected matrix-norm reduction
+improved local timing at D=4/5 but hid a required overflow error. The maintainer
+rejected adoption and ended the remaining prototype investigation; no algebraic
+API or feature is planned. The
+[validation record](validation/algebraic-floating-point.md) documents the
+decision, executed checks, and unperformed native Linux/Windows runs; the
+[study](archive/performance/studies/algebraic-float.md) retains the raw evidence.
 
 Remaining release sequence:
 
@@ -305,10 +306,8 @@ and generated release artifacts are updated during dedicated release preparation
 ### v0.5.1 Follow-Up Work (planned)
 
 The [v0.5.1 milestone](https://github.com/acgetchell/la-stack/milestone/10)
-holds compatible follow-up work after `v0.5.0`. If #250 establishes a promising
-opt-in design that is not ready for `v0.5.0`, link a bounded adoption issue and
-choose its release from the resulting contract and evidence. Adoption is not
-presumed, and retaining strict arithmetic after a negative evaluation is valid.
+holds compatible follow-up work after `v0.5.0`. The negative #250 decision
+does not transfer an algebraic floating-point adoption task to this milestone.
 Changes incompatible with a published `v0.5` API require an appropriate later
 minor release.
 

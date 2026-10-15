@@ -409,6 +409,7 @@ for current release planning.
 - [Performance reports](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md) — release-to-release measurement results and provenance.
 - [Releasing](https://github.com/acgetchell/la-stack/blob/main/docs/RELEASING.md) — release preparation, validation, and publication.
 - [Roadmap](https://github.com/acgetchell/la-stack/blob/main/docs/roadmap.md) — release planning, future directions, and non-goals.
+- [Validation records](https://github.com/acgetchell/la-stack/blob/main/docs/validation/README.md) — numerical contracts, evidence, and decisions.
 
 ## 📋 Examples
 
