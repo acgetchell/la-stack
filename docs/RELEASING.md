@@ -1,9 +1,10 @@
 # Releasing la-stack
 
 Prepare each `vX.Y.Z` release in a dedicated PR. After that PR is merged,
-create the annotated tag, publish to crates.io, and create a draft GitHub release.
-You then start the `Release Benchmarks` workflow, which attaches the durable
-baseline and **automatically publishes that same draft as the public release**.
+create the annotated tag and a draft GitHub release. Start `Release Benchmarks`
+to attach the durable baseline, then review and publish the draft with
+`just release-publish`. The published release starts `Publish to crates.io`;
+approve its `crates-io` deployment to permit the Cargo upload.
 
 The local benchmarks used to prepare the release PR do not require a draft.
 The draft is needed later as the upload destination for the benchmark archive
@@ -157,6 +158,9 @@ cargo publish --locked --allow-dirty --dry-run
 
 `just ci` includes the lockfile, citation, documentation, test, and benchmark
 compile checks.
+The preparation dry-run permits the uncommitted release artifacts. After review
+and merge, `just release-package` verifies the clean release source with both
+default and `exact` features and explicitly selects only `la-stack`.
 
 ### 7. Review, stage, and commit the release artifacts
 
@@ -230,18 +234,32 @@ section instead of embedding it.
 git push origin "$TAG"
 ```
 
-### 4. Publish to crates.io
+### 4. Verify the release commit
 
 ```bash
-cargo publish --locked
+just release-package
 ```
+
+Require successful native `CI` builds on Linux, macOS and Windows, plus Clippy
+and repository-rule SARIF checks, for this exact commit before proceeding.
+These builds include the declared Rust 1.99.0 baseline, default/exact doctests,
+all-feature tests, interval and linear-form regressions, examples and benchmark
+compilation. The publishing policy in `pyproject.toml` binds all five check names
+to the GitHub Actions App. CodeRabbit and human review remain protected-PR
+requirements; CodeRabbit does not run on the merged `main` commit. Missing,
+pending, cancelled or failed native checks block publication. If a bot merge did
+not trigger push CI, dispatch the existing CI/security workflows on `main` and
+verify their `headSha` equals the release commit.
 
 ### 5. Create the draft GitHub release
 
 Create an unpublished release where the workflow can attach its benchmark archive:
 
 ```bash
-gh release create "$TAG" --verify-tag --draft --title "$TAG" --notes-from-tag
+NOTES="$(mktemp)"
+just release-notes "$TAG" > "$NOTES"
+gh release create "$TAG" --verify-tag --draft --title "$TAG" --notes-file "$NOTES"
+rm "$NOTES"
 ```
 
 Keep the release title identical to the tag, including its leading `v`.
@@ -249,10 +267,7 @@ Leave it as a stable draft: publishing now would make the release immutable
 before the benchmark archive can be attached. GitHub recommends this
 [draft-first sequence for immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).
 
-### 6. Run benchmarks and publish the draft
-
-**Starting this workflow also authorizes automatic publication.** You do not
-need a separate command to convert the draft into a published release.
+### 6. Run benchmarks and review the draft
 
 Start the workflow from the release tag, passing the same tag as its input:
 
@@ -261,8 +276,7 @@ gh workflow run release-benchmarks.yml --ref "$TAG" -f tag="$TAG"
 ```
 
 Once GitHub accepts the command, you can close the terminal and leave the
-workflow running. It runs on GitHub's runners and needs no further input to
-publish the release. Check its status later, when convenient, on the
+workflow running. Check its status later on the
 [Release Benchmarks Actions page](https://github.com/acgetchell/la-stack/actions/workflows/release-benchmarks.yml).
 
 The workflow runs from the tagged version of its definition, so the tag must
@@ -274,8 +288,7 @@ The workflow automatically:
 1. Runs the full benchmark suites for the tagged commit.
 2. Uploads the archive to the draft and verifies its name, state, size, and
    SHA-256 digest.
-3. Removes the draft status, making the same release public with the archive
-   already attached.
+3. Leaves the draft and verified archive ready for maintainer review.
 
 A benchmark, upload, or verification failure leaves the release as a draft.
 Follow [Recovering a failed run](#recovering-a-failed-run) to retry.
@@ -285,7 +298,7 @@ exactly one mutable, non-prerelease draft whose tag and title match the stable
 `vX.Y.Z` input, and resolves the existing tag to a commit. It benchmarks that
 commit only if it matches the workflow's own commit, then rechecks the captured
 release ID and tag commit before attaching
-the archive and again before publication. Do not edit the draft, move the tag,
+the archive. Do not edit the draft, move the tag,
 or publish manually while the workflow is running.
 
 The privileged jobs install the exact published `research-repo-tools==0.1.9`
@@ -293,34 +306,81 @@ package on Python 3.15 without repository checkout. Preflight emits versioned
 target JSON with the captured ID, commit and title assertion. Its trusted job
 output passes directly to the publisher, separately from the producer's inert
 archive. The shared writer verifies downloaded asset bytes as well as provider
-metadata and receives explicit `--publish` intent.
+metadata. It leaves publication to the authenticated maintainer.
 
 Runs for the same tag are serialized without cancelling an active run.
 
-### 7. Verify publication and the durable Criterion baseline
+### 7. Publish the reviewed draft and approve Cargo publication
 
 After the workflow completes, open the repository's
-[Releases page](https://github.com/acgetchell/la-stack/releases). Confirm that
-`$TAG` is published and its assets include
-`la-stack-$TAG-criterion-baseline.tar.gz`. This is a check of the completed
-publication; the workflow does not wait for you to perform it.
-
-For an optional command-line check:
+[Releases page](https://github.com/acgetchell/la-stack/releases). Review the
+draft, generated notes and `la-stack-$TAG-criterion-baseline.tar.gz` asset.
+From the clean tagged checkout, using your human GitHub CLI session, run:
 
 ```bash
-gh release view "$TAG" --json isDraft,assets \
-  --jq "select(.isDraft == false) | .assets[] | select(.name == \"la-stack-$TAG-criterion-baseline.tar.gz\") | .name" | cat
+just release-publish "$TAG"
+gh run list --workflow publish-crates.yml --limit 5
 ```
 
-The command must print `la-stack-$TAG-criterion-baseline.tar.gz`. A short-lived
-Actions artifact is not a substitute for this release asset.
+This command authorizes GitHub Release publication. The shared gate checks the
+clean checkout, stable tag/package metadata, remote tag commit, protected default
+branch ancestry, successful exact-commit checks and required baseline asset.
+The local recipe also requires the release title and body to match the tag and
+generated notes. Human authentication is essential: publishing with a workflow's
+`GITHUB_TOKEN` does not trigger the separate `release: published` workflow.
+
+The publishing workflow checks out `github.sha`, rechecks the published event's
+repository, release ID, tag/ref/commit and evidence, then runs `just release-package`.
+It also reads the captured release ID to require GitHub's immutable state.
+After it succeeds, approve the `crates-io` environment deployment in GitHub.
+The upload job rechecks the gate and requires proven absence of the exact registry
+version after approval, then obtains a short-lived OIDC token. Only that job has
+`id-token: write`; it has no repository write permission or dependency caches.
+Uploads for `la-stack` are serialized without cancellation.
+
+The verification job builds the default and `exact` packages without upload
+credentials. After approval, Cargo repackages the same clean, revalidated commit
+with `--locked --no-verify`, so build scripts do not run with the crates.io token.
+The dry-run archive is not transferred between jobs, and byte-identical archives
+are not asserted. This follows [Cargo's native publication model](https://doc.rust-lang.org/cargo/commands/cargo-publish.html).
+No benchmark workspace member is published.
+
+### 8. Verify registry availability and downstream resolution
+
+After the publishing workflow completes:
+
+```bash
+just release-verify "$TAG"
+```
+
+This requires the published stable GitHub release, nonempty durable baseline
+asset and exact non-yanked crates.io version with a checksum. It retries only
+proven registry absence, never an upload. A short-lived Actions artifact or a
+published GitHub release alone is insufficient.
+
+Check a clean consumer with a fresh Cargo home before dependent Delaunay releases:
+
+```bash
+CONSUMER="$(mktemp -d)"
+CARGO_HOME="$(mktemp -d)"; export CARGO_HOME
+RELEASE_CRATE="la-stack@=${TAG#v}"
+cargo init --vcs none --name la_stack_release_check "$CONSUMER"
+cargo add --manifest-path "$CONSUMER/Cargo.toml" "$RELEASE_CRATE"
+cargo check --locked --manifest-path "$CONSUMER/Cargo.toml"
+cargo add --manifest-path "$CONSUMER/Cargo.toml" "$RELEASE_CRATE" --features exact
+cargo check --locked --manifest-path "$CONSUMER/Cargo.toml"
+```
+
+Use a disposable shell for this check. Preserve the output and record the tag,
+commit, benchmark run, publishing run, registry URL/checksum and consumer results
+in #259. Keep that issue open until the approved v0.5.0 publication is verified.
 
 The benchmark producer has read-only repository permissions and restores no
 dependency caches, including tool binaries. It invokes `setup-tools` with
 `cache: false`, installs declared managed Rust and Cargo tools through the locked
 shared package, and exports verified paths. The short preflight job receives `contents: write`
-for draft visibility; the separate publisher receives it to attach the archive
-and publish. Neither privileged job checks out or executes repository code.
+for draft visibility; the separate asset writer receives it to attach the archive.
+Neither privileged benchmark job checks out or executes repository code.
 
 The producer budgets 150 minutes for `vs_linalg` and 90 minutes for `exact`
 within a 285-minute job. Both suites retain full release sampling. Inventory
@@ -359,7 +419,16 @@ without changing it, including when an earlier publication succeeded but its
 response was lost. Verify the public release in that case. Existing immutable
 releases with missing assets cannot be repaired by this workflow.
 
-### 8. Remove the merged release branch
+If the crates.io upload fails or Cargo times out, inspect the original run and
+exact version before retrying. The workflow checks visibility even after an
+upload failure but preserves the failed job result. A visible version makes a
+rerun stop before OIDC/upload; use `just release-verify` and the clean consumer
+check to finish verification. A registry transport/authentication error does not
+prove absence. After a visibility timeout, investigate the accepted-upload state
+before authorizing a rerun for the unchanged tag; never blindly retry an upload.
+Corrections to published source require a new version. Never move a published tag.
+
+### 9. Remove the merged release branch
 
 After publication and baseline verification succeed:
 
@@ -367,3 +436,44 @@ After publication and baseline verification succeed:
 git branch -d "release/$TAG"
 git push origin --delete "release/$TAG"
 ```
+
+## Configure Trusted Publishing before v0.5.0
+
+Follow the current [crates.io setup requirements](https://crates.io/docs/trusted-publishing).
+Trusted Publishing requires an already-published crate and crate ownership;
+initial publication uses an API token. `la-stack` already exists, so no throwaway
+version or initial upload is needed. As its owner, register this exact identity
+under the crate's Settings → Trusted Publishing:
+
+| Field | Value |
+| --- | --- |
+| Repository owner | `acgetchell` |
+| Repository name | `la-stack` |
+| Workflow filename | `publish-crates.yml` |
+| Environment | `crates-io` |
+
+Create GitHub's `crates-io` environment with required maintainer reviewers,
+administrator bypass disabled, and selected deployment tags matching `v*` only
+(no branches). The proposed `.github/settings/crates-io-environment.json` names
+`acgetchell` (user ID 434849) as the required reviewer and permits that maintainer
+to approve their own deployment; self-review prevention needs another eligible
+reviewer. `.github/settings/crates-io-tags.json` declares the tag restriction.
+The stable-tag and reviewed-commit
+gates still apply after deployment approval. Add only the pinned
+`rust-lang/crates-io-auth-action` entry from `.github/settings/actions-selected.json`
+to the live selected-action allowlist, preserving newer entries. This reviewed
+v1.0.5 pin comes from the shared consumer template; update it through a reviewed
+dependency PR and reconcile the allowlist together. The publishing workflow is
+excluded from Dependabot automatic approval so these changes require maintainer
+review. Do not add a long-lived
+`CARGO_REGISTRY_TOKEN` secret.
+
+Workflow YAML and settings payloads do not apply account configuration. On
+October 15, 2026, the GitHub environments API returned no environments and the
+authenticated crates.io settings showed no trusted publishers. These payloads
+and the publisher registration remain unapplied. Before release, record the actual crates.io
+publisher identity and GitHub environment reviewers/tag policy, allowlist and
+permissions evidence in #259. Re-read live settings before changing them.
+Validate the source with `just lint-config`, `just python-ci`, `just markdown-ci`
+and `just doc-check`; PR tests use simulated providers and never upload crates.
+Native CI and successful approved publication remain separate rollout evidence.

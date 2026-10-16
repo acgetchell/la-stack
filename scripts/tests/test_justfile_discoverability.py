@@ -114,8 +114,8 @@ def test_bare_just_lists_the_complete_documented_surface_after_source_sorting() 
     assert definitions == sorted(definitions)
 
 
-def test_dependabot_shared_caller_covers_every_owned_dependency_file() -> None:
-    """New manifests or workflows cannot silently fall outside automatic eligibility."""
+def test_dependabot_shared_caller_covers_dependencies_with_explicit_manual_review() -> None:
+    """Every dependency file has an explicit automatic or manual review policy."""
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/dependabot-auto-merge.yml").read_bytes())
     events = workflow.get("on", workflow.get(True))
     assert set(events) == {"pull_request_target"}
@@ -140,7 +140,10 @@ def test_dependabot_shared_caller_covers_every_owned_dependency_file() -> None:
         for path in directory.rglob("*")
         if path.suffix in {".yml", ".yaml"}
     }
-    assert set(policy["github_actions"]["files"]) == actions
+    # Publishing action pins must be reconciled with the live selected-actions policy.
+    manual_review = {".github/workflows/publish-crates.yml"}
+    assert manual_review <= actions
+    assert set(policy["github_actions"]["files"]) == actions - manual_review
 
 
 def test_zizmor_workflow_separates_findings_from_sarif_export() -> None:
