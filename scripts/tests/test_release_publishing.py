@@ -174,6 +174,8 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert jobs["verify"]["permissions"] == {"contents": "read", "checks": "read"}
     assert jobs["publish"]["permissions"] == {"contents": "read", "checks": "read", "id-token": "write"}
     assert "github.repository == 'acgetchell/la-stack'" in jobs["verify"]["if"]
+    assert jobs["verify"]["steps"][-1]["run"] == "just release-package"
+    assert "CARGO_REGISTRY_TOKEN" not in yaml.safe_dump({"env": workflow["env"], "verify": jobs["verify"]})
     for job in jobs.values():
         checkout = job["steps"][0]
         assert checkout["with"] == {"ref": "${{ github.sha }}", "fetch-depth": 0, "persist-credentials": False}
@@ -183,7 +185,8 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert 'just release-gate "$RELEASE_TAG"' in gate
     assert 'release registry "$RELEASE_TAG" --expect absent' in gate
     assert steps[3]["id"] == "auth"
-    assert steps[4]["run"].endswith("cargo publish --locked --package la-stack --registry crates-io")
+    assert steps[4]["run"].endswith("cargo publish --locked --package la-stack --registry crates-io --no-verify")
+    assert [index for index, step in enumerate(steps) if "CARGO_REGISTRY_TOKEN" in step.get("env", {})] == [4]
     assert steps[5]["if"] == "${{ !cancelled() && steps.auth.outcome == 'success' }}"
     assert steps[5]["run"] == 'just release-verify "$RELEASE_TAG"'
     assert "continue-on-error" not in WORKFLOW.read_text(encoding="utf-8")
@@ -191,6 +194,7 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert commands.count("--package la-stack --registry crates-io --dry-run") == 2
     assert "--features exact" in commands
     assert "--allow-dirty" not in commands
+    assert "--no-verify" not in commands
 
 
 @pytest.mark.parametrize(("failure", "expected_exit"), [("none", 0), ("evidence", 1), ("present", 1), ("unavailable", 2)])

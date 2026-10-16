@@ -338,11 +338,12 @@ version after approval, then obtains a short-lived OIDC token. Only that job has
 `id-token: write`; it has no repository write permission or dependency caches.
 Uploads for `la-stack` are serialized without cancellation.
 
-Cargo packages and verifies the same clean source again during upload. The
-dry-run archive is not transferred between jobs, and byte-identical archives
+The verification job builds the default and `exact` packages without upload
+credentials. After approval, Cargo repackages the same clean, revalidated commit
+with `--locked --no-verify`, so build scripts do not run with the crates.io token.
+The dry-run archive is not transferred between jobs, and byte-identical archives
 are not asserted. This follows [Cargo's native publication model](https://doc.rust-lang.org/cargo/commands/cargo-publish.html).
-The default build is verified during upload; default and `exact` package builds
-were checked before approval. No benchmark workspace member is published.
+No benchmark workspace member is published.
 
 ### 8. Verify registry availability and downstream resolution
 
