@@ -44,6 +44,18 @@ _ensure-uv:
 _ensure-yamllint: _ensure-uv
     uv run --locked yamllint --version >/dev/null
 
+# Require the GitHub release title and body to match the generated notes.
+[private]
+_release-notes-check tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tag={{ quote(tag) }}
+    notes="$(mktemp)"
+    trap 'rm -f "$notes"' EXIT
+    uv run --locked --no-sync research-repo-tools changelog notes "$tag" > "$notes"
+    gh release view "$tag" --repo acgetchell/la-stack --json tagName,name,body |
+        jq -e --arg tag "$tag" --rawfile notes "$notes" '.tagName == $tag and .name == $tag and ((.body | gsub("\r\n"; "\n") | rtrimstr("\n")) == ($notes | rtrimstr("\n")))' >/dev/null
+
 # GitHub Actions workflow validation
 action-lint: _ensure-actionlint
     #!/usr/bin/env bash
@@ -439,9 +451,28 @@ python-sync: _ensure-uv
 python-typecheck: python-sync
     uv run --locked ty check scripts/ tests/semgrep/scripts/ --error all
 
+# Require the release event, reviewed commit, native checks, assets, and notes.
+release-gate tag:
+    uv run --locked --no-sync research-repo-tools release gate {{ quote(tag) }}
+    gh api "repos/acgetchell/la-stack/releases/$(jq -er '.release.id' "$GITHUB_EVENT_PATH")" | jq -e '.immutable == true' >/dev/null
+    just _release-notes-check {{ quote(tag) }}
+
 # Print release notes from the root changelog or a completed minor archive.
 release-notes tag: python-sync
     uv run --locked --group dev research-repo-tools changelog notes {{ quote(tag) }}
+
+# Verify native Cargo packaging for the root crate, with default and exact features.
+release-package:
+    {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run
+    {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run --features exact
+
+# Approve the benchmark-equipped draft as the authenticated maintainer.
+release-publish tag: (_release-notes-check tag)
+    uv run --locked --no-sync research-repo-tools release publish {{ quote(tag) }}
+
+# Verify the published GitHub release, required assets, and exact crates.io version.
+release-verify tag:
+    uv run --locked --no-sync research-repo-tools release verify {{ quote(tag) }} --attempts 7 --interval 10
 
 # Review branch and local changes against a verified origin/main, or an explicit local base.
 review base="origin/main":

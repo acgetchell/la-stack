@@ -88,6 +88,16 @@ owns release metadata, changelog generation, tagging and registry publication.
 Repository declarations in `pyproject.toml` retain the concept DOI, active link
 policy, declared date policy, changelog formatter and dependency-body handling.
 
+The publishing declaration selects only `la-stack`, requires the native platform
+and scientific check results on the exact commit, and requires the durable
+Criterion release asset. `release-gate`, `release-publish` and `release-verify`
+use the shared release contract; `release-package` owns native default/exact
+Cargo dry-runs. The local notes check binds the GitHub title/body to the generated
+changelog. `scripts/tests/test_release_publishing.py` checks this consumer policy,
+installed CLI failures and the actual workflow's upload barriers without network
+access or registry credentials. Account registration and live release evidence
+remain separate from fixture results.
+
 The exact shared package pin lives in the `tooling` dependency group, included
 by `dev`, and is resolved from PyPI in `uv.lock`. No sibling checkout supplies
 runtime code. Shared `deps update-python` advances direct exact development

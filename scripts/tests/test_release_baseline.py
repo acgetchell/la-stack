@@ -186,7 +186,8 @@ def test_workflow_requires_preflight_and_isolates_publication_permissions() -> N
     assert "target: ${{ steps.target.outputs.target }}" in preflight
     assert "RELEASE_TARGET: ${{ needs.validate-release.outputs.target }}" in publisher
     assert '--expected-title "$RELEASE_TAG"' in preflight
-    assert '--target "$RUNNER_TEMP/release-target.json" --publish' in publisher
+    assert '--target "$RUNNER_TEMP/release-target.json"' in publisher
+    assert "--publish" not in publisher
     assert (preflight + publisher).count("--from research-repo-tools==0.1.9") == 2
     assert "uses: ./" not in preflight + publisher
     assert "--clobber" not in workflow
@@ -300,7 +301,7 @@ print(json.dumps(value))
 """
 
 
-def test_installed_cli_binds_trusted_target_and_explicit_publication(tmp_path: Path) -> None:
+def test_installed_cli_binds_trusted_target_and_leaves_draft_for_review(tmp_path: Path) -> None:
     """Exercise actual preflight and writer shell with the pinned installed CLI."""
     fixture = tmp_path / "provider with spaces"
     fixture.mkdir()
@@ -340,13 +341,13 @@ def test_installed_cli_binds_trusted_target_and_explicit_publication(tmp_path: P
     assert json.loads(target)["release_id"] == 42
     assert json.loads(target)["commit"] == "a" * 40
     assert json.loads(target)["expected_title"] == BASELINE
-    stale = run_shell(runner + shell_step("Attach baseline and publish draft"), fixture, {**env, "RELEASE_TARGET": target, "REMOTE_COMMIT": "b" * 40})
+    stale = run_shell(runner + shell_step("Attach baseline for review"), fixture, {**env, "RELEASE_TARGET": target, "REMOTE_COMMIT": "b" * 40})
     assert stale.returncode != 0
     assert not (fixture / "published").exists()
-    result = run_shell(runner + shell_step("Attach baseline and publish draft"), fixture, {**env, "RELEASE_TARGET": target})
+    result = run_shell(runner + shell_step("Attach baseline for review"), fixture, {**env, "RELEASE_TARGET": target})
     assert result.returncode == 0, result.stderr
     assert (fixture / "uploaded").exists()
-    assert (fixture / "published").exists()
+    assert not (fixture / "published").exists()
     calls = [json.loads(line) for line in (fixture / "api-calls").read_text(encoding="utf-8").splitlines()]
-    assert any("PATCH" in call for call in calls)
+    assert not any("PATCH" in call for call in calls)
     assert any("/releases/assets/7" in item for call in calls for item in call)

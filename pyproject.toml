@@ -134,6 +134,20 @@ dependency-bodies = "preserve"
 [tool.research-repo-tools.zizmor]
 persona = "regular"
 
+[tool.research-repo-tools.publishing]
+registry = "crates-io"
+package = "la-stack"
+repository = "acgetchell/la-stack"
+# CodeRabbit review remains a protected-PR requirement; it does not run on main.
+required-checks = [
+    { name = "build (ubuntu-latest)", app-id = 15368 },
+    { name = "build (macos-latest)", app-id = 15368 },
+    { name = "build (windows-latest)", app-id = 15368 },
+    { name = "Clippy SARIF Analysis", app-id = 15368 },
+    { name = "Repository Rule SARIF Analysis", app-id = 15368 },
+]
+required-assets = [ "la-stack-v{version}-criterion-baseline.tar.gz" ]
+
 [tool.research-repo-tools.release]
 # Release preparation and post-merge tagging can happen on different UTC days.
 date-policy = "declared"

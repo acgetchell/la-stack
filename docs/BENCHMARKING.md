@@ -788,8 +788,9 @@ comparison is `docs/performance.md`, created by `just performance-release`.
 
 Follow [Releasing](RELEASING.md#5-create-the-draft-github-release): create the
 tagged stable release as a draft, dispatch the workflow with
-`--ref "$TAG" -f tag="$TAG"`, and let the workflow upload and verify the archive before it
-publishes the draft. Dispatch requires a stable `vX.Y.Z` tag and exactly one
+`--ref "$TAG" -f tag="$TAG"`, and let the workflow upload and verify the archive.
+Review the draft, then run `just release-publish "$TAG"` as the maintainer to
+start the separate crates.io workflow. Dispatch requires a stable `vX.Y.Z` tag and exactly one
 mutable draft with that tag as its title. The producer checks out the resolved
 tag commit only when it matches the workflow's own commit. The dispatch ref
 must be that same tag, which keeps execution in the tag's cache scope; the
@@ -846,7 +847,7 @@ measurements all stop publication. Only successful validation permits packaging
 the single `criterion/` archive, including the inventory manifest, and uploading
 the temporary Actions artifact. The separate publisher attaches that archive
 as `la-stack-$TAG-criterion-baseline.tar.gz` to the draft, verifies its uploaded
-state, size, and SHA-256 digest, and only then publishes the release.
+state, size, and SHA-256 digest, and leaves the draft ready for review.
 
 ### Validate The Release Workflow
 
@@ -861,12 +862,12 @@ just doc-check
 
 The Python suite executes the workflow's shell with the pinned installed CLI
 and a simulated GitHub provider to prove captured-target handoff, commit-change
-rejection and explicit publication. Generic provider failure matrices belong
+rejection and preservation of the draft for review. Generic provider failure matrices belong
 upstream. Archive fixtures retain scientific coverage and exact raw bytes.
 
-Every hosted dispatch now requires a real release draft and authorizes its
-publication; there is no producer-only manual mode. Use the
-[release sequence](RELEASING.md#6-run-benchmarks-and-publish-the-draft) for a
+Every hosted dispatch requires a real release draft and attaches verified
+evidence for review. Use the
+[release sequence](RELEASING.md#6-run-benchmarks-and-review-the-draft) for a
 planned release. Record the successful run URL and both elapsed suite times
 when validating a budget change. The estimates above still require this
 representative hosted run; local tests and archive fixtures do not establish

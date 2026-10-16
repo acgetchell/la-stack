@@ -209,6 +209,14 @@ and hosted SARIF use it; ordinary support scripts use Python 3.15.
 `.github/actions/prepare-release-benchmarks/action.yml` groups tool installation,
 input validation, and inventory under the release workflow's shared setup timeout.
 
+`.github/workflows/publish-crates.yml` owns the reviewed-release event, native
+Cargo dry-run, deployment approval and OIDC upload. The publishing declaration
+in `pyproject.toml` selects `la-stack`, native checks and the Criterion asset;
+shared release gates own generic identity, ancestry and registry checks.
+`scripts/tests/test_release_publishing.py` owns installed-package consumer checks
+and upload-barrier tests. The [release guide](RELEASING.md) owns account setup,
+manual publication, registry verification and recovery.
+
 ## Documentation owners
 
 Use [Documentation guidance](dev/docs.md) for README, references, mathematical
