@@ -325,6 +325,9 @@ source and harness inventories/digests, dependency resolution, complete peer
 coverage, and recorded phase provenance before writing. The derived sidecar
 records the run identity and the actual current/baseline origins of each series.
 Historical CSV/JSON evidence remains frozen with its original provenance.
+The README table shows median times in nanoseconds, with lower and upper 95%
+confidence bounds below each timing. Its compact comparison columns show
+speedup ratios; the confidence level is stated once in the table legend.
 Missing, stale, or inconsistent input aborts publication atomically.
 An existing local release tag must contain the exact selected asset bytes.
 A future release tag may be absent during release preparation.
@@ -353,6 +356,12 @@ from `Cargo.toml` and discovers the previous stable published release. During
 release preparation, passing both tags explicitly removes ambiguity.
 
 This command uses the shared common-harness engine in isolated worktrees.
+The native driver resolves `CRITERION_HOME` from each checkout root before
+Cargo launches the benchmarks, keeping comparison-member and root-package
+measurements in one output tree.
+Each timing command has a four-hour timeout because `baseline-all` combines both
+full suites. This accommodates the combined 150-minute comparison and 90-minute
+exact-suite budgets described under [Hosted Release Runtime Budget](#hosted-release-runtime-budget).
 The native Criterion inventory declares every expected semantic ID, including
 diagnostics outside the selected report. Each case requires 100 raw samples,
 both mean and median estimates, and complete 95% intervals in nanoseconds.

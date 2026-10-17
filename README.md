@@ -101,7 +101,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-la-stack = "0.4.6"
+la-stack = "0.5.0"
 ```
 
 ### Solve a 5×5 system
@@ -259,7 +259,7 @@ Enable exact determinant signs, determinant values, and solves:
 
 ```toml
 [dependencies]
-la-stack = { version = "0.4.6", features = ["exact"] }
+la-stack = { version = "0.5.0", features = ["exact"] }
 ```
 
 `Matrix` / `Vector` exact methods preserve stored `f64` values;
@@ -442,14 +442,14 @@ cargo run --example solve_5x5
 ![LU solve (factor + solve): median time vs dimension][lu-solve-benchmark]
 
 Raw data:
-[docs/assets/bench/vs_linalg_lu_solve_median.csv](https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/assets/bench/vs_linalg_lu_solve_median.csv)
+[docs/assets/bench/vs_linalg_lu_solve_median.csv](https://github.com/acgetchell/la-stack/blob/v0.5.0/docs/assets/bench/vs_linalg_lu_solve_median.csv)
 Measurement provenance:
 [docs/assets/bench/vs_linalg_lu_solve_median.provenance.json][benchmark-provenance]
 
 Representative benchmark: `lu_solve` factors the matrix and solves one
-right-hand side. Median time is lower-is-better, and the “la-stack vs
-nalgebra/faer” columns show the % time reduction relative to each baseline
-(positive means the recorded la-stack median is lower). These are descriptive
+right-hand side. Median time is lower-is-better, and the “Speedup vs
+nalgebra/faer” columns divide each peer's median by the la-stack median
+(above 1× means the recorded la-stack median is lower). These are descriptive
 point-estimate ratios, not statistical significance claims or an aggregate score
 across operations.
 
@@ -486,16 +486,31 @@ expectations are validated outside the timed closures.
 
 <!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
 
-| D | la-stack median (ns) | nalgebra median (ns) | faer median (ns) | reduction vs nalgebra (point est.) | reduction vs faer (point est.) |
-|---:|--------------------:|--------------------:|----------------:|---------------------:|----------------:|
-| 2 | 2.021 | 4.479 | 182.532 | +54.9% | +98.9% |
-| 3 | 9.977 | 22.795 | 217.567 | +56.2% | +95.4% |
-| 4 | 22.101 | 51.739 | 241.525 | +57.3% | +90.8% |
-| 5 | 46.070 | 69.003 | 326.848 | +33.2% | +85.9% |
-| 8 | 128.364 | 165.933 | 401.400 | +22.6% | +68.0% |
-| 16 | 643.532 | 569.446 | 903.140 | -13.0% | +28.7% |
-| 32 | 2,755.773 | 2,710.235 | 2,919.290 | -1.7% | +5.6% |
-| 64 | 17,518.634 | 14,313.979 | 12,108.783 | -22.4% | -44.7% |
+Run: `634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5`. Statistic: median. Unit: ns.
+
+- la-stack (v0.5.0): current phase, v0.5.0, revision 51868ea4725c1a4790bba4c59341d2113b18b2bb.
+- nalgebra (0.35.0): baseline phase, v0.4.6, revision 0215e65763f8eecb4bcad8bf29de4aca67531aa1.
+- faer (0.24.4): baseline phase, v0.4.6, revision 0215e65763f8eecb4bcad8bf29de4aca67531aa1.
+
+| Dimension | la-stack | nalgebra | faer | Speedup vs nalgebra | Speedup vs faer |
+| --- | --- | --- | --- | --- | --- |
+| 2 | 2.10359<br>[2.08908, 2.11912] | 4.53894<br>[4.53141, 4.54661] | 154.45<br>[153.658, 155.846] | 2.15771× | 73.4219× |
+| 3 | 9.93879<br>[9.92881, 9.95117] | 32.9342<br>[32.8554, 33.057] | 191.85<br>[191.206, 192.814] | 3.3137× | 19.3032× |
+| 4 | 21.7341<br>[21.7035, 21.776] | 55.0106<br>[54.9217, 55.0615] | 221.887<br>[221.678, 222.673] | 2.53107× | 10.2091× |
+| 5 | 49.1031<br>[49.0318, 49.1659] | 74.629<br>[74.3476, 74.9906] | 272.864<br>[272.009, 273.512] | 1.51984× | 5.55695× |
+| 8 | 133.665<br>[133.426, 133.861] | 166.317<br>[166.02, 166.604] | 374.912<br>[372.746, 376.096] | 1.24429× | 2.80487× |
+| 16 | 750.027<br>[649.969, 761.453] | 589.011<br>[586.474, 592.341] | 938.943<br>[932.02, 944.127] | 0.78532× | 1.25188× |
+| 32 | 2829.62<br>[2819.66, 2837.22] | 2722.74<br>[2720.98, 2729.21] | 3023.87<br>[3017.73, 3030.19] | 0.962229× | 1.06865× |
+| 64 | 18280.4<br>[18138, 18489.9] | 13835.1<br>[13822.9, 13852.2] | 12678.8<br>[12660.2, 12699.3] | 0.756828× | 0.693573× |
+
+Median time in ns; brackets show the lower and upper bounds of the **95% confidence interval**.
+Speedups are ratios of point estimates; no ratio intervals or significance claims are inferred.
+
+Selection coverage:
+
+- la-stack (v0.5.0): 8 selected; 0 unavailable rows; 437 phase cases omitted. Complete evidence is retained independently.
+- nalgebra (0.35.0): 8 selected; 0 unavailable rows; 789 phase cases omitted. Complete evidence is retained independently.
+- faer (0.24.4): 8 selected; 0 unavailable rows; 789 phase cases omitted. Complete evidence is retained independently.
 
 <!-- BENCH_TABLE:lu_solve:median:new:END -->
 
@@ -533,7 +548,7 @@ BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/
 
 [audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml
-[benchmark-provenance]: https://github.com/acgetchell/la-stack/blob/v0.4.6/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json
+[benchmark-provenance]: https://github.com/acgetchell/la-stack/blob/v0.5.0/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json
 [benchmarks-badge]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml/badge.svg
 [benchmarks-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml
 [clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg
@@ -544,7 +559,7 @@ BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/
 [coverage-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/codecov.yml
 [dependabot-badge]: https://github.com/acgetchell/la-stack/actions/workflows/dependabot-auto-merge.yml/badge.svg
 [dependabot-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/dependabot-auto-merge.yml
-[lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/v0.4.6/docs/assets/bench/vs_linalg_lu_solve_median.svg
+[lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/v0.5.0/docs/assets/bench/vs_linalg_lu_solve_median.svg
 [refs-det-bound]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#absolute-error-bound-for-closed-form-determinants
 [refs-exact-sign]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-determinant-sign-adaptive-precision-integer-arithmetic
 [refs-exact-solve]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-linear-system-solve-hybrid-bareiss--bigrational

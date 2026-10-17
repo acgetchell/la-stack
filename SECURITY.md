@@ -121,9 +121,19 @@ assignment in that file. Other assignments and paths remain checked.
 Semgrep 1.180.0 accepts `pyjwt[crypto]>=2.15.0,<3`, so the older security override
 is retired. `tooling/semgrep/uv.lock` retains patched PyJWT 2.15.1 and its crypto
 dependencies. Validate native Semgrep scans when changing the scanner or lock.
-`just audit` includes both Python lockfiles, and Dependabot monitors both
-environments. The isolated scanner remains on Python 3.14 while its wheels
-exclude Python 3.15; support scripts run on Python 3.15.
+
+Semgrep 1.180.0 pins MCP 1.29.0, which is affected by
+[GHSA-84m7-p3x7-pcfv](https://github.com/advisories/GHSA-84m7-p3x7-pcfv).
+The isolated environment overrides that pin with `mcp>=1.30.0,<2`, retaining
+the patched 1.x API. Remove the override when a released Semgrep dependency
+accepts a patched MCP version. The root support environment has no MCP dependency.
+
+`just audit` includes both Python lockfiles, and Dependabot is configured for both
+environments. Its [root graph job](https://github.com/acgetchell/la-stack/actions/runs/38871146224)
+currently rejects Python 3.15, so the root dependency alerts can be stale; use
+`just audit` to check the current inventory until upstream supports Python 3.15.
+The isolated scanner remains on Python 3.14 while its wheels exclude Python 3.15;
+support scripts run on Python 3.15.
 
 ### Numerical logging false positives
 
@@ -141,7 +151,7 @@ Review new alerts on their own data flow.
 
 ### Benchmark dependency maintenance
 
-As of October 1, 2026, `paste` 1.0.15 enters through the development dependency
+As of October 16, 2026, `paste` 1.0.15 enters through the development dependency
 `faer` 0.24.4, via `gemm` 0.19.0 and `pulp` 0.22.3. Those are the latest
 published upstream versions checked on that date. Repository-owned Rust code
 already uses `pastey`; changing that direct dependency cannot replace upstream

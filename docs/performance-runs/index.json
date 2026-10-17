@@ -1,0 +1,11 @@
+{
+  "runs": [
+    {
+      "baseline": "v0.4.6",
+      "current": "v0.5.0",
+      "id": "634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5",
+      "report_renderer": 2
+    }
+  ],
+  "schema": "research-repo-tools/run-index/v2"
+}

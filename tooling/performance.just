@@ -1,6 +1,10 @@
 # Captured native commands run in the measured checkout with its phase environment.
 # Pass "list" to discover Criterion IDs without collecting samples.
 
+# Cargo runs benches from each package root, including benches/comparison.
+# Resolve the shared output tree before those working directories change.
+export CRITERION_HOME := absolute_path(env("CRITERION_HOME", "target/criterion"))
+
 baseline-all mode="measure": (baseline-vs_linalg mode) (baseline-exact mode)
 
 baseline-exact mode="measure":

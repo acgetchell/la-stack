@@ -19,6 +19,7 @@ from research_repo_tools.common_measurement import measure_prepared_pair
 from research_repo_tools.complete_runs import render_run, run_identity
 from research_repo_tools.evidence import Evidence, serialize_evidence
 from research_repo_tools.measurement import resolve_revision
+from research_repo_tools.postprocess_changelog import MarkdownFormatError, format_markdown
 from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics, run_command
 from research_repo_tools.publication import GitCheck, GlobCheck, MarkerPair, RunSelectionCheck, plan_outputs, publish_publication, replace_section
 from research_repo_tools.release_assets import download_release_asset
@@ -73,7 +74,7 @@ def measure(root: Path, pair: ReleasePair, suite: str, scope: str) -> Evidence:
     # The existing consumer contract deliberately excludes untracked files.
     run_command("git", ["--no-pager", "fetch", "origin", f"refs/tags/{pair.baseline}:refs/tags/{pair.baseline}"], cwd=root)
     baseline_revision = resolve_revision(root, pair.baseline)
-    parent = Path(tempfile.mkdtemp(prefix="la-stack-performance-"))
+    parent = Path(tempfile.mkdtemp(prefix="la-stack-performance-")).resolve(strict=True)
     try:
         with (
             temporary_worktree(root, parent / "baseline", baseline_revision, allow_git_mutations=True) as baseline,
@@ -272,6 +273,38 @@ def _asset_links(document: bytes, *, metric: str, statistic: str, release: str) 
     return pattern.sub(lambda match: match["prefix"] + release.encode() + match["asset"], document)
 
 
+def _readme_table(evidence: Evidence, layout: RunLayout) -> str:
+    """Adapt shared timing/comparison cells to the compact README presentation."""
+    rendered = render_run_table(evidence, layout).replace(" (0.95 confidence)", "")
+    lines = []
+    for line in rendered.splitlines():
+        output_line = line
+        if line.startswith("| "):
+            cells = line[2:-2].split(" | ")
+            if len(cells) != 8:
+                msg = "README comparison requires three timing and two comparison pairs"
+                raise ValueError(msg)
+            if cells[0] == "Case":
+                cells = ["Dimension", "la-stack", "nalgebra", "faer", "Speedup vs nalgebra", "Speedup vs faer"]
+            else:
+                if cells[0] != "---":
+                    for index in (1, 2, 3):
+                        cells[index] = cells[index].replace(" ns [", "<br>[", 1)
+                    for index in (4, 6):
+                        cells[index] += "\N{MULTIPLICATION SIGN}"
+                cells = [cells[index] for index in (0, 1, 2, 3, 4, 6)]
+            output_line = "| " + " | ".join(cells) + " |"
+        elif line.startswith("Intervals are recorded marginal timing intervals;"):
+            output_line = (
+                f"{layout.statistic.capitalize()} time in ns; brackets show the lower and upper bounds of the **95% confidence interval**.\n"
+                "Speedups are ratios of point estimates; no ratio intervals or significance claims are inferred."
+            )
+        elif line.startswith("Time reduction is 100"):
+            continue
+        lines.append(output_line)
+    return "\n".join(lines) + "\n"
+
+
 def publish_plot(root: Path, metric: str, statistic: Literal["mean", "median"], *, log_y: bool, update_readme: bool) -> None:
     """Retain original phases, enforce scientific eligibility, and publish once."""
     # The report registry imports only the independent benchmark catalog.
@@ -329,9 +362,14 @@ def publish_plot(root: Path, metric: str, statistic: Literal["mean", "median"], 
         markers = MarkerPair(f"<!-- BENCH_TABLE:{metric}:{statistic}:new:BEGIN -->", f"<!-- BENCH_TABLE:{metric}:{statistic}:new:END -->")
         document = (root / "README.md").read_bytes()
         git_checks = (GitCheck(context["release"], tuple(outputs), allow_missing=True),)
-        outputs["README.md"] = _asset_links(
-            replace_section(document, markers, render_run_table(evidence, layout)), metric=metric, statistic=statistic, release=context["release"]
-        )
+        inputs["pyproject.toml"] = (root / "pyproject.toml").read_bytes()
+        outputs["README.md"] = format_markdown(
+            _asset_links(
+                replace_section(document, markers, _readme_table(evidence, layout)), metric=metric, statistic=statistic, release=context["release"]
+            ).decode("utf-8"),
+            root / "README.md",
+            root / "pyproject.toml",
+        ).encode("utf-8")
     plan = plan_outputs(root, outputs, inputs=inputs)
     if update_readme and dict(plan.originals)["README.md"] != document:
         msg = "README changed during rendering"
@@ -363,7 +401,7 @@ def dimension_main(argv: list[str] | None = None) -> int:
     try:
         publish_plot(_repo_root(), args.metric, args.stat, log_y=args.log_y, update_readme=args.update_readme)
         return 0
-    except (OSError, ValueError, TypeError, KeyError, ExecutableNotFoundError, subprocess.SubprocessError, ExceptionGroup) as error:
+    except (OSError, ValueError, TypeError, KeyError, MarkdownFormatError, ExecutableNotFoundError, subprocess.SubprocessError, ExceptionGroup) as error:
         print(f"dimension publication: {format_exception_diagnostics(error)}", file=sys.stderr)
         return 2
 
