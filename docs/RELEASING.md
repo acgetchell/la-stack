@@ -403,7 +403,9 @@ for draft visibility; the separate asset writer receives it to attach the archiv
 Neither privileged benchmark job checks out or executes repository code.
 
 The producer budgets 150 minutes for `vs_linalg` and 90 minutes for `exact`
-within a 285-minute job. Both suites retain full release sampling. Inventory
+within a 350-minute job, including a 90-minute preparation budget for uncached
+tool installation, compilation, inventory and input validation.
+Both suites retain full release sampling. Inventory
 and raw-data validation must succeed before the single complete archive is
 packaged and uploaded; inspect the suite timing summary when a run fails.
 See the [hosted runtime budget](BENCHMARKING.md#hosted-release-runtime-budget)
@@ -417,6 +419,11 @@ If preflight or the producer failed, rerun all jobs with `gh run rerun <run-id>`
 or dispatch again. The producer requires a preflight from the current attempt;
 rerunning failed benchmark jobs alone stops before tool setup or measurement
 because the earlier draft check is stale.
+
+A rerun uses the original workflow at the release tag; it does not pick up a
+workflow fix merged later. If the tagged workflow needs repair, keep the release
+as a draft and have the maintainer review the corrected release commit and tag
+before dispatching again. Never move a published tag.
 
 If the producer succeeded and only the publisher failed, preserve the existing
 30-day Actions artifact and rerun failed jobs:

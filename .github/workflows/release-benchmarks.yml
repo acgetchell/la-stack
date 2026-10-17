@@ -62,9 +62,9 @@ jobs:
   release-baseline:
     needs: validate-release
     runs-on: ubuntu-latest
-    # 2 min checkout + 28 min shared setup + 150 min comparative + 90 min exact
-    # + 15 min for the tail and runner overhead.
-    timeout-minutes: 285
+    # 2 min checkout + 90 min shared setup + 150 min comparative + 90 min exact
+    # + 18 min for the tail and runner overhead; below the hosted 360 min limit.
+    timeout-minutes: 350
     env:
       RELEASE_TAG: ${{ inputs.tag }}
       CRITERION_HOME: ${{ github.workspace }}/target/criterion
@@ -82,7 +82,7 @@ jobs:
 
       - name: Prepare release benchmarks
         # One parent timeout bounds all nested installs, validation, and inventory.
-        timeout-minutes: 28
+        timeout-minutes: 90
         uses: ./.github/actions/prepare-release-benchmarks # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
         with:
           validated-attempt: ${{ needs.validate-release.outputs.validated-attempt }}

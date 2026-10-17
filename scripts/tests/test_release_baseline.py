@@ -211,7 +211,11 @@ def test_setup_limits_preserve_benchmark_and_tail_budgets() -> None:
         assert limit is not None, f"unbounded setup step: {step}"
         setup_limits.append(int(limit[1]))
     assert all(limit > 0 for limit in setup_limits)
-    assert sum(setup_limits) <= 30
+    discovery = load_discovery(REPO_ROOT, "tooling/criterion-inventory.toml")
+    discovery_minutes = sum(suite.timeout for suite in discovery.suites) / 60
+    # The failed hosted run spent 27 minutes on uncached tool installation.
+    # Reserve 35 for tools, each declared cold discovery deadline, and 5 for inputs.
+    assert setup_limits[-1] >= 35 + discovery_minutes + 5
     assert "uses: ./.github/actions/prepare-release-benchmarks" in setup
     assert "using: composite" in PREPARATION.read_text(encoding="utf-8")
     benchmark_limits = [
@@ -219,6 +223,7 @@ def test_setup_limits_preserve_benchmark_and_tail_budgets() -> None:
     ]
     assert benchmark_limits == [150, 90]
     assert int(job_limit[1]) - sum(setup_limits) - sum(benchmark_limits) >= 15
+    assert int(job_limit[1]) <= 360
 
 
 @pytest.mark.parametrize(("suite", "step"), [("vs_linalg", "Save comparative Criterion baseline"), ("exact", "Save exact Criterion baseline")])

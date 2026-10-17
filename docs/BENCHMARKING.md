@@ -811,14 +811,21 @@ benchmarking. Publication makes the attached evidence immutable.
 
 The producer runs full `vs_linalg` and `exact` suites sequentially on one
 `ubuntu-latest` runner. Separate steps allow 150 and 90 minutes respectively;
-the outer job allows 285 minutes. Checkout has a 2-minute timeout, followed
-by a composite preparation step with one shared 28-minute timeout covering
-all tool installation, input validation, and inventory. These two limits bound
-setup execution to 30 minutes; exceeding either fails the producer before
-benchmarking or publication. The remaining 15 minutes provide headroom for
+the outer job allows 350 minutes. Checkout has a 2-minute timeout, followed
+by a composite preparation step with one shared 90-minute timeout covering
+all tool installation, input validation, and inventory. Preparation reserves
+35 minutes for uncached tools, the two declared 25-minute discovery deadlines,
+and 5 minutes for input validation. Exceeding either setup deadline fails the
+producer before benchmarking or publication. The remaining 18 minutes provide headroom for
 dataset validation, packaging, upload, diagnostics, and runner overhead.
 Discovery compiles both suites before measurement and shares the preparation
 deadline with the preceding work. Dependency caches remain disabled.
+
+The [first v0.5.0 run](https://github.com/acgetchell/la-stack/actions/runs/38998792985)
+spent about 27 minutes installing uncached tools, then exhausted its old
+28-minute preparation limit during inventory compilation. Neither measurement
+suite started. The expanded setup budget accommodates compilation separately
+from tool installation without reducing measurement time or sampling.
 
 The [v0.4.5 run](https://github.com/acgetchell/la-stack/actions/runs/32444040827)
 measured 304 comparative benchmarks in about 55m 34s, plus 2m 9s compilation
