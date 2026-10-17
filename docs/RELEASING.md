@@ -15,9 +15,11 @@ release process does not require a temporary local tag.
 
 Release recipes are content-idempotent where their inputs permit it. Repeating
 `update-version` on the same UTC date or repeating `performance-readme` for the
-same retained bundle produces no file changes. Crossing UTC midnight
-intentionally advances the release date, and repeated `performance-release`
-runs can produce different measurements.
+same retained bundle produces no file changes. Rerunning `update-version` on a
+later UTC date intentionally advances the declared release date. Crossing
+midnight alone requires no update: the `declared` date policy allows preparation
+and tagging on different UTC days when citation and changelog dates agree.
+Repeated `performance-release` runs can produce different measurements.
 
 ## Prepare the environment
 
@@ -80,8 +82,10 @@ just update-version "$TAG"
 The recipe requires a stable `vX.Y.Z` target that is not older than any
 published stable GitHub release and that has at least one earlier published
 stable release. It infers the previous release from GitHub and updates the Rust
-and Python package metadata and lockfiles, `CITATION.cff`, and README dependency
-metadata. Active navigation stays on `main`; measured artifact links retain their
+package metadata and `Cargo.lock`, `CITATION.cff`, and README dependency metadata.
+The dependency-only Python environment retains its own project and lockfile
+version independently of the Rust release.
+Active navigation stays on `main`; measured artifact links retain their
 recorded revision. `date-released` uses the
 current UTC date; if the target changelog section already exists, its date is
 updated in the same transaction. `CITATION.cff` retains the Zenodo all-versions
@@ -101,15 +105,27 @@ just changelog-unreleased "$TAG" "$RELEASE_DATE"
 This generates `CHANGELOG.md` as though the target tag already existed, archives
 completed minor series under `docs/archives/changelog/`, and uses the explicit
 ISO release date. Verify that `RELEASE_DATE` equals the date recorded in
-`CITATION.cff` by metadata preparation; if preparation crossed UTC midnight,
-rerun `just update-version "$TAG"` first. Generation preserves existing release
-dates and does not update package or citation metadata.
+`CITATION.cff` by metadata preparation. If preparation crossed UTC midnight,
+either reuse that declared date or deliberately advance it by rerunning
+`just update-version "$TAG"` first. Generation preserves existing release dates
+and does not update package or citation metadata.
 Use `just changelog-preview --tag "$TAG" --date "$RELEASE_DATE"` for a read-only
 preview, and `just changelog-check` to validate the root and every archive.
 Review the generated changelog and any archive changes. The
 [Scripts guide](../scripts/README.md#changelog-and-release-tooling) explains
 the supported `dependency-bodies = "preserve"` policy in `pyproject.toml`, which
 preserves authored dependency-note links, text, and code without a local template.
+
+If generation reports `conflicting retained release`, compare the regenerated
+section with the retained archive and its original tagged commit history. Both
+versions already pass through the same formatter before comparison, so this
+error can indicate a content-policy change rather than whitespace differences.
+For example, adopting `dependency-bodies = "preserve"` can restore original
+Dependabot release-note and comparison links omitted by an older template.
+Generate an archive candidate in a disposable directory with the published CLI,
+review the policy migration, and replace only the affected generated archive.
+Preserve release dates, commit identities, and authored notes, then rerun the
+original command and `just changelog-check`.
 
 ### 4. Generate the release performance comparison
 
@@ -142,6 +158,10 @@ This consumes the complete-run payload and evidence envelope retained by
 updates the table and tag-pinned benchmark links in `README.md` with the CSV,
 SVG, and provenance JSON under `docs/assets/bench/`. Until it succeeds, those
 README links continue to reference the previous published artifacts.
+After regeneration, the new tag-pinned image and data links become available
+when the release tag is pushed. Before then, preview the SVG directly from
+`docs/assets/bench/`; a failed image load in the README does not imply that
+generation failed.
 If scratch inputs were cleaned, it uses the validated
 `docs/performance-runs/latest.json` run. Existing
 partial or corrupt scratch inputs remain errors and never trigger a fallback.
@@ -184,7 +204,7 @@ git --no-pager diff --cached
 git commit -m "chore(release): release $TAG
 
 - Bump version to $TAG
-- Update citation and utility package metadata
+- Update citation and README release metadata
 - Generate the release changelog
 - Update benchmark and performance artifacts
 - Update release documentation"

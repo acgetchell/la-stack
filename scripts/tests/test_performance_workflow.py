@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tomllib
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -20,6 +21,7 @@ from research_repo_tools.complete_runs import CompletePolicy, RunSeries, render_
 from research_repo_tools.criterion import parse_comparison
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.legacy_evidence import convert_csv
+from research_repo_tools.postprocess_changelog import MarkdownFormatError
 from research_repo_tools.process import ExecutableNotFoundError, run_command
 from research_repo_tools.release_pairs import ReleasePair
 
@@ -68,6 +70,7 @@ def prepared(tmp_path: Path, fault: str = "") -> tuple[Path, Path, CommonHarness
     for phase in ("baseline", "current"):
         root = tmp_path / phase
         root.mkdir(parents=True)
+        shutil.copyfile(ROOT / "pyproject.toml", root / "pyproject.toml")
         (root / "src").mkdir()
         (root / "src/lib.rs").write_text(f"// {phase}\n", encoding="utf-8")
         for pattern in policy.configuration(ROOT).harness:
@@ -75,6 +78,12 @@ def prepared(tmp_path: Path, fault: str = "") -> tuple[Path, Path, CommonHarness
                 destination = root / source.relative_to(ROOT)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, destination)
+        # The synthetic release pair stays fixed when the real crate advances.
+        manifest = root / "Cargo.toml"
+        contents = manifest.read_text(encoding="utf-8")
+        version = tomllib.loads(contents)["package"]["version"]
+        contents = contents.replace(f'version = "{version}"', f'version = "{PAIR.current.removeprefix("v")}"', 1)
+        manifest.write_text(contents, encoding="utf-8")
         (root / "tooling/fixture.py").write_text(f"INVENTORIES = {inventories!r}\n" + DRIVER, encoding="utf-8")
         (root / "tooling/performance.just").write_text(
             "\n".join(
@@ -147,6 +156,57 @@ def test_common_harness_and_reference_phase(tmp_path: Path) -> None:
     assert (baseline / "benches/exact.rs").read_bytes() == (current / "benches/exact.rs").read_bytes()
     assert {series.phase for series in run.series if series.name in {"nalgebra", "faer"}} == {"baseline"}
     assert all(sample.policy.statistics == ("mean", "median") for _, sample in run.phases)
+
+
+def test_measurement_worktrees_accept_an_aliased_system_temporary_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Canonicalize owned temporary paths before the native worktree safety check."""
+    root = tmp_path.resolve() / "repository"
+    root.mkdir()
+    (root / "Cargo.toml").write_text('[package]\nname = "fixture"\nversion = "0.4.6"\n', encoding="utf-8")
+    run_command("git", ["--no-pager", "init", "--quiet"], cwd=root)
+    run_command("git", ["--no-pager", "add", "Cargo.toml"], cwd=root)
+    run_command(
+        "git",
+        [
+            "--no-pager",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "-m",
+            "fixture",
+        ],
+        cwd=root,
+    )
+    run_command("git", ["--no-pager", "-c", "tag.gpgsign=false", "tag", PAIR.baseline], cwd=root)
+    run_command("git", ["--no-pager", "remote", "add", "origin", str(root)], cwd=root)
+    physical = tmp_path.resolve() / "temporary"
+    physical.mkdir()
+    alias = tmp_path.resolve() / "temporary-alias"
+    if sys.platform == "win32":
+        run_command("cmd", ["/c", "mklink", "/J", str(alias), str(physical)], cwd=tmp_path)
+    else:
+        alias.symlink_to(physical, target_is_directory=True)
+    monkeypatch.setattr(workflow.tempfile, "tempdir", str(alias))
+    monkeypatch.setattr(workflow, "measurement_plan", lambda *_args: object())
+
+    def benchmark_ready(baseline: Path, current: Path, _plan: object, _pair: ReleasePair, *, working_tree: bool) -> Evidence:
+        assert working_tree
+        for checkout in (baseline, current):
+            assert checkout.is_dir()
+            assert not any(path.is_symlink() or path.is_junction() for path in (checkout, *checkout.parents))
+            assert (checkout / "Cargo.toml").read_bytes() == (root / "Cargo.toml").read_bytes()
+        msg = "native worktrees ready"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(workflow, "measure_prepared_pair", benchmark_ready)
+    with pytest.raises(RuntimeError, match="native worktrees ready"):
+        workflow.measure(root, PAIR, "all", "release-signal")
+    assert list(physical.iterdir()) == []
 
 
 @pytest.mark.parametrize("fault", ["gate", "stale", "missing-row", "missing-statistic", "missing-sample"])
@@ -240,6 +300,15 @@ def test_readme_uses_original_reference_phases_after_cleanup(complete_run: tuple
     monkeypatch.chdir(root.parent)
     arguments = ["--update-readme", "--log-y"]
     assert plot.dimension_main(arguments) == 0
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    table = readme.split("<!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->", 1)[1].split("<!-- BENCH_TABLE:lu_solve:median:new:END -->", 1)[0]
+    assert "| Dimension | la-stack | nalgebra | faer | Speedup vs nalgebra | Speedup vs faer |" in table
+    assert "(0.95 confidence)" not in table
+    assert table.count("95% confidence interval") == 1
+    assert "Median time in ns; brackets show the lower and upper bounds" in table
+    assert "8<br>[7.2, 8.8]" in table
+    assert "1.25\N{MULTIPLICATION SIGN}" in table
+    assert "time reduction" not in table
     assets = root / "docs/assets/bench"
     csv = assets / "vs_linalg_lu_solve_median.csv"
     import csv as csv_module  # noqa: PLC0415
@@ -291,10 +360,11 @@ def test_readme_uses_original_reference_phases_after_cleanup(complete_run: tuple
         (ExecutableNotFoundError("Git executable not found"), "Git executable not found"),
         (subprocess.CalledProcessError(128, ["git"], stderr=b"fatal: repository unavailable"), "fatal: repository unavailable"),
         (subprocess.TimeoutExpired(["git"], 30), "command timed out after 30 seconds"),
+        (MarkdownFormatError("README formatter failed"), "README formatter failed"),
     ],
-    ids=["missing-git", "git-failure", "git-timeout"],
+    ids=["missing-git", "git-failure", "git-timeout", "markdown-format-failure"],
 )
-def test_plot_git_failure_preserves_publication(
+def test_plot_failure_preserves_publication(
     complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], error: Exception, diagnostic: str
 ) -> None:
     root, evidence = complete_run
@@ -308,10 +378,13 @@ def test_plot_git_failure_preserves_publication(
         (assets / f"vs_linalg_lu_solve_median{suffix}").write_bytes(b"previous artifact\n")
     before = {path: path.read_bytes() for path in (*assets.iterdir(), root / "README.md")}
 
-    def fail_git(*_args: object, **_kwargs: object) -> None:
+    def fail_before_publication(*_args: object, **_kwargs: object) -> None:
         raise error
 
-    monkeypatch.setattr(publication, "run_git_bytes", fail_git)
+    if isinstance(error, MarkdownFormatError):
+        monkeypatch.setattr(plot, "format_markdown", fail_before_publication)
+    else:
+        monkeypatch.setattr(publication, "run_git_bytes", fail_before_publication)
     monkeypatch.setattr(plot, "_repo_root", lambda: root)
     assert plot.dimension_main(["--update-readme"]) == 2
     output = capsys.readouterr()
@@ -459,11 +532,14 @@ def test_complete_report_passes_markdown_recipes_without_rewriting_history(compl
     workflow.promote(root, stem)
     # Exercise the real recipes against generated, nonignored Markdown in a
     # disposable checkout, reusing the already locked test environment.
-    for name in ("pyproject.toml", "uv.lock", ".python-version"):
+    for name in ("uv.lock", ".python-version"):
         shutil.copyfile(ROOT / name, root / name)
+    shutil.copyfile(ROOT / "README.md", root / "README.md")
+    workflow.publish_plot(root, "lu_solve", "median", log_y=True, update_readme=True)
     history = root / policy.archive_directory(root)
     originals = {path: path.read_bytes() for path in history.rglob("*") if path.is_file()}
     originals[root / "docs/performance.md"] = (root / "docs/performance.md").read_bytes()
+    originals[root / "README.md"] = (root / "README.md").read_bytes()
     for recipe in ("markdown-check", "markdown-fix", "markdown-check"):
         result = run_command(
             "just",
@@ -553,7 +629,7 @@ def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path:
     cargo.write_text(
         "#!/bin/sh\n"
         "directory=$(pwd -W 2>/dev/null || pwd -P)\n"
-        'printf "%s|%s\\n" "$directory" "$*" >> "$CARGO_RECORD"\n'
+        'printf "%s|%s|%s\\n" "$directory" "$CRITERION_HOME" "$*" >> "$CARGO_RECORD"\n'
         'case "$*" in\n'
         f'  *"--bench exact"*) printf "%s: benchmark\\n" {shlex.join(exact)} ;;\n'
         f'  *"la_stack --noplot"*) printf "%s: benchmark\\n" {shlex.join(current_ids)} ;;\n'
@@ -566,6 +642,7 @@ def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path:
     record = tmp_path / "commands.txt"
     monkeypatch.setenv("PATH", f"{binary}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("CARGO_RECORD", str(record))
+    monkeypatch.setenv("CRITERION_HOME", "target/criterion")
     monkeypatch.chdir(tmp_path)
     pair = ReleasePair("v0.4.6", baseline_tag)
     plan = policy.measurement_plan(root, pair, "all", scope)
@@ -585,10 +662,18 @@ def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path:
         run_command(command[0], command[1:], cwd=root)
     lines = record.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 9
-    for line in lines:
-        directory, separator, arguments = line.partition("|")
-        assert separator == "|"
+    for index, line in enumerate(lines):
+        directory, criterion_home, arguments = line.split("|", 2)
         assert Path(directory).samefile(root)
+        output = Path(criterion_home)
+        assert output.is_absolute()
+        if index < 4:
+            # Discovery supplies its own disposable absolute output tree.
+            assert not output.is_relative_to(root)
+        else:
+            # Cargo runs comparison benches from their workspace member, so
+            # every benchmark process must receive the same absolute tree.
+            assert output == root / "target/criterion"
         assert "--locked" in arguments.split()
     assert all("--list" in line for line in lines[:4])
     assert all("--list" not in line for line in lines[4:])

@@ -58,6 +58,11 @@ release comparisons.
 `performance-readme` and `plot-vs-linalg` use the shared complete-run SVG, CSV and
 table renderers. The former preserves current source/harness membership and
 digests and advances the three existing measured-artifact pointers transactionally.
+README candidates pass the shared Markdown formatter with repository policy
+before any publication files are replaced.
+The README adapter labels dimensions, keeps each confidence interval below its
+timing, states the confidence level once, and selects the shared speedup columns.
+Timing estimates and comparison arithmetic remain owned by the shared renderer.
 
 ```bash
 just performance-release

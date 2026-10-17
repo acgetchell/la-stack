@@ -8,3 +8,5 @@ dependencies = [ "semgrep==1.180.0" ]
 package = false
 # Semgrep's sdist does not bundle its required native engine.
 no-build-package = [ "semgrep" ]
+# Semgrep pins vulnerable MCP 1.29.0; retain the patched 1.x API until upstream updates.
+override-dependencies = [ "mcp>=1.30.0,<2" ]
