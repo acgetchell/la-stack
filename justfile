@@ -38,8 +38,9 @@ _ensure-shfmt: _ensure-uv
     uv run --locked shfmt --version >/dev/null
 
 # uv enforces its exact declaration before running the locked CLI.
+# Send prerequisite diagnostics to stderr so generated stdout stays clean.
 _ensure-uv:
-    uv run --locked --no-sync --no-python-downloads research-repo-tools deps check-uv
+    uv run --locked --no-sync --no-python-downloads research-repo-tools deps check-uv >&2
 
 _ensure-yamllint: _ensure-uv
     uv run --locked yamllint --version >/dev/null
@@ -468,7 +469,7 @@ release-package:
 
 # Approve the benchmark-equipped draft as the authenticated maintainer.
 release-publish tag: (_release-notes-check tag)
-    uv run --locked --no-sync research-repo-tools release publish {{ quote(tag) }}
+    uv run --locked --no-sync research-repo-tools release publish {{ quote(tag) }} --approve
 
 # Verify the published GitHub release, required assets, and exact crates.io version.
 release-verify tag:

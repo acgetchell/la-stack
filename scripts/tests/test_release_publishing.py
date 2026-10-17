@@ -163,6 +163,45 @@ def test_real_notes_recipe_checks_generated_body_and_title(tmp_path: Path, misma
     assert (result.returncode == 0) == (mismatch == "none"), result.stderr
 
 
+def test_release_notes_stdout_excludes_setup_diagnostics() -> None:
+    # Include the dependency commands that polluted the generated notes.
+    script = dry_run(REPO_ROOT, "release-notes", [TAG]).stderr
+    runner = (
+        "uv() {\n"
+        '  if [[ "$*" == "run --locked --no-sync --no-python-downloads research-repo-tools deps check-uv" ]]; then\n'
+        "    printf '%s\\n' 'fixture setup diagnostic'\n"
+        '  elif [[ "$*" == "sync --locked --group dev" ]]; then\n'
+        "    return 0\n"
+        "  else\n"
+        '    [[ "$1 $2 $3 $4 $5" == "run --locked --group dev research-repo-tools" ]] || return 90\n'
+        "    shift 5\n"
+        f'    {shlex.quote(sys.executable)} -m research_repo_tools --root {shlex.quote(str(REPO_ROOT))} "$@"\n'
+        "  fi\n"
+        "}\n"
+    )
+    result = run_command("bash", ["--noprofile", "--norc", "-euc", runner + script], cwd=REPO_ROOT, check=False)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == changelog.notes(POLICY, TAG)[0]
+    assert "fixture setup diagnostic" in result.stderr
+
+
+def test_publish_recipe_passes_explicit_approval(monkeypatch: pytest.MonkeyPatch) -> None:
+    requested: list[str] = []
+
+    def publish(settings: config.Config, tag: str) -> None:
+        assert settings.root == REPO_ROOT
+        requested.append(tag)
+
+    # Exercise the installed argument parser and dispatch, replacing only the
+    # irreversible publication boundary with an in-memory request recorder.
+    monkeypatch.setattr(release_publishing, "publish_reviewed_release", publish)
+    # The publication command follows the separately tested notes precheck.
+    command = shlex.split(dry_run(REPO_ROOT, "release-publish", [TAG]).stderr.splitlines()[-1])
+    assert command[:7] == ["uv", "run", "--locked", "--no-sync", "research-repo-tools", "release", "publish"]
+    assert main(["--root", str(REPO_ROOT), *command[5:]]) == 0
+    assert requested == [TAG]
+
+
 def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
     # PyYAML's YAML 1.1 parser reads the Actions `on` key as True.
