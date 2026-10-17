@@ -368,15 +368,15 @@ for the algorithms, validity boundaries, and supporting references.
 - ✅ Error-bounded f64 dot, affine-difference, and determinant filtering plus
   optional exact signs (`dot_with_errbound`, `dot_difference_with_errbound`,
   `det_errbound`, `det_sign_exact`)
-- ✅ Overflow- and underflow-safe Euclidean vector norms (`norm`)
-- ✅ Outward-rounded interval expressions and division-free determinant signs
-  through D=7, with explicit inconclusive evidence
 - ✅ Exact determinant values and linear solves via optional arbitrary-precision
   arithmetic (`det_exact`, `solve_exact`, strict/rounded f64 conversions)
 - ✅ Explicit algorithms (LU, solve, determinant)
 - ✅ Inline, stack-backed storage for core types; optional arbitrary-precision
   exact values allocate as required
 - ✅ No runtime dependencies by default (optional features may add deps)
+- ✅ Outward-rounded interval expressions and division-free determinant signs
+  through D=7, with explicit inconclusive evidence
+- ✅ Overflow- and underflow-safe Euclidean vector norms (`norm`)
 - ✅ `unsafe` forbidden
 
 See [CHANGELOG.md](https://github.com/acgetchell/la-stack/blob/main/CHANGELOG.md)
