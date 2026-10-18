@@ -219,6 +219,74 @@ fn one_dimensional_angles_and_signed_zeros() {
 }
 
 #[test]
+fn sparse_support_positions_preserve_cancellation_and_subnormal_angles() {
+    let n = 2.0_f64.powi(51);
+    let tiny = f64::from_bits(1);
+    for i in 0..6 {
+        for j in i + 1..6 {
+            for (a, b, expected) in [
+                ([n, n - 1.0], [n + 1.0, n], 2.0_f64.powi(-103)),
+                ([3.0, tiny], [3.0, -tiny], tiny),
+                ([1.0, 0.0], [0.0, -1.0], FRAC_PI_2),
+            ] {
+                let mut left = [-0.0; 6];
+                let mut right = [0.0; 6];
+                [left[i], left[j]] = a;
+                [right[i], right[j]] = b;
+                check(left, right, expected, expected * 4.0 * f64::EPSILON);
+            }
+        }
+    }
+}
+
+#[test]
+fn long_sparse_slices_validate_every_coordinate_and_do_not_allocate() {
+    let mut left = [-0.0; 129];
+    let mut right = [0.0; 129];
+    left[37] = 1.0;
+    right[37] = 1.0;
+    right[91] = f64::from_bits(1);
+    let counts = allocation_counter::measure(|| {
+        let actual = black_box(left.as_slice())
+            .angle(black_box(right.as_slice()))
+            .unwrap();
+        assert_eq!(actual.to_bits(), 1);
+    });
+    assert_eq!(counts.count_total, 0);
+
+    // Errors on trailing axes still precede any numerical work or zero error.
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        right[128] = value;
+        assert_matches!(
+            left.as_slice().angle(&right),
+            Err(LaError::NonFinite {
+                origin: NonFiniteOrigin::Input,
+                location: NonFiniteLocation::VectorOperandEntry {
+                    operand: VectorOperand::Right,
+                    index: 128,
+                    ..
+                },
+                ..
+            })
+        );
+        left[127] = value;
+        assert_matches!(
+            left.as_slice().angle(&right),
+            Err(LaError::NonFinite {
+                origin: NonFiniteOrigin::Input,
+                location: NonFiniteLocation::VectorOperandEntry {
+                    operand: VectorOperand::Left,
+                    index: 127,
+                    ..
+                },
+                ..
+            })
+        );
+        left[127] = -0.0;
+    }
+}
+
+#[test]
 fn nearly_proportional_directions_keep_product_cancellation_residuals() {
     for exponent in 10..=51 {
         let n = 2.0_f64.powi(exponent);

@@ -12,7 +12,7 @@ focused robustness APIs, downstream ergonomics, API-contract cleanup,
 documentation, validation, invariant audits, benchmark coverage, and
 release/tooling hardening. The current release is `v0.4.6`.
 The next planned release is `v0.5.0`, consolidating the work previously targeted
-at `v0.4.7`. It remains on stable Rust and makes the Rust 1.99.0 minimum an
+at `v0.4.7`. It remains on stable Rust and makes the Rust 1.99.1 minimum an
 explicit downstream upgrade boundary.
 Expanded const-generic work is tracked separately without an assigned release;
 it depends on the specific language capabilities required by the proposed API.
@@ -254,7 +254,7 @@ Completed work included in this release:
 - Interval arithmetic and determinant signs
   ([#247](https://github.com/acgetchell/la-stack/issues/247)) avoid redundant work
   while retaining containment guarantees and const evaluation.
-- Rust 1.99.0 and LLVM 23
+- Rust 1.99.1 and LLVM 23
   ([#251](https://github.com/acgetchell/la-stack/issues/251)) establish the new
   MSRV and strict floating-point baseline, with retained correctness, codegen,
   and performance evidence.

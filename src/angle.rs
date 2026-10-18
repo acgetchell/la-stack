@@ -169,7 +169,6 @@ fn angle_with_scales(
     left_scale: f64,
     right_scale: f64,
 ) -> Result<f64, LaError> {
-    const REDUCE: f64 = f64::from_bits((1023 - 500) << 52);
     const SMALL_RATIO: f64 = f64::from_bits((1023 - 27) << 52);
 
     if left.is_empty() {
@@ -186,30 +185,17 @@ fn angle_with_scales(
 
     let left_scale = DirectionScale::new(left_scale);
     let right_scale = DirectionScale::new(right_scale);
-    let mut dot = 0.0_f64;
-    let mut dot_error = 0.0_f64;
-    let mut exterior_norm = 0.0_f64;
-    for (i, (&left_i, &right_i)) in left.iter().zip(right).enumerate() {
-        let left_i = left_scale.apply(left_i);
-        let right_i = right_scale.apply(right_i);
-        // Reduce products before accumulating: even a usize-sized sum and
-        // exterior norm retain ample overflow headroom on 64-bit targets.
-        let product = (left_i * right_i) * REDUCE;
-        let next_dot = dot + product;
-        dot_error += two_sum_error(dot, product, next_dot);
-        dot = next_dot;
-        for (&left_j, &right_j) in left[i + 1..].iter().zip(&right[i + 1..]) {
-            let left_j = left_scale.apply(left_j);
-            let right_j = right_scale.apply(right_j);
-            let minor = difference_of_products(left_i, right_j, left_j, right_i);
-            exterior_norm = exterior_norm.hypot(minor * REDUCE);
-        }
-    }
+    // Select once, after validation, to keep the dense inner loop branch-free.
+    let shared_zeros = left.iter().zip(right).any(|(&x, &y)| x == 0.0 && y == 0.0);
+    let (dot, exterior_norm) = if shared_zeros {
+        angle_reductions::<true>(left, right, &left_scale, &right_scale)
+    } else {
+        angle_reductions::<false>(left, right, &left_scale, &right_scale)
+    };
 
     // Lagrange's identity: ||left ∧ right|| = ||left|| ||right|| sin(θ).
     // The dot product has the same norm factor times cos(θ). atan2 cancels it
     // without forming the norm product or halving a subnormal angle.
-    let dot = dot + dot_error;
     // Some platform atan2 implementations lose subnormal outputs. For
     // 0 <= r <= 2^-27, 0 <= r - atan(r) <= r^3/3 <= r*2^-55;
     // direct division retains tiny outputs without a transcendental underflow.
@@ -225,4 +211,46 @@ fn angle_with_scales(
             ArithmeticOperation::VectorAngle,
         ))
     }
+}
+
+/// Preserve one arithmetic implementation while specializing shared-zero checks.
+#[inline]
+fn angle_reductions<const SKIP_SHARED_ZEROS: bool>(
+    left: &[f64],
+    right: &[f64],
+    left_scale: &DirectionScale,
+    right_scale: &DirectionScale,
+) -> (f64, f64) {
+    const REDUCE: f64 = f64::from_bits((1023 - 500) << 52);
+
+    let mut dot = 0.0_f64;
+    let mut dot_error = 0.0_f64;
+    let mut exterior_norm = 0.0_f64;
+    for (i, (&left_i, &right_i)) in left.iter().zip(right).enumerate() {
+        // Validation is complete. A shared-zero axis contributes neither a dot
+        // term nor any minor; skip it without reordering the remaining terms.
+        // Compare raw coordinates so scaling underflow cannot erase an axis.
+        if SKIP_SHARED_ZEROS && left_i == 0.0 && right_i == 0.0 {
+            continue;
+        }
+        let left_i = left_scale.apply(left_i);
+        let right_i = right_scale.apply(right_i);
+        // Reduce products before accumulating: even a usize-sized sum and
+        // exterior norm retain ample overflow headroom on 64-bit targets.
+        let product = (left_i * right_i) * REDUCE;
+        let next_dot = dot + product;
+        dot_error += two_sum_error(dot, product, next_dot);
+        dot = next_dot;
+        for (&left_j, &right_j) in left[i + 1..].iter().zip(&right[i + 1..]) {
+            if SKIP_SHARED_ZEROS && left_j == 0.0 && right_j == 0.0 {
+                continue;
+            }
+            let left_j = left_scale.apply(left_j);
+            let right_j = right_scale.apply(right_j);
+            let minor = difference_of_products(left_i, right_j, left_j, right_i);
+            exterior_norm = exterior_norm.hypot(minor * REDUCE);
+        }
+    }
+
+    (dot + dot_error, exterior_norm)
 }

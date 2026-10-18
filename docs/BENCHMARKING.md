@@ -75,7 +75,9 @@ promotion in one command.
 
 **`angle`** (`benches/angle.rs`) measures unsigned angles in ambient dimensions
 3–6 using dense, nearly parallel, nearly antipodal, mixed-scale, and subnormal
-inputs. Each fixture checks independent analytical or integer exterior-product
+inputs. Structured sparse fixtures vary support size and position; dense and
+sparse endpoint cases cover identical and opposite directions. Each fixture
+checks independent analytical or integer Gram/exterior-product
 references before timing. Run it with
 `cargo bench --locked --features bench --bench angle`.
 The ordinary max-scaled Kahan control computes the same angles on these vetted

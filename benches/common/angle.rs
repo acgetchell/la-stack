@@ -2,7 +2,7 @@
 
 //! Independently checked fixtures shared by angle benchmarks and their tests.
 
-use core::f64::consts::{FRAC_PI_4, PI};
+use core::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 
 use la_stack::{Vector, VectorAngle};
 
@@ -75,7 +75,7 @@ impl<const D: usize> AngleInput<D> {
     clippy::cast_precision_loss,
     reason = "benchmark dimensions are 3 through 6"
 )]
-pub(crate) fn fixtures<const D: usize>() -> [AngleInput<D>; 5] {
+pub(crate) fn fixtures<const D: usize>() -> [AngleInput<D>; 14] {
     assert!((3..=6).contains(&D));
     let planar = |x, y| {
         let mut values = [0.0; D];
@@ -88,8 +88,67 @@ pub(crate) fn fixtures<const D: usize>() -> [AngleInput<D>; 5] {
     // Integer dot is D-2; D-1 nonzero exterior minors each have magnitude 2.
     let dense_reference = (4.0 * (D - 1) as f64).sqrt().atan2((D - 2) as f64);
     let t = 2.0_f64.powi(-30);
+    let mut adjacent_left = [0.0; D];
+    let mut adjacent_right = [-0.0; D];
+    adjacent_left[1] = 3.0;
+    adjacent_left[2] = 4.0;
+    adjacent_right[1] = -4.0;
+    adjacent_right[2] = 3.0;
+    let mut alternating_left = [0.0; D];
+    let mut alternating_right = [0.0; D];
+    for i in (0..D).step_by(2) {
+        alternating_left[i] = 1.0;
+        alternating_right[i] = if i == 0 { -1.0 } else { 1.0 };
+    }
+    let support = D.div_ceil(2) as f64;
+    let alternating_reference = (4.0 * (support - 1.0)).sqrt().atan2(support - 2.0);
+    // Deterministic varied dense coordinates, independently evaluated with
+    // integer Gram products (no production minor or compensated reduction).
+    let dense_left = core::array::from_fn(|i| i32::try_from(i + 1).or_abort("small dimension"));
+    let dense_varied = core::array::from_fn(|i| {
+        i32::try_from(D - i).or_abort("small dimension") * if i % 2 == 0 { 1 } else { -1 }
+    });
+    let dot: i32 = dense_left
+        .iter()
+        .zip(dense_varied)
+        .map(|(x, y)| x * y)
+        .sum();
+    let left_squared: i32 = dense_left.iter().map(|x| x * x).sum();
+    let right_squared: i32 = dense_varied.iter().map(|x| x * x).sum();
+    let varied_reference = f64::from(left_squared * right_squared - dot.pow(2))
+        .sqrt()
+        .atan2(f64::from(dot));
     [
         AngleInput::new("dense", [1.0; D], dense_right, dense_reference),
+        AngleInput::new(
+            "dense_varied",
+            dense_left.map(f64::from),
+            dense_varied.map(f64::from),
+            varied_reference,
+        ),
+        AngleInput::new("dense_identical", [1.0; D], [1.0; D], 0.0),
+        AngleInput::new("dense_antipodal", [1.0; D], [-1.0; D], PI),
+        AngleInput::new("sparse_adjacent", adjacent_left, adjacent_right, FRAC_PI_2),
+        AngleInput::new(
+            "sparse_alternating",
+            alternating_left,
+            alternating_right,
+            alternating_reference,
+        ),
+        AngleInput::new("sparse_identical", planar(1.0, 0.0), planar(1.0, -0.0), 0.0),
+        AngleInput::new("sparse_antipodal", planar(0.0, 1.0), planar(-0.0, -1.0), PI),
+        AngleInput::new(
+            "subnormal_axes",
+            planar(f64::from_bits(1), 0.0),
+            planar(0.0, f64::from_bits(1)),
+            FRAC_PI_2,
+        ),
+        AngleInput::new(
+            "maximum_small_angle",
+            planar(f64::MAX, 0.0),
+            planar(f64::MAX, f64::MAX * t),
+            t.atan(),
+        ),
         AngleInput::new("near_parallel", planar(1.0, 0.0), planar(1.0, t), t.atan()),
         AngleInput::new(
             "near_antipodal",

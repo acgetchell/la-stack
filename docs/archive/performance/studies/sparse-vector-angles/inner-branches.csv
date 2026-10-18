@@ -1,0 +1,4 @@
+schema,statistic,unit,benchmark,coverage,baseline_point,baseline_lower,baseline_upper,baseline_confidence_level,current_point,current_lower,current_upper,current_confidence_level
+research-repo-tools/criterion-comparison/v1,median,ns,angle_d6_dense/borrowed_slice,common,64.04660177230835,63.750386238098145,64.34281730651855,0.95,78.16572999954224,77.73661613464355,78.59484386444092,0.95
+research-repo-tools/criterion-comparison/v1,median,ns,angle_d6_dense_varied/borrowed_slice,common,100.06686019897461,99.09240341186523,101.04131698608398,0.95,108.16148948669434,107.94059371948242,108.38238525390625,0.95
+research-repo-tools/criterion-comparison/v1,median,ns,angle_d6_near_parallel/borrowed_slice,common,48.707863330841064,48.60774803161621,48.80797863006592,0.95,15.545467495918274,15.428046464920044,15.662888526916504,0.95

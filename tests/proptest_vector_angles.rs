@@ -133,6 +133,7 @@ macro_rules! gen_angle_properties {
                 fn [<angle_full_binary64_range_ $d d>](
                     left in array::[<uniform $d>](any::<u64>()),
                     right in array::[<uniform $d>](any::<u64>()),
+                    gaps in array::[<uniform $d>](0_usize..=8),
                 ) {
                     let a = left.map(f64::from_bits);
                     let b = right.map(f64::from_bits);
@@ -144,6 +145,20 @@ macro_rules! gen_angle_properties {
                     prop_assert_eq!(a.as_slice().angle(&a).unwrap().to_bits(), 0);
                     prop_assert_eq!(a.as_slice().angle(&a.map(|x| -x)).unwrap().to_bits(), PI.to_bits());
                     prop_assert!((angle + a.as_slice().angle(&b.map(|x| -x)).unwrap() - PI).abs() <= 4.0 * f64::EPSILON);
+                    // Inserting shared signed-zero axes must preserve the
+                    // reduction result, including subnormal and cancellation cases.
+                    let mut padded_a = vec![-0.0];
+                    let mut padded_b = vec![0.0];
+                    for i in 0..$d {
+                        padded_a.push(a[i]);
+                        padded_b.push(b[i]);
+                        padded_a.extend(core::iter::repeat_n(0.0, gaps[i]));
+                        padded_b.extend(core::iter::repeat_n(-0.0, gaps[i]));
+                    }
+                    prop_assert_eq!(
+                        padded_a.as_slice().angle(padded_b.as_slice()).unwrap().to_bits(),
+                        angle.to_bits()
+                    );
                     #[cfg(feature = "exact")]
                     {
                         let expected = rational_reference::angle(&a, &b);

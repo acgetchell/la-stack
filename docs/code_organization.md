@@ -96,6 +96,8 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
   `just test-python` or the aggregate validation workflows.
 - `examples/` contains complete runnable workflows. README mirrors and public
   guide doctests live in `src/lib.rs`.
+- `examples/vector_angles.rs` demonstrates fixed-vector and borrowed-slice angles,
+  independent magnitude scaling, and subnormal separations.
 
 Use [Testing guidance](dev/testing.md) for dimension coverage and test design,
 and [Documentation guidance](dev/docs.md) for executable-example ownership.
@@ -239,6 +241,8 @@ The [interval and certified-reduction study](archive/performance/studies/interva
 owns the #247/#248 same-toolchain comparisons and downstream adoption evidence.
 The [vector-angle study](archive/performance/studies/vector-angles.md) owns the
 #249 formulation decision, comparative timings, and retained source provenance.
+The [sparse vector-angle study](archive/performance/studies/sparse-vector-angles.md)
+owns the #287 shared-zero optimization, dense controls, and retained evidence.
 The [triangular rational solve study](archive/performance/studies/rational-triangular.md)
 owns the #246 Rust 1.99 baseline, adapter/kernel comparisons, and retained evidence.
 The [algebraic floating-point study](archive/performance/studies/algebraic-float.md)

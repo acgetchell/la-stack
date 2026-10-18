@@ -262,7 +262,7 @@ just release-package
 
 Require successful native `CI` builds on Linux, macOS and Windows, plus Clippy
 and repository-rule SARIF checks, for this exact commit before proceeding.
-These builds include the declared Rust 1.99.0 baseline, default/exact doctests,
+These builds include the declared Rust 1.99.1 baseline, default/exact doctests,
 all-feature tests, interval and linear-form regressions, examples and benchmark
 compilation. The publishing policy in `pyproject.toml` binds all five check names
 to the GitHub Actions App. CodeRabbit and human review remain protected-PR
