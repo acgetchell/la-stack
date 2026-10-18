@@ -12,6 +12,7 @@ The numerical contract and derivation remain in
 - [Measurements](#measurements)
 - [Validation](#validation)
 - [Provenance](#provenance)
+- [Replaying the summaries](#replaying-the-summaries)
 
 ## Scope
 
@@ -160,3 +161,34 @@ not the final specialization. All 262 formal measurement records contain 50
 finite, positive iteration counts and elapsed times; the exploratory quick
 records are separate. The [provenance manifest](sparse-vector-angles/provenance.json)
 records artifact hashes and measurement settings.
+
+## Replaying the summaries
+
+From the repository root, use the locked `research-repo-tools` version to
+regenerate all three CSVs from the retained records. Both sides select Criterion's
+`new` sample, with median estimates in nanoseconds. The exploratory comparison
+uses the rejected prototype as its candidate. These commands do not rerun timing;
+they write to a new temporary directory and compare the results byte for byte
+with the published summaries:
+
+```bash
+study_dir=docs/archive/performance/studies/sparse-vector-angles
+replay_dir="$(mktemp -d)"
+uv run --locked research-repo-tools performance extract \
+  "$study_dir/evidence.tar.gz" "$replay_dir/raw"
+uv run --locked research-repo-tools performance compare \
+  "$replay_dir/raw/measurements/before" "$replay_dir/raw/measurements/after" \
+  --baseline-sample new --current-sample new --statistic median --unit ns \
+  --format csv --output "$replay_dir/measurements.csv"
+uv run --locked research-repo-tools performance compare \
+  "$replay_dir/raw/confirmation/before" "$replay_dir/raw/confirmation/after" \
+  --baseline-sample new --current-sample new --statistic median --unit ns \
+  --format csv --output "$replay_dir/confirmation.csv"
+uv run --locked research-repo-tools performance compare \
+  "$replay_dir/raw/exploratory-before" "$replay_dir/raw/exploratory-after" \
+  --baseline-sample new --current-sample new --statistic median --unit ns \
+  --format csv --output "$replay_dir/inner-branches.csv"
+cmp "$study_dir/measurements.csv" "$replay_dir/measurements.csv"
+cmp "$study_dir/confirmation.csv" "$replay_dir/confirmation.csv"
+cmp "$study_dir/inner-branches.csv" "$replay_dir/inner-branches.csv"
+```
