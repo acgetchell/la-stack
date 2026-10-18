@@ -11,12 +11,23 @@ mod bench_utils;
 fn validate<const D: usize>() {
     let names = [
         "dense",
+        "dense_varied",
+        "dense_identical",
+        "dense_antipodal",
+        "sparse_adjacent",
+        "sparse_alternating",
+        "sparse_identical",
+        "sparse_antipodal",
+        "subnormal_axes",
+        "maximum_small_angle",
         "near_parallel",
         "near_antipodal",
         "mixed_scale",
         "subnormal",
     ];
-    for (fixture, name) in angle::fixtures::<D>().into_iter().zip(names) {
+    let fixtures = angle::fixtures::<D>();
+    assert_eq!(fixtures.len(), names.len());
+    for (fixture, name) in fixtures.into_iter().zip(names) {
         assert_eq!(fixture.name(), name);
         assert!(fixture.left().angle(fixture.right()).unwrap().is_finite());
     }

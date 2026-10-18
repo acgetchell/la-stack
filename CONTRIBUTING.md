@@ -187,7 +187,7 @@ Any future approximate or fast-math API requires a separate design issue, an
 explicit public contract, independent correctness analysis, and representative
 benchmarks. It must remain opt-in and must not change existing APIs.
 
-The current MSRV and contributor toolchain are Rust 1.99.0. Both workspace
+The current MSRV and contributor toolchain are Rust 1.99.1. Both workspace
 manifests and `clippy.toml` match `rust-toolchain.toml`; CI, coverage, and release
 setup consume that declaration. Run `just setup-tools` after changing it:
 managed Cargo tools are installed separately for each compiler version.

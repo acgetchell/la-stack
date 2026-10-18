@@ -728,9 +728,14 @@ reductions or their rounding. Larger ratios and nonpositive dots use `atan2`.
 The exterior norm is nonnegative, so the result stays in `[0, π]` without clamping
 or a half-angle intermediate. Identical inputs yield exactly positive zero;
 opposite inputs yield the binary64 constant `π`, including signed-zero changes.
-The price of retaining all minors is `N(N-1)/2` compensated differences and
-`hypot` steps. This is intended for small dimensions, including Delaunay's 3–6,
-while remaining allocation-free and without an artificial dimension limit.
+After validation, axes where both raw coordinates are zero (including signed
+zero) can be skipped: their dot contribution and every incident minor are zero.
+The remaining terms retain their original order and arithmetic. With `K` axes
+in the union of the two supports, this requires `K(K-1)/2` compensated
+differences and `hypot` steps; scanning still takes up to quadratic time in
+the ambient length. Dense inputs select a loop without shared-zero checks.
+This is intended for small dimensions, including Delaunay's 3–6, while remaining
+allocation-free and without an artificial dimension limit.
 
 This is approximate arithmetic over the stored inputs. There is no certified
 absolute error bound, exact parallelism classification, or correct-rounding

@@ -58,8 +58,6 @@ while keeping the API intentionally small and explicit.
 
 `la-stack` provides a handful of const-generic, stack-backed building blocks:
 
-- `VectorAngle::angle` on coordinate slices and `Vector::angle` for allocation-free,
-  unsigned vector angles with arbitrary finite nonzero magnitudes
 - `gram_matrix(&[Vector<N>; M])` for allocation-free `Matrix<M>` construction
   from pairwise vector inner products, with bit-for-bit symmetry. Gram matrices
   encode lengths and angles and support simplex/facet volume calculations; see
@@ -78,6 +76,8 @@ while keeping the API intentionally small and explicit.
 - `ScalarWithErrorBound` for proof-bearing fixed-vector dot products and
   affine differences over finite `f64` inputs
 - `Vector<const D: usize>` for fixed-length `f64` vectors backed by `[f64; D]`
+- `VectorAngle::angle` on coordinate slices and `Vector::angle` for allocation-free,
+  unsigned vector angles with arbitrary finite nonzero magnitudes
 
 ## ✅ Use this crate when
 
@@ -95,7 +95,7 @@ while keeping the API intentionally small and explicit.
 
 ## 🚀 Quickstart
 
-The minimum supported Rust version (MSRV) is 1.99.0.
+The minimum supported Rust version (MSRV) is 1.99.1.
 
 Add this to your `Cargo.toml`:
 
@@ -198,7 +198,7 @@ to combine operations.
 | Gram matrix construction | [`gram_matrix`][api-gram] |
 | Interval expressions and determinant signs | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
 | Runtime selection of a const-generic matrix dimension | [Dimension dispatch examples][api-dispatch] |
-| Unsigned angle in radians | [`VectorAngle::angle`][api-angle], [`Vector::angle`][api-vector-angle] |
+| Unsigned vector angles in radians | [`VectorAngle::angle`][api-angle], [`Vector::angle`][api-vector-angle] |
 | Vector operations and norms | [`Vector<D>`][api-vector] |
 
 [`Tolerance`][api-tolerance] validates numerical rejection thresholds.
@@ -314,6 +314,8 @@ allocation or matrix dispatch limit. Independent magnitude scaling supports
 overflowing input norms and subnormal separations. Empty, zero, unequal-length,
 and non-finite inputs have typed errors. Results are rounded, without a certified
 error bound; see the [angle contract and derivation][math-angles].
+The runnable [`vector_angles` example][example-vector-angles] demonstrates both
+APIs, very different input magnitudes, and a subnormal separation.
 
 [math-angles]: https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#unsigned-vector-angles
 [guide-lu]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#solving-and-reusing-factors
@@ -415,14 +417,25 @@ for current release planning.
 
 The `examples/` directory contains small, runnable programs:
 
-- **`const_det_4x4`** — compile-time 4×4 determinant via `det_direct()`
-- **`det_5x5`** — determinant of a 5×5 matrix via LU
-- **`exact_det_3x3`** — exact determinant value of a near-singular 3×3 matrix (requires `exact` feature)
-- **`exact_sign_3x3`** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
-- **`exact_solve_3x3`** — exact solve of a near-singular 3×3 system vs f64 LU (requires `exact` feature)
-- **`ldlt_solve_3x3`** — solve a 3×3 symmetric positive definite system via LDLT
-- **`rational_input_5x5`** — exact rational solve of a 5×5 system that becomes singular as f64 (requires `exact` feature)
-- **`solve_5x5`** — solve a 5×5 system via LU with partial pivoting
+- **[`const_det_4x4`][example-const-det]** — compile-time 4×4 determinant via `det_direct()`
+- **[`det_5x5`][example-det]** — determinant of a 5×5 matrix via LU
+- **[`exact_det_3x3`][example-exact-det]** — exact determinant value of a near-singular 3×3 matrix (requires `exact` feature)
+- **[`exact_sign_3x3`][example-exact-sign]** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
+- **[`exact_solve_3x3`][example-exact-solve]** — exact solve of a near-singular 3×3 system vs f64 LU (requires `exact` feature)
+- **[`ldlt_solve_3x3`][example-ldlt-solve]** — solve a 3×3 symmetric positive definite system via LDLT
+- **[`rational_input_5x5`][example-rational-input]** — exact rational solve of a 5×5 system that becomes singular as f64 (requires `exact` feature)
+- **[`solve_5x5`][example-solve]** — solve a 5×5 system via LU with partial pivoting
+- **[`vector_angles`][example-vector-angles]** — unsigned angles for fixed vectors and borrowed slices, including extreme magnitudes and subnormal separations
+
+[example-const-det]: https://github.com/acgetchell/la-stack/blob/main/examples/const_det_4x4.rs
+[example-det]: https://github.com/acgetchell/la-stack/blob/main/examples/det_5x5.rs
+[example-exact-det]: https://github.com/acgetchell/la-stack/blob/main/examples/exact_det_3x3.rs
+[example-exact-sign]: https://github.com/acgetchell/la-stack/blob/main/examples/exact_sign_3x3.rs
+[example-exact-solve]: https://github.com/acgetchell/la-stack/blob/main/examples/exact_solve_3x3.rs
+[example-ldlt-solve]: https://github.com/acgetchell/la-stack/blob/main/examples/ldlt_solve_3x3.rs
+[example-rational-input]: https://github.com/acgetchell/la-stack/blob/main/examples/rational_input_5x5.rs
+[example-solve]: https://github.com/acgetchell/la-stack/blob/main/examples/solve_5x5.rs
+[example-vector-angles]: https://github.com/acgetchell/la-stack/blob/main/examples/vector_angles.rs
 
 ```bash
 just examples
@@ -435,6 +448,7 @@ cargo run --features exact --example exact_solve_3x3
 cargo run --example ldlt_solve_3x3
 cargo run --features exact --example rational_input_5x5
 cargo run --example solve_5x5
+cargo run --locked --example vector_angles
 ```
 
 ## 📈 Benchmarks (vs nalgebra/faer)
