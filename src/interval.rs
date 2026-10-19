@@ -915,26 +915,27 @@ impl<const D: usize> IntervalMatrix<D> {
         while subset < state_count {
             let row = subset.count_ones() as usize - 1;
             let mut sum = Interval::ZERO;
-            let mut column = 0;
-            while column < D {
+            // Removing the lowest set bit visits active columns in the same
+            // ascending order as the full scan, preserving every interval
+            // operation and the first range-exhaustion error.
+            let mut remaining = subset;
+            while remaining != 0 {
+                let column = remaining.trailing_zeros() as usize;
                 let column_bit = 1_usize << column;
-                if subset & column_bit != 0 {
-                    let previous = subset ^ column_bit;
-                    let mut term =
-                        match partials[previous].try_mul_for(&self.rows[row][column], operation) {
-                            Ok(term) => term,
-                            Err(error) => return Err(error),
-                        };
-                    let columns_after = (subset >> (column + 1)).count_ones();
-                    if !columns_after.is_multiple_of(2) {
-                        term = term.negate();
-                    }
-                    sum = match sum.try_add_for(&term, operation) {
-                        Ok(next_sum) => next_sum,
+                remaining &= remaining - 1;
+                let previous = subset ^ column_bit;
+                let mut term =
+                    match partials[previous].try_mul_for(&self.rows[row][column], operation) {
+                        Ok(term) => term,
                         Err(error) => return Err(error),
                     };
+                if !remaining.count_ones().is_multiple_of(2) {
+                    term = term.negate();
                 }
-                column += 1;
+                sum = match sum.try_add_for(&term, operation) {
+                    Ok(next_sum) => next_sum,
+                    Err(error) => return Err(error),
+                };
             }
             partials[subset] = sum;
             subset += 1;

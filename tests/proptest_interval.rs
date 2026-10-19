@@ -316,11 +316,54 @@ proptest! {
     }
 }
 
+/// Recursive last-row Laplace expansion, independent of subset workspace
+/// traversal. This preserves the specified arithmetic tree so endpoint-bit
+/// comparisons detect changes in rounding order as well as enclosure width.
+fn interval_det_expansion<const D: usize>(
+    rows: &[[Interval; D]; D],
+    columns: &[usize],
+) -> Interval {
+    if columns.is_empty() {
+        return Interval::ONE;
+    }
+    let mut sum = Interval::ZERO;
+    for (position, &column) in columns.iter().enumerate() {
+        let minor_columns: Vec<_> = columns.iter().copied().filter(|&c| c != column).collect();
+        let minor = interval_det_expansion(rows, &minor_columns);
+        let mut term = minor
+            .try_mul(&rows[columns.len() - 1][column])
+            .expect("small fixture products have finite enclosures");
+        if !(columns.len() - position - 1).is_multiple_of(2) {
+            term = term.negate();
+        }
+        sum = sum
+            .try_add(&term)
+            .expect("small fixture sums have finite enclosures");
+    }
+    sum
+}
+
 macro_rules! gen_interval_determinant_proptests {
     ($d:literal) => {
         paste! {
             proptest! {
                 #![proptest_config(with_default_cases(24))]
+
+                #[test]
+                fn [<interval_determinant_preserves_expansion_endpoints_ $d d>](
+                    centers in any::<[[i8; $d]; $d]>(),
+                    radii in any::<[[u8; $d]; $d]>(),
+                ) {
+                    let rows = from_fn(|i| from_fn(|j| {
+                        let center = f64::from(centers[i][j]) / 7.0;
+                        let radius = f64::from(radii[i][j]) / 17.0;
+                        Interval::try_new(center - radius, center + radius).unwrap()
+                    }));
+                    let expected = interval_det_expansion(&rows, &(0..$d).collect::<Vec<_>>());
+                    let actual = IntervalMatrix::<$d>::from_rows(rows).det()?;
+                    prop_assert_eq!(actual.lower().to_bits(), expected.lower().to_bits());
+                    prop_assert_eq!(actual.upper().to_bits(), expected.upper().to_bits());
+                }
 
                 #[test]
                 fn [<point_interval_determinant_matches_rational_oracle_ $d d>](

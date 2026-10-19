@@ -147,7 +147,7 @@ rg --files --hidden --no-ignore "$replay_dir/criterion" \
   | rg '/(before|after|before-repeat|after-repeat)/estimates.json$' \
   | xargs jq -Sn -f "$replay_dir/compare.jq" > "$replay_dir/comparison-replay.json"
 cmp "$study_dir/comparison.json" "$replay_dir/comparison-replay.json"
-uv run --locked "$replay_dir/diagonal-investigation/analyze.py" \
+uv run --locked python "$replay_dir/diagonal-investigation/analyze.py" \
   > "$replay_dir/diagonal-replay.json"
 cmp "$study_dir/diagonal.json" "$replay_dir/diagonal-replay.json"
 jq -n --slurpfile before "$replay_dir/before-allocations.json" \
