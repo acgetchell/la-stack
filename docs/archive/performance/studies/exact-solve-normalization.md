@@ -123,8 +123,8 @@ experiment and analysis scripts. It excludes compiled binaries. The candidate
 `7226789c37158eb87b43260c28e32dccd93b7ab4f43aea9ccd6ececf3d51bd5a`.
 The archived commands document the original uncommitted experiment; later
 archival documentation changes do not affect the measured library or harness.
-An unrelated staged `dprint` tool-pin update was present during validation and
-excluded from this PR. It does not participate in Rust builds or timing.
+The `dprint` 0.64.0 tool-pin update was present during validation and is included
+in this PR. It does not participate in Rust builds or timing.
 
 Build each variant separately using
 `cargo bench --locked --features bench,exact --bench exact --bench rational_solve --no-run`.

@@ -426,9 +426,10 @@ The sign path reads the `BigInt` determinant sign directly and never constructs
 the rational determinant value. General solves include the corresponding right-hand
 side denominator in `sᵢ`, so each augmented row is multiplied by the same
 positive factor and the solution set is unchanged. The integer determinant and
-solve states use the same direct-expansion/Bareiss backend as exact operations
-over binary64 inputs, including integer back-substitution over a common
-denominator for general solves \[7\].
+solve states use the same direct-expansion/Bareiss elimination backend \[7\]
+as exact operations over binary64 inputs. General solves then use integer
+back-substitution over a common denominator, as derived in
+[the binary64-input section](#exact-arithmetic-over-binary64-inputs).
 
 Before clearing denominators, rational solves recognize row permutations of
 upper or lower triangular matrices. For an upper triangular ordering, each
