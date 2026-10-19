@@ -84,6 +84,24 @@ fn determinant_diagnostic_fixtures_are_correct() {
     }
 }
 
+#[cfg(not(la_stack_pre_rational_input_api))]
+#[test]
+fn determinant_exponent_spreads_preserve_exact_values() {
+    use exact_diagnostics::{EXPONENT_SPREADS, ExponentAxis, exponent_spread_input};
+
+    fn check<const D: usize>() {
+        for spread in EXPONENT_SPREADS {
+            for axis in [ExponentAxis::Row, ExponentAxis::Column] {
+                let _ = exponent_spread_input::<D>(spread, axis);
+            }
+        }
+    }
+    check::<2>();
+    check::<3>();
+    check::<4>();
+    check::<5>();
+}
+
 /// Keep the filter-resolved control and typed non-finite fallback distinct.
 #[cfg(not(la_stack_pre_rational_input_api))]
 #[test]

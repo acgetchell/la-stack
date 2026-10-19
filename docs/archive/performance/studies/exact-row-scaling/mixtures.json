@@ -1,0 +1,86 @@
+[
+  {
+    "control": "det4_diagnostic_dense/det_exact",
+    "benefit": "det4_diagnostic_near_singular_positive/det_exact",
+    "first": {
+      "extra_control_ns": 48.885232518424516,
+      "saved_benefit_ns": 644.0168276276756,
+      "break_even_benefit_share": 0.07055143191249415
+    },
+    "repeat": {
+      "extra_control_ns": 27.583916378808397,
+      "saved_benefit_ns": 719.6235941483654,
+      "break_even_benefit_share": 0.03691600524645054
+    }
+  },
+  {
+    "control": "det4_diagnostic_dense/det_exact",
+    "benefit": "det4_diagnostic_mixed_exponents/det_exact",
+    "first": {
+      "extra_control_ns": 48.885232518424516,
+      "saved_benefit_ns": 1256.4887696462565,
+      "break_even_benefit_share": 0.037449215655711625
+    },
+    "repeat": {
+      "extra_control_ns": 27.583916378808397,
+      "saved_benefit_ns": 1399.44910134484,
+      "break_even_benefit_share": 0.019329557225528853
+    }
+  },
+  {
+    "control": "exact_exponent_spread_row_d2/bits_0/det_exact",
+    "benefit": "exact_exponent_spread_row_d2/bits_64/det_exact",
+    "first": {
+      "extra_control_ns": 10.610691395288214,
+      "saved_benefit_ns": 28.71249822801672,
+      "break_even_benefit_share": 0.26983292802371694
+    },
+    "repeat": {
+      "extra_control_ns": 8.093767749110924,
+      "saved_benefit_ns": 38.06008088972407,
+      "break_even_benefit_share": 0.17536495845550412
+    }
+  },
+  {
+    "control": "exact_exponent_spread_row_d3/bits_0/det_exact",
+    "benefit": "exact_exponent_spread_row_d3/bits_64/det_exact",
+    "first": {
+      "extra_control_ns": 12.664525010429173,
+      "saved_benefit_ns": 72.79065339121456,
+      "break_even_benefit_share": 0.14820079072218717
+    },
+    "repeat": {
+      "extra_control_ns": 7.757340085578164,
+      "saved_benefit_ns": 86.88262832304068,
+      "break_even_benefit_share": 0.0819668499051581
+    }
+  },
+  {
+    "control": "exact_exponent_spread_row_d4/bits_0/det_exact",
+    "benefit": "exact_exponent_spread_row_d4/bits_64/det_exact",
+    "first": {
+      "extra_control_ns": 57.550850965550524,
+      "saved_benefit_ns": 449.7503957980154,
+      "break_even_benefit_share": 0.11344512029628978
+    },
+    "repeat": {
+      "extra_control_ns": 18.699369995084112,
+      "saved_benefit_ns": 414.11568929909436,
+      "break_even_benefit_share": 0.043204065093249
+    }
+  },
+  {
+    "control": "exact_exponent_spread_row_d5/bits_0/det_exact",
+    "benefit": "exact_exponent_spread_row_d5/bits_64/det_exact",
+    "first": {
+      "extra_control_ns": 156.82800168445021,
+      "saved_benefit_ns": 893.5434360023826,
+      "break_even_benefit_share": 0.14930718416127411
+    },
+    "repeat": {
+      "extra_control_ns": 49.853220984515474,
+      "saved_benefit_ns": 888.1714156365204,
+      "break_even_benefit_share": 0.05314702731486603
+    }
+  }
+]

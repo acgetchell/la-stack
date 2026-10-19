@@ -14,12 +14,12 @@
 //! All determinant methods (`det_exact`, `det_exact_f64`,
 //! `det_exact_rounded_f64`, and `det_sign_exact`) share the same integer-scaled
 //! determinant core. Each proven-finite f64 entry is decomposed via
-//! `decompose_proven_finite_f64` into `mantissa × 2^exponent`, then all entries
-//! are scaled to a common `BigInt`
-//! matrix (shifting by `e - e_min`). D≤4 uses direct integer expansions; larger
+//! `decompose_proven_finite_f64` into `mantissa × 2^exponent`, then each row
+//! is scaled to a `BigInt` row (shifting by `e - e_row`, where `e_row` is
+//! that row's minimum non-zero exponent). D≤4 uses direct integer expansions; larger
 //! matrices use fraction-free Bareiss elimination \[7\] entirely in `BigInt`
 //! arithmetic — no `BigRational`, no GCD, no denominator tracking. The result
-//! is `(det_int, total_exp)` where `det = det_int × 2^(D × e_min)`. `det_exact`
+//! is `(det_int, total_exp)` where `det = det_int × 2^Σ e_row`. `det_exact`
 //! wraps this with `big_int_exp_to_big_rational` to reconstruct a reduced
 //! `BigRational`; `det_exact_f64` converts the same pair only when the exact
 //! value is representable as finite binary64; `det_exact_rounded_f64` rounds
@@ -69,7 +69,7 @@
 //! primitive, `decompose_proven_finite_f64`, which parses the IEEE 754 binary64 bit
 //! representation into a proof-bearing component (\[9\]). The
 //! determinant path combines those components into a `BigInt` matrix for
-//! direct expansion or Bareiss elimination and a `2^(D × e_min)` scale factor,
+//! direct expansion or Bareiss elimination and a `2^Σ e_row` scale factor,
 //! while the solve
 //! path builds a `BigInt` augmented system, solves for integer numerators
 //! over a common denominator, and constructs canonical `BigRational` outputs.
@@ -849,8 +849,9 @@ fn big_int_exp_to_rounded_f64(value: &BigInt, exp: i32) -> Result<f64, LaError> 
 //
 // Both `exact_det_int_finite` (determinants) and `bareiss_solve_finite` (linear
 // systems) parse every f64 entry into a proof-bearing component, track the
-// minimum exponent across non-zero entries, and scale each entry by
-// `2^(exp − e_min)`. Determinants then use direct expansions for D≤4 and
+// minimum exponent across non-zero entries in each scaling domain, and scale
+// each entry by `2^(exp − e_min)`. Determinants scale each row independently,
+// then use direct expansions for D≤4 and
 // fraction-free Bareiss elimination for D≥5. Solves derive matrix and RHS scales
 // independently, share the lower scale when their gap is at most 64 bits, use
 // Bareiss elimination on the augmented system, and restore the selected scales'
@@ -1253,75 +1254,76 @@ fn bareiss_forward_eliminate<const D: usize>(
     BareissResult::Upper { odd_swaps }
 }
 
-/// Compute the determinant scale exponent `D × e_min`.
+/// Check the sum of the determinant's row scale exponents.
 ///
 /// This centralizes the scale-overflow classification used by exact
 /// determinant value APIs. Sign-only evaluation deliberately bypasses this
 /// bookkeeping because a positive binary scale cannot change determinant sign.
 ///
 /// # Errors
-/// Returns [`LaError::DeterminantScaleOverflow`] if `D` cannot fit in the
-/// internal `i32` exponent multiplier or if `D × e_min` overflows `i32`.
-fn determinant_scale_exp<const D: usize>(e_min: i32) -> Result<i32, LaError> {
-    let Ok(d_i32) = i32::try_from(D) else {
-        cold_path();
-        return Err(LaError::determinant_scale_overflow(D, e_min));
-    };
-    let Some(total_exp) = e_min.checked_mul(d_i32) else {
+/// Returns [`LaError::DeterminantScaleOverflow`] if the final sum does not fit
+/// the internal `i32` exponent representation. The error retains the minimum
+/// non-zero entry exponent across the original matrix.
+fn determinant_scale_exp<const D: usize>(total: i64, e_min: i32) -> Result<i32, LaError> {
+    let Ok(total_exp) = i32::try_from(total) else {
         cold_path();
         return Err(LaError::determinant_scale_overflow(D, e_min));
     };
     Ok(total_exp)
 }
 
-/// Compute the determinant integer and its shared per-entry scale.
+/// Compute the determinant integer and its independent row scales.
 ///
-/// Returns `(det_int, scale)` where the true determinant is
-/// `det_int × 2^(D × scale)`. Since that scale factor is always positive,
-/// callers interested only in the sign do not need to form `D × scale`.
+/// Returns `(det_int, scales)` where the true determinant is
+/// `det_int × 2^Σ scales`. Since that scale factor is always positive,
+/// callers interested only in the sign do not need to sum the scales.
 ///
 /// All arithmetic is in `BigInt` — no `BigRational`, no GCD, no denominator
 /// tracking.  Each f64 entry is decomposed into `mantissa × 2^exponent` and
-/// scaled to a common base `2^e_min` so every entry becomes an integer. D≤4
+/// scaled to its row's base `2^e_row` so every entry becomes an integer. D≤4
 /// uses direct determinant expansions; larger matrices use Bareiss elimination
 /// whose inner-loop division is exact (guaranteed by the algorithm).
 ///
-fn scaled_det_int_finite<const D: usize>(m: &Matrix<D>) -> (BigInt, ScaleExponent) {
-    let decomposed = decompose_proven_finite_matrix(m);
-    scaled_det_int_decomposed(&decomposed)
-}
-
-/// Compute a determinant integer from a proof-bearing component table.
-fn scaled_det_int_decomposed<const D: usize>(
-    decomposed: &Decomposed<[[Component; D]; D]>,
-) -> (BigInt, ScaleExponent) {
-    // D == 0 has no `a[D-1][D-1]` to read; shortcut to the empty-product
-    // determinant.
-    if D == 0 {
-        return (BigInt::from(1), ScaleExponent::ZERO);
+#[expect(
+    clippy::inline_always,
+    reason = "keep the measured row-scaling prototype's fixed-dimension code generation"
+)]
+#[inline(always)]
+fn scaled_det_int_finite<const D: usize>(m: &Matrix<D>) -> (BigInt, [ScaleExponent; D]) {
+    let mut scales = [ScaleExponent::ZERO; D];
+    let mut has_zero_row = false;
+    let a: [[BigInt; D]; D] = from_fn(|row| {
+        let decomposed = Decomposed::from_vector_components(from_fn(|column| {
+            decompose_proven_finite_f64(m.as_rows()[row][column])
+        }));
+        has_zero_row |= decomposed.min_exponent().is_none();
+        let scale = ScaleExponent::for_decomposed(&decomposed);
+        scales[row] = scale;
+        build_big_int_vec(decomposed.components(), scale)
+    });
+    if has_zero_row {
+        return (BigInt::from(0), scales);
     }
-
-    if decomposed.min_exponent().is_none() {
-        return (BigInt::from(0), ScaleExponent::ZERO);
-    }
-    let scale = ScaleExponent::for_decomposed(decomposed);
-    let a = build_big_int_matrix(decomposed.components(), scale);
-    let det_int = det_big_int(a);
-
-    (det_int, scale)
+    (det_big_int(a), scales)
 }
 
 /// Compute the exact determinant as an integer plus one total binary scale.
 ///
 /// Zero determinants use exponent zero because their value is independent of
-/// scale. Non-zero determinants validate `D × e_min` for the value-producing
+/// scale. Non-zero determinants validate `Σ e_row` for the value-producing
 /// exact APIs; sign-only callers use [`scaled_det_int_finite`] directly.
 fn exact_det_int_finite<const D: usize>(m: &Matrix<D>) -> Result<(BigInt, i32), LaError> {
-    let (det_int, scale) = scaled_det_int_finite(m);
+    let (det_int, scales) = scaled_det_int_finite(m);
     if det_int.sign() == Sign::NoSign {
         return Ok((det_int, 0));
     }
-    let total_exp = determinant_scale_exp::<D>(scale.get())?;
+    // Sum in a wider type so cancellation cannot cause intermediate overflow.
+    // On Rust's 16/32/64-bit targets, any addressable D×D binary64 matrix has
+    // D < 2^31. Row exponents lie in [-1074, 1023], so every partial sum has
+    // magnitude below 2^42 and fits in i64, even when the final i32 sum does not.
+    let total = scales.iter().map(|scale| i64::from(scale.get())).sum();
+    let minimum = scales.iter().map(|scale| scale.get()).min().unwrap_or(0);
+    let total_exp = determinant_scale_exp::<D>(total, minimum)?;
     Ok((det_int, total_exp))
 }
 
@@ -1504,8 +1506,7 @@ fn det_sign_exact_finite<const D: usize>(m: &Matrix<D>) -> DeterminantSign {
     }
 
     cold_path();
-    let decomposed = decompose_proven_finite_matrix(m);
-    let (det_int, _) = scaled_det_int_decomposed(&decomposed);
+    let (det_int, _) = scaled_det_int_finite(m);
     match det_int.sign() {
         Sign::Plus => DeterminantSign::Positive,
         Sign::Minus => DeterminantSign::Negative,
@@ -2397,25 +2398,27 @@ mod tests {
     }
 
     #[test]
-    fn determinant_scale_exp_multiplies_dimension_and_min_exponent() {
-        assert_eq!(determinant_scale_exp::<4>(-1074), Ok(-4296));
+    fn determinant_scale_exp_accepts_reconstructed_row_sum() {
+        assert_eq!(determinant_scale_exp::<4>(-4296, -1074), Ok(-4296));
+        assert_eq!(determinant_scale_exp::<4>(0, -1074), Ok(0));
+        assert_eq!(determinant_scale_exp::<0>(0, 0), Ok(0));
     }
 
     #[test]
-    fn determinant_scale_exp_rejects_dimension_too_large_for_i32() {
+    fn determinant_scale_exp_rejects_positive_overflow() {
         assert_eq!(
-            determinant_scale_exp::<{ i32::MAX as usize + 1 }>(-1074),
+            determinant_scale_exp::<3_000_000>(i64::from(i32::MAX) + 1, 1023),
             Err(LaError::DeterminantScaleOverflow {
-                dim: i32::MAX as usize + 1,
-                min_exponent: -1074,
+                dim: 3_000_000,
+                min_exponent: 1023,
             })
         );
     }
 
     #[test]
-    fn determinant_scale_exp_rejects_exponent_product_overflow() {
+    fn determinant_scale_exp_rejects_negative_overflow() {
         assert_eq!(
-            determinant_scale_exp::<3_000_000>(-1074),
+            determinant_scale_exp::<3_000_000>(-1074 * 3_000_000_i64, -1074),
             Err(LaError::DeterminantScaleOverflow {
                 dim: 3_000_000,
                 min_exponent: -1074,

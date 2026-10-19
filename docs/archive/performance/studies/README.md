@@ -5,6 +5,7 @@ These are historical experiments, with the environment and limitations stated
 in each report.
 
 - [Algebraic floating-point reduction evaluation (#250)](algebraic-float.md)
+- [Exact determinant row scaling](exact-row-scaling.md)
 - [Exact solve normalization](exact-solve-normalization.md)
 - [Interval and certified-reduction optimization (#247, #248)](interval-reductions.md)
 - [Rational row-clearing allocation study (#233)](rational-row-clearing.md)

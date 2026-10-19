@@ -348,6 +348,15 @@ The `exact` feature decomposes each stored entry into an integer mantissa and a
 power of two. The entries are scaled to integer matrices without changing their
 represented rational values \[9-10\].
 
+For determinants, each row uses its own minimum non-zero binary exponent `eᵢ`:
+`A[i, :] = 2^eᵢ A_int[i, :]`. Multilinearity gives
+`det(A) = 2^(Σ eᵢ) det(A_int)`. This keeps integer entries small when rows have
+widely different magnitudes. A zero row has scale zero and determinant zero;
+the empty determinant is one. The positive scale preserves the determinant sign.
+The exponent sum is accumulated in `i64` before checking its final `i32` range.
+An addressable `D × D` binary64 matrix on Rust's 16/32/64-bit targets has
+`D < 2^31`; each row exponent lies in `[-1074, 1023]`. Thus every partial sum
+has magnitude below `2^42`, and cancellation cannot cause intermediate overflow.
 Exact determinants use direct `BigInt` expansions for `D ≤ 4` and fraction-free
 Bareiss elimination for `D ≥ 5` \[7\]. Exact solves apply Bareiss updates to an
 integer augmented system, then use integer back-substitution over a common
