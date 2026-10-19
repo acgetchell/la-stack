@@ -59,7 +59,10 @@ use exact_bench::{
     near_singular_3x3_input, validate_exact_fixture, validate_f64_determinant_benchmarks,
 };
 #[cfg(not(la_stack_pre_rational_input_api))]
-use exact_diagnostics::{ConversionKind, Det4Kind, canonical_conversion_input, exact_det4_input};
+use exact_diagnostics::{
+    ConversionKind, Det4Kind, EXPONENT_SPREADS, ExponentAxis, canonical_conversion_input,
+    exact_det4_input, exponent_spread_input,
+};
 #[cfg(not(la_stack_pre_rational_input_api))]
 use rational_bench::{
     RationalInputKind, rational_determinant_gaussian, rational_input, rational_solve_gaussian,
@@ -412,6 +415,24 @@ fn bench_det4_diagnostics(c: &mut Criterion) {
     }
 }
 
+#[cfg(not(la_stack_pre_rational_input_api))]
+fn bench_exponent_spreads<const D: usize>(c: &mut Criterion, axis: ExponentAxis) {
+    for spread in EXPONENT_SPREADS {
+        let input = exponent_spread_input::<D>(spread, axis);
+        let mut group = c.benchmark_group(format!(
+            "exact_exponent_spread_{}_d{D}/bits_{spread}",
+            axis.name(),
+        ));
+        group.bench_function("det_exact", |b| {
+            b.iter(|| black_box(black_box(&input).det_exact().or_abort("scaled determinant")));
+        });
+        group.bench_function("det_sign_exact", |b| {
+            b.iter(|| black_box(black_box(&input).det_sign_exact()));
+        });
+        group.finish();
+    }
+}
+
 fn main() {
     let mut c = Criterion::default().configure_from_args();
 
@@ -441,6 +462,11 @@ fn main() {
         bench_canonical_conversion::<4>(&mut c);
         bench_canonical_conversion::<5>(&mut c);
         bench_det4_diagnostics(&mut c);
+        bench_exponent_spreads::<2>(&mut c, ExponentAxis::Row);
+        bench_exponent_spreads::<3>(&mut c, ExponentAxis::Row);
+        bench_exponent_spreads::<4>(&mut c, ExponentAxis::Row);
+        bench_exponent_spreads::<5>(&mut c, ExponentAxis::Row);
+        bench_exponent_spreads::<4>(&mut c, ExponentAxis::Column);
         // === Already-exact rational-input comparisons ===
         //
         // These compare the production row-cleared integer Bareiss backend with

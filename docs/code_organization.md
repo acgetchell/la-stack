@@ -246,6 +246,8 @@ The [sparse vector-angle study](archive/performance/studies/sparse-vector-angles
 owns the #287 shared-zero optimization, dense controls, and retained evidence.
 The [triangular rational solve study](archive/performance/studies/rational-triangular.md)
 owns the #246 Rust 1.99 baseline, adapter/kernel comparisons, and retained evidence.
+The [exact determinant row scaling study](archive/performance/studies/exact-row-scaling.md)
+owns the row-local scaling comparison, exponent-spread diagnostics, and workload tradeoffs.
 The [exact solve normalization study](archive/performance/studies/exact-solve-normalization.md)
 owns the shared-denominator back-substitution comparison and diagonal controls.
 The [algebraic floating-point study](archive/performance/studies/algebraic-float.md)

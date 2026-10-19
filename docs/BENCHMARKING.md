@@ -111,6 +111,13 @@ suite compares row-cleared Bareiss operations with direct `BigRational` Gaussian
 operations over already-exact rational inputs across D=2-8. Use it to understand
 exact-arithmetic cost and track optimization progress.
 
+The `exact_exponent_spread_row_d{2..5}` diagnostics vary row scales over
+0–2,000 binary exponent bits while preserving the exact determinant. The
+`exact_exponent_spread_column_d4` control varies column scales, retaining
+exponent differences within each row. Both measure exact values and signs;
+all four determinant APIs are checked against rational Gaussian elimination
+outside timing. These focused diagnostics are separate from release metrics.
+
 **`rational_solve`** (`benches/rational_solve.rs`) measures diagonal,
 upper/lower triangular, row-permuted triangular, general sparse, and dense
 rational systems through D=8, with both dyadic and non-dyadic coefficients.

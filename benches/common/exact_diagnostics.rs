@@ -219,6 +219,82 @@ const DENSE_ROWS: [[f64; 4]; 4] = [
     [-1.0, 4.0, 2.0, 19.0],
 ];
 
+/// Binary exponent spreads from equal-scale rows to nearly the full f64 range.
+pub const EXPONENT_SPREADS: [i32; 9] = [0, 8, 32, 64, 128, 256, 512, 1024, 2000];
+
+/// Which axis carries the power-of-two scaling in determinant diagnostics.
+#[derive(Clone, Copy, Debug)]
+pub enum ExponentAxis {
+    /// Each row has its own scale, removable by row-local integer lifting.
+    Row,
+    /// Each column has its own scale, retaining wide exponents within rows.
+    Column,
+}
+
+impl ExponentAxis {
+    /// Stable benchmark label.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Row => "row",
+            Self::Column => "column",
+        }
+    }
+}
+
+/// Validate an exactly scaled dense matrix against rational Gaussian elimination.
+///
+/// Symmetric exponents sum to zero, so scaling preserves the determinant.
+/// Column scaling is a control for exponent variation that row scaling cannot
+/// remove. The base matrix is strictly diagonally dominant with integer entries.
+///
+/// # Panics
+/// Panics outside D=2–5 and the declared spreads, or if any exact determinant
+/// API disagrees with the independent oracle. Validation precedes all timing.
+pub fn exponent_spread_input<const D: usize>(spread: i32, axis: ExponentAxis) -> Matrix<D> {
+    assert!((2..=5).contains(&D));
+    assert!(EXPONENT_SPREADS.contains(&spread));
+    let dimension = i32::try_from(D).or_abort("small diagnostic dimension");
+    let base: [[f64; D]; D] = from_fn(|row| {
+        from_fn(|column| {
+            if row == column {
+                f64::from(2 * dimension + 3)
+            } else {
+                f64::from(i32::try_from((row + 2 * column) % 5).or_abort("small residue") - 2)
+            }
+        })
+    });
+    let scales: [f64; D] = from_fn(|index| {
+        let index = i32::try_from(index).or_abort("small diagnostic index");
+        let exponent = (spread / 2) * (2 * index - dimension + 1) / (dimension - 1);
+        let biased = u64::try_from(exponent + 1023).or_abort("normal diagnostic scale");
+        f64::from_bits(biased << 52)
+    });
+    let rows = from_fn(|row| {
+        from_fn(|column| {
+            let scale = match axis {
+                ExponentAxis::Row => scales[row],
+                ExponentAxis::Column => scales[column],
+            };
+            base[row][column] * scale
+        })
+    });
+    let rational_rows = |entries: [[f64; D]; D]| {
+        entries.map(|row| row.map(|value| BigRational::from_float(value).or_abort("finite entry")))
+    };
+    let expected = rational_determinant_gaussian(rational_rows(base));
+    assert_eq!(rational_determinant_gaussian(rational_rows(rows)), expected);
+    assert_eq!(expected.numer().sign(), Sign::Plus);
+    let matrix = Matrix::try_from_rows(rows).or_abort("finite scaled matrix");
+    let actual = matrix.det_exact().or_abort("scaled determinant");
+    assert_eq!(actual.numer(), expected.numer());
+    assert_eq!(actual.denom(), expected.denom());
+    assert_eq!(matrix.det_sign_exact(), DeterminantSign::Positive);
+    assert_eq!(matrix.det_exact_f64(), expected.try_to_f64());
+    assert_eq!(matrix.det_exact_rounded_f64(), expected.to_rounded_f64());
+    matrix
+}
+
 /// Build exactly representable determinant fixtures, including row scalings.
 fn det4_rows(kind: Det4Kind) -> [[f64; 4]; 4] {
     let mut rows = DENSE_ROWS;
