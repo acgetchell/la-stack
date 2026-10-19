@@ -93,9 +93,12 @@ exponents. When `|e_rhs − e_matrix| ≤ 64`, both sides use `min(e_rhs, e_matr
 scale; when `|e_rhs − e_matrix| > 64`, they retain independent scales so one side is not
 inflated excessively.
 Forward elimination runs in `BigInt` using Bareiss fraction-free updates
-\[[7]\]—no `BigRational` and no GCD normalisation in the `O(D³)` phase. The upper-triangular
-result is then lifted into `BigRational` for back-substitution, where fractions are inherent
-and the cost is only `O(D²)`. Row swaps from first-non-zero pivoting are applied to both the
+\[[7]\]—no `BigRational` and no GCD normalisation in the `O(D³)` phase. Back-substitution
+also accumulates in integers over a shared denominator. Reducing each solved row grows
+that denominator only as needed; final outputs are canonicalized into `BigRational`.
+The invariant and denominator-growth argument are in the
+[mathematical basis](docs/mathematical_basis.md#exact-arithmetic-over-binary64-inputs).
+Row swaps from first-non-zero pivoting are applied to both the
 matrix and RHS. After back-substitution, multiplying by the exact power-of-two scale ratio
 `2^(e_rhs − e_matrix)` recovers the solution to the original `A x = b` system.
 

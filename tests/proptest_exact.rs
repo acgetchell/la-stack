@@ -450,7 +450,7 @@ gen_det_sign_exact_proptests!(5);
 /// representable in `f64` (small integer products stay well under the
 /// 53-bit mantissa) and `solve_exact(A, A · x0)` must return `x0`
 /// exactly as `BigRational`.  This exercises the full Bareiss forward
-/// elimination + rational back-substitution pipeline on a different
+/// elimination + shared-denominator back-substitution pipeline on a different
 /// input for every case.
 macro_rules! gen_solve_exact_roundtrip_proptests {
     ($d:literal) => {

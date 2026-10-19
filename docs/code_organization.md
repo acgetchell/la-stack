@@ -65,7 +65,8 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
 - The scaled `BigInt` determinant core uses direct expansions for D≤4 and
   fraction-free Bareiss elimination for D≥5. Exact signs add a floating-point
   filter for D≤4. Exact solves use fraction-free forward elimination with
-  first-non-zero pivoting and `BigRational` back-substitution. Rational inputs
+  first-non-zero pivoting and integer back-substitution over a common denominator,
+  reducing each final component into `BigRational`. Rational inputs
   use direct substitution for triangular systems (including row permutations),
   and otherwise clear denominators before reusing the integer backend.
 - **`bench`** is a cfg-only gate for benchmark targets. Benchmark libraries
@@ -245,6 +246,8 @@ The [sparse vector-angle study](archive/performance/studies/sparse-vector-angles
 owns the #287 shared-zero optimization, dense controls, and retained evidence.
 The [triangular rational solve study](archive/performance/studies/rational-triangular.md)
 owns the #246 Rust 1.99 baseline, adapter/kernel comparisons, and retained evidence.
+The [exact solve normalization study](archive/performance/studies/exact-solve-normalization.md)
+owns the shared-denominator back-substitution comparison and diagonal controls.
 The [algebraic floating-point study](archive/performance/studies/algebraic-float.md)
 owns the #250 numerical/performance experiment and its raw evidence.
 

@@ -277,7 +277,9 @@ impl<const D: usize> RationalMatrix<D> {
     /// exact substitution after `O(D²)` structure recognition. General systems
     /// scale each augmented row `[A[row, :], rhs[row]]` to integers once, then
     /// use fraction-free Bareiss forward elimination in [`BigInt`] followed by
-    /// `O(D²)` rational back-substitution. No binary64 conversion is performed.
+    /// `O(D²)` integer back-substitution over a shared denominator, reducing once
+    /// per solved row and canonicalizing final outputs. No binary64 conversion
+    /// is performed.
     /// For D=0, the empty matrix and vector have the unique empty solution.
     ///
     /// # Examples

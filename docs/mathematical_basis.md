@@ -350,7 +350,8 @@ represented rational values \[9-10\].
 
 Exact determinants use direct `BigInt` expansions for `D ≤ 4` and fraction-free
 Bareiss elimination for `D ≥ 5` \[7\]. Exact solves apply Bareiss updates to an
-integer augmented system, then use `BigRational` for back-substitution. Matrix
+integer augmented system, then use integer back-substitution over a common
+denominator, reducing once per solved row and canonicalizing final outputs. Matrix
 and right-hand-side scales start independently. Writing the selected exponents
 as `s_A` and `s_b`, the integer forms satisfy `A = 2ˢᴬ · A_int` and
 `b = 2ˢᵇ · b_int` \[9\]. Gaps of at most 64 bits use the lower shared scale,
@@ -358,6 +359,40 @@ while larger gaps remain separate; multiplying the integer system's solution by
 the exact factor `2^(s_b − s_A)` preserves `A x = b`. First-nonzero pivoting is
 sufficient for correctness in exact arithmetic, although pivot choice can still
 affect computational cost.
+
+For the upper-triangular system `U x = c` produced by Bareiss elimination,
+back-substitution maintains a positive shared denominator `q` for the solved
+suffix: `x[j] = n[j]/q` for `j > i`, with integer `n[j]`. Initially `q = 1`
+and the suffix is empty. Each row computes
+
+```text
+s = q c[i] - Σⱼ₌ᵢ₊₁ᴰ⁻¹ U[i,j] n[j]
+p/t = s/U[i,i] in lowest terms, t > 0
+q ← q t
+n[j] ← n[j] t for j > i
+n[i] ← p.
+```
+
+Each pivot is nonzero. Before the update, `q x[i] = s/U[i,i] = p/t`, so
+`x[i] = p/(q t)`; multiplying the existing suffix's numerators and denominator
+by `t` preserves its values. The shared denominator remains the least common
+multiple of the solved components' reduced denominators: if the old common
+denominator was minimal, adjoining `p/(q t)` requires precisely the extra factor
+`t`, since `gcd(p,t) = 1`. A unit `t` needs no suffix rescaling. Pivot signs are
+handled by the rational reduction; no row-swap sign correction is needed for
+solves. Final `BigRational::new(n[i], q)` calls produce lowest terms with positive
+denominators, including `0/1`. Empty systems return the empty solution.
+Forward elimination retains the first missing-pivot column for exact singularity
+errors.
+
+This takes `O(D²)` integer operations after elimination, with one rational
+reduction per solved row and one per output before binary scale restoration.
+For integer `A_int` and `b_int`, the adjugate identity
+`det(A_int) x = adj(A_int) b_int` shows that each reduced denominator divides
+`|det(A_int)|`. Their least common multiple therefore also divides that value,
+while avoiding determinant factors not needed by the solution. Integer bit
+lengths remain input-dependent. No rounding is introduced, including for
+ill-conditioned inputs.
 
 `det_sign_exact()` first attempts the certified binary64 filter for `D ≤ 4` and
 falls back to exact integer arithmetic when the filter is inconclusive. It
@@ -392,7 +427,8 @@ the rational determinant value. General solves include the corresponding right-h
 side denominator in `sᵢ`, so each augmented row is multiplied by the same
 positive factor and the solution set is unchanged. The integer determinant and
 solve states use the same direct-expansion/Bareiss backend as exact operations
-over binary64 inputs, followed by rational back-substitution for solves \[7\].
+over binary64 inputs, including integer back-substitution over a common
+denominator for general solves \[7\].
 
 Before clearing denominators, rational solves recognize row permutations of
 upper or lower triangular matrices. For an upper triangular ordering, each
