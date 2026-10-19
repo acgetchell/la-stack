@@ -1,0 +1,170 @@
+[
+  {
+    "kind": "small",
+    "dimension": 2,
+    "before_count": 0,
+    "after_count": 0,
+    "before_bytes": 0,
+    "after_bytes": 0
+  },
+  {
+    "kind": "small",
+    "dimension": 3,
+    "before_count": 0,
+    "after_count": 0,
+    "before_bytes": 0,
+    "after_bytes": 0
+  },
+  {
+    "kind": "small",
+    "dimension": 4,
+    "before_count": 5,
+    "after_count": 5,
+    "before_bytes": 80,
+    "after_bytes": 80
+  },
+  {
+    "kind": "small",
+    "dimension": 5,
+    "before_count": 17,
+    "after_count": 17,
+    "before_bytes": 272,
+    "after_bytes": 272
+  },
+  {
+    "kind": "small",
+    "dimension": 6,
+    "before_count": 78,
+    "after_count": 79,
+    "before_bytes": 1368,
+    "after_bytes": 1384
+  },
+  {
+    "kind": "small",
+    "dimension": 7,
+    "before_count": 254,
+    "after_count": 238,
+    "before_bytes": 5120,
+    "after_bytes": 4864
+  },
+  {
+    "kind": "small",
+    "dimension": 8,
+    "before_count": 461,
+    "after_count": 412,
+    "before_bytes": 10240,
+    "after_bytes": 9440
+  },
+  {
+    "kind": "wide1024",
+    "dimension": 2,
+    "before_count": 94,
+    "after_count": 91,
+    "before_bytes": 15232,
+    "after_bytes": 14952
+  },
+  {
+    "kind": "wide1024",
+    "dimension": 3,
+    "before_count": 276,
+    "after_count": 251,
+    "before_bytes": 51464,
+    "after_bytes": 48080
+  },
+  {
+    "kind": "wide1024",
+    "dimension": 4,
+    "before_count": 558,
+    "after_count": 501,
+    "before_bytes": 120888,
+    "after_bytes": 111984
+  },
+  {
+    "kind": "wide1024",
+    "dimension": 5,
+    "before_count": 823,
+    "after_count": 720,
+    "before_bytes": 201488,
+    "after_bytes": 182272
+  },
+  {
+    "kind": "wide1024",
+    "dimension": 6,
+    "before_count": 1469,
+    "after_count": 1319,
+    "before_bytes": 390656,
+    "after_bytes": 360400
+  },
+  {
+    "kind": "wide1024",
+    "dimension": 7,
+    "before_count": 2493,
+    "after_count": 2277,
+    "before_bytes": 790032,
+    "after_bytes": 740400
+  },
+  {
+    "kind": "wide1024",
+    "dimension": 8,
+    "before_count": 4113,
+    "after_count": 3816,
+    "before_bytes": 1548520,
+    "after_bytes": 1470816
+  },
+  {
+    "kind": "wide256",
+    "dimension": 2,
+    "before_count": 93,
+    "after_count": 91,
+    "before_bytes": 4552,
+    "after_bytes": 4488
+  },
+  {
+    "kind": "wide256",
+    "dimension": 3,
+    "before_count": 256,
+    "after_count": 235,
+    "before_bytes": 14344,
+    "after_bytes": 13360
+  },
+  {
+    "kind": "wide256",
+    "dimension": 4,
+    "before_count": 489,
+    "after_count": 441,
+    "before_bytes": 31856,
+    "after_bytes": 29216
+  },
+  {
+    "kind": "wide256",
+    "dimension": 5,
+    "before_count": 687,
+    "after_count": 596,
+    "before_bytes": 51296,
+    "after_bytes": 45520
+  },
+  {
+    "kind": "wide256",
+    "dimension": 6,
+    "before_count": 1072,
+    "after_count": 937,
+    "before_bytes": 84776,
+    "after_bytes": 75616
+  },
+  {
+    "kind": "wide256",
+    "dimension": 7,
+    "before_count": 1561,
+    "after_count": 1363,
+    "before_bytes": 146936,
+    "after_bytes": 131888
+  },
+  {
+    "kind": "wide256",
+    "dimension": 8,
+    "before_count": 2136,
+    "after_count": 1860,
+    "before_bytes": 228320,
+    "after_bytes": 204704
+  }
+]

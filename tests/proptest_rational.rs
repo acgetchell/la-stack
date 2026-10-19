@@ -85,6 +85,44 @@ fn rational_matvec<const D: usize>(
     })
 }
 
+/// Cramer's rule with rational Gaussian determinants shares neither integer
+/// row clearing nor Bareiss elimination/back-substitution with production.
+fn check_cramer_solution<const D: usize>(
+    entries: &[(i16, u8)],
+    rhs_entries: &[(i16, u8)],
+) -> Result<(), TestCaseError> {
+    let rows: [[BigRational; D]; D] = from_fn(|row| {
+        from_fn(|col| {
+            let (numerator, denominator) = entries[row * D + col];
+            rational(numerator, denominator)
+        })
+    });
+    let determinant = rational_determinant_gaussian(rows.clone());
+    prop_assume!(determinant != zero());
+    let b: [BigRational; D] = from_fn(|row| {
+        let (numerator, denominator) = rhs_entries[row];
+        rational(numerator, denominator)
+    });
+    let expected: [BigRational; D] = from_fn(|col| {
+        let mut replaced = rows.clone();
+        for row in 0..D {
+            replaced[row][col] = b[row].clone();
+        }
+        rational_determinant_gaussian(replaced) / &determinant
+    });
+    let matrix = RationalMatrix::try_from_rows(rows.clone()).unwrap();
+    let rhs = RationalVector::try_new(b.clone()).unwrap();
+    let actual = matrix.solve(&rhs).unwrap();
+    prop_assert_eq!(rational_matvec(&rows, actual.as_array()), b);
+    // Inspect the representation as well as the value: canonical zeros are
+    // 0/1 and denominators are positive.
+    for (actual, expected) in actual.as_array().iter().zip(&expected) {
+        prop_assert_eq!(actual.numer(), expected.numer());
+        prop_assert_eq!(actual.denom(), expected.denom());
+    }
+    Ok(())
+}
+
 macro_rules! gen_rational_properties {
     ($d:literal) => {
         paste! {
@@ -118,6 +156,14 @@ macro_rules! gen_rational_properties {
 
                         prop_assert_eq!(actual_solution.as_array(), &expected_solution);
                     }
+                }
+
+                #[test]
+                fn [<rational_solve_arbitrary_rhs_matches_cramer_ $d d>](
+                    entries in collection::vec((-5_i16..=5_i16, 1_u8..=9_u8), $d * $d),
+                    rhs_entries in collection::vec((-7_i16..=7_i16, 1_u8..=9_u8), $d),
+                ) {
+                    check_cramer_solution::<$d>(&entries, &rhs_entries)?;
                 }
 
                 #[test]

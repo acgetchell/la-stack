@@ -51,10 +51,11 @@
 //! across a large exponent gap.
 //! Forward elimination runs entirely in `BigInt` with
 //! fraction-free Bareiss updates \[7\] — no `BigRational`, no GCD
-//! normalisation in the `O(D³)` phase.  Once the system is upper
-//! triangular, back-substitution is performed in `BigRational`, where
-//! fractions are inherent; this phase is only `O(D²)` so the rational
-//! overhead is modest.  First-non-zero pivoting is used throughout;
+//! normalisation in the `O(D³)` phase. The `O(D²)` back-substitution also
+//! accumulates in `BigInt` over a shared denominator. One reduction per solved
+//! row grows that denominator only as needed; final components are then
+//! canonicalized into `BigRational`.
+//! First-non-zero pivoting is used throughout;
 //! since all arithmetic is exact, any non-zero pivot gives the correct
 //! result (no numerical stability concern). Every finite `f64` is exactly
 //! representable as a rational, so the result is exact for the stored inputs.
@@ -70,8 +71,8 @@
 //! determinant path combines those components into a `BigInt` matrix for
 //! direct expansion or Bareiss elimination and a `2^(D × e_min)` scale factor,
 //! while the solve
-//! path builds a `BigInt` augmented system and lifts the
-//! upper-triangular result into `BigRational` for back-substitution.
+//! path builds a `BigInt` augmented system, solves for integer numerators
+//! over a common denominator, and constructs canonical `BigRational` outputs.
 //! See Goldberg \[10\] for background on floating-point representation
 //! and conversion. Reference numbers refer to
 //! `REFERENCES.md`.
@@ -853,7 +854,7 @@ fn big_int_exp_to_rounded_f64(value: &BigInt, exp: i32) -> Result<f64, LaError> 
 // fraction-free Bareiss elimination for D≥5. Solves derive matrix and RHS scales
 // independently, share the lower scale when their gap is at most 64 bits, use
 // Bareiss elimination on the augmented system, and restore the selected scales'
-// exact power-of-two ratio after rational back-substitution.
+// exact power-of-two ratio after integer back-substitution and reduction.
 
 /// Decomposed finite f64 in the form `(-1)^is_negative · mantissa · 2^exponent`.
 ///
@@ -1357,9 +1358,9 @@ fn bareiss_solve_finite<const D: usize>(
 /// produce large exact numerators and denominators in the final solution. The
 /// elimination phase performs `O(D³)` integer operations and Bareiss exact
 /// division controls intermediate integer growth compared with naive fraction
-/// arithmetic. The resulting upper-triangular system is then lifted into
-/// [`BigRational`] for back-substitution, limiting rational arithmetic to the
-/// `O(D²)` phase.
+/// arithmetic. Back-substitution takes `O(D²)` integer operations with the
+/// shared denominator. Reductions occur once per solved row and once per
+/// final [`BigRational`] component, rather than after each product and sum.
 ///
 /// # Errors
 /// Returns [`LaError::Singular`] if the matrix component table represents an
@@ -1399,8 +1400,18 @@ fn bareiss_solve_components<const D: usize>(
     Ok(x)
 }
 
-/// Solve an integer system with fraction-free forward elimination and rational
+/// Solve an integer system with fraction-free elimination and shared-denominator
 /// back-substitution.
+///
+/// The solved suffix stores integer numerators over one positive denominator
+/// `q`, initially 1. For `U x = c`, the integer residual
+/// `s = q*c[i] - sum(U[i][j]*n[j])` satisfies `q*x[i] = s/U[i][i]`.
+/// Reduce this ratio once to `p/t`. Multiplying `q` and the solved numerators
+/// by positive `t` makes the new component `p/(q*t)` without changing the
+/// suffix values. Because `p` and `t` are coprime, `q*t` is the least common
+/// denominator of the expanded suffix. This avoids retaining unnecessary
+/// determinant factors. Reuse RHS storage for numerators and canonicalize
+/// each output at the end; no rational arithmetic occurs in the inner sum.
 ///
 /// # Errors
 /// Returns [`LaError::Singular`] with exact-singularity metadata and the first
@@ -1417,18 +1428,23 @@ pub(crate) fn solve_big_int<const D: usize>(
         }
     }
 
-    let mut x: [BigRational; D] = from_fn(|_| BigRational::from_integer(BigInt::from(0)));
+    let mut denominator = BigInt::from(1);
     for i in (0..D).rev() {
-        let mut sum = BigRational::from_integer(take(&mut rhs[i]));
+        let mut sum = &rhs[i] * &denominator;
         for j in (i + 1)..D {
-            let a_ij = BigRational::from_integer(take(&mut a[i][j]));
-            sum -= &a_ij * &x[j];
+            sum -= &a[i][j] * &rhs[j];
         }
-        let a_ii = BigRational::from_integer(take(&mut a[i][i]));
-        x[i] = sum / &a_ii;
+        let (numerator, factor) = BigRational::new(sum, take(&mut a[i][i])).into_raw();
+        if factor != BigInt::from(1) {
+            denominator *= &factor;
+            for solved in &mut rhs[i + 1..] {
+                *solved *= &factor;
+            }
+        }
+        rhs[i] = numerator;
     }
 
-    Ok(x)
+    Ok(rhs.map(|numerator| BigRational::new(numerator, denominator.clone())))
 }
 
 /// Exact determinant converted to finite `f64` without rounding.
@@ -1644,9 +1660,10 @@ impl<const D: usize> Matrix<D> {
     /// power-of-two ratio between the RHS and matrix scales is restored.
     /// Forward elimination runs entirely in `BigInt`
     /// with fraction-free Bareiss updates — no `BigRational`, no GCD, no
-    /// denominator tracking in the `O(D³)` phase.  Only the upper-triangular
-    /// result is lifted into `BigRational` for back-substitution (the `O(D²)`
-    /// phase where fractions are inherent).  First-non-zero pivoting is used
+    /// denominator tracking in the `O(D³)` phase. Back-substitution uses
+    /// `O(D²)` integer operations over a shared denominator, with one reduction
+    /// per solved row and final output canonicalization before scale restoration.
+    /// First-non-zero pivoting is used
     /// throughout; since all arithmetic is exact, any non-zero pivot yields
     /// the correct answer (no numerical-stability concerns).
     ///
@@ -2799,6 +2816,78 @@ mod tests {
     gen_solve_exact_tests!(4);
     gen_solve_exact_tests!(5);
 
+    /// Manufacture integer systems with fractional solutions, zero components,
+    /// signed row scales, and large common factors. Column denominators cancel
+    /// analytically in A*x, independently of the elimination implementation.
+    fn check_integer_solve_canonical_components<const D: usize>() {
+        let denominators = [2, 3, 5, 7, 11, 13, 17, 19];
+        let numerators: [BigInt; D] = from_fn(|col| {
+            let value = BigInt::from(col);
+            if col.is_multiple_of(2) { value } else { -value }
+        });
+        let expected: [BigRational; D] =
+            from_fn(|col| BigRational::new(numerators[col].clone(), denominators[col].into()));
+        for bits in [0, 137] {
+            let row_scales: [BigInt; D] = from_fn(|row| {
+                let magnitude = if bits == 0 {
+                    BigInt::from(1)
+                } else {
+                    (BigInt::from(1) << (bits + 17 * row)) + 1
+                };
+                if row.is_multiple_of(2) {
+                    -magnitude
+                } else {
+                    magnitude
+                }
+            });
+            // D*I + ones is nonsingular for D>0; row scaling and column
+            // scaling by nonzero integers preserve invertibility.
+            let coefficients: [[BigInt; D]; D] =
+                from_fn(|row| from_fn(|col| BigInt::from(if row == col { D + 1 } else { 1 })));
+            let mut rows: [[BigInt; D]; D] = from_fn(|row| {
+                from_fn(|col| &row_scales[row] * &coefficients[row][col] * denominators[col])
+            });
+            let mut rhs: [BigInt; D] = from_fn(|row| {
+                &row_scales[row]
+                    * coefficients[row]
+                        .iter()
+                        .zip(&numerators)
+                        .map(|(a, n)| a * n)
+                        .sum::<BigInt>()
+            });
+            for _ in 0..D.max(1) {
+                let actual = solve_big_int(rows.clone(), rhs.clone()).unwrap();
+                for (actual, expected) in actual.iter().zip(&expected) {
+                    assert_eq!(actual.numer(), expected.numer());
+                    assert_eq!(actual.denom(), expected.denom());
+                }
+                rows.rotate_left(usize::from(D > 0));
+                rhs.rotate_left(usize::from(D > 0));
+            }
+        }
+    }
+
+    macro_rules! gen_integer_solve_canonical_tests {
+        ($d:literal) => {
+            paste! {
+                #[test]
+                fn [<integer_solve_canonical_components_ $d d>]() {
+                    check_integer_solve_canonical_components::<$d>();
+                }
+            }
+        };
+    }
+
+    gen_integer_solve_canonical_tests!(0);
+    gen_integer_solve_canonical_tests!(1);
+    gen_integer_solve_canonical_tests!(2);
+    gen_integer_solve_canonical_tests!(3);
+    gen_integer_solve_canonical_tests!(4);
+    gen_integer_solve_canonical_tests!(5);
+    gen_integer_solve_canonical_tests!(6);
+    gen_integer_solve_canonical_tests!(7);
+    gen_integer_solve_canonical_tests!(8);
+
     /// For D ≤ 4, `solve_exact_f64` should agree with `Lu::solve` on
     /// well-conditioned matrices.
     macro_rules! gen_solve_exact_f64_agrees_with_lu {
@@ -3140,7 +3229,7 @@ mod tests {
     /// Pivoting path with a zero top-left entry forces a row swap in the
     /// `BigInt` forward-elimination loop and propagates it to the RHS.
     /// Combined with a fractional solution, this exercises the
-    /// `BigRational` back-substitution after integer forward elimination.
+    /// common-denominator back-substitution after integer forward elimination.
     ///
     /// The 2×2 block `[[0, 1], [2, 1]]` with rhs `[3, 4]` (→ `x = [1/2, 3]`)
     /// is embedded into the top-left of a D×D identity matrix.  Remaining
@@ -3285,7 +3374,7 @@ mod tests {
     /// `rhs[k]` and `rhs[i]`, both initialised to zero; every update
     /// produces zero; back-substitution therefore yields `x = 0`
     /// regardless of the matrix entries.  This exercises the
-    /// back-substitution `mem::take` path against an all-zero `rhs`.
+    /// common-denominator back-substitution against an all-zero `rhs`.
     macro_rules! gen_solve_exact_zero_rhs_tests {
         ($d:literal) => {
             paste! {
