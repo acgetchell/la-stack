@@ -1654,9 +1654,11 @@ impl<const D: usize> Matrix<D> {
     /// # Algorithm
     ///
     /// Matrix and RHS entries are decomposed via IEEE 754 bit extraction and
-    /// independently scaled to their own power-of-two bases so both sides of
-    /// the augmented system `(A | b)` become integer-valued without needless
-    /// cross-side shifts. After solving that integer system, the exact
+    /// initially assigned independent power-of-two bases. When the base
+    /// exponents differ by at most 64, both sides use the lower shared base;
+    /// larger gaps retain independent bases to avoid needless cross-side
+    /// shifts. Both sides of the augmented system `(A | b)` are integer-valued.
+    /// After solving that integer system, the exact
     /// power-of-two ratio between the RHS and matrix scales is restored.
     /// Forward elimination runs entirely in `BigInt`
     /// with fraction-free Bareiss updates — no `BigRational`, no GCD, no

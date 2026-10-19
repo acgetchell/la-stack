@@ -607,6 +607,33 @@ macro_rules! gen_det_exact_and_sign_leibniz_oracle_proptests {
                     prop_assert_eq!(m.det_exact().unwrap(), expected);
                     prop_assert_eq!(m.det_sign_exact(), expected_sign);
                 }
+
+                #[test]
+                fn [<row_scaled_det_agrees_with_leibniz_oracle_ $d d>](
+                    coefficients in array::[<uniform $d>](
+                        array::[<uniform $d>](small_int_f64()),
+                    ),
+                    exponents in array::[<uniform $d>](-1074_i32..=1018),
+                    zero_row in proptest::option::of(0_usize..$d),
+                ) {
+                    // Integer coefficients times these powers of two remain
+                    // exactly representable, including subnormal entries.
+                    let entries = from_fn(|row| from_fn(|column| {
+                        if zero_row == Some(row) {
+                            -0.0
+                        } else {
+                            coefficients[row][column] * exact_power_of_two(exponents[row])
+                        }
+                    }));
+                    let matrix = Matrix::<$d>::try_from_rows(entries).unwrap();
+                    let expected = big_rational_det_leibniz(&entries);
+                    let actual = matrix.det_exact().unwrap();
+                    prop_assert_eq!(actual.numer(), expected.numer());
+                    prop_assert_eq!(actual.denom(), expected.denom());
+                    prop_assert_eq!(matrix.det_sign_exact(), determinant_sign(&expected));
+                    prop_assert_eq!(matrix.det_exact_f64(), expected.try_to_f64());
+                    prop_assert_eq!(matrix.det_exact_rounded_f64(), expected.to_rounded_f64());
+                }
             }
         }
     };
