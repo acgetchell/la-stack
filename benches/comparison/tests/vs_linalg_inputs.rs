@@ -25,11 +25,10 @@ use vs_linalg_common::{
     LuSolveScenario, make_balanced_dynamic_range_rows, validated_lu_solve_input,
 };
 use vs_linalg_common::{
-    PreparedFaerLuDet, faer_det_from_ldlt, faer_perm_sign, la_stack_norm_inf,
-    la_stack_norm_squared, make_ill_conditioned_matrix_rows, make_matrix_rows,
-    make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
+    PreparedFaerLuDet, faer_det_from_ldlt, faer_perm_sign, make_ill_conditioned_matrix_rows,
+    make_matrix_rows, make_pivoting_matrix_rows, make_vector_array, matrix_entry,
+    nalgebra_inf_norm, vector_entry,
 };
-#[cfg(not(la_stack_pre_rational_input_api))]
 use vs_linalg_common::{
     delaunay_scaled_norm, iterative_hypot, make_norm_descending_array,
     make_norm_repeated_scale_array, make_norm_sparse_array, make_norm_wide_dynamic_range_array,
@@ -221,13 +220,13 @@ fn assert_vector_operation_agreement<const D: usize>() {
     assert_abs_diff_eq!(nv1.dot(&nv2), expected_dot, epsilon = 0.0);
     assert_abs_diff_eq!(fa_dot, expected_dot, epsilon = 0.0);
 
-    let la_norm_squared = la_stack_norm_squared(&v1)
+    let la_norm_squared = v1
+        .norm_squared()
         .unwrap_or_else(|err| panic!("la_stack norm_squared failed: {err}"));
     assert_close("nalgebra_norm_squared", nv1.norm_squared(), la_norm_squared);
     let fa_norm_squared = fv1.as_mat_ref().squared_norm_l2();
     assert_close("faer_norm2_sq", fa_norm_squared, la_norm_squared);
 
-    #[cfg(not(la_stack_pre_rational_input_api))]
     {
         let la_norm = v1
             .norm()
@@ -258,7 +257,6 @@ fn assert_vector_operation_agreement<const D: usize>() {
     }
 }
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 #[test]
 fn norm_scenario_inputs_cover_distinct_branch_and_range_profiles() {
     let descending = make_norm_descending_array::<8>();
@@ -430,8 +428,9 @@ fn assert_matrix_norm_inf_agreement<const D: usize>() {
     let na = SMatrix::<f64, D, D>::from_fn(matrix_entry::<D>);
     let fa = Mat::<f64>::from_fn(D, D, matrix_entry::<D>);
 
-    let la_norm =
-        la_stack_norm_inf(&a).unwrap_or_else(|err| panic!("la_stack norm_inf failed: {err}"));
+    let la_norm = a
+        .norm_inf()
+        .unwrap_or_else(|err| panic!("la_stack norm_inf failed: {err}"));
     assert_close("nalgebra_inf_norm", nalgebra_inf_norm(&na), la_norm);
     let mut fa_norm = 0.0;
     for r in 0..D {

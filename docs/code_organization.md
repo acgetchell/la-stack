@@ -192,11 +192,12 @@ gates for both local measurements and release inventories.
 `tooling/performance.toml` uses the shared measurement schema for source/harness
 inputs, probes, timeouts, and compatibility fields.
 `tooling/performance-policy.toml` owns the scientific metric catalog, exact groups,
-peer mappings and historical API availability. `scripts/performance_runs.py`
-binds those declarations to scientific coverage, release compatibility and
+peer mappings and the minimum release for new measurements. `scripts/performance_runs.py`
+binds those declarations to scientific coverage, measurement eligibility and
 named reference-phase assertions. `scripts/archive_performance.py` composes
-shared APIs for tracked-only measurements, metadata-free historical raw archives
-and la-stack README publication.
+shared APIs for tracked-only measurements and la-stack README publication.
+Old API cfg and root-test layout adapters and the metadata-free historical
+asset comparison command are retired; original archives remain unchanged.
 `tooling/performance-plot.toml` declares dimensions, units, series and axes.
 `tooling/performance-report.toml` owns the canonical report path, title, and shared history path.
 The obsolete CSV conversion declaration and pre-Just Python phase replay are removed.

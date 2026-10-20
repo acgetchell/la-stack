@@ -14,7 +14,6 @@ the commands measure and where their outputs go.
   - [Iterate Against A Local Saved Baseline](#iterate-against-a-local-saved-baseline)
   - [Update The README nalgebra/faer Table](#update-the-readme-nalgebrafaer-table)
   - [Create The Release Performance Report](#create-the-release-performance-report)
-  - [Compare Published Release Artifacts](#compare-published-release-artifacts)
 - [Output Locations](#output-locations)
 - [`vs_linalg` Methodology](#vs_linalg-methodology)
 - [Exact-Arithmetic Notes](#exact-arithmetic-notes)
@@ -40,7 +39,6 @@ next release; measured artifact links and historical reports retain their tags.
 | README table and plot | `just performance-release` then `just performance-readme` |
 | Release report | `just performance-release "$CURRENT_TAG" "$PREVIOUS_TAG"` |
 | Build docs from retained release inputs | `just performance-doc` |
-| Published-asset comparison | `just performance-github-assets "$CURRENT_TAG" "$PREVIOUS_TAG"` |
 
 Rule of thumb:
 
@@ -215,18 +213,18 @@ absent from the isolated current phase. The retained complete-run inputs and Pyt
 renderer provide the release report. Baseline-saving recipes also disable unused
 Criterion plots and HTML without changing sampling.
 
-New release comparisons require v0.4.4 or newer on both sides. v0.4.3 and older
-are unsupported: the workflow rejects them before benchmark setup. Historical
-Markdown reports remain in the archive, but are not regenerated with the current
-harness. There are no v0.4.3 API adapters or missing-row exemptions.
+New measurements require v0.5.0 or newer on both sides. Earlier releases are
+rejected before fetching tags, creating worktrees or discovering benchmarks.
+The old API and root-test layout adapters are retired; both phases must contain
+every selected report row, including rational-input and norm cases.
+Comparison builds cap lint diagnostics at warning for both revisions because
+the current manifest's lint policy may reject released source that predates a
+lint, even though that source remains valid benchmark input.
 
-v0.4.4 and v0.4.5 use adapters for renamed norm methods and the array return
-type of `solve_exact`, and omit the later rational-input API. These adapters
-preserve the same operations and mathematical checks without patching either
-library implementation. Comparison builds cap lint diagnostics at warning for
-both revisions because the current manifest's lint policy may reject historical
-source that predates a lint, even though that source remains valid benchmark
-input.
+Historical reports, raw artifacts and their hashes remain unchanged. The
+measurement floor does not prevent offline rendering of retained complete runs
+that satisfy the modern scientific policy. Older records requiring retired API
+adapters remain readable directly in their original formats.
 
 This command does not depend on existing local `target/criterion/` baselines.
 It is slower than reusing a saved baseline, but less sensitive to stale local
@@ -378,8 +376,8 @@ The native Criterion inventory declares every expected semantic ID, including
 diagnostics outside the selected report. Each case requires 100 raw samples,
 both mean and median estimates, and complete 95% intervals in nanoseconds.
 The consumer declares canonical report rows and baseline-only nalgebra/faer
-reference series. The pre-rational-input adapter marks unsupported baseline
-rows explicitly; current-only measurements never imply cross-release speedups.
+reference series. Both phases must include every selected la-stack row;
+missing baseline rows fail validation.
 
 Scratch evidence uses `performance.run.json` and `performance.evidence.json`
 under `target/bench-reports/`. These preserve raw Criterion JSON, both source
@@ -439,28 +437,10 @@ retained and reproducible but cannot become release documentation. Use promotion
 for presentation-only report corrections; changes to benchmark inputs, code,
 toolchains, or measurement configuration require a fresh local or release run.
 
-### Compare Published Release Artifacts
-
-After releases are published, the GitHub Release benchmark workflow attaches a
-compressed Criterion baseline artifact. To compare those stored artifacts
-without running cargo locally, install the GitHub CLI (`gh`) and authenticate it
-with access to the repository (`gh auth login` or an equivalent token). The
-requirement applies even when both release tags are supplied explicitly because
-the recipe still downloads their GitHub Release assets:
-
-```bash
-just performance-github-assets "$CURRENT_TAG" "$PREVIOUS_TAG"
-```
-
-With no arguments, the recipe discovers the latest and previous stable
-published GitHub releases.
-
-Published artifacts preserve each release's original benchmark harness. Their
-historical timing environments may not have been recorded, so report provenance
-labels those fields, including historical correctness gates, unavailable. This
-read-only comparison does not claim common-harness measurement or permit release
-promotion. Use a local
-shared-harness workflow before attributing a difference solely to library code.
+The historical `performance-github-assets` comparison command is retired.
+Published Criterion archives remain available as original release artifacts;
+their missing source, host and gate provenance is not reconstructed. Use
+`performance-local` or `performance-release` for new checked comparisons.
 
 ## Output Locations
 
@@ -471,7 +451,6 @@ shared-harness workflow before attributing a difference solely to library code.
 | `target/bench-reports/performance.run.json` | No | `performance-local`, `performance-release` | Complete native cases, samples, and named phase series. |
 | `target/bench-reports/performance.evidence.json` | No | `performance-local`, `performance-release` | Shared evidence envelope with source/harness and phase provenance. |
 | `target/bench-reports/performance-non-exact.*` | No | `performance-local-non-exact` | Narrowed non-exact report and retained peer-context comparison inputs. |
-| `target/bench-reports/github-assets-performance.md` | No | `performance-github-assets` | Local report from published release artifacts. |
 | `docs/performance.md` | Yes | `performance-release`, `performance-doc` | Current shared full report; last legacy report until complete-run promotion. |
 | `docs/performance-runs/` | Yes | `performance-release`, `performance-doc` | Immutable complete runs, reports, index, and validated latest pointer. |
 | `docs/performance/` | Yes | Frozen record/shared conversion | Unchanged historical CSV/JSON evidence and hashes. |

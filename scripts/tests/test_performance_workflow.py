@@ -1,14 +1,12 @@
 """Installed-package acceptance of la-stack's complete performance workflow."""
 
 import hashlib
-import io
 import json
 import os
 import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
 import tomllib
 from dataclasses import replace
 from pathlib import Path
@@ -33,7 +31,7 @@ if TYPE_CHECKING:
     from research_repo_tools.publication import PublicationPlan
 
 ROOT = Path(__file__).resolve().parents[2]
-PAIR = ReleasePair("v0.4.6", "v0.4.5")
+PAIR = ReleasePair("v0.5.1", "v0.5.0")
 DRIVER = """import json, sys
 from pathlib import Path
 action, phase = sys.argv[1:]
@@ -57,7 +55,7 @@ def prepared(tmp_path: Path) -> tuple[Path, Path, CommonHarnessPlan]:
     """Use the real consumer inventory and policies with a bounded timing fixture."""
     ids = tuple(sorted(required_report_ids()))
     inventories = {
-        "baseline": tuple(name for name in ids if not name.startswith(policy.scientific_policy().unavailable_prefixes)),
+        "baseline": ids,
         "current": tuple(name for name in ids if not name.startswith("d") or "/la_stack_" in name),
     }
     for phase in ("baseline", "current"):
@@ -109,7 +107,7 @@ def prepared(tmp_path: Path) -> tuple[Path, Path, CommonHarnessPlan]:
             cwd=root,
         )
     baseline, current = tmp_path / "baseline", tmp_path / "current"
-    plan = policy.declared_plan(PAIR, "all", "release-signal", inventories, baseline_env=(), current_env=(), config=policy.configuration(current))
+    plan = policy.declared_plan("all", "release-signal", inventories, baseline_env=(), current_env=(), config=policy.configuration(current))
     return baseline, current, plan
 
 
@@ -157,7 +155,9 @@ def test_measurement_worktrees_accept_an_aliased_system_temporary_directory(tmp_
     """Canonicalize owned temporary paths before the native worktree safety check."""
     root = tmp_path.resolve() / "repository"
     root.mkdir()
-    (root / "Cargo.toml").write_text('[package]\nname = "fixture"\nversion = "0.4.6"\n', encoding="utf-8")
+    (root / "Cargo.toml").write_text('[package]\nname = "fixture"\nversion = "0.5.1"\n', encoding="utf-8")
+    (root / "tooling").mkdir()
+    shutil.copyfile(ROOT / policy.POLICY_CONFIG, root / policy.POLICY_CONFIG)
     run_command("git", ["--no-pager", "init", "--quiet"], cwd=root)
     run_command("git", ["--no-pager", "add", "Cargo.toml"], cwd=root)
     run_command(
@@ -204,13 +204,15 @@ def test_measurement_worktrees_accept_an_aliased_system_temporary_directory(tmp_
     assert list(physical.iterdir()) == []
 
 
-def test_consumer_plan_rejects_an_inventory_missing_a_required_report_row() -> None:
+@pytest.mark.parametrize("phase", ["baseline", "current"])
+def test_consumer_plan_rejects_an_inventory_missing_a_required_report_row(phase: str) -> None:
     missing = "d64/la_stack_lu_solve"
     ids = tuple(sorted(required_report_ids()))
     assert missing in ids
-    inventories = {"baseline": ids, "current": tuple(name for name in ids if name != missing)}
-    with pytest.raises(ValueError, match=rf"inventory omits selected report rows: \['{missing}'\]"):
-        policy.declared_plan(PAIR, "all", "release-signal", inventories, baseline_env=(), current_env=(), root=ROOT)
+    inventories = {"baseline": ids, "current": ids}
+    inventories[phase] = tuple(name for name in ids if name != missing)
+    with pytest.raises(ValueError, match=rf"inventory omits selected (?:report )?rows: \['{missing}'\]"):
+        policy.declared_plan("all", "release-signal", inventories, baseline_env=(), current_env=(), root=ROOT)
 
 
 @pytest.mark.parametrize("report_path", ["docs/performance.md", "docs/reports/current.md"])
@@ -301,7 +303,7 @@ def prepare_readme_recipe(root: Path, statistic: str) -> None:
 def assert_readme_presentation(readme: str, statistic: str) -> None:
     """Check the consumer's compact style, comparison direction and figure."""
     table = readme.split(f"<!-- BENCH_TABLE:lu_solve:{statistic}:new:BEGIN -->", 1)[1].split(f"<!-- BENCH_TABLE:lu_solve:{statistic}:new:END -->", 1)[0]
-    assert "| Dimension | la-stack (v0.4.6) | nalgebra (" in table
+    assert f"| Dimension | la-stack ({PAIR.current}) | nalgebra (" in table
     assert "| faer (" in table
     assert "| Speedup vs nalgebra | Speedup vs faer |" in table
     assert "(0.95 confidence)" not in table
@@ -314,7 +316,7 @@ def assert_readme_presentation(readme: str, statistic: str) -> None:
     assert "ratios are point estimates, with no ratio intervals or significance claims" in table
     for name in ("nalgebra", "faer"):
         assert f"Speedup vs {name}: ratio; numerator = {name} (" in table
-    assert table.count("denominator = la-stack (v0.4.6)") == 2
+    assert table.count(f"denominator = la-stack ({PAIR.current})") == 2
     assert "time reduction" not in table
     assert f"![LU solve (factor + solve): {statistic} time vs dimension][lu-solve-benchmark]" in readme
     assert (
@@ -514,7 +516,7 @@ def test_existing_tag_cannot_receive_different_measured_assets(complete_run: tup
         ],
         cwd=root,
     )
-    run_command("git", ["--no-pager", "-c", "tag.gpgsign=false", "tag", "v0.4.6"], cwd=root)
+    run_command("git", ["--no-pager", "-c", "tag.gpgsign=false", "tag", PAIR.current], cwd=root)
     originals = {path: path.read_bytes() for path in (*assets.iterdir(), root / "README.md")}
     with pytest.raises(ValueError, match="exact publication artifact"):
         workflow.publish_plot(root, "lu_solve", "median", log_y=True, update_readme=True)
@@ -598,7 +600,28 @@ def test_legacy_bytes_hashes_are_unchanged() -> None:
     assert {name: hashlib.sha256((directory / name).read_bytes()).hexdigest() for name in hashes} == hashes
 
 
-def test_native_command_policy_and_compatibility_adapter() -> None:
+def test_retained_modern_evidence_below_measurement_floor_remains_readable() -> None:
+    """The execution floor must not disable replay of complete archived evidence."""
+    identity = "634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5"
+    directory = ROOT / "docs/performance-runs/runs" / identity
+    evidence = policy.load_evidence(directory / "run.json", directory / "evidence.json")
+    run = policy.validate_scientific_run(evidence, release=True, root=ROOT)
+    releases = {phase: dict(source.context)["release"] for phase, source in evidence.sources}
+    assert releases == {"baseline": "v0.4.6", "current": "v0.5.0"}
+    with pytest.raises(ValueError, match=r"requires v0\.5\.0 or newer"):
+        policy.validate_measurement_pair(ReleasePair(releases["current"], releases["baseline"]), ROOT)
+    assert {series.phase for series in run.series if series.name in {"nalgebra", "faer"}} == {"baseline"}
+    report = render_run(
+        evidence,
+        report_path="docs/performance.md",
+        payload_path=f"docs/performance-runs/runs/{identity}/run.json",
+        manifest_path=f"docs/performance-runs/runs/{identity}/evidence.json",
+    )
+    assert identity.encode() in report
+    assert b"v0.4.6" in report
+
+
+def test_native_command_policy_and_phase_environment() -> None:
     justfile = Path("tooling/performance.just")
     baseline = dry_run(ROOT, "baseline-all", justfile=justfile).stderr
     current = dry_run(ROOT, "current-all", justfile=justfile).stderr
@@ -610,13 +633,12 @@ def test_native_command_policy_and_compatibility_adapter() -> None:
     assert dry_run(ROOT, "baseline-all", ["list"], justfile=justfile).stderr.count("--list") == 2
     gate = dry_run(ROOT, "gate", justfile=justfile).stderr
     assert "--test vs_linalg_inputs --test exact_bench_config" in gate
-    environment = dict(policy.phase_environment(ROOT, "la_stack_pre_rational_input_api"))
-    assert "--cfg=la_stack_pre_rational_input_api" in environment.get("CARGO_ENCODED_RUSTFLAGS", environment.get("RUSTFLAGS", ""))
+    environment = dict(policy.phase_environment(ROOT))
     assert environment["CARGO_TARGET_DIR"] == "target"
     assert environment["CRITERION_HOME"] == "target/criterion"
 
 
-@pytest.mark.parametrize("baseline_tag", ["v0.4.4", "v0.4.5", "v0.4.6"])
+@pytest.mark.parametrize("baseline_tag", ["v0.5.0", "v0.5.1"])
 @pytest.mark.parametrize("scope", ["release-signal", "all-benches"])
 def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, baseline_tag: str, scope: str) -> None:
     """Exercise the configured Justfile, stubbing only the expensive Cargo boundary."""
@@ -627,8 +649,7 @@ def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path:
     binary = tmp_path / "bin"
     binary.mkdir()
     cargo = binary / "cargo"
-    # These are the registrations guarded by the historical API cfg in
-    # benches/vs_linalg.rs, including the two reference scenario kernels.
+    # Diagnostic norm registrations include the two reference scenario kernels.
     norm_rows = {
         f"d{dimension}/{bench}"
         for dimension in (2, 3, 4, 5)
@@ -666,17 +687,16 @@ def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path:
     monkeypatch.setenv("CARGO_RECORD", str(record))
     monkeypatch.setenv("CRITERION_HOME", "target/criterion")
     monkeypatch.chdir(tmp_path)
-    pair = ReleasePair("v0.4.6", baseline_tag)
+    pair = ReleasePair(PAIR.current, baseline_tag)
     plan = policy.measurement_plan(root, pair, "all", scope)
     assert isinstance(plan.current.policy, CompletePolicy)
     assert isinstance(plan.baseline.policy, CompletePolicy)
     assert set(plan.current.policy.expected) == set(current_ids) | set(exact)
-    unavailable = norm_rows | {name for name in exact if name.startswith(("rational_input_", "canonical_conversion_", "det4_diagnostic_"))}
-    assert set(plan.baseline.policy.expected) == (ids if baseline_tag == "v0.4.6" else ids - unavailable)
+    assert set(plan.baseline.policy.expected) == ids
     assert ordinary_norm_peers <= set(plan.baseline.policy.expected)
     assert "d2/la_stack_norm2_sq" in plan.baseline.policy.expected
     series = {item.name: {name for name, _ in item.rows} for item in plan.series}
-    assert series["la-stack baseline"] == (series["la-stack current"] if baseline_tag == "v0.4.6" else series["la-stack current"] - unavailable)
+    assert series["la-stack baseline"] == series["la-stack current"]
     if scope == "all-benches":
         assert "d2/la_stack_norm2" in series["la-stack current"]
         assert "d2/la_stack_norm2_scenario_sparse" in series["la-stack current"]
@@ -735,11 +755,30 @@ def test_retired_python_phase_format_is_rejected(tmp_path: Path) -> None:
 
 def test_local_explicit_labels_and_release_eligibility(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
-    assert workflow.select_pair(ROOT, "explicit", "v0.4.6", "v0.4.6", local=True) == ReleasePair("v0.4.6", "v0.4.6")
+    assert workflow.select_pair(ROOT, "explicit", "v0.5.0", "v0.5.0", local=True) == ReleasePair("v0.5.0", "v0.5.0")
     with pytest.raises(ValueError, match="must differ"):
-        workflow.select_pair(ROOT, "explicit", "v0.4.6", "v0.4.6")
-    with pytest.raises(ValueError, match=r"v0.4.4|unsupported"):
-        workflow.select_pair(ROOT, "explicit", "v0.4.6", "v0.4.3", local=True)
+        workflow.select_pair(ROOT, "explicit", "v0.5.0", "v0.5.0")
+    assert workflow.select_pair(ROOT, "explicit", PAIR.current, PAIR.baseline) == PAIR
+
+
+@pytest.mark.parametrize("old_tag", ["v0.4.3", "v0.4.4", "v0.4.5", "v0.4.6", "v0.4.99"])
+@pytest.mark.parametrize("phase", ["baseline", "current"])
+def test_old_releases_are_rejected_before_measurement_side_effects(old_tag: str, phase: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    pair = ReleasePair(PAIR.current, old_tag) if phase == "baseline" else ReleasePair(old_tag, PAIR.baseline)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unsupported releases must fail before snapshot, fetch, worktree creation or discovery")
+
+    monkeypatch.setattr(workflow, "capture_snapshot", forbidden)
+    monkeypatch.setattr(workflow, "run_command", forbidden)
+    monkeypatch.setattr(policy, "discover_inventory", forbidden)
+    for action in (
+        lambda: workflow.select_pair(ROOT, "explicit", pair.current, pair.baseline, local=True),
+        lambda: workflow.measure(ROOT, pair, "all", "release-signal"),
+        lambda: policy.measurement_plan(ROOT, pair, "all", "release-signal"),
+    ):
+        with pytest.raises(ValueError, match=r"requires v0\.5\.0 or newer"):
+            action()
 
 
 @pytest.mark.parametrize(
@@ -749,9 +788,6 @@ def test_local_explicit_labels_and_release_eligibility(tmp_path: Path, monkeypat
         ("minimum-release", "[0, 4]"),
         ("minimum-release", "[0, 4, true]"),
         ("minimum-release", "[0, 4, -1]"),
-        ("modern-api-release", "[]"),
-        ("modern-api-release", "[0, 4, 3]"),
-        ("legacy-api-cfg", '"--arbitrary-flag"'),
     ],
 )
 def test_malformed_release_policy_is_rejected(tmp_path: Path, field: str, value: str) -> None:
@@ -762,8 +798,8 @@ def test_malformed_release_policy_is_rejected(tmp_path: Path, field: str, value:
 
     text = re.sub(rf"(?m)^{re.escape(field)} = .*$", f"{field} = {value}", text)
     (tmp_path / policy.POLICY_CONFIG).write_text(text, encoding="utf-8")
-    with pytest.raises(ValueError, match=r"release|cfg"):
-        policy.compatibility_adapter(PAIR, tmp_path)
+    with pytest.raises(ValueError, match="minimum-release"):
+        policy.validate_measurement_pair(PAIR, tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -776,9 +812,6 @@ def test_malformed_release_policy_is_rejected(tmp_path: Path, field: str, value:
         ("dimensions", "[2, 2]", "dimensions"),
         ("library-benchmarks", '"la_stack_lu"', "library-benchmarks"),
         ("library-benchmarks", '["la_stack_lu", "la_stack_lu"]', "library-benchmarks"),
-        ("unavailable-prefixes", "[false]", "unavailable-prefixes"),
-        ("unavailable-benchmarks", '["../escape"]', "unavailable-benchmarks"),
-        ("unavailable-benchmark-prefixes", "[1]", "unavailable-benchmark-prefixes"),
         ("exact_d2", '"det"', "exact.exact_d2"),
         ('"8"', "[false]", "additional.8"),
         ("la_stack_lu", '["nalgebra_lu"]', "peers.la_stack_lu"),
@@ -799,7 +832,7 @@ def test_malformed_scientific_catalog_is_rejected(tmp_path: Path, field: str, va
     assert count == 1
     (tmp_path / policy.POLICY_CONFIG).write_text(text, encoding="utf-8")
     with pytest.raises(ValueError, match=re.escape(diagnostic)):
-        policy.compatibility_adapter(PAIR, tmp_path)
+        policy.scientific_policy(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -833,12 +866,11 @@ def test_parsed_scientific_catalog_preserves_immutable_peer_and_metric_rows() ->
         cast("dict[str, tuple[str, str]]", catalog.peers)["la_stack_lu"] = ("wrong", "peer")
 
 
-@pytest.mark.parametrize("flag", [("--suite", "exact"), ("--scope", "all-benches"), ("--stem", "ignored")])
-def test_assets_rejects_retired_options(flag: tuple[str, str], capsys: pytest.CaptureFixture[str]) -> None:
+def test_historical_asset_command_is_retired(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as error:
-        workflow.main(["assets", *flag])
+        workflow.main(["assets"])
     assert error.value.code == 2
-    assert "unrecognized arguments" in capsys.readouterr().err
+    assert "invalid choice: 'assets'" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("command", ["plot", "local"])
@@ -868,14 +900,11 @@ def test_reference_phase_and_same_version_policy(tmp_path: Path) -> None:
         policy.validate_scientific_run(replace(evidence, payload=serialize_run(replace(run, series=series))))
     # Use a current/current release pair with both sources under the same API.
     baseline, current, plan = prepared(tmp_path / "same")
-    pair = ReleasePair("v0.4.6", "v0.4.6")
+    pair = ReleasePair(PAIR.current, PAIR.current)
     inventories = {phase: tuple(case.full_id for case in sample.cases) for phase, sample in run.phases}
-    # The older-API fixture deliberately lacks rows; removing them from the
-    # current selection allows a narrow all-benches same-version comparison.
-    inventories["current"] = tuple(name for name in inventories["current"] if name in inventories["baseline"])
     driver = f"INVENTORIES = {inventories!r}\n" + DRIVER
     (current / "tooling/fixture.py").write_text(driver, encoding="utf-8")
-    plan = policy.declared_plan(pair, "all", "all-benches", inventories, baseline_env=(), current_env=(), config=policy.configuration(current))
+    plan = policy.declared_plan("all", "all-benches", inventories, baseline_env=(), current_env=(), config=policy.configuration(current))
     same = measure_prepared_pair(baseline, current, plan, pair, working_tree=True)
     policy.validate_scientific_run(same)
     with pytest.raises(ValueError, match="same-version"):
@@ -886,22 +915,6 @@ def test_reference_phase_and_same_version_policy(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="distinct source"):
         policy.validate_scientific_run(identical)
-
-
-def test_unsafe_release_asset_cannot_replace_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    output = tmp_path / "report.md"
-    output.write_bytes(b"previous report\n")
-
-    def unsafe_asset(_root: Path, _repo: str, _tag: str, _name: str, destination: Path) -> None:
-        with tarfile.open(destination, "w:gz") as archive:
-            member = tarfile.TarInfo("../../report.md")
-            member.size = 4
-            archive.addfile(member, io.BytesIO(b"evil"))
-
-    monkeypatch.setattr(workflow, "download_release_asset", unsafe_asset)
-    with pytest.raises(ValueError, match=r"unsafe|traversal|relative|member"):
-        workflow.compare_assets(tmp_path, PAIR, output)
-    assert output.read_bytes() == b"previous report\n"
 
 
 def test_shared_saved_comparison_recipe_reports_coverage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

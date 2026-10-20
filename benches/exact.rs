@@ -35,7 +35,6 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkGroup, Criterion, Throughput, measurement::WallTime};
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 use la_stack::ExactF64Conversion;
 use la_stack::{Matrix, Vector};
 
@@ -44,11 +43,9 @@ mod bench_utils;
 #[path = "common/exact.rs"]
 pub mod exact_bench;
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 #[path = "common/rational.rs"]
 pub mod rational_bench;
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 #[path = "common/exact_diagnostics.rs"]
 pub mod exact_diagnostics;
 
@@ -58,12 +55,10 @@ use exact_bench::{
     large_entries_3x3_input, make_matrix_rows, make_random_input_corpus, make_vector_array,
     near_singular_3x3_input, validate_exact_fixture, validate_f64_determinant_benchmarks,
 };
-#[cfg(not(la_stack_pre_rational_input_api))]
 use exact_diagnostics::{
     ConversionKind, Det4Kind, EXPONENT_SPREADS, ExponentAxis, canonical_conversion_input,
     exact_det4_input, exponent_spread_input,
 };
-#[cfg(not(la_stack_pre_rational_input_api))]
 use rational_bench::{
     RationalInputKind, rational_determinant_gaussian, rational_input, rational_solve_gaussian,
 };
@@ -119,7 +114,6 @@ const CORPUS_AND_EXTREME_OPERATIONS: &[ExactOperation] = &[
 /// Both algorithms measure a complete operation on borrowed, accepted input.
 /// The consuming Gaussian references therefore make their required working
 /// copies inside the timed closure, just as row clearing builds its workspace.
-#[cfg(not(la_stack_pre_rational_input_api))]
 fn bench_rational_input<const D: usize>(criterion: &mut Criterion, kind: RationalInputKind) {
     let input = rational_input::<D>(kind);
     let group_name = match kind {
@@ -379,7 +373,6 @@ macro_rules! gen_random_corpus_benches_for_dim {
     }};
 }
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 fn bench_canonical_conversion<const D: usize>(c: &mut Criterion) {
     for kind in ConversionKind::ALL {
         let input = canonical_conversion_input::<D>(kind);
@@ -394,7 +387,6 @@ fn bench_canonical_conversion<const D: usize>(c: &mut Criterion) {
     }
 }
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 fn bench_det4_diagnostics(c: &mut Criterion) {
     for kind in Det4Kind::ALL {
         let input = exact_det4_input(kind);
@@ -415,7 +407,6 @@ fn bench_det4_diagnostics(c: &mut Criterion) {
     }
 }
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 fn bench_exponent_spreads<const D: usize>(c: &mut Criterion, axis: ExponentAxis) {
     for spread in EXPONENT_SPREADS {
         let input = exponent_spread_input::<D>(spread, axis);
@@ -455,7 +446,6 @@ fn main() {
         gen_random_corpus_benches_for_dim!(&mut c, 5);
     }
 
-    #[cfg(not(la_stack_pre_rational_input_api))]
     {
         bench_canonical_conversion::<2>(&mut c);
         bench_canonical_conversion::<3>(&mut c);

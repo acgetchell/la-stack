@@ -71,17 +71,24 @@ metadata. They cannot provide complete-run samples or newly captured host proven
 Only two production modules remain:
 
 - `archive_performance.py`: la-stack release eligibility, tracked-only snapshots,
-  historical raw archives without metadata, and README publication composition.
-- `performance_runs.py`: captured old-API cfg/environment, scientific selection,
+  and README publication composition.
+- `performance_runs.py`: captured measurement environment, scientific selection,
   sampling, originating reference phases and source/harness eligibility.
 
-These are consumer policies rather than shared implementations. v0.4.4/v0.4.5
-need the historical cfg and root-test layout adapter. Shared CLI snapshots include
-untracked files; la-stack's established contract excludes them. The shared plan
-cannot select cfg and API availability from a release pair. Raw historical release
-archives lack the metadata required by the shared asset-evidence CLI. Their
-small adapter uses shared parsing/rendering and explicitly identifies unrecorded
-source, host and gates without constructing an evidence envelope.
+Before v0.5.1, new measurements are restricted to v0.5.0 or newer on both sides.
+The historical API cfg, missing-row exemptions, root-test layout adapter and
+metadata-free `performance-github-assets` command are retired. Their Rust
+benchmark branches are removed while the independent scientific gates remain.
+Original reports, CSV/JSON, plots and archives retain their bytes and hashes.
+The measurement floor does not block offline use of retained complete runs
+satisfying the modern scientific policy.
+
+Shared CLI snapshots include untracked files; la-stack's established contract
+excludes them. Independent scientific eligibility, saved-sample storage checks
+and publication composition also remain local.
+[Upstream #115](https://github.com/acgetchell/research-repo-tools/issues/115)
+targets declarative replacements in v0.2.1. Adoption and deletion of the final
+production Python modules follow publication of that package.
 
 Generic subprocesses, discovery parsing, worktrees, measurement, completeness,
 estimates, comparison arithmetic, rendering, run identity, history, downloads,

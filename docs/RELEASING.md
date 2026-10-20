@@ -393,7 +393,8 @@ cargo check --locked --manifest-path "$CONSUMER/Cargo.toml"
 
 Use a disposable shell for this check. Preserve the output and record the tag,
 commit, benchmark run, publishing run, registry URL/checksum and consumer results
-in #259. Keep that issue open until the approved v0.5.0 publication is verified.
+in the current release's tracking issue or merged release PR. Keep any release
+tracking issue open until publication and consumer verification succeed.
 
 The benchmark producer has read-only repository permissions and restores no
 dependency caches, including tool binaries. It invokes `setup-tools` with
@@ -464,13 +465,13 @@ git branch -d "release/$TAG"
 git push origin --delete "release/$TAG"
 ```
 
-## Configure Trusted Publishing before v0.5.0
+## Configure or verify Trusted Publishing
 
 Follow the current [crates.io setup requirements](https://crates.io/docs/trusted-publishing).
 Trusted Publishing requires an already-published crate and crate ownership;
 initial publication uses an API token. `la-stack` already exists, so no throwaway
-version or initial upload is needed. As its owner, register this exact identity
-under the crate's Settings → Trusted Publishing:
+version or initial upload is needed. As its owner, verify this exact identity
+under the crate's Settings → Trusted Publishing and register it if missing:
 
 | Field | Value |
 | --- | --- |
@@ -479,9 +480,9 @@ under the crate's Settings → Trusted Publishing:
 | Workflow filename | `publish-crates.yml` |
 | Environment | `crates-io` |
 
-Create GitHub's `crates-io` environment with required maintainer reviewers,
+For initial setup, create GitHub's `crates-io` environment with required maintainer reviewers,
 administrator bypass disabled, and selected deployment tags matching `v*` only
-(no branches). The proposed `.github/settings/crates-io-environment.json` names
+(no branches). The `.github/settings/crates-io-environment.json` payload names
 `acgetchell` (user ID 434849) as the required reviewer and permits that maintainer
 to approve their own deployment; self-review prevention needs another eligible
 reviewer. `.github/settings/crates-io-tags.json` declares the tag restriction.
@@ -495,12 +496,12 @@ excluded from Dependabot automatic approval so these changes require maintainer
 review. Do not add a long-lived
 `CARGO_REGISTRY_TOKEN` secret.
 
-Workflow YAML and settings payloads do not apply account configuration. On
-October 15, 2026, the GitHub environments API returned no environments and the
-authenticated crates.io settings showed no trusted publishers. These payloads
-and the publisher registration remain unapplied. Before release, record the actual crates.io
-publisher identity and GitHub environment reviewers/tag policy, allowlist and
-permissions evidence in #259. Re-read live settings before changing them.
+Workflow YAML and settings payloads do not apply account configuration. The initial
+Trusted Publishing rollout and verified v0.5.0 publication are recorded in
+[#259](https://github.com/acgetchell/la-stack/issues/259). Before each release,
+verify the actual crates.io publisher identity and GitHub environment reviewers/tag
+policy, allowlist and permissions. Record that evidence in the current release's
+tracking issue or release PR. Re-read live settings before changing them.
 Validate the source with `just lint-config`, `just python-ci`, `just markdown-ci`
 and `just doc-check`; PR tests use simulated providers and never upload crates.
 Native CI and successful approved publication remain separate rollout evidence.

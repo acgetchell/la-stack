@@ -1,13 +1,8 @@
 # la-stack scientific selections; generic execution and rendering are shared.
 schema = 1
 dimensions = [ 2, 3, 4, 5, 8, 16, 32, 64 ]
-minimum-release = [ 0, 4, 4 ]
-modern-api-release = [ 0, 4, 6 ]
-legacy-api-cfg = "la_stack_pre_rational_input_api"
+minimum-release = [ 0, 5, 0 ]
 library-benchmarks = [ "la_stack_det", "la_stack_det_from_ldlt", "la_stack_det_from_lu", "la_stack_det_via_lu", "la_stack_dot", "la_stack_inf_norm", "la_stack_ldlt", "la_stack_ldlt_solve", "la_stack_lu", "la_stack_lu_solve", "la_stack_norm2_sq", "la_stack_solve_from_ldlt", "la_stack_solve_from_lu" ]
-unavailable-prefixes = [ "rational_input_", "canonical_conversion_", "det4_diagnostic_" ]
-unavailable-benchmarks = [ "la_stack_norm2" ]
-unavailable-benchmark-prefixes = [ "la_stack_norm2_scenario_", "iterative_f64_hypot_norm2_scenario_", "delaunay_scaled_norm_norm2_scenario_" ]
 
 [exact]
 exact_d2 = [ "det", "det_direct", "det_direct_with_errbound", "det_errbound", "det_exact", "det_exact_f64_result", "det_exact_rounded_f64", "det_sign_exact", "solve_exact", "solve_exact_f64_result", "solve_exact_rounded_f64" ]

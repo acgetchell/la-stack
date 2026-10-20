@@ -598,10 +598,6 @@ pub fn validate_exact_fixture<const D: usize>(input: ExactInput<D>) -> Validated
         .matrix
         .solve_exact(input.rhs)
         .or_abort("exact solve oracle check");
-    // Historical releases return the rational array directly instead of a wrapper.
-    #[cfg(la_stack_pre_rational_input_api)]
-    let solution = &solution;
-    #[cfg(not(la_stack_pre_rational_input_api))]
     let solution = solution.as_array();
     assert_exact_residual(&input, solution);
 
