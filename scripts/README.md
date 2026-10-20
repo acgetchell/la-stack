@@ -23,9 +23,9 @@ interpretation, output paths and release procedures.
 
 | Owner | Responsibility |
 | --- | --- |
-| `archive_performance.py` | Release eligibility, tracked-only snapshots, historical raw-archive composition, and la-stack README markers/pointers |
-| `performance_runs.py` | Historical API cfg/environment, scientific coverage, sampling and original reference-phase assertions |
-| `tooling/performance-policy.toml` | Exact group selections, metric names, peers, dimensions and historical API availability |
+| `archive_performance.py` | Release eligibility, tracked-only snapshots, and la-stack README markers/pointers |
+| `performance_runs.py` | Measurement environment, scientific coverage, sampling and original reference-phase assertions |
+| `tooling/performance-policy.toml` | Exact group selections, metric names, peers, dimensions and minimum measurement release |
 | `tooling/performance.toml` | Shared sources, harness, probes, dependencies, timeouts and compatibility |
 | `tooling/performance.just` | Native Cargo discovery, independent correctness gates and timing commands |
 | `tooling/performance-report.toml` | Shared current report and immutable complete-run history |
@@ -35,17 +35,20 @@ interpretation, output paths and release procedures.
 
 The adapters call public shared APIs for subprocesses, worktrees, Criterion
 discovery, completeness, estimates, comparison arithmetic, evidence, rendering,
-retention, publication, archive extraction and authenticated downloads. They
+retention and publication. They
 contain no generic renderer, CSV parser, legacy writer or measurement engine.
 
-The remaining composition is required by la-stack's contracts: versions before
-v0.4.4 are ineligible; v0.4.4/v0.4.5 need the captured old-API cfg and root-test
-layout adapter; local measurements exclude untracked files; nalgebra/faer
-reference views retain their baseline origin. The shared CLI's default worktree
-snapshot includes untracked files and its declarations cannot select an adapter
-from a release pair. Historical release archives lack the metadata required by
-the shared asset-evidence CLI, so their small adapter renders descriptive
-comparisons without inventing source/host/gate provenance.
+New measurements require v0.5.0 or newer on both sides. Historical API cfg,
+missing-row exemptions, root-test layout adapters and the metadata-free
+`performance-github-assets` command are retired. Archived artifacts remain
+unchanged; retained complete runs satisfying the modern policy still render
+offline regardless of the measurement floor.
+
+The remaining composition preserves tracked-only local snapshots, independent
+scientific eligibility checks and baseline-origin nalgebra/faer reference views.
+The shared CLI's default worktree snapshot includes untracked files.
+[Upstream #115](https://github.com/acgetchell/research-repo-tools/issues/115)
+tracks the declarative interfaces needed to retire these final adapters.
 
 `bench-compare` now calls the shared Criterion CLI directly. It compares every
 available row, including additions and omissions, as an exploratory local report.

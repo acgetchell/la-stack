@@ -14,7 +14,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Literal
 
-from research_repo_tools.archives import extract_archive
 from research_repo_tools.common_measurement import measure_prepared_pair
 from research_repo_tools.complete_runs import render_run, run_identity
 from research_repo_tools.evidence import Evidence, serialize_evidence
@@ -22,7 +21,6 @@ from research_repo_tools.measurement import resolve_revision
 from research_repo_tools.postprocess_changelog import MarkdownFormatError, format_markdown
 from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics, run_command
 from research_repo_tools.publication import GitCheck, GlobCheck, MarkerPair, RunSelectionCheck, plan_outputs, publish_publication, replace_section
-from research_repo_tools.release_assets import download_release_asset
 from research_repo_tools.release_discovery import normalize_tag, stable_published_releases
 from research_repo_tools.release_pairs import PairMode, ReleasePair, resolve_pair
 from research_repo_tools.run_presentation import (
@@ -41,13 +39,13 @@ from research_repo_tools.worktrees import apply_snapshot, capture_snapshot, temp
 from performance_runs import (
     REPORT_CONFIG,
     archive_directory,
-    compatibility_adapter,
     find_project_root,
     measurement_plan,
     required_report_ids,
     retained_run,
     scientific_policy,
     scratch_paths,
+    validate_measurement_pair,
     validate_scientific_run,
 )
 
@@ -69,12 +67,13 @@ def select_pair(root: Path, mode: PairMode, current: str | None, baseline: str |
         pair = ReleasePair(current, baseline)
     else:
         pair = resolve_pair(mode, package_tag=package, releases=releases, current=current, baseline=baseline, order="published")
-    compatibility_adapter(pair, root)
+    validate_measurement_pair(pair, root)
     return pair
 
 
 def measure(root: Path, pair: ReleasePair, suite: str, scope: str) -> Evidence:
     """Capture tracked changes and delegate isolated phases to the published engine."""
+    validate_measurement_pair(pair, root)
     version = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
     if pair.current != normalize_tag(version):
         msg = "current release label must match the measured checkout package"
@@ -90,9 +89,6 @@ def measure(root: Path, pair: ReleasePair, suite: str, scope: str) -> Evidence:
             temporary_worktree(root, parent / "current", snapshot.revision, allow_git_mutations=True) as current,
         ):
             apply_snapshot(current, snapshot)
-            # Consumer API-layout adapter: the comparison test moved to its own
-            # workspace member and the historical root copy must not compile.
-            (baseline / "tests/vs_linalg_inputs.rs").unlink(missing_ok=True)
             plan = measurement_plan(current, pair, suite, scope)
             evidence = measure_prepared_pair(baseline, current, plan, pair, working_tree=True)
             if replace(capture_snapshot(root), untracked=()) != snapshot:
@@ -141,31 +137,6 @@ def promote(root: Path, stem: Path) -> None:
     publish_publication(history)
 
 
-def compare_assets(root: Path, pair: ReleasePair, output: Path) -> None:
-    """Compare raw historical archives without inventing missing provenance."""
-    from research_repo_tools.criterion import collect_sample, compare_samples, render_comparison  # noqa: PLC0415
-
-    samples = {}
-    with tempfile.TemporaryDirectory(prefix="la-stack-assets-") as directory:
-        parent = Path(directory)
-        for phase, tag in (("baseline", pair.baseline), ("current", pair.current)):
-            asset = parent / f"{tag}.tar.gz"
-            download_release_asset(root, "acgetchell/la-stack", tag, f"la-stack-{tag}-criterion-baseline.tar.gz", asset)
-            extracted = parent / phase
-            extract_archive(asset, extracted)
-            samples[phase] = collect_sample(extracted / "criterion", tag)
-        comparison = compare_samples(samples["baseline"], samples["current"])
-        if not comparison.comparisons:
-            msg = "release archives have no common benchmark rows"
-            raise ValueError(msg)
-        text = (
-            f"# Published release timings\n\nBaseline: {pair.baseline}; current: {pair.current}.\n\n"
-            "Each archive used its original release harness. Source, host and gate provenance are not recorded; "
-            "ratios are descriptive and require independent hardware/workload review.\n\n" + render_comparison(comparison)
-        ).encode()
-        publish_publication(plan_outputs(root, {output.relative_to(root).as_posix(): text}, inputs={"Cargo.toml": (root / "Cargo.toml").read_bytes()}))
-
-
 def check_release_sample(root: Path, name: str) -> int:
     """Require canonical report identities and complete, matching saved bytes."""
     from research_repo_tools.criterion_baselines import load_saved_sample, validate_saved_sample  # noqa: PLC0415
@@ -187,14 +158,13 @@ def main(argv: list[str] | None = None) -> int:
     """Keep routine performance commands thin and explicit."""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("local", "release", "assets"):
+    for name in ("local", "release"):
         command = commands.add_parser(name)
         command.add_argument("current", nargs="?")
         command.add_argument("baseline", nargs="?")
-        if name != "assets":
-            command.add_argument("--suite", choices=("all", "exact", "vs_linalg"), default="all")
-            command.add_argument("--scope", choices=("release-signal", "all-benches"), default="release-signal")
-            command.add_argument("--stem", type=Path, default=Path("target/bench-reports/performance"))
+        command.add_argument("--suite", choices=("all", "exact", "vs_linalg"), default="all")
+        command.add_argument("--scope", choices=("release-signal", "all-benches"), default="release-signal")
+        command.add_argument("--stem", type=Path, default=Path("target/bench-reports/performance"))
     commands.add_parser("report").add_argument("--stem", type=Path, default=Path("target/bench-reports/performance"))
     commands.add_parser("release-check").add_argument("current", help="Saved Criterion sample name")
     args = parser.parse_args(argv)
@@ -206,19 +176,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "report":
             promote(root, root / args.stem)
             return 0
-        modes: dict[str, PairMode] = {"local": "current-vs-latest", "release": "infer-release", "assets": "published-latest"}
+        modes: dict[str, PairMode] = {"local": "current-vs-latest", "release": "infer-release"}
         mode: PairMode = "explicit" if args.current or args.baseline else modes[args.command]
         pair = select_pair(root, mode, args.current or None, args.baseline or None, local=args.command == "local")
-        if args.command == "assets":
-            compare_assets(root, pair, root / "target/bench-reports/github-assets-performance.md")
-        else:
-            stem = root / args.stem
-            if args.command == "release" and pair.current == pair.baseline:
-                parser.error("release requires distinct release labels")
-            evidence = measure(root, pair, args.suite, args.scope)
-            save_scratch(root, stem, evidence)
-            if args.command == "release":
-                promote(root, stem)
+        stem = root / args.stem
+        if args.command == "release" and pair.current == pair.baseline:
+            parser.error("release requires distinct release labels")
+        evidence = measure(root, pair, args.suite, args.scope)
+        save_scratch(root, stem, evidence)
+        if args.command == "release":
+            promote(root, stem)
         return 0
     except (OSError, ValueError, TypeError, KeyError, ExecutableNotFoundError, subprocess.SubprocessError, ExceptionGroup) as error:
         print(f"performance: {format_exception_diagnostics(error)}", file=sys.stderr)

@@ -384,10 +384,6 @@ markdown-fix: tools-check
 performance-doc: python-sync
     {{ _run }} uv run --locked scripts/archive_performance.py report
 
-# Compare published release archives with their original per-release harnesses.
-performance-github-assets current_tag="" baseline_tag="": _ensure-gh python-sync
-    {{ _run }} uv run --locked scripts/archive_performance.py assets {{ quote(current_tag) }} {{ quote(baseline_tag) }}
-
 # Measure tracked current inputs and the latest release with the captured current harness.
 performance-local: _ensure-gh python-sync
     {{ _run }} uv run --locked scripts/archive_performance.py local

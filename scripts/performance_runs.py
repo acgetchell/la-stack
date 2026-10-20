@@ -24,7 +24,6 @@ if TYPE_CHECKING:
 REPORT_CONFIG = "tooling/performance-report.toml"
 MEASUREMENT_CONFIG = "tooling/performance.toml"
 POLICY_CONFIG = "tooling/performance-policy.toml"
-NO_API_COMPATIBILITY = "none"
 type ReleaseVersion = tuple[int, int, int]
 
 
@@ -42,12 +41,7 @@ class ScientificPolicy:
 
     dimensions: tuple[int, ...]
     minimum_release: ReleaseVersion
-    modern_api_release: ReleaseVersion
-    legacy_api_cfg: str
     library_benchmarks: tuple[str, ...]
-    unavailable_prefixes: tuple[str, ...]
-    unavailable_benchmarks: tuple[str, ...]
-    unavailable_benchmark_prefixes: tuple[str, ...]
     exact: Mapping[str, tuple[str, ...]]
     additional: Mapping[str, tuple[str, ...]]
     peers: Mapping[str, tuple[str, str]]
@@ -125,14 +119,6 @@ def scientific_policy(root: Path | None = None) -> ScientificPolicy:
         msg = "scientific policy requires schema 1"
         raise ValueError(msg)
     minimum = _release_threshold(policy.get("minimum-release"), "minimum-release")
-    modern = _release_threshold(policy.get("modern-api-release"), "modern-api-release")
-    if modern < minimum:
-        msg = "modern API release cannot precede the minimum release"
-        raise ValueError(msg)
-    cfg = policy.get("legacy-api-cfg")
-    if not isinstance(cfg, str) or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", cfg) is None:
-        msg = "legacy API cfg requires a Rust identifier"
-        raise ValueError(msg)
     dimensions = _dimensions(policy.get("dimensions"))
     library = _names(policy.get("library-benchmarks"), "library-benchmarks")
     exact = {name: _names(names, f"exact.{name}") for name, names in _table(policy.get("exact"), "exact").items()}
@@ -150,12 +136,7 @@ def scientific_policy(root: Path | None = None) -> ScientificPolicy:
     return ScientificPolicy(
         dimensions=dimensions,
         minimum_release=minimum,
-        modern_api_release=modern,
-        legacy_api_cfg=cfg,
         library_benchmarks=library,
-        unavailable_prefixes=_names(policy.get("unavailable-prefixes"), "unavailable-prefixes"),
-        unavailable_benchmarks=_names(policy.get("unavailable-benchmarks"), "unavailable-benchmarks"),
-        unavailable_benchmark_prefixes=_names(policy.get("unavailable-benchmark-prefixes"), "unavailable-benchmark-prefixes"),
         exact=MappingProxyType(exact),
         additional=MappingProxyType(additional),
         peers=MappingProxyType(peers),
@@ -163,15 +144,14 @@ def scientific_policy(root: Path | None = None) -> ScientificPolicy:
     )
 
 
-def compatibility_adapter(pair: ReleasePair, root: Path | None = None) -> str:
-    """Reject excluded releases and select the historical API cfg."""
+def validate_measurement_pair(pair: ReleasePair, root: Path | None = None) -> None:
+    """Reject unsupported releases before any new measurement side effects."""
     policy = scientific_policy(root)
     versions = {phase: tuple(map(int, normalize_tag(tag)[1:].split("."))) for phase, tag in (("baseline", pair.baseline), ("current", pair.current))}
     if any(version < policy.minimum_release for version in versions.values()):
         minimum_release = ".".join(map(str, policy.minimum_release))
         msg = f"unsupported comparison release; requires v{minimum_release} or newer"
         raise ValueError(msg)
-    return policy.legacy_api_cfg if versions["baseline"] < policy.modern_api_release else NO_API_COMPATIBILITY
 
 
 def required_report_ids(root: Path | None = None) -> set[str]:
@@ -220,41 +200,26 @@ def selected_ids(suite: str, scope: str, expected: tuple[str, ...], root: Path |
     return tuple(sorted(required))
 
 
-def phase_environment(root: Path, adapter: str = NO_API_COMPATIBILITY) -> tuple[tuple[str, str], ...]:
+def phase_environment(root: Path) -> tuple[tuple[str, str], ...]:
     """Capture code-generation overrides and isolate each phase's output tree."""
     toolchain = tomllib.loads((root / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]["channel"]
     env = {key: os.environ[key] for key in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "RUSTC", "RUSTC_WRAPPER", "CARGO_BUILD_TARGET") if key in os.environ}
     env.update(RUSTUP_TOOLCHAIN=os.environ.get("RUSTUP_TOOLCHAIN", toolchain), CARGO_TARGET_DIR="target", CRITERION_HOME="target/criterion")
     key, separator = ("CARGO_ENCODED_RUSTFLAGS", "\x1f") if "CARGO_ENCODED_RUSTFLAGS" in env else ("RUSTFLAGS", " ")
     flags = [env.get(key, ""), "--cap-lints=warn"]
-    if adapter != NO_API_COMPATIBILITY:
-        flags.append(f"--cfg={adapter}")
     env[key] = separator.join(flag for flag in flags if flag)
     return tuple(sorted(env.items()))
 
 
-def _historical_case_available(full_id: str, policy: ScientificPolicy) -> bool:
-    """Mirror the groups and norm cases disabled by the historical harness cfg."""
-    bench = full_id.partition("/")[2]
-    return (
-        not full_id.startswith(policy.unavailable_prefixes)
-        and bench not in policy.unavailable_benchmarks
-        and not bench.startswith(policy.unavailable_benchmark_prefixes)
-    )
-
-
 def measurement_plan(root: Path, pair: ReleasePair, suite: str, scope: str) -> CommonHarnessPlan:
-    """Build the shared plan from native inventories and consumer API policy."""
-    adapter = compatibility_adapter(pair, root)
-    policy = scientific_policy(root)
-    baseline_env = phase_environment(root, adapter)
-    current_env = phase_environment(root)
+    """Build the shared plan from complete native inventories."""
+    validate_measurement_pair(pair, root)
+    environment = phase_environment(root)
     config = configuration(root)
     inventories = {}
     for phase in ("baseline", "current"):
-        # Discover against the current API, then apply the exact groups excluded
-        # by the historical cfg. Old method names cannot compile on current code.
-        # The shared collector later checks this entire inventory on each source.
+        # Both revisions use the captured current harness. The shared collector
+        # later checks this entire inventory on each measured source.
         declarations = load_discovery(root, "tooling/criterion-inventory.toml")
         discovery = DiscoveryPlan(
             tuple(
@@ -263,14 +228,11 @@ def measurement_plan(root: Path, pair: ReleasePair, suite: str, scope: str) -> C
                 if suite in {"all", item.name}
             )
         )
-        ids = discover_inventory(root, discovery, env=os.environ | dict(current_env)).expected
-        old_api = phase == "baseline" and adapter != NO_API_COMPATIBILITY
-        inventories[phase] = tuple(sorted(name for name in ids if not old_api or _historical_case_available(name, policy)))
-    return declared_plan(pair, suite, scope, inventories, baseline_env=baseline_env, current_env=current_env, config=config, root=root)
+        inventories[phase] = discover_inventory(root, discovery, env=os.environ | dict(environment)).expected
+    return declared_plan(suite, scope, inventories, baseline_env=environment, current_env=environment, config=config, root=root)
 
 
 def declared_plan(  # noqa: PLR0913
-    pair: ReleasePair,
     suite: str,
     scope: str,
     inventories: dict[str, tuple[str, ...]],
@@ -283,15 +245,12 @@ def declared_plan(  # noqa: PLR0913
     """Bind exact case inventories, reference phases, commands and completeness."""
     config = config or configuration(root)
     policy = scientific_policy(root)
-    adapter = compatibility_adapter(pair, root)
     selected = selected_ids(suite, scope, inventories["current"], root)
-    unavailable = adapter != NO_API_COMPATIBILITY
-    baseline_rows = tuple(name for name in selected if not unavailable or _historical_case_available(name, policy))
-    missing = set(baseline_rows) - set(inventories["baseline"])
+    missing = set(selected) - set(inventories["baseline"])
     if missing:
         raise ValueError(f"baseline inventory omits selected rows: {sorted(missing)}")
     series = [
-        RunSeries("la-stack baseline", "baseline", tuple((name, name) for name in baseline_rows)),
+        RunSeries("la-stack baseline", "baseline", tuple((name, name) for name in selected)),
         RunSeries("la-stack current", "current", tuple((name, name) for name in selected)),
     ]
     peers = policy.peers
@@ -317,7 +276,8 @@ def declared_plan(  # noqa: PLR0913
             *config.context,
             ("suite", suite),
             ("scope", scope),
-            ("baseline-api-compatibility", adapter),
+            # Preserve the provenance field used by retained modern complete runs.
+            ("baseline-api-compatibility", "none"),
         ),
     )
     return CommonHarnessPlan(config, phases["baseline"], phases["current"], tuple(series))
@@ -329,7 +289,6 @@ def validate_scientific_run(evidence: Evidence, *, release: bool = False, root: 
     sources = dict(evidence.sources)
     context = dict(sources["current"].context)
     pair = ReleasePair(context["release"], dict(sources["baseline"].context)["release"])
-    adapter = compatibility_adapter(pair, root)
     if release and pair.current == pair.baseline:
         msg = "cannot promote a same-version local comparison as release documentation"
         raise ValueError(msg)
@@ -341,7 +300,6 @@ def validate_scientific_run(evidence: Evidence, *, release: bool = False, root: 
         msg = "la-stack requires 100 samples, mean and median, and 95% intervals in ns"
         raise ValueError(msg)
     expected = declared_plan(
-        pair,
         context["suite"],
         context["scope"],
         {phase: sample.policy.expected for phase, sample in samples.items()},
@@ -349,8 +307,8 @@ def validate_scientific_run(evidence: Evidence, *, release: bool = False, root: 
         current_env=(),
         root=root,
     )
-    if run.series != expected.series or context["baseline-api-compatibility"] != adapter:
-        msg = "retained series or compatibility policy differs from la-stack declarations"
+    if run.series != expected.series:
+        msg = "retained series differs from la-stack declarations"
         raise ValueError(msg)
     if set(run.compatible) != set(expected.measurement.compatible):
         msg = "retained run omits required host, toolchain, or dependency compatibility"

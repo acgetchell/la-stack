@@ -8,18 +8,14 @@ mod bench_utils;
 #[path = "../benches/common/exact.rs"]
 pub mod exact_bench;
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 #[path = "../benches/common/exact_diagnostics.rs"]
 pub mod exact_diagnostics;
-#[cfg(not(la_stack_pre_rational_input_api))]
 #[path = "../benches/common/rational.rs"]
 pub mod rational_bench;
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 #[path = "../benches/common/rational_solve.rs"]
 pub mod rational_solve;
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 #[test]
 fn structured_rational_solve_fixtures_are_correct() {
     fn check<const D: usize>() {
@@ -51,7 +47,6 @@ use exact_bench::{
     large_entries_3x3_input, make_matrix_rows, make_random_input_corpus, make_vector_array,
     near_singular_3x3_input, validate_exact_fixture, validate_f64_determinant_benchmarks,
 };
-#[cfg(not(la_stack_pre_rational_input_api))]
 use exact_diagnostics::{ConversionKind, Det4Kind, canonical_conversion_input, exact_det4_input};
 
 fn baseline_input<const D: usize>() -> ExactInput<D> {
@@ -65,7 +60,6 @@ fn baseline_input<const D: usize>() -> ExactInput<D> {
 }
 
 fn validate_baseline_and_random_corpus<const D: usize>() {
-    #[cfg(not(la_stack_pre_rational_input_api))]
     for kind in ConversionKind::ALL {
         let _ = canonical_conversion_input::<D>(kind);
     }
@@ -76,7 +70,6 @@ fn validate_baseline_and_random_corpus<const D: usize>() {
     }
 }
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 #[test]
 fn determinant_diagnostic_fixtures_are_correct() {
     for kind in Det4Kind::ALL {
@@ -84,7 +77,6 @@ fn determinant_diagnostic_fixtures_are_correct() {
     }
 }
 
-#[cfg(not(la_stack_pre_rational_input_api))]
 #[test]
 fn determinant_exponent_spreads_preserve_exact_values() {
     use exact_diagnostics::{EXPONENT_SPREADS, ExponentAxis, exponent_spread_input};
@@ -103,7 +95,6 @@ fn determinant_exponent_spreads_preserve_exact_values() {
 }
 
 /// Keep the filter-resolved control and typed non-finite fallback distinct.
-#[cfg(not(la_stack_pre_rational_input_api))]
 #[test]
 fn determinant_extreme_diagnostic_filter_paths_are_stable() {
     use la_stack::{ArithmeticOperation, LaError};
