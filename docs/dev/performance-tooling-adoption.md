@@ -8,6 +8,29 @@ runtime code comes from the installed package.
 
 ## Capability disposition
 
+Follow-up [#285](https://github.com/acgetchell/la-stack/issues/285) adopts the
+published `research-repo-tools==0.2.0` wheel and sdist, including
+[upstream #110](https://github.com/acgetchell/research-repo-tools/issues/110).
+The exact PyPI pin and lock replace v0.1.9; the package also advances its required
+Just dependency to v1.59.0. `RunTableStyle` now supplies the six-column README
+layout directly, so `_readme_table()` and its Markdown string/column rewrites
+are removed. The shared renderer retains recorded intervals, the selected
+statistic, confidence level and explicit ratio direction. Scientific selection,
+original reference phases, README markers, evidence freshness and transactional
+asset pointers remain consumer responsibilities.
+
+Offline consumer checks exercise the actual `performance-readme` recipe with
+mean and median estimates, original peer phases, retained history and the README
+figure. No new measurements or regenerated immutable reports are required.
+Offline rendering of the retained published run preserves its SVG and CSV bytes.
+Current README republication still rejects the stale source digest and leaves
+the figure and measured-asset pointers untouched.
+The obsolete CSV conversion declaration and pre-Just Python phase replay are
+removed. Retained complete runs use the declared Just driver; original legacy
+CSV/JSON and Markdown records remain available without regeneration or conversion.
+Closure of #285 requires native Linux/macOS/Windows CI on the adoption commit;
+local validation alone does not establish those results.
+
 | Upstream capability | Consumer adoption | Local responsibility |
 | --- | --- | --- |
 | #94 captured targets | Installed release-target CLI passes versioned JSON from trusted preflight to writer | Dispatch/ref equality, current attempt, title, privilege separation, asset filename and explicit publication |
@@ -15,6 +38,7 @@ runtime code comes from the installed package.
 | #96 provenance reports | Shared renderer 2 and publication-relative evidence links | Scientific eligibility and frozen historical records |
 | #97 complete-run sections | Shared presentation and publication transaction | README markers, measured-asset pointers and current source/harness checks |
 | #98 Criterion verification | Declarative shared discovery, versioned inventory and saved-sample APIs | Full Cargo suites/features, minimum scientific coverage and correctness gates |
+| #110 compact table styles | Installed `RunTableStyle` selects headings, intervals, confidence caption and ratio-only columns | Scientific selections, ratio pairs and README publication policy |
 
 The full-report standardization from #277 remains. New reports expose recorded
 provenance and evidence links. Shared mixed-renderer history preserves immutable
@@ -31,7 +55,7 @@ The audit compared the dependency-only MCMC environment and declarative
 | `benchmark_contract.py` | Deleted; metric/group/peer/API declarations moved to `tooling/performance-policy.toml`; historical digests stay frozen |
 | `benchmark_summaries.py` | Deleted; frozen historical summaries are records rather than regeneration inputs |
 | `criterion_dim_plot.py` | Deleted; shared complete-run SVG/CSV/table presentation replaces raw-Criterion/gnuplot rendering |
-| `performance_artifacts.py` | Deleted; shared evidence/publication and declarative `performance-legacy.toml` replace CSV/provenance writers and readers |
+| `performance_artifacts.py` | Deleted; shared evidence/publication replace writers and readers; historical CSV conversion retired in #285 |
 | `release_baseline.py` | Deleted; native discovery uses the shared CLI and saved-copy verification uses the shared configured API |
 | Local wheel/sdist and console-entry-point packaging | Removed; `uv` manages a dependency-only environment |
 | Duplicate parser, renderer, legacy-writer and packaging tests | Removed; actual installed-package/configuration and scientific integration tests remain |
@@ -40,11 +64,9 @@ Retirement conditions are satisfied by installed replacement checks, preservatio
 of original bytes/hashes and a documented supported workflow. The old report
 layout need not be regenerated indefinitely. New reports use the shared format;
 historical reports, CSV/JSON, indexes, plots and archives remain untouched.
-Shared historical conversion verifies the original hash and retains opaque
-metadata and original digest names. It produces comparison evidence, never
-fabricated complete-run samples or newly captured host provenance. Retire its
-conversion declaration only after verified companions exist for every original
-and those original bytes remain independently available.
+Historical conversion was verified during #276 and retired in #285. Original
+summaries remain independently readable with their original hashes and opaque
+metadata. They cannot provide complete-run samples or newly captured host provenance.
 
 Only two production modules remain:
 
@@ -84,6 +106,17 @@ fixture validation and hosted SARIF use that lock. Retire this exception after
 current published wheels support Python 3.15 and native gates pass.
 
 ## Size and validation evidence
+
+The #285 consumer-test cleanup was checked against tests bundled in the published
+v0.2.0 sdist. Shared implementation matrices are removed only where that release
+already covers them; consumer policy and installed-package integration remain.
+
+| Coverage | Published upstream owner | Retained consumer check |
+| --- | --- | --- |
+| Changelog rendering and repeatability | `tests/changelog/test_cliff_template.py` and `test_workflow.py` | Actual la-stack formatter/preservation policy, one authored-note generation and historical notes |
+| Measurement completeness and failed gates | `tests/performance/public_complete_consumer.py` | Actual sampling policy, required scientific inventory, native gate commands and original peer phases |
+| Package identity | Consumer-owned | One test in `test_toolchain_integration.py` checks pin, registry, installed version and wheel/sdist hashes; recipe tests verify preservation and forwarding |
+| Release event identity and check-status matrices | `tests/releases/test_publishing.py` | Every configured native check remains required; actual workflow approval, immutability, notes and upload barriers remain tested |
 
 Counts use physical lines from `wc -l scripts/*.py scripts/tests/*.py` and
 `uv run --locked pytest --collect-only -q`. Baseline is `905aba7`; test counts

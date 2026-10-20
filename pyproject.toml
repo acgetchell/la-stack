@@ -92,7 +92,7 @@ required-version = "==0.13.1"
 # Semgrep has its own locked Python 3.14 environment under tooling/semgrep.
 
 [dependency-groups]
-tooling = [ "research-repo-tools==0.1.9" ]
+tooling = [ "research-repo-tools==0.2.0" ]
 dev = [
     { include-group = "tooling" },
     "actionlint-py==1.7.12.25",

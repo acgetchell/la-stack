@@ -336,7 +336,10 @@ records the run identity and the actual current/baseline origins of each series.
 Historical CSV/JSON evidence remains frozen with its original provenance.
 The README table shows median times in nanoseconds, with lower and upper 95%
 confidence bounds below each timing. Its compact comparison columns show
-speedup ratios; the confidence level is stated once in the table legend.
+speedup ratios; the recorded confidence level is stated once in the table caption.
+Shared `RunTableStyle` options produce this layout directly. Timing headings retain
+measured versions, and each speedup names its peer-time numerator and la-stack-time
+denominator. Ratios remain point estimates without ratio intervals or significance claims.
 Missing, stale, or inconsistent input aborts publication atomically.
 An existing local release tag must contain the exact selected asset bytes.
 A future release tag may be absent during release preparation.
@@ -399,10 +402,10 @@ Serialization, validation, rendering, and promotion failures preserve existing
 published reports and selection. Review and commit the whole new run and index.
 Legacy snapshots under `docs/performance/` retain their original bytes,
 hashes and framing; see the [legacy index](performance/README.md).
-Their custom writers and report renderer are retired. Verified comparison-only
-conversion uses `tooling/performance-legacy.toml` with the shared `performance convert`
-command, retaining the original hashes and opaque metadata. It cannot reconstruct
-raw samples or create complete-run provenance.
+Their custom writers, report renderer and CSV conversion declaration are retired.
+Read their original CSV/JSON and archived reports directly. They cannot reconstruct
+raw samples or supply complete-run provenance. Publication accepts the declared
+Just phase format; replay of the retired Python phase driver is unsupported.
 The last published legacy report is preserved in the
 [Markdown archive](archive/performance/README.md). The checked-in current report
 keeps its historical format until a complete run is promoted; old summaries do

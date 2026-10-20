@@ -25,7 +25,16 @@ from research_repo_tools.publication import GitCheck, GlobCheck, MarkerPair, Run
 from research_repo_tools.release_assets import download_release_asset
 from research_repo_tools.release_discovery import normalize_tag, stable_published_releases
 from research_repo_tools.release_pairs import PairMode, ReleasePair, resolve_pair
-from research_repo_tools.run_presentation import CoordinatePlot, RunLayout, RunRow, SeriesSelection, render_coordinate_svg, render_run_table, serialize_run_csv
+from research_repo_tools.run_presentation import (
+    CoordinatePlot,
+    RunLayout,
+    RunRow,
+    RunTableStyle,
+    SeriesSelection,
+    render_coordinate_svg,
+    render_run_table,
+    serialize_run_csv,
+)
 from research_repo_tools.run_reports import load_latest_run, load_run_report_plan
 from research_repo_tools.worktrees import apply_snapshot, capture_snapshot, temporary_worktree
 
@@ -217,6 +226,14 @@ def main(argv: list[str] | None = None) -> int:
 
 
 PLOT_CONFIG = "tooling/performance-plot.toml"
+README_TABLE_STYLE = RunTableStyle(
+    row_heading="Dimension",
+    intervals="below",
+    timing_legend=True,
+    comparison_columns=("ratio",),
+    ratio_headings=("Speedup vs nalgebra", "Speedup vs faer"),
+    ratio_suffix="\N{MULTIPLICATION SIGN}",
+)
 
 
 def _repo_root() -> Path:
@@ -271,38 +288,6 @@ def _asset_links(document: bytes, *, metric: str, statistic: str, release: str) 
         msg = "README requires exactly one tagged pointer to each selected artifact"
         raise ValueError(msg)
     return pattern.sub(lambda match: match["prefix"] + release.encode() + match["asset"], document)
-
-
-def _readme_table(evidence: Evidence, layout: RunLayout) -> str:
-    """Adapt shared timing/comparison cells to the compact README presentation."""
-    rendered = render_run_table(evidence, layout).replace(" (0.95 confidence)", "")
-    lines = []
-    for line in rendered.splitlines():
-        output_line = line
-        if line.startswith("| "):
-            cells = line[2:-2].split(" | ")
-            if len(cells) != 8:
-                msg = "README comparison requires three timing and two comparison pairs"
-                raise ValueError(msg)
-            if cells[0] == "Case":
-                cells = ["Dimension", "la-stack", "nalgebra", "faer", "Speedup vs nalgebra", "Speedup vs faer"]
-            else:
-                if cells[0] != "---":
-                    for index in (1, 2, 3):
-                        cells[index] = cells[index].replace(" ns [", "<br>[", 1)
-                    for index in (4, 6):
-                        cells[index] += "\N{MULTIPLICATION SIGN}"
-                cells = [cells[index] for index in (0, 1, 2, 3, 4, 6)]
-            output_line = "| " + " | ".join(cells) + " |"
-        elif line.startswith("Intervals are recorded marginal timing intervals;"):
-            output_line = (
-                f"{layout.statistic.capitalize()} time in ns; brackets show the lower and upper bounds of the **95% confidence interval**.\n"
-                "Speedups are ratios of point estimates; no ratio intervals or significance claims are inferred."
-            )
-        elif line.startswith("Time reduction is 100"):
-            continue
-        lines.append(output_line)
-    return "\n".join(lines) + "\n"
 
 
 def publish_plot(root: Path, metric: str, statistic: Literal["mean", "median"], *, log_y: bool, update_readme: bool) -> None:
@@ -365,7 +350,10 @@ def publish_plot(root: Path, metric: str, statistic: Literal["mean", "median"], 
         inputs["pyproject.toml"] = (root / "pyproject.toml").read_bytes()
         outputs["README.md"] = format_markdown(
             _asset_links(
-                replace_section(document, markers, _readme_table(evidence, layout)), metric=metric, statistic=statistic, release=context["release"]
+                replace_section(document, markers, render_run_table(evidence, layout, style=README_TABLE_STYLE)),
+                metric=metric,
+                statistic=statistic,
+                release=context["release"],
             ).decode("utf-8"),
             root / "README.md",
             root / "pyproject.toml",

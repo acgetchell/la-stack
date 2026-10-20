@@ -145,7 +145,8 @@ and review policy belong in [Security Checks](../SECURITY.md#security-checks).
 The shared package also owns managed tool installation, verification, and update
 implementation. `.python-version`, `rust-toolchain.toml`, and `pyproject.toml`
 own consumer declarations; `scripts/tests/test_toolchain_integration.py` checks
-actual recipe sequencing and native managed execution. The
+the exact published pin, registry lock, installed version and distribution hashes,
+alongside actual recipe sequencing and native managed execution. The
 `.github/actions/setup-tools/action.yml` composite synchronizes the locked PyPI
 package and exports verified paths for CI. Release callers disable its caches.
 
@@ -166,10 +167,12 @@ Performance consumers use shared Criterion parsing and estimate/comparison
 validation, digest verification, archive extraction, byte-preserving document
 sections, and multi-file transactions. Shared rendering produces complete-run
 reports, coordinate SVG, timing CSV and document tables. Historical artifact
-bytes and fingerprint framing remain frozen; declarative shared conversion reads
-the original CSV/metadata without a legacy writer. Published v0.1.9
+bytes and fingerprint framing remain frozen and readable directly. Published v0.2.0
 owns common-harness orchestration, completeness, worktrees, complete run retention,
 validated latest selection, and transactional report publication.
+Its `RunTableStyle` API owns compact README table formatting; the consumer selects
+dimension headings, intervals below timings, a common confidence legend and
+ratio-only speedups without rewriting Markdown cells or prose.
 Generic parsing, staging, and rollback tests belong upstream; local
 tests verify the scientific and retained-artifact integration boundaries.
 
@@ -196,7 +199,7 @@ shared APIs for tracked-only measurements, metadata-free historical raw archives
 and la-stack README publication.
 `tooling/performance-plot.toml` declares dimensions, units, series and axes.
 `tooling/performance-report.toml` owns the canonical report path, title, and shared history path.
-`tooling/performance-legacy.toml` declares shared historical comparison conversion.
+The obsolete CSV conversion declaration and pre-Just Python phase replay are removed.
 The old comparison renderer, CSV/provenance writer, summary reader, plotter,
 release-inventory wrapper and Python packaging are removed. Only the two
 consumer adapters remain; `scripts/tests/test_performance_workflow.py` verifies
