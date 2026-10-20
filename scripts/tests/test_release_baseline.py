@@ -11,6 +11,7 @@ import tarfile
 import textwrap
 import tomllib
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from research_repo_tools.criterion_inventory import CriterionInventory, load_discovery, serialize_inventory
@@ -274,6 +275,7 @@ def test_preflight_rejects_dispatch_outside_release_tag(tmp_path: Path, ref: str
 
 GH_FIXTURE = r"""import hashlib, json, os, sys
 from pathlib import Path
+from urllib.parse import urlsplit
 args = sys.argv[1:]
 root = Path(os.environ["RELEASE_FIXTURE"])
 tag = os.environ["RELEASE_TAG"]
@@ -289,7 +291,7 @@ if any(item.endswith("/releases?per_page=100") for item in args):
     value = [[release]]
 elif args[0] == "release":
     value = {"databaseId": 42, "tagName": tag}
-elif any("uploads.github.com" in item for item in args):
+elif any(urlsplit(item).hostname == "uploads.github.com" for item in args):
     (root / "uploaded").touch()
     value = {}
 elif "PATCH" in args:
@@ -354,7 +356,7 @@ def test_installed_cli_binds_trusted_target_and_leaves_draft_for_review(tmp_path
     assert not (fixture / "uploaded").exists()
     assert not (fixture / "published").exists()
     stale_calls = [json.loads(line) for line in (fixture / "api-calls").read_text(encoding="utf-8").splitlines()]
-    assert not any("uploads.github.com" in item for call in stale_calls for item in call)
+    assert not any(urlsplit(item).hostname == "uploads.github.com" for call in stale_calls for item in call)
     result = run_shell(runner + shell_step("Attach baseline for review"), fixture, {**env, "RELEASE_TARGET": target})
     assert result.returncode == 0, result.stderr
     assert (fixture / "uploaded").exists()

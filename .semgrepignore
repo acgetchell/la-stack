@@ -1,9 +1,28 @@
-# Keep ordinary Rust and Python tests in production scans. A repository-owned
-# file replaces Semgrep's built-in exclusions for test/, tests/, and testsuite/.
-# Git-ignored environments, caches, and build outputs remain excluded by Git.
-.git/
-node_modules/
+# Preserve Semgrep 1.180.0 defaults except test/, tests/, and testsuite/ so
+# ordinary Rust and Python tests remain in production scans.
+# https://github.com/semgrep/semgrep/blob/v1.180.0/src/targeting/default.semgrepignore
+.git
+.svn
+.hg
+_darcs
+CVS
+
+build/
 vendor/
+dist/
+*.min.js
+.env/
+.tox/
+
+node_modules/
+.npm/
+.yarn/
+.venv/
+_opam/
+_build/
+_cargo/
+
+*_test.go
 
 # Deliberately invalid rule fixtures are checked separately by just semgrep-test.
 /tests/semgrep/
