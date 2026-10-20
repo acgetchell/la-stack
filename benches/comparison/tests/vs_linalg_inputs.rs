@@ -227,33 +227,31 @@ fn assert_vector_operation_agreement<const D: usize>() {
     let fa_norm_squared = fv1.as_mat_ref().squared_norm_l2();
     assert_close("faer_norm2_sq", fa_norm_squared, la_norm_squared);
 
-    {
-        let la_norm = v1
-            .norm()
-            .unwrap_or_else(|err| panic!("la_stack norm failed: {err}"));
-        assert_close(
-            "iterative_f64_hypot",
-            iterative_hypot(v1.as_array()),
-            la_norm,
-        );
-        assert_close(
-            "delaunay_scaled_norm",
-            delaunay_scaled_norm(v1.as_array()),
-            la_norm,
-        );
-        assert_close("nalgebra_norm", nv1.norm(), la_norm);
-        assert_close("faer_norm_l2", fv1.as_mat_ref().norm_l2(), la_norm);
+    let la_norm = v1
+        .norm()
+        .unwrap_or_else(|err| panic!("la_stack norm failed: {err}"));
+    assert_close(
+        "iterative_f64_hypot",
+        iterative_hypot(v1.as_array()),
+        la_norm,
+    );
+    assert_close(
+        "delaunay_scaled_norm",
+        delaunay_scaled_norm(v1.as_array()),
+        la_norm,
+    );
+    assert_close("nalgebra_norm", nv1.norm(), la_norm);
+    assert_close("faer_norm_l2", fv1.as_mat_ref().norm_l2(), la_norm);
 
-        for (scenario, values) in norm_scenarios::<D>() {
-            let vector = Vector::<D>::try_new(values).unwrap_or_else(|err| {
-                panic!("la_stack {scenario} norm scenario construction failed: {err}")
-            });
-            let expected = vector
-                .norm()
-                .unwrap_or_else(|err| panic!("la_stack {scenario} norm failed: {err}"));
-            assert_close(scenario, iterative_hypot(&values), expected);
-            assert_close(scenario, delaunay_scaled_norm(&values), expected);
-        }
+    for (scenario, values) in norm_scenarios::<D>() {
+        let vector = Vector::<D>::try_new(values).unwrap_or_else(|err| {
+            panic!("la_stack {scenario} norm scenario construction failed: {err}")
+        });
+        let expected = vector
+            .norm()
+            .unwrap_or_else(|err| panic!("la_stack {scenario} norm failed: {err}"));
+        assert_close(scenario, iterative_hypot(&values), expected);
+        assert_close(scenario, delaunay_scaled_norm(&values), expected);
     }
 }
 

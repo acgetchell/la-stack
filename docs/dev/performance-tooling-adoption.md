@@ -75,7 +75,7 @@ Only two production modules remain:
 - `performance_runs.py`: captured measurement environment, scientific selection,
   sampling, originating reference phases and source/harness eligibility.
 
-Before v0.5.1, new measurements are restricted to v0.5.0 or newer on both sides.
+New measurements require v0.5.0 or newer on both sides.
 The historical API cfg, missing-row exemptions, root-test layout adapter and
 metadata-free `performance-github-assets` command are retired. Their Rust
 benchmark branches are removed while the independent scientific gates remain.
@@ -150,5 +150,5 @@ Rust tests/doctests, docs, examples, benchmark compilation and native static che
 No new scientific measurements or regenerated historical artifacts are claimed.
 
 Issue closure still requires an adoption commit, native Linux/macOS/Windows CI
-for that exact commit, linked run evidence and merge before v0.5.0. Local macOS
+for that exact commit, linked run evidence and merge. Local macOS
 validation does not substitute for native Linux or Windows results.

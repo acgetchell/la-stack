@@ -467,14 +467,12 @@ fn register_vector_benchmarks<const D: usize>(group: &mut BenchmarkGroup<'_, Wal
         });
     });
 
-    {
-        group.bench_function("la_stack_norm2", |bencher| {
-            bencher.iter(|| {
-                let result = black_box(&v1).norm().or_abort("la_stack norm");
-                black_box(result);
-            });
+    group.bench_function("la_stack_norm2", |bencher| {
+        bencher.iter(|| {
+            let result = black_box(&v1).norm().or_abort("la_stack norm");
+            black_box(result);
         });
-    }
+    });
 
     group.bench_function("iterative_f64_hypot", |bencher| {
         bencher.iter(|| {

@@ -453,7 +453,7 @@ their missing source, host and gate provenance is not reconstructed. Use
 | `target/bench-reports/performance-non-exact.*` | No | `performance-local-non-exact` | Narrowed non-exact report and retained peer-context comparison inputs. |
 | `docs/performance.md` | Yes | `performance-release`, `performance-doc` | Current shared full report; last legacy report until complete-run promotion. |
 | `docs/performance-runs/` | Yes | `performance-release`, `performance-doc` | Immutable complete runs, reports, index, and validated latest pointer. |
-| `docs/performance/` | Yes | Frozen record/shared conversion | Unchanged historical CSV/JSON evidence and hashes. |
+| `docs/performance/` | Yes | Frozen record | Unchanged historical CSV/JSON evidence and hashes. |
 | `docs/archive/performance/` | Yes | Frozen record | Preserved reports in the historical format. |
 | `docs/archive/performance/studies/` | Yes | Maintainer investigations | Completed optimization studies and decisions. |
 | `docs/assets/bench/` | Yes | `performance-readme` | README benchmark CSV/SVG assets and JSON provenance. |
@@ -509,9 +509,8 @@ report also includes dot products and other kernels.
 
 The `norm2`, `norm2_sq`, and `inf_norm` benchmark IDs, including scenario suffixes, are
 retained for continuity with saved baselines. The current public methods are
-`Vector::norm()`, `Vector::norm_squared()`, and `Matrix::norm_inf()`; the historical
-benchmark adapters call `norm2_sq()` and `inf_norm()` only when building against
-older library releases.
+`Vector::norm()`, `Vector::norm_squared()`, and `Matrix::norm_inf()`, which the
+benchmark harness calls directly.
 
 The `norm2` family also measures iterative `f64::hypot` and Delaunay's existing
 dimension-specialized scaled implementation as labeled reference kernels. These
@@ -734,11 +733,12 @@ The original `rational_input_d{2..8}` groups are part of the canonical exact
 release signal. The wide-component
 diagnostics remain local Criterion evidence and are not included in the release
 report's group registry.
-Releases produced with the rational-input harness include their Criterion point
-estimates and confidence intervals. When the comparison baseline predates the
-rational-input API, the report retains current-only rows with an explicit
-coverage note and does not calculate a cross-release ratio; historical reports
-whose shared harness predates these groups omit them on both sides.
+New exact comparisons require these groups, with Criterion point estimates and
+confidence intervals, in both baseline and current phases. Frozen historical
+reports may retain current-only rows with a coverage note and no cross-release
+ratio when their baseline predates the rational-input API. Historical reports
+whose shared harness predates these groups omit them on both sides; these
+historical omissions do not qualify a run for current complete-run publication.
 
 The proof-bearing fixture is therefore a prerequisite correctness gate, not a
 claim that every timed sample is revalidated. Criterion closures remain free of
