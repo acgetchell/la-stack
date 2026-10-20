@@ -1,0 +1,9 @@
+# Keep ordinary Rust and Python tests in production scans. A repository-owned
+# file replaces Semgrep's built-in exclusions for test/, tests/, and testsuite/.
+# Git-ignored environments, caches, and build outputs remain excluded by Git.
+.git/
+node_modules/
+vendor/
+
+# Deliberately invalid rule fixtures are checked separately by just semgrep-test.
+/tests/semgrep/

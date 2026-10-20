@@ -900,22 +900,39 @@ macro_rules! gen_extreme_exponent_det_filter_proptests {
 
                     prop_assert_eq!(matrix.det_sign_exact(), expected_sign);
 
-                    if let Ok(Some(bound)) = matrix.det_errbound() {
-                        let direct = matrix
-                            .det_direct()
-                            .unwrap()
-                            .expect("D<=4 has closed-form det_direct");
-                        let direct_exact = BigRational::from_f64(direct)
-                            .expect("det_direct returned finite f64");
-                        let bound_exact = BigRational::from_f64(bound)
-                            .expect("det_errbound returned finite f64");
-                        let error = (direct_exact - exact).abs();
+                    match matrix.det_errbound() {
+                        Ok(Some(bound)) => {
+                            let direct = matrix
+                                .det_direct()
+                                .unwrap()
+                                .expect("D<=4 has closed-form det_direct");
+                            let direct_exact = BigRational::from_f64(direct)
+                                .expect("det_direct returned finite f64");
+                            let bound_exact = BigRational::from_f64(bound)
+                                .expect("det_errbound returned finite f64");
+                            let error = (direct_exact - exact).abs();
 
-                        prop_assert!(
-                            error <= bound_exact,
-                            "mixed-exponent determinant error exceeded bound for D={}: error={error}, bound={bound_exact}",
+                            prop_assert!(
+                                error <= bound_exact,
+                                "mixed-exponent determinant error exceeded bound for D={}: error={error}, bound={bound_exact}",
+                                $d,
+                            );
+                        }
+                        Ok(None) => {}
+                        Err(LaError::NonFinite {
+                            origin: NonFiniteOrigin::Computation {
+                                operation: ArithmeticOperation::Determinant
+                                    | ArithmeticOperation::DeterminantErrorBound,
+                                ..
+                            },
+                            location: NonFiniteLocation::Scalar,
+                            ..
+                        }) => {}
+                        Err(error) => prop_assert!(
+                            false,
+                            "unexpected determinant filter error for D={}: {error:?}, entries={entries:?}",
                             $d,
-                        );
+                        ),
                     }
                 }
             }

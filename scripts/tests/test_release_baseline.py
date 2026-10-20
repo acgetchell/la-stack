@@ -351,7 +351,10 @@ def test_installed_cli_binds_trusted_target_and_leaves_draft_for_review(tmp_path
     assert json.loads(target)["expected_title"] == BASELINE
     stale = run_shell(runner + shell_step("Attach baseline for review"), fixture, {**env, "RELEASE_TARGET": target, "REMOTE_COMMIT": "b" * 40})
     assert stale.returncode != 0
+    assert not (fixture / "uploaded").exists()
     assert not (fixture / "published").exists()
+    stale_calls = [json.loads(line) for line in (fixture / "api-calls").read_text(encoding="utf-8").splitlines()]
+    assert not any("uploads.github.com" in item for call in stale_calls for item in call)
     result = run_shell(runner + shell_step("Attach baseline for review"), fixture, {**env, "RELEASE_TARGET": target})
     assert result.returncode == 0, result.stderr
     assert (fixture / "uploaded").exists()

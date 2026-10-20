@@ -500,21 +500,11 @@ impl<const D: usize> ExactF64Conversion for RationalVector<D> {
     }
 }
 
-/// Convert a `BigInt × 2^exp` pair to an exactly represented finite `f64`.
+/// Extract the low 64 bits of `|value| >> shift` without allocating.
 ///
-/// This avoids allocating a [`BigRational`] when determinant and solve paths
-/// already have an integer significand plus binary exponent. The optional
-/// `index` is forwarded to [`LaError::Unrepresentable`] for vector-valued solve
-/// components; determinant callers pass `None`.
-///
-/// # Errors
-/// Returns [`LaError::Unrepresentable`] with
-/// [`UnrepresentableReason::RequiresRounding`] when the exact nonzero value
-/// would need rounding or underflows below the smallest positive subnormal.
-///
-/// Returns [`LaError::Unrepresentable`] with
-/// [`UnrepresentableReason::NotFinite`] when the exact value cannot be
-/// represented by any finite `f64`.
+/// Discards the sign and bits outside this window; callers must establish that
+/// the shifted magnitude fits when they need the whole value. Returns `None`
+/// when the starting word is absent or its index does not fit in `usize`.
 fn shifted_magnitude_to_u64(value: &BigInt, shift: u64) -> Option<u64> {
     let word_bits = u64::from(u64::BITS);
     let word_index = usize::try_from(shift / word_bits).ok()?;

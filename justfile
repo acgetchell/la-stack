@@ -496,7 +496,7 @@ security-secrets:
 
 # Repository-owned Semgrep rules for project-specific diagnostics.
 semgrep: _ensure-uv
-    uv run --locked --project tooling/semgrep semgrep --metrics off --error --strict --timeout 30 --exclude tests/semgrep/src/project_rules/algebraic_float.rs --config semgrep.yaml .
+    uv run --locked --project tooling/semgrep semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .
 
 # Fixture tests for repository-owned Semgrep rules.
 semgrep-test: python-sync

@@ -845,8 +845,10 @@ measured 304 comparative benchmarks in about 55m 34s, plus 2m 9s compilation
 that run provides no complete exact-suite runtime. The old 60-minute outer
 limit therefore could not accommodate even that smaller harness.
 
-Inventory on 2026-09-07 found the following current workloads. The planning
-estimate uses 12 seconds per benchmark, allowing analysis/report overhead
+The comparative inventory on 2026-09-07 contained 533 cases. The current exact
+suite contains 354 cases: 264 original cases plus 90 diagnostic cases retained
+by the [row-scaling study](archive/performance/studies/exact-row-scaling.md).
+The planning estimate uses 12 seconds per benchmark, allowing analysis/report overhead
 above the configured 3-second warmup and 5-second measurement target. This is
 a capacity estimate, not a measured runtime or a guaranteed upper bound;
 Criterion can extend measurement for expensive iterations.
@@ -854,7 +856,7 @@ Criterion can extend measurement for expensive iterations.
 | Suite | Benchmarks | Nominal warmup + measurement | Planning estimate | Step limit | Headroom above estimate |
 | --- | --- | --- | --- | --- | --- |
 | `vs_linalg` | 533 | 71.1 min | 106.6 min | 150 min | 43.4 min (41%) |
-| `exact` | 264 | 35.2 min | 52.8 min | 90 min | 37.2 min (70%) |
+| `exact` | 354 | 47.2 min | 70.8 min | 90 min | 19.2 min (27%) |
 
 Both commands retain Criterion's release defaults: 100 samples, 100,000
 resamples, 95% confidence, 3-second warmup, and 5-second measurement target.

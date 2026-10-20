@@ -139,3 +139,34 @@ def test_semgrep_keeps_its_current_version_outside_the_python_315_environment() 
     assert scanner["project"]["requires-python"] == ">=3.14,<3.15"
     result = run_command("uv", ["run", "--locked", "--project", "tooling/semgrep", "semgrep", "--version"], cwd=REPO_ROOT)
     assert result.stdout.strip() == "1.180.0"
+
+
+def test_semgrep_production_targets_include_tests_and_exclude_rule_fixtures() -> None:
+    """Check the pinned scanner's actual selection shared by local and SARIF scans."""
+    result = run_command(
+        "uv",
+        [
+            "run",
+            "--locked",
+            "--project",
+            "tooling/semgrep",
+            "semgrep",
+            "scan",
+            "--metrics",
+            "off",
+            "--disable-version-check",
+            "--config",
+            "semgrep.yaml",
+            "--x-ls-long",
+            ".",
+        ],
+        cwd=REPO_ROOT,
+    )
+    selected = {Path(line.removeprefix("selected ")).as_posix() for line in result.stdout.splitlines() if line.startswith("selected ")}
+    assert {
+        "tests/proptest_exact.rs",
+        "benches/comparison/tests/vs_linalg_inputs.rs",
+        "scripts/tests/test_release_baseline.py",
+        ".github/workflows/semgrep-sarif.yml",
+    } <= selected
+    assert not any(path.startswith(("tests/semgrep/", "target/", ".venv/", "tooling/semgrep/.venv/")) for path in selected)

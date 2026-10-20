@@ -101,7 +101,7 @@ rules:
         - "/examples/**/*.rs"
         - "/benches/**/*.rs"
         # Includes integration/property tests and the deliberate violation
-        # fixture. `just semgrep` excludes that fixture, while
+        # fixture. The root .semgrepignore excludes rule fixtures, while
         # `just semgrep-test` scans it directly.
         - "/tests/**/*.rs"
     pattern-either:
@@ -376,6 +376,9 @@ rules:
         - "/benches/**/*.rs"
         - "/examples/**/*.rs"
         - "/tests/semgrep/src/project_rules/bench_example_usage.rs"
+      exclude:
+        # The comparison crate's integration tests use ordinary test assertions.
+        - "/benches/comparison/tests/**"
     pattern-either:
       - pattern: $VALUE.unwrap()
       - pattern: $VALUE.expect(...)
