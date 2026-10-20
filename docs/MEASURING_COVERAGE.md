@@ -45,9 +45,10 @@ Nextest also writes JUnit test results to:
 target/nextest/coverage/test-results/junit.xml
 ```
 
-The Codecov workflow reads the `cargo-llvm-cov` and `cargo-nextest` versions
-from the `justfile`, installs those exact versions plus Rust's
-`llvm-tools-preview` component, and runs `just coverage-ci`. It verifies both
+The Codecov workflow uses the shared tool setup to install the `cargo-llvm-cov`
+and `cargo-nextest` versions declared in `pyproject.toml` under
+`[tool.research-repo-tools.toolchain.cargo]`, plus the `llvm-tools-preview`
+component declared in `rust-toolchain.toml`, and runs `just coverage-ci`. It verifies both
 reports, uploads the Cobertura and JUnit files to Codecov, and archives each
 report directory as a workflow artifact. Local setup via `just setup-tools`
 installs the same Rust component and cargo subcommands.

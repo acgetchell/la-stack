@@ -139,3 +139,76 @@ def test_semgrep_keeps_its_current_version_outside_the_python_315_environment() 
     assert scanner["project"]["requires-python"] == ">=3.14,<3.15"
     result = run_command("uv", ["run", "--locked", "--project", "tooling/semgrep", "semgrep", "--version"], cwd=REPO_ROOT)
     assert result.stdout.strip() == "1.180.0"
+
+
+@pytest.mark.parametrize("output_args", [pytest.param((), id="local"), pytest.param(("--sarif",), id="sarif")])
+def test_semgrep_production_targets_include_tests_and_exclude_rule_fixtures(tmp_path: Path, output_args: tuple[str, ...]) -> None:
+    """Exercise both scan formats without Git ignores masking Semgrep exclusions."""
+    shutil.copyfile(REPO_ROOT / ".semgrepignore", tmp_path / ".semgrepignore")
+    included = {
+        "tests/proptest_exact.rs",
+        "benches/comparison/tests/vs_linalg_inputs.rs",
+        "scripts/tests/test_release_baseline.py",
+        ".github/workflows/semgrep-sarif.yml",
+        "test/control.rs",
+        "testsuite/control.py",
+        "src/control.go",
+        "assets/control.js",
+    }
+    excluded = {
+        f"{directory}/ignored.py"
+        for directory in (
+            ".svn",
+            ".hg",
+            "_darcs",
+            "CVS",
+            "build",
+            "vendor",
+            "dist",
+            ".env",
+            ".tox",
+            "node_modules",
+            ".npm",
+            ".yarn",
+            ".venv",
+            "_opam",
+            "_build",
+            "_cargo",
+            "tests/semgrep",
+            "nested/dist",
+            "nested/.env",
+            "nested/_build",
+        )
+    } | {"assets/bundle.min.js", "src/example_test.go", "nested/example_test.go"}
+    for name in included | excluded:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        comment = "#" if path.suffix in {".py", ".yml"} else "//"
+        path.write_text(f"{comment} Target selection fixture.\n", encoding="utf-8")
+    result = run_command(
+        "uv",
+        [
+            "run",
+            "--locked",
+            "--project",
+            str(REPO_ROOT / "tooling/semgrep"),
+            "semgrep",
+            "scan",
+            "--metrics",
+            "off",
+            "--disable-version-check",
+            "--error",
+            "--strict",
+            "--timeout",
+            "30",
+            "--config",
+            str(REPO_ROOT / "semgrep.yaml"),
+            *output_args,
+            "--x-ls-long",
+            ".",
+        ],
+        cwd=tmp_path,
+    )
+    selected = {Path(line.removeprefix("selected ")).as_posix() for line in result.stdout.splitlines() if line.startswith("selected ")}
+    assert included <= selected
+    assert not (excluded & selected)

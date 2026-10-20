@@ -561,7 +561,7 @@ pub mod guide {
         //!
         //! The error coefficients (`ERR_COEFF_2`, `ERR_COEFF_3`, `ERR_COEFF_4`) are
         //! conservative, dimension-specific constants, not caller-tunable tolerances. The
-        //! [mathematical basis](https://github.com/acgetchell/la-stack/blob/v0.4.5/docs/mathematical_basis.md#determinants-and-certified-sign-filtering)
+        //! [mathematical basis](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#determinants-and-certified-sign-filtering)
         //! documents the bound and states its range preconditions. The constants are explicit
         //! crate-root exports for advanced users who want to compose the same bound:
         //! `use la_stack::{ERR_COEFF_2, ERR_COEFF_3, ERR_COEFF_4};`. They intentionally stay

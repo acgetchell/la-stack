@@ -211,6 +211,10 @@ dispositions, Python 3.15 review and native validation gates.
 `tooling/semgrep/` owns a locked Python 3.14 environment for Semgrep 1.180.0
 while its wheels exclude Python 3.15. Local scans, shared fixture validation
 and hosted SARIF use it; ordinary support scripts use Python 3.15.
+The root `.semgrepignore` keeps ordinary Rust and Python tests in those scans
+while excluding deliberate `tests/semgrep/` fixtures, which `just semgrep-test`
+validates separately. Git-ignored dependencies, environments, caches, and build
+outputs remain outside production scans.
 
 `.github/actions/prepare-release-benchmarks/action.yml` groups tool installation,
 input validation, and inventory under the release workflow's shared setup timeout.

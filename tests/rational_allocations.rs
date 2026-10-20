@@ -71,7 +71,7 @@ fn rational_allocation_evidence<const D: usize>() {
             let _ = black_box(black_box(matrix).det_sign());
         });
         record::<D>(kind, "solve", || {
-            let _ = black_box(black_box(matrix).solve(black_box(rhs)).unwrap());
+            drop(black_box(black_box(matrix).solve(black_box(rhs)).unwrap()));
         });
 
         for augmented in [false, true] {

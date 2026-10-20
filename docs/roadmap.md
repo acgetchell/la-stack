@@ -10,9 +10,10 @@ Until v1.0, API breaks are acceptable when they improve correctness,
 performance, or orthogonality. The `v0.4.x` line stays on stable Rust and includes
 focused robustness APIs, downstream ergonomics, API-contract cleanup,
 documentation, validation, invariant audits, benchmark coverage, and
-release/tooling hardening. The current release is `v0.4.6`.
-The next planned release is `v0.5.0`, consolidating the work previously targeted
-at `v0.4.7`. It remains on stable Rust and makes the Rust 1.99.1 minimum an
+release/tooling hardening. The current release is
+[`v0.5.0`](https://github.com/acgetchell/la-stack/releases/tag/v0.5.0), published
+on 2026-10-17, consolidating the work previously targeted at `v0.4.7`.
+It remains on stable Rust and makes the Rust 1.99.1 minimum an
 explicit downstream upgrade boundary.
 Expanded const-generic work is tracked separately without an assigned release;
 it depends on the specific language capabilities required by the proposed API.
@@ -237,13 +238,13 @@ storage remains available through `as_array()` and `into_array()`.
 Further stable-Rust maintenance can remain in `v0.4.x`; it does not depend on
 expanded const-generic support.
 
-### v0.5.0 Stable Rust APIs and Performance (planned)
+### v0.5.0 Stable Rust APIs and Performance (released)
 
 The [v0.5.0 milestone](https://github.com/acgetchell/la-stack/milestone/3)
-replaces the planned `v0.4.7` release. It combines the completed Rust 1.99
+replaced the planned `v0.4.7` release. It combined the completed Rust 1.99
 migration and stable vector-angle API with correctness-preserving performance
 improvements and release-tooling adoption. Expanded const-generics stabilization
-does not gate this release.
+did not gate this release.
 
 Completed work included in this release:
 
@@ -279,28 +280,23 @@ API or feature is planned. The
 decision, executed checks, and unperformed native Linux/Windows runs; the
 [study](archive/performance/studies/algebraic-float.md) retains the raw evidence.
 
-Remaining release sequence:
+The release sequence is complete:
 
-1. Review and land the triangular rational-solve optimization
+1. The triangular rational-solve optimization
    ([#246](https://github.com/acgetchell/la-stack/issues/246),
-   [draft PR #278](https://github.com/acgetchell/la-stack/pull/278)), retaining the
+   [PR #278](https://github.com/acgetchell/la-stack/pull/278)) landed with the
    exact general-system fallback and independent regression evidence.
-2. Adopt the published research-repo-tools v0.1.9 capabilities
-   ([#276](https://github.com/acgetchell/la-stack/issues/276)) after the upstream
-   [publication gate](https://github.com/acgetchell/research-repo-tools/issues/99)
-   verifies the registry release. Preserve the dimension plot, scientific
-   eligibility rules, and historical artifacts.
-3. Complete the release validation and `v0.4.6` versus `v0.5.0` performance record
-   through the validated adopted workflow. Configure and verify the crates.io
-   publishing workflow and publisher settings
-   ([#259](https://github.com/acgetchell/la-stack/issues/259)) before publication.
-4. Publish the reviewed `v0.5.0` release and verify crates.io availability and a
-   clean downstream dependency resolution. Close #259 only after actual
-   publication succeeds and its evidence is recorded.
+2. The published shared-tooling capabilities were adopted
+   ([#276](https://github.com/acgetchell/la-stack/issues/276)), preserving the
+   dimension plot, scientific eligibility rules, and historical artifacts.
+3. Release validation and the `v0.4.6` versus `v0.5.0` performance record completed
+   through the adopted workflow. The crates.io publishing workflow and publisher
+   settings were verified ([#259](https://github.com/acgetchell/la-stack/issues/259)).
+4. The reviewed `v0.5.0` release was published and registry availability verified;
+   #259 closed after publication on 2026-10-17.
 
-Consumers using a `0.4` Cargo requirement must explicitly adopt `0.5` after the
-release is available. Delaunay's adoption issues remain scheduled for `v0.8.3`
-and retain their independent correctness and performance gates. Package versions
+Consumers using a `0.4` Cargo requirement must explicitly adopt `0.5`.
+Downstream adoption retains independent correctness and performance gates. Package versions
 and generated release artifacts are updated during dedicated release preparation.
 
 ### v0.5.1 Follow-Up Work (planned)

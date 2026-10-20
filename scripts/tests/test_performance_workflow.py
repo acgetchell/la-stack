@@ -309,7 +309,8 @@ def assert_readme_presentation(readme: str, statistic: str) -> None:
     assert f"Statistic: {statistic}. Unit: ns." in table
     current, peer, ratio = ("12<br>[10.8, 13.2]", "20<br>[18, 22]", "1.66667") if statistic == "mean" else ("8<br>[7.2, 8.8]", "10<br>[9, 11]", "1.25")
     faer, faer_ratio = ("32<br>[28.8, 35.2]", "2.66667") if statistic == "mean" else ("16<br>[14.4, 17.6]", "2")
-    assert f"| 2 | {current} | {peer} | {faer} | {ratio}\N{MULTIPLICATION SIGN} | {faer_ratio}\N{MULTIPLICATION SIGN} |" in table
+    multiplication_sign = "\N{MULTIPLICATION SIGN}"
+    assert f"| 2 | {current} | {peer} | {faer} | {ratio}{multiplication_sign} | {faer_ratio}{multiplication_sign} |" in table
     assert "ratios are point estimates, with no ratio intervals or significance claims" in table
     for name in ("nalgebra", "faer"):
         assert f"Speedup vs {name}: ratio; numerator = {name} (" in table
@@ -620,7 +621,8 @@ def test_native_command_policy_and_compatibility_adapter() -> None:
 def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, baseline_tag: str, scope: str) -> None:
     """Exercise the configured Justfile, stubbing only the expensive Cargo boundary."""
     root = tmp_path / "checkout with spaces"
-    shutil.copytree(ROOT / "tooling", root / "tooling")
+    # Native benchmark policy needs the root configs, not the scanner environment.
+    shutil.copytree(ROOT / "tooling", root / "tooling", ignore=shutil.ignore_patterns("semgrep"))
     shutil.copyfile(ROOT / "rust-toolchain.toml", root / "rust-toolchain.toml")
     binary = tmp_path / "bin"
     binary.mkdir()

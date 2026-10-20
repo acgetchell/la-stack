@@ -79,8 +79,10 @@ original coordinates rather than an already-rounded difference vector.
 
 `det_sign_exact()` uses a Shewchuk-style f64 error-bound filter \[[8]\] (the same bound exposed
 by `det_errbound()` above) backed by exact `BigInt` arithmetic. Each f64 entry is decomposed
-into `mantissa × 2^exponent` and scaled to a common integer base. Dimensions 0–4 use direct
-integer determinant expansions; D ≥ 5 uses integer-only Bareiss elimination \[[7]\]. Neither
+into `mantissa × 2^exponent`. Each row uses its own minimum nonzero exponent `e_i`
+to form an integer row; the determinant is reconstructed as `det_int × 2^(Σ e_i)`.
+Zero rows use exponent zero. Dimensions 0–4 use direct integer determinant
+expansions; D ≥ 5 uses integer-only Bareiss elimination \[[7]\]. Neither
 path constructs `BigRational` values or performs GCD normalization.
 See `src/exact.rs` for the full architecture description.
 
@@ -136,8 +138,9 @@ Both the determinant and solve paths convert their finite-by-construction entrie
 `decompose_proven_finite_f64`, which extracts the IEEE 754 binary64 sign, unbiased exponent,
 and significand \[[9]\]. For nonzero `x`, it strips trailing zeros from the
 significand so `|x| = m · 2^e` with `m` odd; signed zeros use a separate zero
-component. The integer matrix is then assembled by shifting each mantissa left by
-`exp − e_min`, giving a GCD-free exact-integer starting point. Solves and D ≥ 5 determinants
+component. Shifting each mantissa left by `exp − e_min` gives a GCD-free
+exact-integer starting point. Determinants choose `e_min` separately for each row;
+solves use the matrix and RHS scales described above. Solves and D ≥ 5 determinants
 then apply Bareiss elimination; D ≤ 4 determinants use direct expansions. Tests verify
 non-finite input rejection at the `Matrix` and `Vector` constructors. The test-only
 `f64_to_big_rational` helper uses `BigRational::from_f64` as an independent oracle for
