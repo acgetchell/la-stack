@@ -7,6 +7,7 @@ import shutil
 import sys
 import tomllib
 import zipfile
+from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -42,6 +43,24 @@ WORKFLOWS = {
     "update-cargo-tools": [TOOL_UPDATE],
     "update-uv": [UV_UPDATE],
 }
+
+
+def test_published_tooling_package_matches_manifest_lock_and_installation() -> None:
+    """Keep the exact published-package contract in one consumer test."""
+    expected_version = "0.2.0"
+    manifest = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert manifest["project"]["dependencies"] == []
+    assert manifest["tool"]["uv"]["package"] is False
+    assert "build-system" not in manifest
+    assert manifest["dependency-groups"]["tooling"] == [f"research-repo-tools=={expected_version}"]
+    assert {"include-group": "tooling"} in manifest["dependency-groups"]["dev"]
+    assert version("research-repo-tools") == expected_version
+    lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
+    package = next(item for item in lock["package"] if item["name"] == "research-repo-tools")
+    assert package["version"] == expected_version
+    assert package["source"] == {"registry": "https://pypi.org/simple"}
+    assert package["wheels"][0]["hash"] == "sha256:73c4052993ca86fe4b1dec972b2b3bc9699493064c4acfdbe8969d89e453c602"
+    assert package["sdist"]["hash"] == "sha256:6a173267d09c8495ecac909ef4201a3e9c71ed453e3295a05d8f1a21585096a6"
 
 
 @pytest.fixture
@@ -167,7 +186,8 @@ def test_python_update_preserves_shared_pin_and_tools_with_explicit_dev_sync(tmp
     run_command("uv", ["lock", "--upgrade"], cwd=root)
     lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
     packages = {package["name"]: package["version"] for package in lock["package"]}
-    assert packages["research-repo-tools"] == "0.1.9"
+    shared_name, shared_version = groups["tooling"][0].split("==")
+    assert packages[shared_name] == shared_version
     assert packages["ruff"] == "99.0.0"
     run_command("uv", ["sync", "--locked", "--group", "dev"], cwd=root)
     installed = run_command("uv", ["run", "--locked", "--no-sync", "python", "-c", "from importlib.metadata import version; print(version('ruff'))"], cwd=root)

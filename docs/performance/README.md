@@ -8,7 +8,7 @@ the [Benchmarking guide](../BENCHMARKING.md) owns the current workflow.
 ## Contents
 
 - [Saved runs](#saved-runs)
-- [Regenerating reports](#regenerating-reports)
+- [Reading retained reports](#reading-retained-reports)
 - [Comparing measurements](#comparing-measurements)
 - [Historical availability](#historical-availability)
 
@@ -38,27 +38,19 @@ measurements; missing current measurements are never filled from an older run.
 `latest.json` identifies the last saved legacy snapshot. New complete-run
 publication maintains its own shared index and latest pointer instead.
 
-## Regenerating reports
+## Reading retained reports
 
-While no shared complete run has been retained, these commands can use the
-committed legacy snapshot when scratch report inputs are absent:
+Read these original CSV/JSON records and the
+[archived Markdown reports](../archive/performance/README.md) directly.
+Their writers, custom renderer and conversion declaration are retired.
+`performance-doc` and `performance-readme` require shared complete-run evidence;
+they do not consume these summaries. Unsupported legacy scratch inputs block
+fallback to older history, so archive or remove those scratch files first.
 
-```bash
-just performance-doc
-just performance-readme
-```
-
-Neither command reruns benchmarks. Existing scratch inputs take precedence;
-partial or corrupt inputs fail validation rather than silently selecting an
-older snapshot. README publication still checks the measured source and
-benchmark contract against the current checkout, along with the lockfile and
-release version. Committing only the saved artifacts does not invalidate a
-snapshot: its original measurement commit remains in provenance. Legacy inputs
-without a benchmark-contract digest also require the original commit.
-
-Once a shared complete run is promoted, the commands select that history.
 Legacy summaries cannot be converted losslessly into complete-run evidence:
 they retain aggregate statistics and sample counts, but not the raw samples.
+The [Benchmarking guide](../BENCHMARKING.md) owns current report and README
+publication, including source freshness and measured-asset checks.
 
 ## Comparing measurements
 

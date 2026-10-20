@@ -323,19 +323,7 @@ def declared_plan(  # noqa: PLR0913
     return CommonHarnessPlan(config, phases["baseline"], phases["current"], tuple(series))
 
 
-def _legacy_cargo_commands(suite: str, phase: str) -> str:
-    """Validate the frozen pre-Just evidence contract without running its driver."""
-    suites = {"vs_linalg": ("-p", "la-stack-comparison", "--features", "bench"), "exact": ("--features", "bench,exact")}
-    return json.dumps(
-        [
-            ("cargo", "bench", "--locked", *features, "--bench", name, "--", *(("la_stack",) if phase == "current" and name == "vs_linalg" else ()), "--noplot")
-            for name, features in suites.items()
-            if suite in {"all", name}
-        ]
-    )
-
-
-def validate_scientific_run(evidence: Evidence, *, release: bool = False, root: Path | None = None) -> CompleteRun:  # noqa: C901
+def validate_scientific_run(evidence: Evidence, *, release: bool = False, root: Path | None = None) -> CompleteRun:
     """Require la-stack's sampling, selected coverage and original reference phases."""
     run = validate_run_evidence(evidence)
     sources = dict(evidence.sources)
@@ -349,10 +337,9 @@ def validate_scientific_run(evidence: Evidence, *, release: bool = False, root: 
         msg = "same-version local comparisons require distinct source identities"
         raise ValueError(msg)
     samples = dict(run.phases)
-    for sample in samples.values():
-        if sample.policy != CompletePolicy(sample.policy.expected):
-            msg = "la-stack requires 100 samples, mean and median, and 95% intervals in ns"
-            raise ValueError(msg)
+    if any(sample.policy != CompletePolicy(sample.policy.expected) for sample in samples.values()):
+        msg = "la-stack requires 100 samples, mean and median, and 95% intervals in ns"
+        raise ValueError(msg)
     expected = declared_plan(
         pair,
         context["suite"],
@@ -365,29 +352,18 @@ def validate_scientific_run(evidence: Evidence, *, release: bool = False, root: 
     if run.series != expected.series or context["baseline-api-compatibility"] != adapter:
         msg = "retained series or compatibility policy differs from la-stack declarations"
         raise ValueError(msg)
-    legacy = "phase-driver" not in context
-    compatible = set(expected.measurement.compatible) - ({"context.tool.just"} if legacy else set())
-    if set(run.compatible) != compatible:
+    if set(run.compatible) != set(expected.measurement.compatible):
         msg = "retained run omits required host, toolchain, or dependency compatibility"
         raise ValueError(msg)
     required = dict(expected.measurement.context)
-    if legacy:
-        del required["phase-driver"]
-        required.update((f"{phase}-cargo-commands", _legacy_cargo_commands(context["suite"], phase)) for phase in ("baseline", "current"))
     for phase, source in evidence.sources:
         actual = dict(source.context)
-        if actual.get("phase-driver") != context.get("phase-driver") or any(actual.get(key) != value for key, value in required.items()):
+        if any(actual.get(key) != value for key, value in required.items()):
             msg = "retained phase differs from the declared consumer policy"
             raise ValueError(msg)
         for key, native_command in (("command", getattr(expected, phase).command), ("gate-command", getattr(expected, phase).gate)):
-            command = native_command
             recorded = tuple(json.loads(actual[key]))
-            if legacy:
-                # Interpreter paths varied across hosts. Old evidence remains
-                # readable without retaining or executing the Python driver.
-                command = ("scripts/performance_phase.py", "measure" if key == "command" else "gate", context["suite"], phase)
-                recorded = recorded[1:]
-            if recorded != command:
+            if recorded != native_command:
                 raise ValueError(f"retained {phase} {key} differs from the declared Cargo phase")
     return run
 

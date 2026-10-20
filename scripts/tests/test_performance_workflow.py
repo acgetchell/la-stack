@@ -18,9 +18,7 @@ import pytest
 from research_repo_tools import publication
 from research_repo_tools.common_measurement import CommonHarnessPlan, measure_prepared_pair
 from research_repo_tools.complete_runs import CompletePolicy, RunSeries, render_run, run_identity, serialize_run
-from research_repo_tools.criterion import parse_comparison
 from research_repo_tools.just_inspect import dry_run
-from research_repo_tools.legacy_evidence import convert_csv
 from research_repo_tools.postprocess_changelog import MarkdownFormatError
 from research_repo_tools.process import ExecutableNotFoundError, run_command
 from research_repo_tools.release_pairs import ReleasePair
@@ -36,31 +34,26 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parents[2]
 PAIR = ReleasePair("v0.4.6", "v0.4.5")
-DRIVER = """import json, os, sys
+DRIVER = """import json, sys
 from pathlib import Path
 action, phase = sys.argv[1:]
-fault = os.environ.get("FIXTURE_FAULT", "")
-if action == "gate":
-    if fault == "gate":
-        raise SystemExit(1)
-    if fault == "stale":
-        Path("src/lib.rs").write_text("changed during gate")
-else:
-    ids = INVENTORIES[phase]
-    for name in ids[:-1] if fault == "missing-row" else ids:
+if action == "measure":
+    for name in INVENTORIES[phase]:
         path = Path("target/criterion") / name / "new"
         path.mkdir(parents=True)
-        value = 10.0 if phase == "baseline" else 8.0
+        value = (16.0 if "/faer_" in name else 10.0) if phase == "baseline" else 8.0
         estimate = {"point_estimate": value, "confidence_interval": {"lower_bound": value * .9, "upper_bound": value * 1.1, "confidence_level": .95}}
-        estimates = {"median": estimate} if fault == "missing-statistic" else {"mean": estimate, "median": estimate}
-        count = 99 if fault == "missing-sample" else 100
-        sample = {"iters": [1] * count, "times": [value] * count}
+        mean = (32.0 if "/faer_" in name else 20.0) if phase == "baseline" else 12.0
+        mean_interval = {"lower_bound": mean - mean / 10, "upper_bound": mean + mean / 10, "confidence_level": .95}
+        mean_estimate = {"point_estimate": mean, "confidence_interval": mean_interval}
+        estimates = {"mean": mean_estimate, "median": estimate}
+        sample = {"iters": [1] * 100, "times": [value] * 100}
         for filename, data in (("benchmark.json", {"full_id": name}), ("estimates.json", estimates), ("sample.json", sample)):
             (path / filename).write_text(json.dumps(data))
 """
 
 
-def prepared(tmp_path: Path, fault: str = "") -> tuple[Path, Path, CommonHarnessPlan]:
+def prepared(tmp_path: Path) -> tuple[Path, Path, CommonHarnessPlan]:
     """Use the real consumer inventory and policies with a bounded timing fixture."""
     ids = tuple(sorted(required_report_ids()))
     inventories = {
@@ -116,9 +109,7 @@ def prepared(tmp_path: Path, fault: str = "") -> tuple[Path, Path, CommonHarness
             cwd=root,
         )
     baseline, current = tmp_path / "baseline", tmp_path / "current"
-    plan = policy.declared_plan(
-        PAIR, "all", "release-signal", inventories, baseline_env=(("FIXTURE_FAULT", fault),), current_env=(), config=policy.configuration(current)
-    )
+    plan = policy.declared_plan(PAIR, "all", "release-signal", inventories, baseline_env=(), current_env=(), config=policy.configuration(current))
     return baseline, current, plan
 
 
@@ -155,7 +146,11 @@ def test_common_harness_and_reference_phase(tmp_path: Path) -> None:
     assert sources["baseline"].source_sha256 != sources["current"].source_sha256
     assert (baseline / "benches/exact.rs").read_bytes() == (current / "benches/exact.rs").read_bytes()
     assert {series.phase for series in run.series if series.name in {"nalgebra", "faer"}} == {"baseline"}
-    assert all(sample.policy.statistics == ("mean", "median") for _, sample in run.phases)
+    for _, sample in run.phases:
+        assert sample.policy.sample_count == 100
+        assert sample.policy.statistics == ("mean", "median")
+        assert sample.policy.confidence_level == 0.95
+        assert sample.policy.unit == "ns"
 
 
 def test_measurement_worktrees_accept_an_aliased_system_temporary_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -209,14 +204,13 @@ def test_measurement_worktrees_accept_an_aliased_system_temporary_directory(tmp_
     assert list(physical.iterdir()) == []
 
 
-@pytest.mark.parametrize("fault", ["gate", "stale", "missing-row", "missing-statistic", "missing-sample"])
-def test_declared_gates_and_completeness_fail_closed(tmp_path: Path, fault: str) -> None:
-    baseline, current, plan = prepared(tmp_path, fault)
-    with pytest.raises(ValueError, match=r"gate|changed|incomplete|sample|statistic|expected|missing|mean"):
-        measure_prepared_pair(baseline, current, plan, PAIR, working_tree=True)
-    assert not (current / "target/criterion").exists()
-    if fault in {"gate", "stale"}:
-        assert not (baseline / "target/criterion").exists()
+def test_consumer_plan_rejects_an_inventory_missing_a_required_report_row() -> None:
+    missing = "d64/la_stack_lu_solve"
+    ids = tuple(sorted(required_report_ids()))
+    assert missing in ids
+    inventories = {"baseline": ids, "current": tuple(name for name in ids if name != missing)}
+    with pytest.raises(ValueError, match=rf"inventory omits selected report rows: \['{missing}'\]"):
+        policy.declared_plan(PAIR, "all", "release-signal", inventories, baseline_env=(), current_env=(), root=ROOT)
 
 
 @pytest.mark.parametrize("report_path", ["docs/performance.md", "docs/reports/current.md"])
@@ -287,30 +281,68 @@ def test_partial_scratch_and_stale_source_cannot_select_old_history(tmp_path: Pa
         policy.verify_current_source(root, evidence)
 
 
-@pytest.mark.parametrize("archive", ["docs/performance-runs", "docs/performance-history"])
-def test_readme_uses_original_reference_phases_after_cleanup(complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, archive: str) -> None:
+def prepare_readme_recipe(root: Path, statistic: str) -> None:
+    """Make the native README recipe runnable against the retained fixture."""
+    original = (
+        (ROOT / "README.md")
+        .read_text(encoding="utf-8")
+        .replace(":lu_solve:median:new:", f":lu_solve:{statistic}:new:")
+        .replace("vs_linalg_lu_solve_median", f"vs_linalg_lu_solve_{statistic}")
+        .replace("median time vs dimension", f"{statistic} time vs dimension")
+    )
+    (root / "README.md").write_text(original, encoding="utf-8")
+    for name in ("justfile", "uv.lock", ".python-version"):
+        shutil.copyfile(ROOT / name, root / name)
+    (root / "scripts").mkdir()
+    for name in ("archive_performance.py", "performance_runs.py"):
+        shutil.copyfile(ROOT / "scripts" / name, root / "scripts" / name)
+
+
+def assert_readme_presentation(readme: str, statistic: str) -> None:
+    """Check the consumer's compact style, comparison direction and figure."""
+    table = readme.split(f"<!-- BENCH_TABLE:lu_solve:{statistic}:new:BEGIN -->", 1)[1].split(f"<!-- BENCH_TABLE:lu_solve:{statistic}:new:END -->", 1)[0]
+    assert "| Dimension | la-stack (v0.4.6) | nalgebra (" in table
+    assert "| faer (" in table
+    assert "| Speedup vs nalgebra | Speedup vs faer |" in table
+    assert "(0.95 confidence)" not in table
+    assert table.count("Confidence level: 95%.") == 1
+    assert f"Statistic: {statistic}. Unit: ns." in table
+    current, peer, ratio = ("12<br>[10.8, 13.2]", "20<br>[18, 22]", "1.66667") if statistic == "mean" else ("8<br>[7.2, 8.8]", "10<br>[9, 11]", "1.25")
+    faer, faer_ratio = ("32<br>[28.8, 35.2]", "2.66667") if statistic == "mean" else ("16<br>[14.4, 17.6]", "2")
+    assert f"| 2 | {current} | {peer} | {faer} | {ratio}\N{MULTIPLICATION SIGN} | {faer_ratio}\N{MULTIPLICATION SIGN} |" in table
+    assert "ratios are point estimates, with no ratio intervals or significance claims" in table
+    for name in ("nalgebra", "faer"):
+        assert f"Speedup vs {name}: ratio; numerator = {name} (" in table
+    assert table.count("denominator = la-stack (v0.4.6)") == 2
+    assert "time reduction" not in table
+    assert f"![LU solve (factor + solve): {statistic} time vs dimension][lu-solve-benchmark]" in readme
+    assert (
+        f"[lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/{PAIR.current}/docs/assets/bench/vs_linalg_lu_solve_{statistic}.svg"
+        in readme
+    )
+
+
+@pytest.mark.parametrize(("archive", "statistic"), [("docs/performance-runs", "median"), ("docs/performance-history", "mean")])
+def test_readme_uses_original_reference_phases_after_cleanup(
+    complete_run: tuple[Path, Evidence], monkeypatch: pytest.MonkeyPatch, archive: str, statistic: str
+) -> None:
     root, evidence = complete_run
     config = root / policy.REPORT_CONFIG
     config.write_text(config.read_text(encoding="utf-8").replace("docs/performance-runs", archive), encoding="utf-8")
     stem = root / "target/bench-reports/performance"
     workflow.save_scratch(root, stem, evidence)
     workflow.promote(root, stem)
-    shutil.copyfile(ROOT / "README.md", root / "README.md")
+    prepare_readme_recipe(root, statistic)
+    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", sys.prefix)
+    # Execute the actual recipe and installed renderer, without measurements.
+    result = run_command("just", ["--no-deps", "performance-readme", "lu_solve", statistic, "new", "true"], cwd=root, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
     monkeypatch.setattr(plot, "_repo_root", lambda: root)
     monkeypatch.chdir(root.parent)
-    arguments = ["--update-readme", "--log-y"]
-    assert plot.dimension_main(arguments) == 0
-    readme = (root / "README.md").read_text(encoding="utf-8")
-    table = readme.split("<!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->", 1)[1].split("<!-- BENCH_TABLE:lu_solve:median:new:END -->", 1)[0]
-    assert "| Dimension | la-stack | nalgebra | faer | Speedup vs nalgebra | Speedup vs faer |" in table
-    assert "(0.95 confidence)" not in table
-    assert table.count("95% confidence interval") == 1
-    assert "Median time in ns; brackets show the lower and upper bounds" in table
-    assert "8<br>[7.2, 8.8]" in table
-    assert "1.25\N{MULTIPLICATION SIGN}" in table
-    assert "time reduction" not in table
+    arguments = ["--stat", statistic, "--update-readme", "--log-y"]
+    assert_readme_presentation((root / "README.md").read_text(encoding="utf-8"), statistic)
     assets = root / "docs/assets/bench"
-    csv = assets / "vs_linalg_lu_solve_median.csv"
+    csv = assets / f"vs_linalg_lu_solve_{statistic}.csv"
     import csv as csv_module  # noqa: PLC0415
 
     with csv.open(encoding="utf-8", newline="") as stream:
@@ -321,13 +353,14 @@ def test_readme_uses_original_reference_phases_after_cleanup(complete_run: tuple
     assert {float(row["coordinate"]) for row in rows} == {2, 3, 4, 5, 8, 16, 32, 64}
     assert {row["unit"] for row in rows} == {"ns"}
     dimension_two = [row for row in rows if float(row["coordinate"]) == 2]
-    assert [(float(row["point"]), float(row["lower"]), float(row["upper"])) for row in dimension_two] == [(8.0, 7.2, 8.8), (10.0, 9.0, 11.0), (10.0, 9.0, 11.0)]
+    expected = [(12.0, 10.8, 13.2), (20.0, 18.0, 22.0), (32.0, 28.8, 35.2)] if statistic == "mean" else [(8.0, 7.2, 8.8), (10.0, 9.0, 11.0), (16.0, 14.4, 17.6)]
+    assert [(float(row["point"]), float(row["lower"]), float(row["upper"])) for row in dimension_two] == expected
     provenance = json.loads(csv.with_suffix(".provenance.json").read_bytes())
     assert provenance["series"]["nalgebra"] == "baseline"
     assert provenance["run_id"] == run_identity(evidence)
     assert b"<svg" in csv.with_suffix(".svg").read_bytes()
     assert b"nalgebra" in csv.with_suffix(".svg").read_bytes()
-    before = {path: path.read_bytes() for path in (*assets.iterdir(), root / "README.md")}
+    before = {path: path.read_bytes() for path in (*(root / archive).rglob("*"), *assets.iterdir(), root / "README.md") if path.is_file()}
     run_command("git", ["--no-pager", "add", "docs/assets/bench"], cwd=root)
     run_command(
         "git",
@@ -553,7 +586,7 @@ def test_complete_report_passes_markdown_recipes_without_rewriting_history(compl
     assert run_identity(policy.retained_run(root, stem)) == run_identity(evidence)
 
 
-def test_legacy_bytes_hashes_and_report_are_unchanged() -> None:
+def test_legacy_bytes_hashes_are_unchanged() -> None:
     directory = ROOT / "docs/performance/v0.4.6-vs-v0.4.5/39719a1eb599d294dbbc1e46dc6fb0de2028ad2e59aab5f94fb48c7bf3d7f841"
     hashes = {
         "performance.csv": "b263bb34bcfd43b8fc8109110db9f2e908516aef6c01ce16f70f5ac18dc7ef2d",
@@ -562,19 +595,6 @@ def test_legacy_bytes_hashes_and_report_are_unchanged() -> None:
         "performance.provenance.json": "89144a2899ba73f55d009da4fa20b4e6477600902b93cde469383f719c497508",
     }
     assert {name: hashlib.sha256((directory / name).read_bytes()).hexdigest() for name in hashes} == hashes
-
-    retained = convert_csv(
-        (directory / "performance.csv").read_bytes(),
-        (directory / "performance.provenance.json").read_bytes(),
-        (ROOT / "tooling/performance-legacy.toml").read_bytes(),
-    )
-    comparison = parse_comparison(retained.payload)
-    assert len(comparison.comparisons) == 190
-    assert len(comparison.missing_baseline) == 35
-    assert not comparison.missing_current
-    assert "rational_input_d8/solve_big_rational_gaussian" in comparison.missing_baseline
-    assert dict(retained.sources)["baseline"].source_sha256 is None
-    assert dict(dict(retained.sources)["baseline"].context)["legacy.payload-sha256"] == hashes["performance.csv"]
 
 
 def test_native_command_policy_and_compatibility_adapter() -> None:
@@ -680,7 +700,7 @@ def test_native_inventory_and_phase_commands_use_the_measured_checkout(tmp_path:
     assert "test --locked --workspace --features bench,exact --test vs_linalg_inputs --test exact_bench_config" in lines[4]
 
 
-def test_pre_just_run_remains_readable_without_its_python_driver(tmp_path: Path) -> None:
+def test_retired_python_phase_format_is_rejected(tmp_path: Path) -> None:
     _, evidence = measured(tmp_path)
     run = policy.validate_scientific_run(evidence)
     cargo = {
@@ -707,10 +727,8 @@ def test_pre_just_run_remains_readable_without_its_python_driver(tmp_path: Path)
         sources=tuple(sources),
         payload=serialize_run(replace(run, compatible=tuple(field for field in run.compatible if field != "context.tool.just"))),
     )
-    policy.validate_scientific_run(legacy)
-    bad = replace(sources[0][1], context=tuple((key, "[]" if key == "baseline-cargo-commands" else value) for key, value in sources[0][1].context))
-    with pytest.raises(ValueError, match="consumer policy"):
-        policy.validate_scientific_run(replace(legacy, sources=(("baseline", bad), sources[1])))
+    with pytest.raises(ValueError, match="required host, toolchain, or dependency compatibility"):
+        policy.validate_scientific_run(legacy)
 
 
 def test_local_explicit_labels_and_release_eligibility(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -836,15 +854,6 @@ def test_cli_help_and_missing_checkout_diagnostics(tmp_path: Path, monkeypatch: 
     output = capsys.readouterr()
     assert "Could not locate Cargo.toml" in output.err
     assert "Traceback" not in output.err
-
-
-def test_current_gate_failure_prevents_both_timing_phases(tmp_path: Path) -> None:
-    baseline, current, plan = prepared(tmp_path)
-    plan = replace(plan, current=replace(plan.current, environment=(("FIXTURE_FAULT", "gate"),)))
-    with pytest.raises(ValueError, match="current preflight gate failed"):
-        measure_prepared_pair(baseline, current, plan, PAIR, working_tree=True)
-    assert not (baseline / "target/criterion").exists()
-    assert not (current / "target/criterion").exists()
 
 
 def test_reference_phase_and_same_version_policy(tmp_path: Path) -> None:

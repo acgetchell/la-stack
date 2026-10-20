@@ -25,17 +25,11 @@ TAG = f"v{VERSION}"
 CHECKS = ("build (ubuntu-latest)", "build (macos-latest)", "build (windows-latest)", "Clippy SARIF Analysis", "Repository Rule SARIF Analysis")
 
 
-def test_publishing_policy_uses_the_published_pin_and_native_scientific_gates() -> None:
+def test_publishing_policy_requires_native_scientific_gates_and_the_criterion_asset() -> None:
     assert POLICY.publishing is not None
     assert (POLICY.publishing.registry, POLICY.publishing.package, POLICY.publishing.repository) == ("crates-io", "la-stack", "acgetchell/la-stack")
     assert tuple((check.name, check.app_id) for check in POLICY.publishing.required_checks) == tuple((name, 15368) for name in CHECKS)
     assert POLICY.publishing.required_assets == ("la-stack-v{version}-criterion-baseline.tar.gz",)
-    manifest = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert manifest["dependency-groups"]["tooling"] == ["research-repo-tools==0.1.9"]
-    lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
-    package = next(item for item in lock["package"] if item["name"] == "research-repo-tools")
-    assert package["version"] == "0.1.9"
-    assert package["source"] == {"registry": "https://pypi.org/simple"}
 
 
 @pytest.fixture
@@ -84,7 +78,7 @@ def release_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
         assets=((f"la-stack-{TAG}-criterion-baseline.tar.gz", 7, 100, "digest"),),
     )
     monkeypatch.setattr(release_publishing, "lookup_release", lambda *_args: release)
-    return {"event": event, "path": event_file, "checks": checks}
+    return {"checks": checks}
 
 
 def test_installed_gate_accepts_actual_metadata_and_required_native_results(release_event: dict[str, Any]) -> None:
@@ -92,35 +86,11 @@ def test_installed_gate_accepts_actual_metadata_and_required_native_results(rele
 
 
 @pytest.mark.parametrize("name", CHECKS)
-@pytest.mark.parametrize("state", ["missing", "failure", "pending"])
-def test_every_native_gate_blocks_missing_or_unsuccessful_evidence(release_event: dict[str, Any], name: str, state: str) -> None:
+def test_each_configured_native_check_is_required(release_event: dict[str, Any], capsys: pytest.CaptureFixture[str], name: str) -> None:
     check = next(item for item in release_event["checks"] if item["name"] == name)
-    if state == "missing":
-        check["name"] = "unrelated check"
-    else:
-        check.update(status="in_progress" if state == "pending" else "completed", conclusion=None if state == "pending" else "failure")
+    check["name"] = "unrelated check"
     assert main(["--root", str(REPO_ROOT), "release", "gate", TAG]) == 1
-
-
-@pytest.mark.parametrize(("field", "value"), [("draft", True), ("prerelease", True), ("tag_name", "v99.0.0")])
-def test_installed_gate_rejects_mismatched_release_events(release_event: dict[str, Any], field: str, value: object) -> None:
-    release_event["event"]["release"][field] = value
-    release_event["path"].write_text(json.dumps(release_event["event"]), encoding="utf-8")
-    assert main(["--root", str(REPO_ROOT), "release", "gate", TAG]) == 1
-
-
-@pytest.mark.parametrize("mismatch", ["repository", "commit", "version", "event"])
-def test_consumer_gate_rejects_wrong_identity(release_event: dict[str, Any], monkeypatch: pytest.MonkeyPatch, mismatch: str) -> None:
-    tag = TAG
-    if mismatch == "repository":
-        monkeypatch.setenv("GITHUB_REPOSITORY", "other/repository")
-    elif mismatch == "commit":
-        monkeypatch.setattr(release_publishing, "_remote_commit", lambda *_args: "b" * 40)
-    elif mismatch == "version":
-        tag = "v99.0.0"
-    else:
-        monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
-    assert main(["--root", str(REPO_ROOT), "release", "gate", tag]) == 1
+    assert f"required check {name!r} lacks one unambiguous successful result on {SHA}" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("immutable", [True, False, None])

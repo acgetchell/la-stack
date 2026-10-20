@@ -1,7 +1,7 @@
 # scripts/
 
 Only two production Python adapters remain. Generic tools run from the installed
-`research-repo-tools==0.1.9` base package; their declarations belong in
+`research-repo-tools==0.2.0` base package; their declarations belong in
 `tooling/` and `pyproject.toml`. The project is a dependency-only environment,
 with no local Python distribution, build backend or console entry points.
 
@@ -60,9 +60,11 @@ table renderers. The former preserves current source/harness membership and
 digests and advances the three existing measured-artifact pointers transactionally.
 README candidates pass the shared Markdown formatter with repository policy
 before any publication files are replaced.
-The README adapter labels dimensions, keeps each confidence interval below its
-timing, states the confidence level once, and selects the shared speedup columns.
-Timing estimates and comparison arithmetic remain owned by the shared renderer.
+README publication configures the shared `RunTableStyle` API to label dimensions,
+keep both interval bounds below each timing, state the recorded confidence level
+once, and select ratio-only speedup columns with explicit numerator/denominator
+semantics. Series labels supply the timing headings and measured versions.
+The shared renderer owns formatting, timing estimates and comparison arithmetic.
 
 ```bash
 just performance-release
@@ -74,17 +76,19 @@ The raw-Criterion/gnuplot publisher, historical summary writer and custom
 report renderer are retired after installed-package replacement checks.
 Original CSV/JSON, reports, fingerprints and archives remain unchanged.
 They are read directly as frozen records; no regeneration requirement keeps
-their writers alive. For verified historical conversion into shared comparison
-evidence, use `research-repo-tools performance convert` with
-`tooling/performance-legacy.toml`; this never reconstructs complete runs from
-summaries. Do not promote converted historical summaries as new measurements.
-The conversion declaration remains until every retained original has a verified
-shared comparison companion and its original bytes remain independently available.
+their writers alive. The obsolete CSV conversion declaration and pre-Just Python
+phase format are retired. Report and README publication require complete-run
+evidence with the declared Just driver. Historical summaries lack raw samples
+and cannot supply that evidence; their original bytes remain available directly.
 
 Generic parser, renderer, transaction and provider failure matrices belong
 upstream. Consumer tests retain scientific selection/phase/gate checks, actual
 native recipe wiring, complete release archive round trips, captured-target
 handoff, offline publication and original artifact hashes.
+`scripts/tests/test_toolchain_integration.py` owns the single published-package
+contract: manifest pin, registry lock, installed version and wheel/sdist hashes.
+Dependency-update and release-workflow tests derive that requirement from the
+manifest and verify it survives their actual recipe execution.
 
 ## Changelog and release tooling
 

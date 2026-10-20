@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tarfile
 import textwrap
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ import archive_performance as workflow
 from performance_runs import required_report_ids
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+TOOLING_REQUIREMENT = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["dependency-groups"]["tooling"][0]
 WORKFLOW = REPO_ROOT / ".github/workflows/release-benchmarks.yml"
 PREPARATION = REPO_ROOT / ".github/actions/prepare-release-benchmarks/action.yml"
 IDS = {"vs_linalg": ["d2/la_stack_dot", "diagnostic/peer"], "exact": ["exact_d2/det_exact"]}
@@ -188,7 +190,7 @@ def test_workflow_requires_preflight_and_isolates_publication_permissions() -> N
     assert '--expected-title "$RELEASE_TAG"' in preflight
     assert '--target "$RUNNER_TEMP/release-target.json"' in publisher
     assert "--publish" not in publisher
-    assert (preflight + publisher).count("--from research-repo-tools==0.1.9") == 2
+    assert (preflight + publisher).count(f"--from {TOOLING_REQUIREMENT}") == 2
     assert "uses: ./" not in preflight + publisher
     assert "--clobber" not in workflow
     assert "needs: [validate-release, release-baseline]" in publisher
@@ -337,7 +339,8 @@ def test_installed_cli_binds_trusted_target_and_leaves_draft_for_review(tmp_path
     # Substitute only uvx's environment acquisition; retain its exact package
     # arguments and execute the already locked package in a real child process.
     runner = (
-        'uvx() { [[ "$1 $2 $3 $4 $5" == "--python 3.15 --from research-repo-tools==0.1.9 research-repo-tools" ]] || return 90; '
+        'uvx() { [[ "$1 $2 $3 $4 $5" == "--python 3.15 --from '
+        f'{TOOLING_REQUIREMENT} research-repo-tools" ]] || return 90; '
         f'shift 5; {shlex.quote(sys.executable)} -m research_repo_tools "$@"; }}\n'
     )
     result = run_shell(runner + shell_step("Validate draft release target"), fixture, env)

@@ -39,7 +39,7 @@ change files. Run bare `just` for the complete generated command list, including
 arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
 owns recipe naming and documentation placement.
 
-Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.1.9` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.0` package,
 locked in the `tooling` dependency group and included by `dev`. Normal setup
 and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
 checkout is unnecessary. To upgrade it deliberately, review the exact
