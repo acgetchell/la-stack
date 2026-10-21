@@ -1,0 +1,38 @@
+# Named view consumed directly by `performance publish --artifacts-only`.
+schema = 2
+measurement = "tooling/measurements/full.toml"
+payload = "target/bench-reports/full/run.json"
+manifest = "target/bench-reports/full/evidence.json"
+statistic = "median"
+unit = "ns"
+missing = "error"
+csv = "docs/assets/bench/vs_linalg_det_from_lu_median_log.csv"
+rows = [
+    { key = "2", label = "2", coordinate = 2 },
+    { key = "3", label = "3", coordinate = 3 },
+    { key = "4", label = "4", coordinate = 4 },
+    { key = "5", label = "5", coordinate = 5 },
+    { key = "8", label = "8", coordinate = 8 },
+    { key = "16", label = "16", coordinate = 16 },
+    { key = "32", label = "32", coordinate = 32 },
+    { key = "64", label = "64", coordinate = 64 },
+]
+series = [
+    { name = "la-stack current", label = "la-stack", label-version = "release", rows = { "2" = "d2/la_stack_det_from_lu", "3" = "d3/la_stack_det_from_lu", "4" = "d4/la_stack_det_from_lu", "5" = "d5/la_stack_det_from_lu", "8" = "d8/la_stack_det_from_lu", "16" = "d16/la_stack_det_from_lu", "32" = "d32/la_stack_det_from_lu", "64" = "d64/la_stack_det_from_lu" } },
+    { name = "nalgebra", label = "nalgebra", label-version = "dependency.nalgebra", rows = { "2" = "d2/nalgebra_det_from_lu", "3" = "d3/nalgebra_det_from_lu", "4" = "d4/nalgebra_det_from_lu", "5" = "d5/nalgebra_det_from_lu", "8" = "d8/nalgebra_det_from_lu", "16" = "d16/nalgebra_det_from_lu", "32" = "d32/nalgebra_det_from_lu", "64" = "d64/nalgebra_det_from_lu" } },
+    { name = "faer", label = "faer", label-version = "dependency.faer", rows = { "2" = "d2/faer_det_from_lu", "3" = "d3/faer_det_from_lu", "4" = "d4/faer_det_from_lu", "5" = "d5/faer_det_from_lu", "8" = "d8/faer_det_from_lu", "16" = "d16/faer_det_from_lu", "32" = "d32/faer_det_from_lu", "64" = "d64/faer_det_from_lu" } },
+]
+comparisons = [ { numerator = "nalgebra", denominator = "la-stack current" }, { numerator = "faer", denominator = "la-stack current" } ]
+
+[plot]
+path = "docs/assets/bench/vs_linalg_det_from_lu_median_log.svg"
+title = "Determinant from precomputed LU: median time vs dimension"
+x-label = "Dimension D"
+y-label = "Time"
+x-scale = "linear"
+y-scale = "log"
+
+[provenance.baseline]
+# Supply independent release and full commit assertions on the command line.
+
+[provenance.current]

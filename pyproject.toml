@@ -7,7 +7,7 @@ dependencies = [  ]
 
 [tool.ruff]
 line-length = 160
-src = [ "scripts" ]
+src = [ "tooling/tests" ]
 
 [tool.ruff.lint]
 select = [ "E", "F", "W", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "C90", "I", "N", "UP", "YTT", "ASYNC", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "FA", "T10", "EM", "EXE", "FIX", "FLY", "FURB", "ISC", "ICN", "LOG", "G", "INP", "PERF", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "SLOT", "TC", "TID", "TD", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "RUF", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107" ]
@@ -42,7 +42,6 @@ ignore = [
 max-complexity = 10
 
 [tool.ruff.lint.isort]
-known-first-party = [ "archive_performance", "performance_runs" ]
 force-single-line = false
 split-on-trailing-comma = true
 combine-as-imports = true
@@ -64,8 +63,7 @@ line-ending = "auto"
 [tool.pytest.ini_options]
 minversion = "9.0"
 addopts = [ "-ra", "--strict-markers", "--strict-config", "--color=yes" ]
-testpaths = [ "scripts/tests" ]
-pythonpath = [ "scripts" ]
+testpaths = [ "tooling/tests" ]
 python_files = [ "test_*.py", "*_test.py" ]
 python_classes = [ "Test*" ]
 python_functions = [ "test_*" ]
@@ -92,7 +90,7 @@ required-version = "==0.13.3"
 # Semgrep has its own locked Python 3.14 environment under tooling/semgrep.
 
 [dependency-groups]
-tooling = [ "research-repo-tools==0.2.0" ]
+tooling = [ "research-repo-tools==0.2.2" ]
 dev = [
     { include-group = "tooling" },
     "actionlint-py==1.7.12.25",
@@ -154,14 +152,14 @@ date-policy = "declared"
 tag-policy = "canonical-stable"
 required-files = [ "Cargo.lock", "pyproject.toml", "uv.lock", "CITATION.cff", "CHANGELOG.md", "README.md", "REFERENCES.md" ]
 # Retained scientific reports and measured links do not advance with metadata.
-exclude = [ "docs/archive/**", "docs/performance/**", "docs/performance.md" ]
+exclude = [ "docs/archive/**", "docs/performance/**", "docs/performance-runs/**", "docs/performance.md" ]
 
 [[tool.research-repo-tools.release.rules]]
 path = "README.md"
 pattern = 'https://(?:github\.com/acgetchell/la-stack/(?:blob|raw|tree)/|raw\.githubusercontent\.com/acgetchell/la-stack/)(?P<value>main|v[0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{7,40})/[^\s)\]>"?]+'
 value = "main"
 count = 41
-exclude = '/docs/assets/bench/'
+exclude = '/docs/(?:assets/bench|performance-runs)/'
 
 [[tool.research-repo-tools.release.rules]]
 path = "CITATION.cff"

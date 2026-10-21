@@ -23,49 +23,33 @@ the commands measure and where their outputs go.
 
 ## Start Here
 
-For explicit release comparisons, set `CURRENT_TAG` and `PREVIOUS_TAG` to the
-stable tags you want to compare. Omit both arguments to use each recipe's
-documented defaults. These variables keep command examples independent of the
-next release; measured artifact links and historical reports retain their tags.
+Run `just performance-prepare` before measurements to fetch the release tags.
+This explicit Git operation and the measurement recipes' temporary worktrees
+require authorization. Both labels of new measurements must be v0.5.0 or newer.
 
 | Goal | Recipe |
-|------|--------|
-| Latest-release local audit | `just performance-local` |
-| Non-exact release-signal check against tags | `just performance-local-non-exact "$CURRENT_TAG" "$PREVIOUS_TAG"` |
-| Fast saved-baseline loop | `just bench-save-baseline <name> <suite>` then `just bench-compare <name>` |
-| Full crate comparison | `just bench-vs-linalg` |
+| --- | --- |
+| Working tree versus latest release | `just performance-local` |
+| Non-exact working tree versus latest release | `just performance-local-non-exact` |
+| Two existing tags, full or non-exact | `just performance-measure "$CURRENT_TAG" "$PREVIOUS_TAG" full` |
+| Fast saved-baseline loop | `just bench-save-baseline <name> <suite>`, then `just bench-compare <name>` |
+| Native comparison suite | `just bench-vs-linalg` |
 | Interval determinant filter | `just bench-interval` |
 | Certified dot/linear-form filter | `just bench-linear-form` |
-| README table and plot | `just performance-release` then `just performance-readme` |
-| Release report | `just performance-release "$CURRENT_TAG" "$PREVIOUS_TAG"` |
-| Build docs from retained release inputs | `just performance-doc` |
+| Measure and promote a release report | `just performance-release` |
+| Promote an explicit full scratch run | `just performance-promote` |
+| Render the retained release report offline | `just performance-doc` |
 
-Rule of thumb:
+`performance-local*` creates scratch evidence. `performance-promote` selects
+that scratch pair explicitly and requires a distinct release pair.
+`performance-doc` selects archived evidence explicitly. Missing or incomplete
+scratch cannot silently select history. `performance-release` composes fresh
+full measurement and promotion; a failed measurement stops before promotion.
 
-- Use `performance-local*` for clean, self-contained answers.
-- Use `bench-save-*` plus `bench-compare` for tight local optimization loops.
-- Use `plot-vs-linalg` to render dimension plots from a retained complete run.
-- Use `performance-release` only when preparing committed release artifacts.
-- After `performance-release`, use `performance-readme` to publish its
-  retained crate-to-crate measurements without benchmarking again.
-- Use `performance-doc` for report-format changes after a valid, promotable
-  comparison dataset has already been retained.
-
-The three canonical workflows compose around one artifact schema, metric set,
-and renderer:
-
-| Recipe | Measure | Retain complete-run JSON | Promote release docs |
-|--------|---------|-----------------|----------------------|
-| `performance-local` | Yes | Yes | No |
-| `performance-doc` | No | Consumes retained inputs | Yes |
-| `performance-release` | Yes | Yes | Yes |
-
-For a distinct release pair with no intervening source or configuration changes,
-running `performance-local` followed by `performance-doc` produces the same
-report and committed documentation as `performance-release`.
-`performance-release` exists as the safer one-step release operation: it keeps
-fresh measurement, validated artifact publication, and rollback-capable document
-promotion in one command.
+README and plot publication require independent current/baseline tag and full
+commit assertions. The commands are shown below. Keep those assertions from the
+reviewed source checkouts or workflow inputs, rather than reading them from the
+evidence being validated.
 
 ## Benchmark Suites
 
@@ -169,307 +153,206 @@ release-to-release report schema.
 
 ### Compare Current Code With The Latest Release
 
-Use this when you want a clean local answer to "how does this checkout compare
-with the latest published release?"
-
 ```bash
+just performance-prepare
 just performance-local
 ```
 
-This creates isolated temporary worktrees and runs both library revisions on the
-same machine with the current checkout's benchmark sources, manifests, lockfile,
-benchmark-input tests, native Just recipes, measurement configuration, and Rust
-toolchain. The declarations live in `tooling/performance.just` and
-`tooling/performance.toml`; `tooling/performance-report.toml` owns shared report
-and retention paths. Current example sources are
-also copied so Cargo can resolve every target declared by the shared manifest;
-the comparison does not build or time those examples. Staged and unstaged changes
-to tracked files are applied to the current worktree. Untracked files are
-excluded; stage a new file before running the command if it must participate in
-the comparison. Only the baseline library implementation comes from the release
-tag. Both revisions must pass the same benchmark-input tests used by
-`just test-bench-inputs`, via locked Cargo commands, before either timing phase. This is a prerequisite
-correctness gate over the deterministic fixtures and operations, not validation
-of each timed Criterion sample. It writes
-`target/bench-reports/performance.md` plus retained `performance.run.json` and
-`performance.evidence.json` complete-run inputs. The Markdown report includes
-the run identity and each series' phase, release, and revision. The evidence
-JSON retains the CPU, operating system, Rust toolchain, lockfile and harness
-digests, Criterion selection/commands, and both correctness-gate results. The
-report reader rejects malformed or mismatched provenance and incomplete
-selected-suite coverage.
+This compares the current working tree with the latest stable GitHub release.
+The shared snapshot includes tracked changes and nonignored untracked regular
+files, and rechecks them before publishing measurement outputs. This replaces
+the former tracked-only snapshot policy. Keep generated files under ignored
+`target/`; symlinks, junctions and submodules are outside this snapshot contract.
 
-For the default `all` suite, timing runs occur in this order:
+Both sources use the captured current harness, dependency lock and toolchain.
+The declarations in `tooling/measurements/full.toml` and
+`tooling/performance.just` select the native host target and recorded Rust
+code-generation settings. Inherited Rust flag, compiler-wrapper or target
+overrides do not customize these recipes. Edit and review the declarations for
+a different measurement environment.
 
-1. Baseline la-stack, nalgebra, and faer comparison benchmarks.
-2. Baseline la-stack exact benchmarks.
-3. Current la-stack comparison benchmarks, filtered to `la_stack` names.
-4. Current la-stack exact benchmarks.
+The shared engine discovers complete native inventories on both sources, checks
+independent required scientific IDs, and runs both correctness gates before any
+timing. The gates cover `vs_linalg_inputs` and `exact_bench_config`.
+Baseline measurements include nalgebra and faer; current measurements reuse
+those baseline-phase peers and measure la-stack and the exact suite. Diagnostic
+cases remain in the complete samples even when omitted from selected report rows.
 
-La-stack is measured once per revision; the nalgebra/faer measurements from the
-baseline phase are reused as peer context. The filtered current run disables
-Criterion HTML generation because skipped peer `new` samples are deliberately
-absent from the isolated current phase. The retained complete-run inputs and Python
-renderer provide the release report. Baseline-saving recipes also disable unused
-Criterion plots and HTML without changing sampling.
+Every case requires 100 samples, mean and median estimates, 95% confidence
+intervals and nanoseconds. Host, CPU, architecture, tool versions, dependencies,
+source/harness membership and hashes, commands, environments, discovery and
+acquisition declarations are retained with the run. Runs with incompatible
+required provenance are rejected.
 
-New measurements require v0.5.0 or newer on both sides. Earlier releases are
-rejected before fetching tags, creating worktrees or discovering benchmarks.
-The old API and root-test layout adapters are retired; both phases must contain
-every selected report row, including rational-input and norm cases.
-Comparison builds cap lint diagnostics at warning for both revisions because
-the current manifest's lint policy may reject released source that predates a
-lint, even though that source remains valid benchmark input.
+Outputs are `target/bench-reports/full/{run.json,evidence.json,report.md}`.
+They survive worktree cleanup. Same-version local comparisons require distinct
+source identities and cannot be promoted as release documentation.
 
-Historical reports, raw artifacts and their hashes remain unchanged. The
-measurement floor does not prevent offline rendering of retained complete runs
-that satisfy the modern scientific policy. Older records requiring retired API
-adapters remain readable directly in their original formats.
+For a shorter comparison that omits the exact suite:
 
-This command does not depend on existing local `target/criterion/` baselines.
-It is slower than reusing a saved baseline, but less sensitive to stale local
-benchmark state.
+```bash
+just performance-local-non-exact
+```
 
-The workflow streams its correctness-gate, Cargo, and Criterion output as each
-phase runs. `[performance]` markers identify baseline validation, baseline
-timing, current validation, and current timing, so a long comparison exposes
-completed samples and its active phase instead of remaining silent until the
-final report is rendered.
-
-The local report may compare a checkout whose package version is identical to
-the latest published release. Commit/ref and source-state provenance distinguish
-the modified checkout from the tagged baseline even though both display the same
-package version. Release artifact publication remains stricter and requires two
-distinct release identifiers.
+It uses `tooling/measurements/non-exact.toml` and writes the separate
+`target/bench-reports/non-exact/` bundle. It retains the same sampling,
+correctness gates and original reference phases.
 
 ### Compare Current Code With A Specific Release
 
-For a narrower non-exact check against a known release pair, run:
+The installed explicit-tag mode measures two existing immutable tags:
 
 ```bash
-just performance-local-non-exact "$CURRENT_TAG" "$PREVIOUS_TAG"
+just performance-measure "$CURRENT_TAG" "$PREVIOUS_TAG" full
+just performance-measure "$CURRENT_TAG" "$PREVIOUS_TAG" non-exact
 ```
 
-This generates a local `$PREVIOUS_TAG` `vs_linalg` baseline, measures the current
-la-stack `vs_linalg` rows, and renders a `vs_linalg` report. The report includes
-saved baseline nalgebra/faer timings as context where matching peer rows exist,
-without rerunning current peer crates.
-
-This narrowed peer-context view uses the same metrics and renderer but writes a
-separate `performance-non-exact.*` scratch bundle so it cannot replace the
-canonical full comparison inputs accidentally.
-
-When tags are provided explicitly, the current tag must match the package
-version in the `HEAD` checkout. A mismatch is rejected before tags are fetched,
-worktrees are created, or benchmarks run.
+Use `performance-local*` for working-tree changes against the latest release.
+The old positional labels on `performance-local-non-exact` and the local
+`--suite`/`--scope` adapter flags are retired. Full and non-exact selection now
+uses named declarations. To include an open-ended report selection, maintain a
+named measurement declaration using the shared `series.select` contract;
+selection never weakens complete sampling or the independent required inventory.
 
 ### Iterate Against A Local Saved Baseline
 
-Use local saved baselines when tuning one kernel and comparing several edits
-against the same starting point. These baselines are local scratch data, not
-release artifacts.
-
-For example, before optimizing `Matrix::norm_inf`, save a named baseline:
-
 ```bash
-just bench-save-baseline inf-norm-before vs_linalg
+just bench-save-baseline before vs_linalg
+# Make the change, then measure again.
+just bench-vs-linalg
+just bench-compare before
 ```
 
-Then make a change, rerun only the current measurements you care about, and
-compare:
+This is exploratory saved-Criterion comparison. It includes added and omitted
+rows and does not establish common-harness release eligibility. Use
+`performance-local` for that gate. Native Criterion reports remain useful for
+individual benchmarks.
+
+The hosted release workflow discovers the full inventory, measures each suite
+once, saves its requested baseline name and verifies exact saved copies before
+packaging. The installed verifier is also available directly:
 
 ```bash
-just bench-vs-linalg-la-stack
-just bench-compare inf-norm-before
+just bench-release-check "$CURRENT_TAG" target/criterion
 ```
 
-The `just bench-compare <baseline>` recipe calls the installed shared Criterion
-comparison CLI. It reports every available row, additions and omissions; old
-suite/scope flags are retired. These exploratory ratios do not validate a common
-harness or scientific release eligibility. Use `performance-local` for that gate.
-
-`just bench-save-baseline <name>` writes Criterion samples under
-`target/criterion/`. `just bench-save-last` saves the conventional local
-baseline named `last`, which enables shortcuts such as:
-
-```bash
-just bench-latest-vs-last
-just bench-vs-linalg-latest-vs
-just bench-compare
-```
-
-Saved baselines persist across `git checkout` but not across `cargo clean`, and
-they are not pushed to GitHub. A manually saved baseline is comparable only when
-its harness has not changed; use `performance-local` for a checked
-revision-to-revision comparison.
+The second argument explicitly selects the root-relative Criterion home.
+`tooling/criterion-saved.toml` independently declares required scientific IDs
+and their canonical storage paths. Fresh and saved samples must contain the
+same exact `benchmark.json`, `estimates.json`, `sample.json` and
+`tukey.json` bytes. A shortened discovery inventory or matching samples at
+the wrong path are errors.
 
 ### Update The README nalgebra/faer Table
 
-The README benchmark table and SVG plot are derived from the retained release
-comparison. Generate and validate that comparison first, then publish its
-crate-to-crate measurements:
+After promoting a full release comparison, supply the source identities
+captured independently before measurement:
 
 ```bash
-just performance-release
-just performance-readme
+just performance-readme "$CURRENT_TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT"
 ```
 
-`performance-readme` does not run benchmarks. It loads the canonical
-`target/bench-reports/performance.run.json` and its evidence envelope retained by
-`performance-release`, falling back to the validated retained complete-run history when
-all scratch inputs are absent. It then uses the current la-stack result and the peer
-nalgebra/faer results measured by that same shared current harness. It requires
-all three timings for every canonical dimension (D=2, 3, 4, 5, 8, 16, 32, and
-64) before updating:
+The canonical README view is LU solve, median, logarithmic time axis, declared
+in `tooling/performance-readme.toml`. It selects archived evidence and checks
+release eligibility, current source/harness membership and hashes, package and
+report release references, and existing-tag artifact identity. The current
+release may be prospective; tag-pinned links become available when its reviewed
+tag is pushed.
 
-- `README.md`
-- `docs/assets/bench/vs_linalg_lu_solve_median.csv`
-- `docs/assets/bench/vs_linalg_lu_solve_median.svg`
-- `docs/assets/bench/vs_linalg_lu_solve_median.provenance.json`
+The installed publisher formats and checks the candidate README before replacing
+the document and CSV/SVG together. The complete-run payload and evidence envelope
+supply provenance links; new publication does not create a redundant plot JSON
+sidecar. Original sidecars remain frozen. The table retains recorded intervals,
+a confidence legend, versioned originating series and explicit peer/library
+ratio direction.
 
-The publisher verifies the complete-run identity, release version, current
-source and harness inventories/digests, dependency resolution, complete peer
-coverage, and recorded phase provenance before writing. The derived sidecar
-records the run identity and the actual current/baseline origins of each series.
-Historical CSV/JSON evidence remains frozen with its original provenance.
-The README table shows median times in nanoseconds, with lower and upper 95%
-confidence bounds below each timing. Its compact comparison columns show
-speedup ratios; the recorded confidence level is stated once in the table caption.
-Shared `RunTableStyle` options produce this layout directly. Timing headings retain
-measured versions, and each speedup names its peer-time numerator and la-stack-time
-denominator. Ratios remain point estimates without ratio intervals or significance claims.
-Missing, stale, or inconsistent input aborts publication atomically.
-An existing local release tag must contain the exact selected asset bytes.
-A future release tag may be absent during release preparation.
+For plot/CSV-only output, select a named view and input source:
 
-`plot-vs-linalg` renders the same complete-run selection without editing README.
-The raw-Criterion/gnuplot renderer and CSV-to-README transport are retired after
-complete-run integration parity. Historical figures and CSV/JSON remain unchanged;
-they cannot be relabeled as complete runs. Raw exploratory timing reports remain
-available through Criterion and `bench-compare`. Dimension publication requires
-all canonical dimensions and uses the shared SVG, long-form CSV and table
-renderers, with configured selections in `tooling/performance-plot.toml`.
+```bash
+just plot-vs-linalg "$CURRENT_TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT" dot-mean-log retained
+just plot-vs-linalg "$CURRENT_TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT" lu_solve-median-linear scratch
+just plot-vs-linalg "$CURRENT_TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT" lu_solve-median-log non-exact
+```
 
-See `uv run --locked scripts/archive_performance.py plot --help` for plotting options.
+View names combine a metric, `mean` or `median`, and `linear` or `log`.
+Metrics are `det_from_lu`, `det_via_lu`, `dot`, `inf_norm`, `lu`,
+`lu_solve`, `norm2_sq` and `solve_from_lu`. All 32 views have static
+declarations under each of `tooling/plots/non-exact/`,
+`tooling/plots/retained/` and `tooling/plots/scratch/`. Scratch views consume
+the full scratch pair; retained views work after scratch cleanup. Non-exact
+views consume the non-exact scratch pair and use separate
+`vs_linalg_non_exact_*` output paths. The old separate metric/statistic,
+`sample=new` and boolean log arguments are replaced by this named view.
+There is no implicit input fallback.
+
+Plots preserve scientific coordinates, nanoseconds, the selected statistic
+and original baseline-phase peers. They render evidence without measuring or
+probing the current host. Independent identity and measurement-policy checks
+still apply. README publication additionally requires live source freshness.
 
 ### Create The Release Performance Report
 
-Release PRs promote one complete release-to-release comparison into committed
-docs:
+After updating the package version and fetching tags:
+
+```bash
+just performance-release
+```
+
+With no labels, the installed CLI infers the current package's release pair
+using publication chronology. A prospective version compares the working tree
+with the latest release; a published version compares existing tags. Explicit
+labels select existing tags:
 
 ```bash
 just performance-release "$CURRENT_TAG" "$PREVIOUS_TAG"
 ```
 
-With no arguments, `just performance-release` infers the current release tag
-from `Cargo.toml` and discovers the previous stable published release. During
-release preparation, passing both tags explicitly removes ambiguity.
+The shared release report configuration requires the full measurement policy,
+independent eligibility and distinct release labels. Non-exact runs retain
+their local report and plot workflow. Successful promotion writes the immutable complete
+run, evidence envelope and report under `docs/performance-runs/runs/<id>/`,
+and updates the indexes, latest pointer and `docs/performance.md` in a single
+publication transaction. Repeated measurements coexist.
 
-This command uses the shared common-harness engine in isolated worktrees.
-The native driver resolves `CRITERION_HOME` from each checkout root before
-Cargo launches the benchmarks, keeping comparison-member and root-package
-measurements in one output tree.
-Each timing command has a four-hour timeout because `baseline-all` combines both
-full suites. This accommodates the combined 150-minute comparison and 90-minute
-exact-suite budgets described under [Hosted Release Runtime Budget](#hosted-release-runtime-budget).
-The native Criterion inventory declares every expected semantic ID, including
-diagnostics outside the selected report. Each case requires 100 raw samples,
-both mean and median estimates, and complete 95% intervals in nanoseconds.
-The consumer declares canonical report rows and baseline-only nalgebra/faer
-reference series. Both phases must include every selected la-stack row;
-missing baseline rows fail validation.
-
-Scratch evidence uses `performance.run.json` and `performance.evidence.json`
-under `target/bench-reports/`. These preserve raw Criterion JSON, both source
-identities, one captured harness identity, commands, environments, toolchain,
-dependency versions, host identity, and independent gate results.
-
-Promotion publishes immutable `run.json`, `evidence.json`, and `report.md`
-under `docs/performance-runs/runs/<content-id>/`, plus the shared index, latest
-pointer, history index, and `docs/performance.md` in one transaction.
-Repeated runs for one release pair coexist. `tooling/performance-report.toml`
-selects the current report path and title. The shared renderer produces mean
-and median tables with named series and recorded marginal intervals; unavailable
-cases appear as an em dash. Each series identifies its measurement phase,
-release, and revision. Full environment, harness, command, and gate provenance
-remains in that run's `evidence.json`, beside `run.json` and `report.md`.
-New reports no longer use the custom percentage-change, ratio, or interval-overlap
-columns. README publication uses the shared coordinate SVG, long-form timing CSV
-and per-series estimate table, retaining nanoseconds, intervals and original phases.
-Serialization, validation, rendering, and promotion failures preserve existing
-published reports and selection. Review and commit the whole new run and index.
-Legacy snapshots under `docs/performance/` retain their original bytes,
-hashes and framing; see the [legacy index](performance/README.md).
-Their custom writers, report renderer and CSV conversion declaration are retired.
-Read their original CSV/JSON and archived reports directly. They cannot reconstruct
-raw samples or supply complete-run provenance. Publication accepts the declared
-Just phase format; replay of the retired Python phase driver is unsupported.
-The last published legacy report is preserved in the
-[Markdown archive](archive/performance/README.md). The checked-in current report
-keeps its historical format until a complete run is promoted; old summaries do
-not contain the raw samples required to reconstruct complete-run evidence.
-Existing history and optimization studies are retained. No automatic pruning is
-performed; removing indexed runs requires a coordinated change to the shared
-index and latest pointer, while preserving evidence referenced by active reports.
-
-The Markdown check and format recipes exclude the generated
-`docs/performance-runs/` archive and `docs/performance.md` because these outputs
-belong to the shared renderer. Shared validation requires exact retained report
-bytes. Keep both recipe exclusions aligned with `archive` and `current` in
-`tooling/performance-report.toml` when relocating them.
-
-To reproduce and promote the report without running Cargo or creating Git
-worktrees, use:
+To promote an already measured full scratch pair or rerender retained history:
 
 ```bash
+just performance-promote
 just performance-doc
 ```
 
-This command fails closed on a missing, partial, malformed, mismatched, or
-unsupported artifact pair. It consumes the default complete-run payload/envelope
-or follows the validated `docs/performance-runs/latest.json` when all scratch
-inputs are absent. Legacy-only input fails with a missing complete-run error;
-run `performance-release` to create the supported replacement. Frozen historical
-reports remain readable directly. Report replay runs offline and updates the current
-document and shared history transactionally. Promotion requires distinct
-current and baseline package versions, so a same-version local comparison is
-retained and reproducible but cannot become release documentation. Use promotion
-for presentation-only report corrections; changes to benchmark inputs, code,
-toolchains, or measurement configuration require a fresh local or release run.
+Those commands deliberately select different inputs. A partial scratch pair
+fails `performance-promote`; it never triggers a retained-history fallback.
 
-The historical `performance-github-assets` comparison command is retired.
-Published Criterion archives remain available as original release artifacts;
-their missing source, host and gate provenance is not reconstructed. Use
-`performance-local` or `performance-release` for new checked comparisons.
+Historical reports, plots, CSV/JSON, indexes and immutable complete runs keep
+their original bytes and links during this migration. The existing
+v0.5.0/v0.4.6 comparison lacks the newer acquisition declaration and is now a
+frozen record, with no regeneration requirement. Current publication checks
+must not be relaxed and missing provenance must not be invented to replay it.
+Future runs acquired with the current declarations support offline rendering.
+
+The metadata-free `performance-github-assets` command and historical benchmark
+execution compatibility remain retired. Published release assets remain
+downloadable as original records.
 
 ## Output Locations
 
-| Path | Committed? | Producer | Purpose |
-|------|------------|----------|---------|
-| `target/criterion/` | No | `cargo bench`, `bench-save-*` | Local Criterion measurements and named baselines. |
-| `target/bench-reports/performance.md` | No | `bench-compare`, `performance-local`, `performance-release`, `performance-doc` | Canonical local comparison report. |
-| `target/bench-reports/performance.run.json` | No | `performance-local`, `performance-release` | Complete native cases, samples, and named phase series. |
-| `target/bench-reports/performance.evidence.json` | No | `performance-local`, `performance-release` | Shared evidence envelope with source/harness and phase provenance. |
-| `target/bench-reports/performance-non-exact.*` | No | `performance-local-non-exact` | Narrowed non-exact report and retained peer-context comparison inputs. |
-| `docs/performance.md` | Yes | `performance-release`, `performance-doc` | Current shared full report; last legacy report until complete-run promotion. |
-| `docs/performance-runs/` | Yes | `performance-release`, `performance-doc` | Immutable complete runs, reports, index, and validated latest pointer. |
-| `docs/performance/` | Yes | Frozen record | Unchanged historical CSV/JSON evidence and hashes. |
-| `docs/archive/performance/` | Yes | Frozen record | Preserved reports in the historical format. |
-| `docs/archive/performance/studies/` | Yes | Maintainer investigations | Completed optimization studies and decisions. |
-| `docs/assets/bench/` | Yes | `performance-readme` | README benchmark CSV/SVG assets and JSON provenance. |
-| GitHub Release | Remote | `.github/workflows/release-benchmarks.yml` | Criterion baseline archive. |
+| Path | Commit? | Owner |
+| --- | --- | --- |
+| `target/bench-reports/full/` | No | Complete full scratch run, envelope and report |
+| `target/bench-reports/non-exact/` | No | Separate non-exact scratch run, envelope and report |
+| `target/bench-reports/performance.md` | No | Exploratory `bench-compare` report |
+| `docs/performance.md` | Yes | Current promoted release report |
+| `docs/performance-runs/` | Yes | Immutable complete runs, reports and retained-history indexes |
+| `docs/performance/` | Yes | Frozen historical CSV/JSON evidence |
+| `docs/archive/performance/` | Yes | Frozen historical reports and maintained study records |
+| `docs/assets/bench/` | Yes | Named-view CSV/SVG outputs and frozen original sidecars |
+| `target/criterion/` | No | Native raw Criterion output and saved baselines |
 
-Published baseline assets use the filename
-`la-stack-$TAG-criterion-baseline.tar.gz`.
-
-Everything under `target/bench-reports/` is reproducible local scratch owned by
-the performance-report workflows. It survives temporary-worktree cleanup but
-may be removed by `just clean` or `cargo clean`. Promoted local snapshots remain
-under `docs/performance-runs/`, so report and README regeneration do not require
-another measurement run. Unpromoted local experiments remain scratch data.
-The saved summaries do not replace the full native Criterion `.tar.gz` archive
-attached to each GitHub Release. Hosted archives retain raw samples from a
-different machine; local summary comparisons must use their recorded environment.
+The Markdown recipes exclude immutable performance history and the generated
+current report from formatting. Keep those exclusions aligned with
+`tooling/performance-report.toml`. No historical file is normalized to the
+current formatter or regenerated by an adoption check.
 
 ## `vs_linalg` Methodology
 

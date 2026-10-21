@@ -1,0 +1,919 @@
+# Scientific measurement policy consumed directly by research-repo-tools.
+schema = 2
+minimum-release = "v0.5.0"
+sources = [ "src/**/*.rs", "Cargo.toml" ]
+harness = [
+    "benches/**/*.rs",
+    "benches/comparison/Cargo.toml",
+    "examples/**/*.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "tests/exact_bench_config.rs",
+    "tooling/performance.just",
+    "tooling/criterion-inventory.toml",
+    "tooling/measurements/*.toml",
+]
+sample-count = 100
+statistics = [ "mean", "median" ]
+confidence-level = 0.95
+unit = "ns"
+timeout = 14400
+compatible = [
+    "harness_sha256",
+    "context.os",
+    "context.architecture",
+    "context.cpu",
+    "context.tool.rustc",
+    "context.tool.cargo",
+    "context.tool.just",
+    "context.dependency.criterion",
+    "context.dependency.nalgebra",
+    "context.dependency.faer",
+]
+
+[context]
+phase-driver = "just-v1"
+suite = "vs_linalg"
+scope = "release-signal"
+baseline-api-compatibility = "none"
+
+[probes]
+rustc = [ "rustc", "-vV" ]
+cargo = [ "cargo", "--version" ]
+just = [ "just", "--version" ]
+
+[dependencies]
+criterion = "Cargo.lock"
+nalgebra = "Cargo.lock"
+faer = "Cargo.lock"
+
+[phases.baseline]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-vs_linalg" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate" ]
+# Fixed code-generation settings are recorded for both phases.
+environment = { CARGO_TARGET_DIR = "target", CRITERION_HOME = "target/criterion", RUSTUP_TOOLCHAIN = "1.99.1", RUSTFLAGS = "--cap-lints=warn", CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn", RUSTC = "rustc", RUSTC_WRAPPER = "", RUSTC_WORKSPACE_WRAPPER = "" }
+
+[phases.baseline.discovery]
+required = [
+    "d16/faer_det_from_ldlt",
+    "d16/faer_det_from_lu",
+    "d16/faer_det_via_lu",
+    "d16/faer_dot_native",
+    "d16/faer_inf_norm",
+    "d16/faer_ldlt",
+    "d16/faer_ldlt_solve",
+    "d16/faer_lu",
+    "d16/faer_lu_solve",
+    "d16/faer_norm2_sq",
+    "d16/faer_solve_from_ldlt",
+    "d16/faer_solve_from_lu",
+    "d16/la_stack_det",
+    "d16/la_stack_det_from_ldlt",
+    "d16/la_stack_det_from_lu",
+    "d16/la_stack_det_via_lu",
+    "d16/la_stack_dot",
+    "d16/la_stack_inf_norm",
+    "d16/la_stack_ldlt",
+    "d16/la_stack_ldlt_solve",
+    "d16/la_stack_lu",
+    "d16/la_stack_lu_solve",
+    "d16/la_stack_norm2_sq",
+    "d16/la_stack_solve_from_ldlt",
+    "d16/la_stack_solve_from_lu",
+    "d16/nalgebra_cholesky",
+    "d16/nalgebra_cholesky_solve",
+    "d16/nalgebra_det_from_cholesky",
+    "d16/nalgebra_det_from_lu",
+    "d16/nalgebra_det_via_lu",
+    "d16/nalgebra_dot",
+    "d16/nalgebra_inf_norm",
+    "d16/nalgebra_lu",
+    "d16/nalgebra_lu_solve",
+    "d16/nalgebra_norm_squared",
+    "d16/nalgebra_solve_from_cholesky",
+    "d16/nalgebra_solve_from_lu",
+    "d2/faer_det_from_ldlt",
+    "d2/faer_det_from_lu",
+    "d2/faer_det_via_lu",
+    "d2/faer_dot_native",
+    "d2/faer_inf_norm",
+    "d2/faer_ldlt",
+    "d2/faer_ldlt_solve",
+    "d2/faer_lu",
+    "d2/faer_lu_solve",
+    "d2/faer_norm2_sq",
+    "d2/faer_solve_from_ldlt",
+    "d2/faer_solve_from_lu",
+    "d2/la_stack_det",
+    "d2/la_stack_det_from_ldlt",
+    "d2/la_stack_det_from_lu",
+    "d2/la_stack_det_via_lu",
+    "d2/la_stack_dot",
+    "d2/la_stack_inf_norm",
+    "d2/la_stack_ldlt",
+    "d2/la_stack_ldlt_solve",
+    "d2/la_stack_lu",
+    "d2/la_stack_lu_solve",
+    "d2/la_stack_norm2_sq",
+    "d2/la_stack_solve_from_ldlt",
+    "d2/la_stack_solve_from_lu",
+    "d2/nalgebra_cholesky",
+    "d2/nalgebra_cholesky_solve",
+    "d2/nalgebra_det_from_cholesky",
+    "d2/nalgebra_det_from_lu",
+    "d2/nalgebra_det_via_lu",
+    "d2/nalgebra_dot",
+    "d2/nalgebra_inf_norm",
+    "d2/nalgebra_lu",
+    "d2/nalgebra_lu_solve",
+    "d2/nalgebra_norm_squared",
+    "d2/nalgebra_solve_from_cholesky",
+    "d2/nalgebra_solve_from_lu",
+    "d3/faer_det_from_ldlt",
+    "d3/faer_det_from_lu",
+    "d3/faer_det_via_lu",
+    "d3/faer_dot_native",
+    "d3/faer_inf_norm",
+    "d3/faer_ldlt",
+    "d3/faer_ldlt_solve",
+    "d3/faer_lu",
+    "d3/faer_lu_solve",
+    "d3/faer_norm2_sq",
+    "d3/faer_solve_from_ldlt",
+    "d3/faer_solve_from_lu",
+    "d3/la_stack_det",
+    "d3/la_stack_det_from_ldlt",
+    "d3/la_stack_det_from_lu",
+    "d3/la_stack_det_via_lu",
+    "d3/la_stack_dot",
+    "d3/la_stack_inf_norm",
+    "d3/la_stack_ldlt",
+    "d3/la_stack_ldlt_solve",
+    "d3/la_stack_lu",
+    "d3/la_stack_lu_solve",
+    "d3/la_stack_norm2_sq",
+    "d3/la_stack_solve_from_ldlt",
+    "d3/la_stack_solve_from_lu",
+    "d3/nalgebra_cholesky",
+    "d3/nalgebra_cholesky_solve",
+    "d3/nalgebra_det_from_cholesky",
+    "d3/nalgebra_det_from_lu",
+    "d3/nalgebra_det_via_lu",
+    "d3/nalgebra_dot",
+    "d3/nalgebra_inf_norm",
+    "d3/nalgebra_lu",
+    "d3/nalgebra_lu_solve",
+    "d3/nalgebra_norm_squared",
+    "d3/nalgebra_solve_from_cholesky",
+    "d3/nalgebra_solve_from_lu",
+    "d32/faer_det_from_ldlt",
+    "d32/faer_det_from_lu",
+    "d32/faer_det_via_lu",
+    "d32/faer_dot_native",
+    "d32/faer_inf_norm",
+    "d32/faer_ldlt",
+    "d32/faer_ldlt_solve",
+    "d32/faer_lu",
+    "d32/faer_lu_solve",
+    "d32/faer_norm2_sq",
+    "d32/faer_solve_from_ldlt",
+    "d32/faer_solve_from_lu",
+    "d32/la_stack_det",
+    "d32/la_stack_det_from_ldlt",
+    "d32/la_stack_det_from_lu",
+    "d32/la_stack_det_via_lu",
+    "d32/la_stack_dot",
+    "d32/la_stack_inf_norm",
+    "d32/la_stack_ldlt",
+    "d32/la_stack_ldlt_solve",
+    "d32/la_stack_lu",
+    "d32/la_stack_lu_solve",
+    "d32/la_stack_norm2_sq",
+    "d32/la_stack_solve_from_ldlt",
+    "d32/la_stack_solve_from_lu",
+    "d32/nalgebra_cholesky",
+    "d32/nalgebra_cholesky_solve",
+    "d32/nalgebra_det_from_cholesky",
+    "d32/nalgebra_det_from_lu",
+    "d32/nalgebra_det_via_lu",
+    "d32/nalgebra_dot",
+    "d32/nalgebra_inf_norm",
+    "d32/nalgebra_lu",
+    "d32/nalgebra_lu_solve",
+    "d32/nalgebra_norm_squared",
+    "d32/nalgebra_solve_from_cholesky",
+    "d32/nalgebra_solve_from_lu",
+    "d4/faer_det_from_ldlt",
+    "d4/faer_det_from_lu",
+    "d4/faer_det_via_lu",
+    "d4/faer_dot_native",
+    "d4/faer_inf_norm",
+    "d4/faer_ldlt",
+    "d4/faer_ldlt_solve",
+    "d4/faer_lu",
+    "d4/faer_lu_solve",
+    "d4/faer_norm2_sq",
+    "d4/faer_solve_from_ldlt",
+    "d4/faer_solve_from_lu",
+    "d4/la_stack_det",
+    "d4/la_stack_det_from_ldlt",
+    "d4/la_stack_det_from_lu",
+    "d4/la_stack_det_via_lu",
+    "d4/la_stack_dot",
+    "d4/la_stack_inf_norm",
+    "d4/la_stack_ldlt",
+    "d4/la_stack_ldlt_solve",
+    "d4/la_stack_lu",
+    "d4/la_stack_lu_solve",
+    "d4/la_stack_norm2_sq",
+    "d4/la_stack_solve_from_ldlt",
+    "d4/la_stack_solve_from_lu",
+    "d4/nalgebra_cholesky",
+    "d4/nalgebra_cholesky_solve",
+    "d4/nalgebra_det_from_cholesky",
+    "d4/nalgebra_det_from_lu",
+    "d4/nalgebra_det_via_lu",
+    "d4/nalgebra_dot",
+    "d4/nalgebra_inf_norm",
+    "d4/nalgebra_lu",
+    "d4/nalgebra_lu_solve",
+    "d4/nalgebra_norm_squared",
+    "d4/nalgebra_solve_from_cholesky",
+    "d4/nalgebra_solve_from_lu",
+    "d5/faer_det_from_ldlt",
+    "d5/faer_det_from_lu",
+    "d5/faer_det_via_lu",
+    "d5/faer_dot_native",
+    "d5/faer_inf_norm",
+    "d5/faer_ldlt",
+    "d5/faer_ldlt_solve",
+    "d5/faer_lu",
+    "d5/faer_lu_solve",
+    "d5/faer_norm2_sq",
+    "d5/faer_solve_from_ldlt",
+    "d5/faer_solve_from_lu",
+    "d5/la_stack_det",
+    "d5/la_stack_det_from_ldlt",
+    "d5/la_stack_det_from_lu",
+    "d5/la_stack_det_via_lu",
+    "d5/la_stack_dot",
+    "d5/la_stack_inf_norm",
+    "d5/la_stack_ldlt",
+    "d5/la_stack_ldlt_solve",
+    "d5/la_stack_lu",
+    "d5/la_stack_lu_solve",
+    "d5/la_stack_norm2_sq",
+    "d5/la_stack_solve_from_ldlt",
+    "d5/la_stack_solve_from_lu",
+    "d5/nalgebra_cholesky",
+    "d5/nalgebra_cholesky_solve",
+    "d5/nalgebra_det_from_cholesky",
+    "d5/nalgebra_det_from_lu",
+    "d5/nalgebra_det_via_lu",
+    "d5/nalgebra_dot",
+    "d5/nalgebra_inf_norm",
+    "d5/nalgebra_lu",
+    "d5/nalgebra_lu_solve",
+    "d5/nalgebra_norm_squared",
+    "d5/nalgebra_solve_from_cholesky",
+    "d5/nalgebra_solve_from_lu",
+    "d64/faer_det_from_ldlt",
+    "d64/faer_det_from_lu",
+    "d64/faer_det_via_lu",
+    "d64/faer_dot_native",
+    "d64/faer_inf_norm",
+    "d64/faer_ldlt",
+    "d64/faer_ldlt_solve",
+    "d64/faer_lu",
+    "d64/faer_lu_solve",
+    "d64/faer_norm2_sq",
+    "d64/faer_solve_from_ldlt",
+    "d64/faer_solve_from_lu",
+    "d64/la_stack_det",
+    "d64/la_stack_det_from_ldlt",
+    "d64/la_stack_det_from_lu",
+    "d64/la_stack_det_via_lu",
+    "d64/la_stack_dot",
+    "d64/la_stack_inf_norm",
+    "d64/la_stack_ldlt",
+    "d64/la_stack_ldlt_solve",
+    "d64/la_stack_lu",
+    "d64/la_stack_lu_solve",
+    "d64/la_stack_norm2_sq",
+    "d64/la_stack_solve_from_ldlt",
+    "d64/la_stack_solve_from_lu",
+    "d64/nalgebra_cholesky",
+    "d64/nalgebra_cholesky_solve",
+    "d64/nalgebra_det_from_cholesky",
+    "d64/nalgebra_det_from_lu",
+    "d64/nalgebra_det_via_lu",
+    "d64/nalgebra_dot",
+    "d64/nalgebra_inf_norm",
+    "d64/nalgebra_lu",
+    "d64/nalgebra_lu_solve",
+    "d64/nalgebra_norm_squared",
+    "d64/nalgebra_solve_from_cholesky",
+    "d64/nalgebra_solve_from_lu",
+    "d8/faer_det_from_ldlt",
+    "d8/faer_det_from_lu",
+    "d8/faer_det_via_lu",
+    "d8/faer_dot_native",
+    "d8/faer_inf_norm",
+    "d8/faer_ldlt",
+    "d8/faer_ldlt_solve",
+    "d8/faer_lu",
+    "d8/faer_lu_solve",
+    "d8/faer_norm2_sq",
+    "d8/faer_solve_from_ldlt",
+    "d8/faer_solve_from_lu",
+    "d8/la_stack_det",
+    "d8/la_stack_det_from_ldlt",
+    "d8/la_stack_det_from_ldlt_balanced_range",
+    "d8/la_stack_det_from_lu",
+    "d8/la_stack_det_from_lu_balanced_range",
+    "d8/la_stack_det_via_lu",
+    "d8/la_stack_dot",
+    "d8/la_stack_inf_norm",
+    "d8/la_stack_ldlt",
+    "d8/la_stack_ldlt_ill_conditioned",
+    "d8/la_stack_ldlt_solve",
+    "d8/la_stack_lu",
+    "d8/la_stack_lu_ill_conditioned",
+    "d8/la_stack_lu_pivoting",
+    "d8/la_stack_lu_solve",
+    "d8/la_stack_norm2_sq",
+    "d8/la_stack_solve_from_ldlt",
+    "d8/la_stack_solve_from_lu",
+    "d8/nalgebra_cholesky",
+    "d8/nalgebra_cholesky_solve",
+    "d8/nalgebra_det_from_cholesky",
+    "d8/nalgebra_det_from_lu",
+    "d8/nalgebra_det_via_lu",
+    "d8/nalgebra_dot",
+    "d8/nalgebra_inf_norm",
+    "d8/nalgebra_lu",
+    "d8/nalgebra_lu_solve",
+    "d8/nalgebra_norm_squared",
+    "d8/nalgebra_solve_from_cholesky",
+    "d8/nalgebra_solve_from_lu",
+]
+
+[[phases.baseline.discovery.suites]]
+name = "vs_linalg"
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-vs_linalg", "list" ]
+timeout = 14400
+
+[phases.current]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "current-vs_linalg" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate" ]
+# Fixed code-generation settings are recorded for both phases.
+environment = { CARGO_TARGET_DIR = "target", CRITERION_HOME = "target/criterion", RUSTUP_TOOLCHAIN = "1.99.1", RUSTFLAGS = "--cap-lints=warn", CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn", RUSTC = "rustc", RUSTC_WRAPPER = "", RUSTC_WORKSPACE_WRAPPER = "" }
+
+[phases.current.discovery]
+required = [
+    "d16/la_stack_det",
+    "d16/la_stack_det_from_ldlt",
+    "d16/la_stack_det_from_lu",
+    "d16/la_stack_det_via_lu",
+    "d16/la_stack_dot",
+    "d16/la_stack_inf_norm",
+    "d16/la_stack_ldlt",
+    "d16/la_stack_ldlt_solve",
+    "d16/la_stack_lu",
+    "d16/la_stack_lu_solve",
+    "d16/la_stack_norm2_sq",
+    "d16/la_stack_solve_from_ldlt",
+    "d16/la_stack_solve_from_lu",
+    "d2/la_stack_det",
+    "d2/la_stack_det_from_ldlt",
+    "d2/la_stack_det_from_lu",
+    "d2/la_stack_det_via_lu",
+    "d2/la_stack_dot",
+    "d2/la_stack_inf_norm",
+    "d2/la_stack_ldlt",
+    "d2/la_stack_ldlt_solve",
+    "d2/la_stack_lu",
+    "d2/la_stack_lu_solve",
+    "d2/la_stack_norm2_sq",
+    "d2/la_stack_solve_from_ldlt",
+    "d2/la_stack_solve_from_lu",
+    "d3/la_stack_det",
+    "d3/la_stack_det_from_ldlt",
+    "d3/la_stack_det_from_lu",
+    "d3/la_stack_det_via_lu",
+    "d3/la_stack_dot",
+    "d3/la_stack_inf_norm",
+    "d3/la_stack_ldlt",
+    "d3/la_stack_ldlt_solve",
+    "d3/la_stack_lu",
+    "d3/la_stack_lu_solve",
+    "d3/la_stack_norm2_sq",
+    "d3/la_stack_solve_from_ldlt",
+    "d3/la_stack_solve_from_lu",
+    "d32/la_stack_det",
+    "d32/la_stack_det_from_ldlt",
+    "d32/la_stack_det_from_lu",
+    "d32/la_stack_det_via_lu",
+    "d32/la_stack_dot",
+    "d32/la_stack_inf_norm",
+    "d32/la_stack_ldlt",
+    "d32/la_stack_ldlt_solve",
+    "d32/la_stack_lu",
+    "d32/la_stack_lu_solve",
+    "d32/la_stack_norm2_sq",
+    "d32/la_stack_solve_from_ldlt",
+    "d32/la_stack_solve_from_lu",
+    "d4/la_stack_det",
+    "d4/la_stack_det_from_ldlt",
+    "d4/la_stack_det_from_lu",
+    "d4/la_stack_det_via_lu",
+    "d4/la_stack_dot",
+    "d4/la_stack_inf_norm",
+    "d4/la_stack_ldlt",
+    "d4/la_stack_ldlt_solve",
+    "d4/la_stack_lu",
+    "d4/la_stack_lu_solve",
+    "d4/la_stack_norm2_sq",
+    "d4/la_stack_solve_from_ldlt",
+    "d4/la_stack_solve_from_lu",
+    "d5/la_stack_det",
+    "d5/la_stack_det_from_ldlt",
+    "d5/la_stack_det_from_lu",
+    "d5/la_stack_det_via_lu",
+    "d5/la_stack_dot",
+    "d5/la_stack_inf_norm",
+    "d5/la_stack_ldlt",
+    "d5/la_stack_ldlt_solve",
+    "d5/la_stack_lu",
+    "d5/la_stack_lu_solve",
+    "d5/la_stack_norm2_sq",
+    "d5/la_stack_solve_from_ldlt",
+    "d5/la_stack_solve_from_lu",
+    "d64/la_stack_det",
+    "d64/la_stack_det_from_ldlt",
+    "d64/la_stack_det_from_lu",
+    "d64/la_stack_det_via_lu",
+    "d64/la_stack_dot",
+    "d64/la_stack_inf_norm",
+    "d64/la_stack_ldlt",
+    "d64/la_stack_ldlt_solve",
+    "d64/la_stack_lu",
+    "d64/la_stack_lu_solve",
+    "d64/la_stack_norm2_sq",
+    "d64/la_stack_solve_from_ldlt",
+    "d64/la_stack_solve_from_lu",
+    "d8/la_stack_det",
+    "d8/la_stack_det_from_ldlt",
+    "d8/la_stack_det_from_ldlt_balanced_range",
+    "d8/la_stack_det_from_lu",
+    "d8/la_stack_det_from_lu_balanced_range",
+    "d8/la_stack_det_via_lu",
+    "d8/la_stack_dot",
+    "d8/la_stack_inf_norm",
+    "d8/la_stack_ldlt",
+    "d8/la_stack_ldlt_ill_conditioned",
+    "d8/la_stack_ldlt_solve",
+    "d8/la_stack_lu",
+    "d8/la_stack_lu_ill_conditioned",
+    "d8/la_stack_lu_pivoting",
+    "d8/la_stack_lu_solve",
+    "d8/la_stack_norm2_sq",
+    "d8/la_stack_solve_from_ldlt",
+    "d8/la_stack_solve_from_lu",
+]
+
+[[phases.current.discovery.suites]]
+name = "vs_linalg"
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "current-vs_linalg", "list" ]
+timeout = 14400
+
+[[series]]
+name = "la-stack baseline"
+phase = "baseline"
+[series.rows]
+"d16/la_stack_det" = "d16/la_stack_det"
+"d16/la_stack_det_from_ldlt" = "d16/la_stack_det_from_ldlt"
+"d16/la_stack_det_from_lu" = "d16/la_stack_det_from_lu"
+"d16/la_stack_det_via_lu" = "d16/la_stack_det_via_lu"
+"d16/la_stack_dot" = "d16/la_stack_dot"
+"d16/la_stack_inf_norm" = "d16/la_stack_inf_norm"
+"d16/la_stack_ldlt" = "d16/la_stack_ldlt"
+"d16/la_stack_ldlt_solve" = "d16/la_stack_ldlt_solve"
+"d16/la_stack_lu" = "d16/la_stack_lu"
+"d16/la_stack_lu_solve" = "d16/la_stack_lu_solve"
+"d16/la_stack_norm2_sq" = "d16/la_stack_norm2_sq"
+"d16/la_stack_solve_from_ldlt" = "d16/la_stack_solve_from_ldlt"
+"d16/la_stack_solve_from_lu" = "d16/la_stack_solve_from_lu"
+"d2/la_stack_det" = "d2/la_stack_det"
+"d2/la_stack_det_from_ldlt" = "d2/la_stack_det_from_ldlt"
+"d2/la_stack_det_from_lu" = "d2/la_stack_det_from_lu"
+"d2/la_stack_det_via_lu" = "d2/la_stack_det_via_lu"
+"d2/la_stack_dot" = "d2/la_stack_dot"
+"d2/la_stack_inf_norm" = "d2/la_stack_inf_norm"
+"d2/la_stack_ldlt" = "d2/la_stack_ldlt"
+"d2/la_stack_ldlt_solve" = "d2/la_stack_ldlt_solve"
+"d2/la_stack_lu" = "d2/la_stack_lu"
+"d2/la_stack_lu_solve" = "d2/la_stack_lu_solve"
+"d2/la_stack_norm2_sq" = "d2/la_stack_norm2_sq"
+"d2/la_stack_solve_from_ldlt" = "d2/la_stack_solve_from_ldlt"
+"d2/la_stack_solve_from_lu" = "d2/la_stack_solve_from_lu"
+"d3/la_stack_det" = "d3/la_stack_det"
+"d3/la_stack_det_from_ldlt" = "d3/la_stack_det_from_ldlt"
+"d3/la_stack_det_from_lu" = "d3/la_stack_det_from_lu"
+"d3/la_stack_det_via_lu" = "d3/la_stack_det_via_lu"
+"d3/la_stack_dot" = "d3/la_stack_dot"
+"d3/la_stack_inf_norm" = "d3/la_stack_inf_norm"
+"d3/la_stack_ldlt" = "d3/la_stack_ldlt"
+"d3/la_stack_ldlt_solve" = "d3/la_stack_ldlt_solve"
+"d3/la_stack_lu" = "d3/la_stack_lu"
+"d3/la_stack_lu_solve" = "d3/la_stack_lu_solve"
+"d3/la_stack_norm2_sq" = "d3/la_stack_norm2_sq"
+"d3/la_stack_solve_from_ldlt" = "d3/la_stack_solve_from_ldlt"
+"d3/la_stack_solve_from_lu" = "d3/la_stack_solve_from_lu"
+"d32/la_stack_det" = "d32/la_stack_det"
+"d32/la_stack_det_from_ldlt" = "d32/la_stack_det_from_ldlt"
+"d32/la_stack_det_from_lu" = "d32/la_stack_det_from_lu"
+"d32/la_stack_det_via_lu" = "d32/la_stack_det_via_lu"
+"d32/la_stack_dot" = "d32/la_stack_dot"
+"d32/la_stack_inf_norm" = "d32/la_stack_inf_norm"
+"d32/la_stack_ldlt" = "d32/la_stack_ldlt"
+"d32/la_stack_ldlt_solve" = "d32/la_stack_ldlt_solve"
+"d32/la_stack_lu" = "d32/la_stack_lu"
+"d32/la_stack_lu_solve" = "d32/la_stack_lu_solve"
+"d32/la_stack_norm2_sq" = "d32/la_stack_norm2_sq"
+"d32/la_stack_solve_from_ldlt" = "d32/la_stack_solve_from_ldlt"
+"d32/la_stack_solve_from_lu" = "d32/la_stack_solve_from_lu"
+"d4/la_stack_det" = "d4/la_stack_det"
+"d4/la_stack_det_from_ldlt" = "d4/la_stack_det_from_ldlt"
+"d4/la_stack_det_from_lu" = "d4/la_stack_det_from_lu"
+"d4/la_stack_det_via_lu" = "d4/la_stack_det_via_lu"
+"d4/la_stack_dot" = "d4/la_stack_dot"
+"d4/la_stack_inf_norm" = "d4/la_stack_inf_norm"
+"d4/la_stack_ldlt" = "d4/la_stack_ldlt"
+"d4/la_stack_ldlt_solve" = "d4/la_stack_ldlt_solve"
+"d4/la_stack_lu" = "d4/la_stack_lu"
+"d4/la_stack_lu_solve" = "d4/la_stack_lu_solve"
+"d4/la_stack_norm2_sq" = "d4/la_stack_norm2_sq"
+"d4/la_stack_solve_from_ldlt" = "d4/la_stack_solve_from_ldlt"
+"d4/la_stack_solve_from_lu" = "d4/la_stack_solve_from_lu"
+"d5/la_stack_det" = "d5/la_stack_det"
+"d5/la_stack_det_from_ldlt" = "d5/la_stack_det_from_ldlt"
+"d5/la_stack_det_from_lu" = "d5/la_stack_det_from_lu"
+"d5/la_stack_det_via_lu" = "d5/la_stack_det_via_lu"
+"d5/la_stack_dot" = "d5/la_stack_dot"
+"d5/la_stack_inf_norm" = "d5/la_stack_inf_norm"
+"d5/la_stack_ldlt" = "d5/la_stack_ldlt"
+"d5/la_stack_ldlt_solve" = "d5/la_stack_ldlt_solve"
+"d5/la_stack_lu" = "d5/la_stack_lu"
+"d5/la_stack_lu_solve" = "d5/la_stack_lu_solve"
+"d5/la_stack_norm2_sq" = "d5/la_stack_norm2_sq"
+"d5/la_stack_solve_from_ldlt" = "d5/la_stack_solve_from_ldlt"
+"d5/la_stack_solve_from_lu" = "d5/la_stack_solve_from_lu"
+"d64/la_stack_det" = "d64/la_stack_det"
+"d64/la_stack_det_from_ldlt" = "d64/la_stack_det_from_ldlt"
+"d64/la_stack_det_from_lu" = "d64/la_stack_det_from_lu"
+"d64/la_stack_det_via_lu" = "d64/la_stack_det_via_lu"
+"d64/la_stack_dot" = "d64/la_stack_dot"
+"d64/la_stack_inf_norm" = "d64/la_stack_inf_norm"
+"d64/la_stack_ldlt" = "d64/la_stack_ldlt"
+"d64/la_stack_ldlt_solve" = "d64/la_stack_ldlt_solve"
+"d64/la_stack_lu" = "d64/la_stack_lu"
+"d64/la_stack_lu_solve" = "d64/la_stack_lu_solve"
+"d64/la_stack_norm2_sq" = "d64/la_stack_norm2_sq"
+"d64/la_stack_solve_from_ldlt" = "d64/la_stack_solve_from_ldlt"
+"d64/la_stack_solve_from_lu" = "d64/la_stack_solve_from_lu"
+"d8/la_stack_det" = "d8/la_stack_det"
+"d8/la_stack_det_from_ldlt" = "d8/la_stack_det_from_ldlt"
+"d8/la_stack_det_from_ldlt_balanced_range" = "d8/la_stack_det_from_ldlt_balanced_range"
+"d8/la_stack_det_from_lu" = "d8/la_stack_det_from_lu"
+"d8/la_stack_det_from_lu_balanced_range" = "d8/la_stack_det_from_lu_balanced_range"
+"d8/la_stack_det_via_lu" = "d8/la_stack_det_via_lu"
+"d8/la_stack_dot" = "d8/la_stack_dot"
+"d8/la_stack_inf_norm" = "d8/la_stack_inf_norm"
+"d8/la_stack_ldlt" = "d8/la_stack_ldlt"
+"d8/la_stack_ldlt_ill_conditioned" = "d8/la_stack_ldlt_ill_conditioned"
+"d8/la_stack_ldlt_solve" = "d8/la_stack_ldlt_solve"
+"d8/la_stack_lu" = "d8/la_stack_lu"
+"d8/la_stack_lu_ill_conditioned" = "d8/la_stack_lu_ill_conditioned"
+"d8/la_stack_lu_pivoting" = "d8/la_stack_lu_pivoting"
+"d8/la_stack_lu_solve" = "d8/la_stack_lu_solve"
+"d8/la_stack_norm2_sq" = "d8/la_stack_norm2_sq"
+"d8/la_stack_solve_from_ldlt" = "d8/la_stack_solve_from_ldlt"
+"d8/la_stack_solve_from_lu" = "d8/la_stack_solve_from_lu"
+
+[[series]]
+name = "la-stack current"
+phase = "current"
+[series.rows]
+"d16/la_stack_det" = "d16/la_stack_det"
+"d16/la_stack_det_from_ldlt" = "d16/la_stack_det_from_ldlt"
+"d16/la_stack_det_from_lu" = "d16/la_stack_det_from_lu"
+"d16/la_stack_det_via_lu" = "d16/la_stack_det_via_lu"
+"d16/la_stack_dot" = "d16/la_stack_dot"
+"d16/la_stack_inf_norm" = "d16/la_stack_inf_norm"
+"d16/la_stack_ldlt" = "d16/la_stack_ldlt"
+"d16/la_stack_ldlt_solve" = "d16/la_stack_ldlt_solve"
+"d16/la_stack_lu" = "d16/la_stack_lu"
+"d16/la_stack_lu_solve" = "d16/la_stack_lu_solve"
+"d16/la_stack_norm2_sq" = "d16/la_stack_norm2_sq"
+"d16/la_stack_solve_from_ldlt" = "d16/la_stack_solve_from_ldlt"
+"d16/la_stack_solve_from_lu" = "d16/la_stack_solve_from_lu"
+"d2/la_stack_det" = "d2/la_stack_det"
+"d2/la_stack_det_from_ldlt" = "d2/la_stack_det_from_ldlt"
+"d2/la_stack_det_from_lu" = "d2/la_stack_det_from_lu"
+"d2/la_stack_det_via_lu" = "d2/la_stack_det_via_lu"
+"d2/la_stack_dot" = "d2/la_stack_dot"
+"d2/la_stack_inf_norm" = "d2/la_stack_inf_norm"
+"d2/la_stack_ldlt" = "d2/la_stack_ldlt"
+"d2/la_stack_ldlt_solve" = "d2/la_stack_ldlt_solve"
+"d2/la_stack_lu" = "d2/la_stack_lu"
+"d2/la_stack_lu_solve" = "d2/la_stack_lu_solve"
+"d2/la_stack_norm2_sq" = "d2/la_stack_norm2_sq"
+"d2/la_stack_solve_from_ldlt" = "d2/la_stack_solve_from_ldlt"
+"d2/la_stack_solve_from_lu" = "d2/la_stack_solve_from_lu"
+"d3/la_stack_det" = "d3/la_stack_det"
+"d3/la_stack_det_from_ldlt" = "d3/la_stack_det_from_ldlt"
+"d3/la_stack_det_from_lu" = "d3/la_stack_det_from_lu"
+"d3/la_stack_det_via_lu" = "d3/la_stack_det_via_lu"
+"d3/la_stack_dot" = "d3/la_stack_dot"
+"d3/la_stack_inf_norm" = "d3/la_stack_inf_norm"
+"d3/la_stack_ldlt" = "d3/la_stack_ldlt"
+"d3/la_stack_ldlt_solve" = "d3/la_stack_ldlt_solve"
+"d3/la_stack_lu" = "d3/la_stack_lu"
+"d3/la_stack_lu_solve" = "d3/la_stack_lu_solve"
+"d3/la_stack_norm2_sq" = "d3/la_stack_norm2_sq"
+"d3/la_stack_solve_from_ldlt" = "d3/la_stack_solve_from_ldlt"
+"d3/la_stack_solve_from_lu" = "d3/la_stack_solve_from_lu"
+"d32/la_stack_det" = "d32/la_stack_det"
+"d32/la_stack_det_from_ldlt" = "d32/la_stack_det_from_ldlt"
+"d32/la_stack_det_from_lu" = "d32/la_stack_det_from_lu"
+"d32/la_stack_det_via_lu" = "d32/la_stack_det_via_lu"
+"d32/la_stack_dot" = "d32/la_stack_dot"
+"d32/la_stack_inf_norm" = "d32/la_stack_inf_norm"
+"d32/la_stack_ldlt" = "d32/la_stack_ldlt"
+"d32/la_stack_ldlt_solve" = "d32/la_stack_ldlt_solve"
+"d32/la_stack_lu" = "d32/la_stack_lu"
+"d32/la_stack_lu_solve" = "d32/la_stack_lu_solve"
+"d32/la_stack_norm2_sq" = "d32/la_stack_norm2_sq"
+"d32/la_stack_solve_from_ldlt" = "d32/la_stack_solve_from_ldlt"
+"d32/la_stack_solve_from_lu" = "d32/la_stack_solve_from_lu"
+"d4/la_stack_det" = "d4/la_stack_det"
+"d4/la_stack_det_from_ldlt" = "d4/la_stack_det_from_ldlt"
+"d4/la_stack_det_from_lu" = "d4/la_stack_det_from_lu"
+"d4/la_stack_det_via_lu" = "d4/la_stack_det_via_lu"
+"d4/la_stack_dot" = "d4/la_stack_dot"
+"d4/la_stack_inf_norm" = "d4/la_stack_inf_norm"
+"d4/la_stack_ldlt" = "d4/la_stack_ldlt"
+"d4/la_stack_ldlt_solve" = "d4/la_stack_ldlt_solve"
+"d4/la_stack_lu" = "d4/la_stack_lu"
+"d4/la_stack_lu_solve" = "d4/la_stack_lu_solve"
+"d4/la_stack_norm2_sq" = "d4/la_stack_norm2_sq"
+"d4/la_stack_solve_from_ldlt" = "d4/la_stack_solve_from_ldlt"
+"d4/la_stack_solve_from_lu" = "d4/la_stack_solve_from_lu"
+"d5/la_stack_det" = "d5/la_stack_det"
+"d5/la_stack_det_from_ldlt" = "d5/la_stack_det_from_ldlt"
+"d5/la_stack_det_from_lu" = "d5/la_stack_det_from_lu"
+"d5/la_stack_det_via_lu" = "d5/la_stack_det_via_lu"
+"d5/la_stack_dot" = "d5/la_stack_dot"
+"d5/la_stack_inf_norm" = "d5/la_stack_inf_norm"
+"d5/la_stack_ldlt" = "d5/la_stack_ldlt"
+"d5/la_stack_ldlt_solve" = "d5/la_stack_ldlt_solve"
+"d5/la_stack_lu" = "d5/la_stack_lu"
+"d5/la_stack_lu_solve" = "d5/la_stack_lu_solve"
+"d5/la_stack_norm2_sq" = "d5/la_stack_norm2_sq"
+"d5/la_stack_solve_from_ldlt" = "d5/la_stack_solve_from_ldlt"
+"d5/la_stack_solve_from_lu" = "d5/la_stack_solve_from_lu"
+"d64/la_stack_det" = "d64/la_stack_det"
+"d64/la_stack_det_from_ldlt" = "d64/la_stack_det_from_ldlt"
+"d64/la_stack_det_from_lu" = "d64/la_stack_det_from_lu"
+"d64/la_stack_det_via_lu" = "d64/la_stack_det_via_lu"
+"d64/la_stack_dot" = "d64/la_stack_dot"
+"d64/la_stack_inf_norm" = "d64/la_stack_inf_norm"
+"d64/la_stack_ldlt" = "d64/la_stack_ldlt"
+"d64/la_stack_ldlt_solve" = "d64/la_stack_ldlt_solve"
+"d64/la_stack_lu" = "d64/la_stack_lu"
+"d64/la_stack_lu_solve" = "d64/la_stack_lu_solve"
+"d64/la_stack_norm2_sq" = "d64/la_stack_norm2_sq"
+"d64/la_stack_solve_from_ldlt" = "d64/la_stack_solve_from_ldlt"
+"d64/la_stack_solve_from_lu" = "d64/la_stack_solve_from_lu"
+"d8/la_stack_det" = "d8/la_stack_det"
+"d8/la_stack_det_from_ldlt" = "d8/la_stack_det_from_ldlt"
+"d8/la_stack_det_from_ldlt_balanced_range" = "d8/la_stack_det_from_ldlt_balanced_range"
+"d8/la_stack_det_from_lu" = "d8/la_stack_det_from_lu"
+"d8/la_stack_det_from_lu_balanced_range" = "d8/la_stack_det_from_lu_balanced_range"
+"d8/la_stack_det_via_lu" = "d8/la_stack_det_via_lu"
+"d8/la_stack_dot" = "d8/la_stack_dot"
+"d8/la_stack_inf_norm" = "d8/la_stack_inf_norm"
+"d8/la_stack_ldlt" = "d8/la_stack_ldlt"
+"d8/la_stack_ldlt_ill_conditioned" = "d8/la_stack_ldlt_ill_conditioned"
+"d8/la_stack_ldlt_solve" = "d8/la_stack_ldlt_solve"
+"d8/la_stack_lu" = "d8/la_stack_lu"
+"d8/la_stack_lu_ill_conditioned" = "d8/la_stack_lu_ill_conditioned"
+"d8/la_stack_lu_pivoting" = "d8/la_stack_lu_pivoting"
+"d8/la_stack_lu_solve" = "d8/la_stack_lu_solve"
+"d8/la_stack_norm2_sq" = "d8/la_stack_norm2_sq"
+"d8/la_stack_solve_from_ldlt" = "d8/la_stack_solve_from_ldlt"
+"d8/la_stack_solve_from_lu" = "d8/la_stack_solve_from_lu"
+
+[[series]]
+name = "nalgebra"
+phase = "baseline"
+[series.rows]
+"d16/la_stack_det_from_ldlt" = "d16/nalgebra_det_from_cholesky"
+"d16/la_stack_det_from_lu" = "d16/nalgebra_det_from_lu"
+"d16/la_stack_det_via_lu" = "d16/nalgebra_det_via_lu"
+"d16/la_stack_dot" = "d16/nalgebra_dot"
+"d16/la_stack_inf_norm" = "d16/nalgebra_inf_norm"
+"d16/la_stack_ldlt" = "d16/nalgebra_cholesky"
+"d16/la_stack_ldlt_solve" = "d16/nalgebra_cholesky_solve"
+"d16/la_stack_lu" = "d16/nalgebra_lu"
+"d16/la_stack_lu_solve" = "d16/nalgebra_lu_solve"
+"d16/la_stack_norm2_sq" = "d16/nalgebra_norm_squared"
+"d16/la_stack_solve_from_ldlt" = "d16/nalgebra_solve_from_cholesky"
+"d16/la_stack_solve_from_lu" = "d16/nalgebra_solve_from_lu"
+"d2/la_stack_det_from_ldlt" = "d2/nalgebra_det_from_cholesky"
+"d2/la_stack_det_from_lu" = "d2/nalgebra_det_from_lu"
+"d2/la_stack_det_via_lu" = "d2/nalgebra_det_via_lu"
+"d2/la_stack_dot" = "d2/nalgebra_dot"
+"d2/la_stack_inf_norm" = "d2/nalgebra_inf_norm"
+"d2/la_stack_ldlt" = "d2/nalgebra_cholesky"
+"d2/la_stack_ldlt_solve" = "d2/nalgebra_cholesky_solve"
+"d2/la_stack_lu" = "d2/nalgebra_lu"
+"d2/la_stack_lu_solve" = "d2/nalgebra_lu_solve"
+"d2/la_stack_norm2_sq" = "d2/nalgebra_norm_squared"
+"d2/la_stack_solve_from_ldlt" = "d2/nalgebra_solve_from_cholesky"
+"d2/la_stack_solve_from_lu" = "d2/nalgebra_solve_from_lu"
+"d3/la_stack_det_from_ldlt" = "d3/nalgebra_det_from_cholesky"
+"d3/la_stack_det_from_lu" = "d3/nalgebra_det_from_lu"
+"d3/la_stack_det_via_lu" = "d3/nalgebra_det_via_lu"
+"d3/la_stack_dot" = "d3/nalgebra_dot"
+"d3/la_stack_inf_norm" = "d3/nalgebra_inf_norm"
+"d3/la_stack_ldlt" = "d3/nalgebra_cholesky"
+"d3/la_stack_ldlt_solve" = "d3/nalgebra_cholesky_solve"
+"d3/la_stack_lu" = "d3/nalgebra_lu"
+"d3/la_stack_lu_solve" = "d3/nalgebra_lu_solve"
+"d3/la_stack_norm2_sq" = "d3/nalgebra_norm_squared"
+"d3/la_stack_solve_from_ldlt" = "d3/nalgebra_solve_from_cholesky"
+"d3/la_stack_solve_from_lu" = "d3/nalgebra_solve_from_lu"
+"d32/la_stack_det_from_ldlt" = "d32/nalgebra_det_from_cholesky"
+"d32/la_stack_det_from_lu" = "d32/nalgebra_det_from_lu"
+"d32/la_stack_det_via_lu" = "d32/nalgebra_det_via_lu"
+"d32/la_stack_dot" = "d32/nalgebra_dot"
+"d32/la_stack_inf_norm" = "d32/nalgebra_inf_norm"
+"d32/la_stack_ldlt" = "d32/nalgebra_cholesky"
+"d32/la_stack_ldlt_solve" = "d32/nalgebra_cholesky_solve"
+"d32/la_stack_lu" = "d32/nalgebra_lu"
+"d32/la_stack_lu_solve" = "d32/nalgebra_lu_solve"
+"d32/la_stack_norm2_sq" = "d32/nalgebra_norm_squared"
+"d32/la_stack_solve_from_ldlt" = "d32/nalgebra_solve_from_cholesky"
+"d32/la_stack_solve_from_lu" = "d32/nalgebra_solve_from_lu"
+"d4/la_stack_det_from_ldlt" = "d4/nalgebra_det_from_cholesky"
+"d4/la_stack_det_from_lu" = "d4/nalgebra_det_from_lu"
+"d4/la_stack_det_via_lu" = "d4/nalgebra_det_via_lu"
+"d4/la_stack_dot" = "d4/nalgebra_dot"
+"d4/la_stack_inf_norm" = "d4/nalgebra_inf_norm"
+"d4/la_stack_ldlt" = "d4/nalgebra_cholesky"
+"d4/la_stack_ldlt_solve" = "d4/nalgebra_cholesky_solve"
+"d4/la_stack_lu" = "d4/nalgebra_lu"
+"d4/la_stack_lu_solve" = "d4/nalgebra_lu_solve"
+"d4/la_stack_norm2_sq" = "d4/nalgebra_norm_squared"
+"d4/la_stack_solve_from_ldlt" = "d4/nalgebra_solve_from_cholesky"
+"d4/la_stack_solve_from_lu" = "d4/nalgebra_solve_from_lu"
+"d5/la_stack_det_from_ldlt" = "d5/nalgebra_det_from_cholesky"
+"d5/la_stack_det_from_lu" = "d5/nalgebra_det_from_lu"
+"d5/la_stack_det_via_lu" = "d5/nalgebra_det_via_lu"
+"d5/la_stack_dot" = "d5/nalgebra_dot"
+"d5/la_stack_inf_norm" = "d5/nalgebra_inf_norm"
+"d5/la_stack_ldlt" = "d5/nalgebra_cholesky"
+"d5/la_stack_ldlt_solve" = "d5/nalgebra_cholesky_solve"
+"d5/la_stack_lu" = "d5/nalgebra_lu"
+"d5/la_stack_lu_solve" = "d5/nalgebra_lu_solve"
+"d5/la_stack_norm2_sq" = "d5/nalgebra_norm_squared"
+"d5/la_stack_solve_from_ldlt" = "d5/nalgebra_solve_from_cholesky"
+"d5/la_stack_solve_from_lu" = "d5/nalgebra_solve_from_lu"
+"d64/la_stack_det_from_ldlt" = "d64/nalgebra_det_from_cholesky"
+"d64/la_stack_det_from_lu" = "d64/nalgebra_det_from_lu"
+"d64/la_stack_det_via_lu" = "d64/nalgebra_det_via_lu"
+"d64/la_stack_dot" = "d64/nalgebra_dot"
+"d64/la_stack_inf_norm" = "d64/nalgebra_inf_norm"
+"d64/la_stack_ldlt" = "d64/nalgebra_cholesky"
+"d64/la_stack_ldlt_solve" = "d64/nalgebra_cholesky_solve"
+"d64/la_stack_lu" = "d64/nalgebra_lu"
+"d64/la_stack_lu_solve" = "d64/nalgebra_lu_solve"
+"d64/la_stack_norm2_sq" = "d64/nalgebra_norm_squared"
+"d64/la_stack_solve_from_ldlt" = "d64/nalgebra_solve_from_cholesky"
+"d64/la_stack_solve_from_lu" = "d64/nalgebra_solve_from_lu"
+"d8/la_stack_det_from_ldlt" = "d8/nalgebra_det_from_cholesky"
+"d8/la_stack_det_from_lu" = "d8/nalgebra_det_from_lu"
+"d8/la_stack_det_via_lu" = "d8/nalgebra_det_via_lu"
+"d8/la_stack_dot" = "d8/nalgebra_dot"
+"d8/la_stack_inf_norm" = "d8/nalgebra_inf_norm"
+"d8/la_stack_ldlt" = "d8/nalgebra_cholesky"
+"d8/la_stack_ldlt_solve" = "d8/nalgebra_cholesky_solve"
+"d8/la_stack_lu" = "d8/nalgebra_lu"
+"d8/la_stack_lu_solve" = "d8/nalgebra_lu_solve"
+"d8/la_stack_norm2_sq" = "d8/nalgebra_norm_squared"
+"d8/la_stack_solve_from_ldlt" = "d8/nalgebra_solve_from_cholesky"
+"d8/la_stack_solve_from_lu" = "d8/nalgebra_solve_from_lu"
+
+[[series]]
+name = "faer"
+phase = "baseline"
+[series.rows]
+"d16/la_stack_det_from_ldlt" = "d16/faer_det_from_ldlt"
+"d16/la_stack_det_from_lu" = "d16/faer_det_from_lu"
+"d16/la_stack_det_via_lu" = "d16/faer_det_via_lu"
+"d16/la_stack_dot" = "d16/faer_dot_native"
+"d16/la_stack_inf_norm" = "d16/faer_inf_norm"
+"d16/la_stack_ldlt" = "d16/faer_ldlt"
+"d16/la_stack_ldlt_solve" = "d16/faer_ldlt_solve"
+"d16/la_stack_lu" = "d16/faer_lu"
+"d16/la_stack_lu_solve" = "d16/faer_lu_solve"
+"d16/la_stack_norm2_sq" = "d16/faer_norm2_sq"
+"d16/la_stack_solve_from_ldlt" = "d16/faer_solve_from_ldlt"
+"d16/la_stack_solve_from_lu" = "d16/faer_solve_from_lu"
+"d2/la_stack_det_from_ldlt" = "d2/faer_det_from_ldlt"
+"d2/la_stack_det_from_lu" = "d2/faer_det_from_lu"
+"d2/la_stack_det_via_lu" = "d2/faer_det_via_lu"
+"d2/la_stack_dot" = "d2/faer_dot_native"
+"d2/la_stack_inf_norm" = "d2/faer_inf_norm"
+"d2/la_stack_ldlt" = "d2/faer_ldlt"
+"d2/la_stack_ldlt_solve" = "d2/faer_ldlt_solve"
+"d2/la_stack_lu" = "d2/faer_lu"
+"d2/la_stack_lu_solve" = "d2/faer_lu_solve"
+"d2/la_stack_norm2_sq" = "d2/faer_norm2_sq"
+"d2/la_stack_solve_from_ldlt" = "d2/faer_solve_from_ldlt"
+"d2/la_stack_solve_from_lu" = "d2/faer_solve_from_lu"
+"d3/la_stack_det_from_ldlt" = "d3/faer_det_from_ldlt"
+"d3/la_stack_det_from_lu" = "d3/faer_det_from_lu"
+"d3/la_stack_det_via_lu" = "d3/faer_det_via_lu"
+"d3/la_stack_dot" = "d3/faer_dot_native"
+"d3/la_stack_inf_norm" = "d3/faer_inf_norm"
+"d3/la_stack_ldlt" = "d3/faer_ldlt"
+"d3/la_stack_ldlt_solve" = "d3/faer_ldlt_solve"
+"d3/la_stack_lu" = "d3/faer_lu"
+"d3/la_stack_lu_solve" = "d3/faer_lu_solve"
+"d3/la_stack_norm2_sq" = "d3/faer_norm2_sq"
+"d3/la_stack_solve_from_ldlt" = "d3/faer_solve_from_ldlt"
+"d3/la_stack_solve_from_lu" = "d3/faer_solve_from_lu"
+"d32/la_stack_det_from_ldlt" = "d32/faer_det_from_ldlt"
+"d32/la_stack_det_from_lu" = "d32/faer_det_from_lu"
+"d32/la_stack_det_via_lu" = "d32/faer_det_via_lu"
+"d32/la_stack_dot" = "d32/faer_dot_native"
+"d32/la_stack_inf_norm" = "d32/faer_inf_norm"
+"d32/la_stack_ldlt" = "d32/faer_ldlt"
+"d32/la_stack_ldlt_solve" = "d32/faer_ldlt_solve"
+"d32/la_stack_lu" = "d32/faer_lu"
+"d32/la_stack_lu_solve" = "d32/faer_lu_solve"
+"d32/la_stack_norm2_sq" = "d32/faer_norm2_sq"
+"d32/la_stack_solve_from_ldlt" = "d32/faer_solve_from_ldlt"
+"d32/la_stack_solve_from_lu" = "d32/faer_solve_from_lu"
+"d4/la_stack_det_from_ldlt" = "d4/faer_det_from_ldlt"
+"d4/la_stack_det_from_lu" = "d4/faer_det_from_lu"
+"d4/la_stack_det_via_lu" = "d4/faer_det_via_lu"
+"d4/la_stack_dot" = "d4/faer_dot_native"
+"d4/la_stack_inf_norm" = "d4/faer_inf_norm"
+"d4/la_stack_ldlt" = "d4/faer_ldlt"
+"d4/la_stack_ldlt_solve" = "d4/faer_ldlt_solve"
+"d4/la_stack_lu" = "d4/faer_lu"
+"d4/la_stack_lu_solve" = "d4/faer_lu_solve"
+"d4/la_stack_norm2_sq" = "d4/faer_norm2_sq"
+"d4/la_stack_solve_from_ldlt" = "d4/faer_solve_from_ldlt"
+"d4/la_stack_solve_from_lu" = "d4/faer_solve_from_lu"
+"d5/la_stack_det_from_ldlt" = "d5/faer_det_from_ldlt"
+"d5/la_stack_det_from_lu" = "d5/faer_det_from_lu"
+"d5/la_stack_det_via_lu" = "d5/faer_det_via_lu"
+"d5/la_stack_dot" = "d5/faer_dot_native"
+"d5/la_stack_inf_norm" = "d5/faer_inf_norm"
+"d5/la_stack_ldlt" = "d5/faer_ldlt"
+"d5/la_stack_ldlt_solve" = "d5/faer_ldlt_solve"
+"d5/la_stack_lu" = "d5/faer_lu"
+"d5/la_stack_lu_solve" = "d5/faer_lu_solve"
+"d5/la_stack_norm2_sq" = "d5/faer_norm2_sq"
+"d5/la_stack_solve_from_ldlt" = "d5/faer_solve_from_ldlt"
+"d5/la_stack_solve_from_lu" = "d5/faer_solve_from_lu"
+"d64/la_stack_det_from_ldlt" = "d64/faer_det_from_ldlt"
+"d64/la_stack_det_from_lu" = "d64/faer_det_from_lu"
+"d64/la_stack_det_via_lu" = "d64/faer_det_via_lu"
+"d64/la_stack_dot" = "d64/faer_dot_native"
+"d64/la_stack_inf_norm" = "d64/faer_inf_norm"
+"d64/la_stack_ldlt" = "d64/faer_ldlt"
+"d64/la_stack_ldlt_solve" = "d64/faer_ldlt_solve"
+"d64/la_stack_lu" = "d64/faer_lu"
+"d64/la_stack_lu_solve" = "d64/faer_lu_solve"
+"d64/la_stack_norm2_sq" = "d64/faer_norm2_sq"
+"d64/la_stack_solve_from_ldlt" = "d64/faer_solve_from_ldlt"
+"d64/la_stack_solve_from_lu" = "d64/faer_solve_from_lu"
+"d8/la_stack_det_from_ldlt" = "d8/faer_det_from_ldlt"
+"d8/la_stack_det_from_lu" = "d8/faer_det_from_lu"
+"d8/la_stack_det_via_lu" = "d8/faer_det_via_lu"
+"d8/la_stack_dot" = "d8/faer_dot_native"
+"d8/la_stack_inf_norm" = "d8/faer_inf_norm"
+"d8/la_stack_ldlt" = "d8/faer_ldlt"
+"d8/la_stack_ldlt_solve" = "d8/faer_ldlt_solve"
+"d8/la_stack_lu" = "d8/faer_lu"
+"d8/la_stack_lu_solve" = "d8/faer_lu_solve"
+"d8/la_stack_norm2_sq" = "d8/faer_norm2_sq"
+"d8/la_stack_solve_from_ldlt" = "d8/faer_solve_from_ldlt"
+"d8/la_stack_solve_from_lu" = "d8/faer_solve_from_lu"

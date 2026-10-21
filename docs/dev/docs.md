@@ -134,6 +134,11 @@ semantics in the linked guide when shortening a README section.
   executable examples with the default and matching feature doctest recipes.
 - Ordinary Markdown changes use `just markdown-fix` and `just markdown-ci`;
   the latter includes Markdown and spelling checks.
+- README uses rumdl's Markdown-aware line limit because the shared benchmark
+  publisher emits full immutable evidence URLs. It remains subject to Markdown
+  formatting, prose length, syntax, and link checks, but is excluded from the
+  separate 160-character raw-source line check. Other active documents retain
+  that additional check; generated reports retain their existing exclusions.
 
 ## Scientific notation and references
 

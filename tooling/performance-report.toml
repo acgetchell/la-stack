@@ -1,4 +1,6 @@
 schema = 2
+measurement = "tooling/measurements/full.toml"
+release = true
 current = "docs/performance.md"
 # Keep current/archive exclusions in both Markdown recipes aligned.
 archive = "docs/performance-runs"

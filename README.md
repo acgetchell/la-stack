@@ -453,6 +453,8 @@ cargo run --locked --example vector_angles
 
 ## 📈 Benchmarks (vs nalgebra/faer)
 
+<!-- BENCHMARKS:BEGIN -->
+
 ![LU solve (factor + solve): median time vs dimension][lu-solve-benchmark]
 
 Raw data:
@@ -460,45 +462,8 @@ Raw data:
 Measurement provenance:
 [docs/assets/bench/vs_linalg_lu_solve_median.provenance.json][benchmark-provenance]
 
-Representative benchmark: `lu_solve` factors the matrix and solves one
-right-hand side. Median time is lower-is-better, and the “Speedup vs
-nalgebra/faer” columns divide each peer's median by the la-stack median
-(above 1× means the recorded la-stack median is lower). These are descriptive
-point-estimate ratios, not statistical significance claims or an aggregate score
-across operations.
-
-Timings count only when the implementation preserves the documented
-correctness guarantees and invariants. Performance claims require comparable
-before-and-after evidence using the same inputs, configuration, and environment.
-This snapshot records the measured source state, available CPU model, operating system, Rust
-toolchain, dependency lock and harness digests, Criterion command, and
-correctness-gate result in the adjacent JSON sidecar. The publication workflow
-requires complete canonical-dimension coverage and regenerates the CSV, SVG,
-README table, and provenance together.
-
-For the full per-kernel comparison methodology, algorithm citations, input
-construction, and release-comparison workflow details, see
-[docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/main/docs/BENCHMARKING.md).
-For the current release-to-release performance snapshot, see
-[docs/performance.md](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md).
-The exact release suite includes the already-exact rational-input groups for
-D=2 through D=8. Those rows report `RationalMatrix::det_sign`, `det`, and
-`solve` alongside straightforward `BigRational` Gaussian determinant and solve
-references. Releases produced with the rational-input harness include Criterion
-point estimates and confidence intervals for these rows; comparisons against a
-pre-API baseline retain them as explicit current-only measurements.
-
-The focused `interval` Criterion suite covers conclusive and inconclusive
-relative-coordinate lifted determinant signs at D=4 and the maximum supported
-D=7 workload. Run it with `just bench-interval`; fixture validation stays
-outside the timed closures.
-
-The focused `linear_form` Criterion suite compares plain and certified dot
-products and covers both well-separated and inconclusive dot/affine-difference
-filters at D=4. Run it with `just bench-linear-form`; exact small-integer fixture
-expectations are validated outside the timed closures.
-
-<!-- BENCH_TABLE:lu_solve:median:new:BEGIN -->
+[benchmark-provenance]: https://github.com/acgetchell/la-stack/blob/v0.5.0/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json
+[lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/v0.5.0/docs/assets/bench/vs_linalg_lu_solve_median.svg
 
 Run: `634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5`. Statistic: median. Unit: ns.
 
@@ -526,7 +491,46 @@ Selection coverage:
 - nalgebra (0.35.0): 8 selected; 0 unavailable rows; 789 phase cases omitted. Complete evidence is retained independently.
 - faer (0.24.4): 8 selected; 0 unavailable rows; 789 phase cases omitted. Complete evidence is retained independently.
 
-<!-- BENCH_TABLE:lu_solve:median:new:END -->
+<!-- BENCHMARKS:END -->
+
+Representative benchmark: `lu_solve` factors the matrix and solves one
+right-hand side. Median time is lower-is-better, and the “Speedup vs
+nalgebra/faer” columns divide each peer's median by the la-stack median
+(above 1× means the recorded la-stack median is lower). These are descriptive
+point-estimate ratios, not statistical significance claims or an aggregate score
+across operations.
+
+Timings count only when the implementation preserves the documented
+correctness guarantees and invariants. Performance claims require comparable
+before-and-after evidence using the same inputs, configuration, and environment.
+This snapshot records the measured source state, available CPU model, operating system, Rust
+toolchain, dependency lock and harness digests, Criterion command, and
+correctness-gate result in the linked evidence. The publication workflow
+requires complete canonical-dimension coverage and publishes the CSV, SVG,
+README table, and evidence links together. Original plot-provenance sidecars
+remain available as frozen records.
+
+For the full per-kernel comparison methodology, algorithm citations, input
+construction, and release-comparison workflow details, see
+[docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/main/docs/BENCHMARKING.md).
+For the current release-to-release performance snapshot, see
+[docs/performance.md](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md).
+The exact release suite includes the already-exact rational-input groups for
+D=2 through D=8. Those rows report `RationalMatrix::det_sign`, `det`, and
+`solve` alongside straightforward `BigRational` Gaussian determinant and solve
+references. Releases produced with the rational-input harness include Criterion
+point estimates and confidence intervals for these rows; comparisons against a
+pre-API baseline retain them as explicit current-only measurements.
+
+The focused `interval` Criterion suite covers conclusive and inconclusive
+relative-coordinate lifted determinant signs at D=4 and the maximum supported
+D=7 workload. Run it with `just bench-interval`; fixture validation stays
+outside the timed closures.
+
+The focused `linear_form` Criterion suite compares plain and certified dot
+products and covers both well-separated and inconclusive dot/affine-difference
+filters at D=4. Run it with `just bench-linear-form`; exact small-integer fixture
+expectations are validated outside the timed closures.
 
 ## 🤝 Contributing
 
@@ -562,7 +566,6 @@ BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/
 
 [audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml
-[benchmark-provenance]: https://github.com/acgetchell/la-stack/blob/v0.5.0/docs/assets/bench/vs_linalg_lu_solve_median.provenance.json
 [benchmarks-badge]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml/badge.svg
 [benchmarks-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml
 [clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg
@@ -573,7 +576,6 @@ BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/
 [coverage-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/codecov.yml
 [dependabot-badge]: https://github.com/acgetchell/la-stack/actions/workflows/dependabot-auto-merge.yml/badge.svg
 [dependabot-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/dependabot-auto-merge.yml
-[lu-solve-benchmark]: https://raw.githubusercontent.com/acgetchell/la-stack/v0.5.0/docs/assets/bench/vs_linalg_lu_solve_median.svg
 [refs-det-bound]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#absolute-error-bound-for-closed-form-determinants
 [refs-exact-sign]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-determinant-sign-adaptive-precision-integer-arithmetic
 [refs-exact-solve]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-linear-system-solve-hybrid-bareiss--bigrational

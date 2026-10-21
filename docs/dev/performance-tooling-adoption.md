@@ -1,154 +1,158 @@
 # Performance tooling adoption
 
-This records [#276](https://github.com/acgetchell/la-stack/issues/276) against
-the published `research-repo-tools==0.1.9` base package. No extras are required.
-Publication prerequisite [upstream #99](https://github.com/acgetchell/research-repo-tools/issues/99)
-is closed. PyPI's unyanked wheel and sdist hashes match the exact lockfile entries;
-runtime code comes from the installed package.
+[#296](https://github.com/acgetchell/la-stack/issues/296) completes the shared
+performance-tooling migration begun in #276 and #285. The consumer retains
+scientific declarations, native correctness gates, and installed-package
+integration tests. Generic execution, validation, rendering, and publication
+belong to research-repo-tools.
 
-## Capability disposition
+## Publication boundary
 
-Follow-up [#285](https://github.com/acgetchell/la-stack/issues/285) adopts the
-published `research-repo-tools==0.2.0` wheel and sdist, including
-[upstream #110](https://github.com/acgetchell/research-repo-tools/issues/110).
-The exact PyPI pin and lock replace v0.1.9; the package also advances its required
-Just dependency to v1.59.0. `RunTableStyle` now supplies the six-column README
-layout directly, so `_readme_table()` and its Markdown string/column rewrites
-are removed. The shared renderer retains recorded intervals, the selected
-statistic, confidence level and explicit ratio direction. Scientific selection,
-original reference phases, README markers, evidence freshness and transactional
-asset pointers remain consumer responsibilities.
+The dependency-only environment pins the published `research-repo-tools==0.2.2`
+package, including the release workflow's isolated installations.
+Upstream [#118](https://github.com/acgetchell/research-repo-tools/pull/118)
+adds the missing minimum-release acquisition contract; release
+[#119](https://github.com/acgetchell/research-repo-tools/pull/119) published it
+from commit `e9310163d2789532bdcb155ef93b721473dc5523`. v0.2.1 supplied the declarative workflow interfaces but could
+not express the consumer's v0.5.0 measurement floor.
 
-Offline consumer checks exercise the actual `performance-readme` recipe with
-mean and median estimates, original peer phases, retained history and the README
-figure. No new measurements or regenerated immutable reports are required.
-Offline rendering of the retained published run preserves its SVG and CSV bytes.
-Current README republication still rejects the stale source digest and leaves
-the figure and measured-asset pointers untouched.
-The obsolete CSV conversion declaration and pre-Just Python phase replay are
-removed. Retained complete runs use the declared Just driver; original legacy
-CSV/JSON and Markdown records remain available without regeneration or conversion.
-Closure of #285 requires native Linux/macOS/Windows CI on the adoption commit;
-local validation alone does not establish those results.
+[PyPI v0.2.2](https://pypi.org/project/research-repo-tools/0.2.2/) lists both
+distributions as unyanked. Their SHA-256 hashes match the signed
+[GitHub release assets](https://github.com/acgetchell/research-repo-tools/releases/tag/v0.2.2)
+and the exact registry lock entries:
 
-| Upstream capability | Consumer adoption | Local responsibility |
-| --- | --- | --- |
-| #94 captured targets | Installed release-target CLI passes versioned JSON from trusted preflight to writer | Dispatch/ref equality, current attempt, title, privilege separation, asset filename and explicit publication |
-| #95 coordinate plots | Shared coordinate SVG, table and CSV renderers | Scientific metric mappings, dimensions, nanoseconds and original phases |
-| #96 provenance reports | Shared renderer 2 and publication-relative evidence links | Scientific eligibility and frozen historical records |
-| #97 complete-run sections | Shared presentation and publication transaction | README markers, measured-asset pointers and current source/harness checks |
-| #98 Criterion verification | Declarative shared discovery, versioned inventory and saved-sample APIs | Full Cargo suites/features, minimum scientific coverage and correctness gates |
-| #110 compact table styles | Installed `RunTableStyle` selects headings, intervals, confidence caption and ratio-only columns | Scientific selections, ratio pairs and README publication policy |
-
-The full-report standardization from #277 remains. New reports expose recorded
-provenance and evidence links. Shared mixed-renderer history preserves immutable
-older complete-run reports while upgrading mutable indexes.
-
-## Python deletion audit
-
-The audit compared the dependency-only MCMC environment and declarative
-`tooling/` commands with the installed v0.1.9 public APIs.
-
-| Former helper | Disposition and supported replacement |
+| Distribution | SHA-256 |
 | --- | --- |
-| `bench_compare.py` | Deleted; saved-baseline reports use the installed shared Criterion comparison CLI |
-| `benchmark_contract.py` | Deleted; metric/group/peer/API declarations moved to `tooling/performance-policy.toml`; historical digests stay frozen |
-| `benchmark_summaries.py` | Deleted; frozen historical summaries are records rather than regeneration inputs |
-| `criterion_dim_plot.py` | Deleted; shared complete-run SVG/CSV/table presentation replaces raw-Criterion/gnuplot rendering |
-| `performance_artifacts.py` | Deleted; shared evidence/publication replace writers and readers; historical CSV conversion retired in #285 |
-| `release_baseline.py` | Deleted; native discovery uses the shared CLI and saved-copy verification uses the shared configured API |
-| Local wheel/sdist and console-entry-point packaging | Removed; `uv` manages a dependency-only environment |
-| Duplicate parser, renderer, legacy-writer and packaging tests | Removed; actual installed-package/configuration and scientific integration tests remain |
+| Wheel | `b82e11ef8265f0b03c37cac93f59d5854a63543c29ee378f5980623af57d9381` |
+| Source distribution | `4937f202a55c5678af30bae915e01ddbc17f9dd8dd9e143b2f430331b42e8f50` |
 
-Retirement conditions are satisfied by installed replacement checks, preservation
-of original bytes/hashes and a documented supported workflow. The old report
-layout need not be regenerated indefinitely. New reports use the shared format;
-historical reports, CSV/JSON, indexes, plots and archives remain untouched.
-Historical conversion was verified during #276 and retired in #285. Original
-summaries remain independently readable with their original hashes and opaque
-metadata. They cannot provide complete-run samples or newly captured host provenance.
+Runtime imports and acceptance checks use this installed package. No sibling
+checkout, private API, or release-candidate installation supplies final evidence.
 
-Only two production modules remain:
+The maintainer approved freezing earlier evidence instead of extending the
+shared policy gate to accept missing acquisition declarations. This deliberately
+supersedes #296's original v0.5.0/v0.4.6 replay requirement. The minimum release
+applies to new acquisition; it does not redefine eligibility of already
+declared complete runs.
 
-- `archive_performance.py`: la-stack release eligibility, tracked-only snapshots,
-  and README publication composition.
-- `performance_runs.py`: captured measurement environment, scientific selection,
-  sampling, originating reference phases and source/harness eligibility.
+## Entry-point replacements
 
-New measurements require v0.5.0 or newer on both sides.
-The historical API cfg, missing-row exemptions, root-test layout adapter and
-metadata-free `performance-github-assets` command are retired. Their Rust
-benchmark branches are removed while the independent scientific gates remain.
-Original reports, CSV/JSON, plots and archives retain their bytes and hashes.
-The measurement floor does not block offline use of retained complete runs
-satisfying the modern scientific policy.
+The root Justfile calls the installed CLI directly. Static TOML describes
+measurement and publication; the native Justfile contains Cargo commands.
+There are no replacement Python wrappers, runtime configuration generators,
+or shell implementations of the shared workflow.
 
-Shared CLI snapshots include untracked files; la-stack's established contract
-excludes them. Independent scientific eligibility, saved-sample storage checks
-and publication composition also remain local.
-[Upstream #115](https://github.com/acgetchell/research-repo-tools/issues/115)
-targets declarative replacements in v0.2.1. Adoption and deletion of the final
-production Python modules follow publication of that package.
+| Consumer command | Installed owner and declaration |
+| --- | --- |
+| `performance-local` | `performance measure`, `measurements/full.toml`, current versus latest published release |
+| `performance-local-non-exact` | `performance measure`, `measurements/non-exact.toml`, current versus latest published release |
+| `performance-measure` | Explicit current/baseline labels and a named full/non-exact declaration |
+| `performance-release` | `performance measure`, followed by explicit `performance promote` |
+| `performance-promote` | Explicit scratch payload and envelope, checked against `performance-report.toml` |
+| `performance-doc` | Offline retained history through `performance promote` and the independent full policy |
+| `performance-readme` | `performance publish` with `performance-readme.toml`, independent identities and transactional formatting |
+| `plot-vs-linalg` | `performance publish --artifacts-only` with named full scratch, retained, or non-exact scratch views |
+| `bench-release-check` | `performance verify-saved` with saved name, Criterion directory and `criterion-saved.toml` |
+| `bench-compare` | Existing installed saved-Criterion comparison CLI |
 
-Generic subprocesses, discovery parsing, worktrees, measurement, completeness,
-estimates, comparison arithmetic, rendering, run identity, history, downloads,
-extraction and publication transactions all remain upstream. The retained Python
-calls public APIs. Scientific names and mappings live in `tooling/`.
+Paths in the table are relative to `tooling/`.
+[Benchmarking](../BENCHMARKING.md) owns arguments and examples.
 
-## Python 3.15 review
+## Consumer contracts
 
-Metadata, `.python-version`, the locked environment and CI select Python 3.15.
-The remaining code uses deferred annotations, typed boundaries and explicit
-byte/UTF-8 transport. Scientific catalogs parse into immutable typed records before
-discovery; malformed dimensions, names, peer pairs and metric rows retain field
-diagnostics. Existing evidence records are supplied by the shared
-package. Deleting the historical serializer also removes its custom recursive
-freezing/thawing machinery. No artificial syntax modernization replaces a
-supported shared implementation.
+- Both acquisition labels must be v0.5.0 or newer. The published parser rejects
+  older labels before Git mutations or measurement output.
+- Independent scientific catalogs require 417 full-report IDs. The non-exact
+  declaration selects the comparison suite. Native discovery may capture
+  additional diagnostic cases without weakening required coverage.
+- Every phase retains 100 samples, mean and median estimates, 95% intervals,
+  nanoseconds, and the exact discovered inventory. Both native scientific gates
+  run before collection.
+- nalgebra and faer references always originate in the baseline phase.
+  Compatibility includes host, CPU, architecture, harness, Rust/Cargo/Just, and
+  dependency identities.
+- Measurements use the captured current harness with explicit Rust toolchain,
+  native host target, compiler/wrapper settings, flags, and isolated output
+  directories. Ambient code-generation overrides no longer silently change
+  the measured configuration.
+- Snapshots include tracked changes and nonignored untracked regular files.
+  This intentionally replaces tracked-only snapshots. Source and harness
+  membership and bytes are checked again before README publication.
+- Saved samples require the independent inventory, canonical storage paths,
+  matching fresh/saved raw files and complete statistical data. The configured
+  raw inventory remains `benchmark.json`, `estimates.json`, `sample.json`, and
+  `tukey.json`.
+- Scratch and retained inputs are explicit choices. Incomplete scratch never
+  falls back to an older run. Promotion and document publication validate
+  independent declarations, not only a payload's self-consistency.
+- All eight scientific plot metrics retain mean/median and linear/log choices,
+  giving 32 named views for each input source. Non-exact scratch views use
+  separate asset paths; official release promotion requires the full policy.
+  The README has one canonical
+  LU-solve median/log view and one shared publication section.
+- README publication requires independently supplied releases and full Git
+  revisions, a retained run, current source/harness freshness, package/report
+  reference checks, tag checks, and successful formatting before any output
+  changes. The shared publisher emits full immutable links, so README uses
+  rumdl's Markdown-aware line policy; the extra raw-character gate continues
+  to cover other active documents.
 
-Semgrep 1.180.0 wheels stop at Python 3.14. `tooling/semgrep/` pins the current
-scanner and Python 3.14. The obsolete PyJWT override is retired because the pinned
-scanner accepts patched PyJWT 2.15.1 with its crypto extra. Local scans,
-fixture validation and hosted SARIF use that lock. Retire this exception after
-current published wheels support Python 3.15 and native gates pass.
+The minimum release, scientific rows, native commands, and publication choices
+remain reviewable static consumer data. The shared engine owns their runtime
+validation. `tooling/performance-policy.toml` is the independent scientific
+catalog used by acceptance tests, not a local production parser.
 
-## Size and validation evidence
+## Historical evidence
 
-The #285 consumer-test cleanup was checked against tests bundled in the published
-v0.2.0 sdist. Shared implementation matrices are removed only where that release
-already covers them; consumer policy and installed-package integration remain.
+Historical reports, plots, CSV/JSON, archives, and complete-run files retain
+their original bytes and links. The existing v0.5.0/v0.4.6 complete run
+`634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5`
+is a frozen readable record. It predates acquisition declarations and is no
+longer an input for regeneration or current publication. Do not backfill its
+provenance or relax the shared eligibility gate.
 
-| Coverage | Published upstream owner | Retained consumer check |
+New declared complete runs support offline report and plot rendering after
+scratch deletion. README publication additionally requires current-source
+freshness. New axis-specific plot paths preserve existing historical assets;
+release metadata updates exclude immutable archive contents and their README
+links. Regression hashes protect both the legacy CSV/JSON evidence and the
+frozen complete run.
+
+## Deletion and test ownership
+
+The retirement removes `archive_performance.py`, `performance_runs.py`,
+their adapter tests, and their obsolete measurement/plot declarations.
+Useful non-performance integration tests move from `scripts/tests/` to
+`tooling/tests/`. The root `scripts/` directory then has no production or
+test owner. Semgrep fixtures under `tests/semgrep/scripts/` and historical
+security-exception paths keep their existing identities.
+
+| Generic behavior | Upstream owner | Consumer evidence retained |
 | --- | --- | --- |
-| Changelog rendering and repeatability | `tests/changelog/test_cliff_template.py` and `test_workflow.py` | Actual la-stack formatter/preservation policy, one authored-note generation and historical notes |
-| Measurement completeness and failed gates | `tests/performance/public_complete_consumer.py` | Actual sampling policy, required scientific inventory, native gate commands and original peer phases |
-| Package identity | Consumer-owned | One test in `test_toolchain_integration.py` checks pin, registry, installed version and wheel/sdist hashes; recipe tests verify preservation and forwarding |
-| Release event identity and check-status matrices | `tests/releases/test_publishing.py` | Every configured native check remains required; actual workflow approval, immutability, notes and upload barriers remain tested |
+| Floors, captured phases, complete samples and independent policy validation | `tests/performance/public_complete_consumer.py` | Actual full/non-exact declarations, release floor, scientific coverage and native commands |
+| Transactional publication, formatting and provenance | `tests/publication/public_publication_consumer.py` and complete-run consumer suite | Actual recipes, stale source/harness, partial scratch, formatter failure, immutable links and frozen hashes |
+| Saved-sample validation and archive transport | `tests/performance/public_performance_consumer.py` and Criterion baseline tests | Actual workflow archive, required IDs, canonical storage and saved/fresh bytes |
+| Changelog, release target capture, toolchains and maintenance | Capability-specific installed-consumer suites | Existing la-stack workflow, package identity, release policy and configuration checks |
 
-Counts use physical lines from `wc -l scripts/*.py scripts/tests/*.py` and
-`uv run --locked pytest --collect-only -q`. Baseline is `905aba7`; test counts
-describe consumer checks, not measurements.
+The shared package runs public consumer suites from isolated wheel and sdist
+installations. la-stack acceptance imports public APIs only and invokes the
+actual Just recipes against bounded synthetic samples. No historic benchmark
+reruns or new performance claims are needed.
 
-| Measure | Before | After |
-| --- | ---: | ---: |
-| Production modules | 8 | 2 |
-| Production Python lines | 5,323 | 788 |
-| Test Python lines | 5,096 | 1,952 |
-| Collected tests | 371 | 130 |
+## Runtime and validation
 
-Production Python is reduced by about 85%. Focused installed-package tests cover
-complete-run gates/coverage, original reference phases, offline report/plot replay,
-source membership and unindexed-history freshness, captured release targets,
-native archive round trips and unchanged historical hashes. The actual saved
-comparison recipe and declarative historical conversion passed replacement checks.
-Native discovery compiled/listed 533 comparison and 264 exact cases with all
-417 required report/plot IDs, without collecting timings.
+The dependency-only environment remains Python 3.15. Python supports shared
+tools and consumer tests; deleting production scripts does not remove it.
+Semgrep 1.180.0 still requires its separately locked Python 3.14 environment
+under `tooling/semgrep/`. Retire that exception only when published scanner
+wheels support Python 3.15 and native gates pass.
 
-Local executor: macOS arm64, CPython 3.15.0; Semgrep uses CPython 3.14.7.
-The final repository validation includes Python format/lint/types, consumer tests,
-Rust tests/doctests, docs, examples, benchmark compilation and native static checks.
-No new scientific measurements or regenerated historical artifacts are claimed.
+Native discovery listed 533 comparison and 354 exact cases while verifying
+the independent 417 required IDs. The scientific gates passed 26 exact-input
+tests and 42 comparison-input tests. These checks compiled/listed the native
+benchmarks without collecting timing measurements.
 
-Issue closure still requires an adoption commit, native Linux/macOS/Windows CI
-for that exact commit, linked run evidence and merge. Local macOS
-validation does not substitute for native Linux or Windows results.
+Final acceptance also requires focused installed-package tests, `just check`,
+`just ci`, Markdown/spelling/docs checks, and Linux/macOS/Windows CI for the
+adoption commit. Local macOS validation does not establish other native results.
+Release and adoption PRs retain the source-bound validation evidence.

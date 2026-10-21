@@ -112,7 +112,7 @@ and does not update package or citation metadata.
 Use `just changelog-preview --tag "$TAG" --date "$RELEASE_DATE"` for a read-only
 preview, and `just changelog-check` to validate the root and every archive.
 Review the generated changelog and any archive changes. The
-[Scripts guide](../scripts/README.md#changelog-and-release-tooling) explains
+[Tooling guide](../tooling/README.md#changelog-and-release-tooling) explains
 the supported `dependency-bodies = "preserve"` policy in `pyproject.toml`, which
 preserves authored dependency-note links, text, and code without a local template.
 
@@ -129,45 +129,61 @@ original command and `just changelog-check`.
 
 ### 4. Generate the release performance comparison
 
-Run this after the package version has been updated:
+After updating the package version, fetch the tags and select the previous
+stable release shown by GitHub's publication history:
 
 ```bash
+just performance-prepare
+gh release list --exclude-drafts --exclude-pre-releases --json tagName,publishedAt
+```
+
+Set `PREVIOUS_TAG` to that reviewed baseline. Capture the source commit
+assertions independently before measurement:
+
+```bash
+CURRENT_COMMIT=$(git --no-pager rev-parse HEAD)
+PREVIOUS_COMMIT=$(git --no-pager rev-parse "$PREVIOUS_TAG^{commit}")
 just performance-release
 ```
 
-The no-argument form compares the current package version with the previous
-stable published release. Review the shared report at `docs/performance.md`
-and the immutable complete-run evidence,
-reports, index, and latest pointer under `docs/performance-runs/`. Include the
-entire new run and index changes in the release PR. Shared complete evidence
-retains both phases, mean and median estimates, 100 raw samples per case, and
-95% intervals. It survives target cleanup and supports offline report/README
-replay. Multiple runs for one release pair coexist without rewriting older
-evidence. Historical CSV/JSON snapshots under `docs/performance/` remain
-readable with unchanged hashes. Results from `performance-local` remain
-scratch until explicitly promoted.
+The no-argument measurement compares the prospective package version with the
+latest stable published release. Review `docs/performance.md` and the complete
+new run and index changes under `docs/performance-runs/`. Its current/baseline
+tags and commits must match the selected assertions. Both labels must be v0.5.0
+or newer.
+
+Evidence retains both phases, mean and median estimates, 100 raw samples per
+case and 95% intervals. Current declarations record acquisition policy as well
+as source/harness provenance. Future runs support offline rendering after
+scratch cleanup; `just performance-doc` explicitly selects retained history.
+`just performance-promote` explicitly selects the full scratch pair.
+
+Historical artifacts, including the v0.5.0/v0.4.6 comparison, remain frozen with
+their original bytes and links. That older run lacks the new acquisition
+declaration and is no longer a regeneration input. Never backfill provenance
+or relax current eligibility checks to replay it.
 
 ### 5. Refresh the README benchmark comparison
 
 ```bash
-just performance-readme
+just performance-readme "$TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT"
 ```
 
-This consumes the complete-run payload and evidence envelope retained by
-`just performance-release`; it does not run benchmarks again. It atomically
-updates the table and tag-pinned benchmark links in `README.md` with the CSV,
-SVG, and provenance JSON under `docs/assets/bench/`. Until it succeeds, those
-README links continue to reference the previous published artifacts.
-After regeneration, the new tag-pinned image and data links become available
-when the release tag is pushed. Before then, preview the SVG directly from
-`docs/assets/bench/`; a failed image load in the README does not imply that
-generation failed.
-If scratch inputs were cleaned, it uses the validated
-`docs/performance-runs/latest.json` run. Existing
-partial or corrupt scratch inputs remain errors and never trigger a fallback.
+This consumes archived, release-eligible evidence without benchmarking again.
+It verifies the independent identities, current source/harness membership and
+hashes, package/report references and existing-tag artifact identity.
+The canonical LU-solve median/log view is declared in
+`tooling/performance-readme.toml`.
 
-See `docs/BENCHMARKING.md` for repair commands, local comparison modes, artifact
-ownership, and provenance details.
+The installed publisher formats and checks the candidate README before
+atomically replacing its benchmark section and CSV/SVG outputs. Links to the
+complete-run payload and evidence envelope replace new plot-provenance sidecars;
+original sidecars remain unchanged. Tag-pinned links become available when the
+release tag is pushed. Until then, preview the SVG directly under
+`docs/assets/bench/`.
+
+See [Benchmarking](BENCHMARKING.md) for explicit scratch versus retained plot
+inputs, named metric/statistic/axis views, output ownership and methodology.
 
 ### 6. Validate the release branch
 
@@ -321,7 +337,7 @@ release ID and tag commit before attaching
 the archive. Do not edit the draft, move the tag,
 or publish manually while the workflow is running.
 
-The privileged jobs install the exact published `research-repo-tools==0.2.0`
+The privileged jobs install the exact published `research-repo-tools==0.2.2`
 package on Python 3.15 without repository checkout. Preflight emits versioned
 target JSON with the captured ID, commit and title assertion. Its trusted job
 output passes directly to the publisher, separately from the producer's inert

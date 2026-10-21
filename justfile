@@ -111,8 +111,8 @@ bench-linear-form:
     {{ _run }} cargo bench --locked --features bench --bench linear_form
 
 # Check every discovered benchmark before the release workflow packages it.
-bench-release-check tag: _ensure-uv
-    {{ _run }} uv run --locked scripts/archive_performance.py release-check {{ quote(tag) }}
+bench-release-check tag criterion_dir="target/criterion": _ensure-uv
+    {{ _run }} uv run --locked research-repo-tools performance verify-saved tooling/criterion-saved.toml --saved-sample {{ quote(tag) }} --criterion-dir {{ quote(criterion_dir) }}
 
 # Discover all release benchmarks and report their expected measurement budget.
 bench-release-inventory: _ensure-uv
@@ -341,17 +341,25 @@ markdown-check: tools-check _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
     files=()
+    raw_files=()
     while IFS= read -r -d '' file; do
         case "$file" in
             CHANGELOG.md|docs/archive/*|docs/archives/changelog/*|docs/performance.md|docs/performance-runs/*) continue ;;
         esac
         if [ -f "$file" ]; then
             files+=("$file")
+            # Shared README publication retains full immutable evidence URLs.
+            # rumdl still checks its prose, syntax, links, and rendered line length.
+            if [ "$file" != README.md ]; then
+                raw_files+=("$file")
+            fi
         fi
     done < <(git ls-files -co --exclude-standard -z -- '*.md')
     if [ "${#files[@]}" -gt 0 ]; then
         printf '%s\0' "${files[@]}" | xargs -0 -n100 {{ _run }} rumdl check
-        uv run --locked --group dev research-repo-tools docs check-lines "${files[@]}"
+        if [ "${#raw_files[@]}" -gt 0 ]; then
+            uv run --locked --group dev research-repo-tools docs check-lines "${raw_files[@]}"
+        fi
     else
         echo "No markdown files found to check."
     fi
@@ -380,41 +388,42 @@ markdown-fix: tools-check
         echo "No markdown files found to format."
     fi
 
-# Render release docs from complete runs or their validated retained history.
+# Render the retained release report offline, with independent eligibility checks.
 performance-doc: python-sync
-    {{ _run }} uv run --locked scripts/archive_performance.py report
+    {{ _run }} uv run --locked research-repo-tools performance promote tooling/performance-report.toml
 
-# Measure tracked current inputs and the latest release with the captured current harness.
+# Measure tracked and nonignored untracked current inputs against the latest release.
 performance-local: _ensure-gh python-sync
-    {{ _run }} uv run --locked scripts/archive_performance.py local
+    {{ _run }} uv run --locked research-repo-tools performance measure tooling/measurements/full.toml --mode current-vs-latest --repository acgetchell/la-stack --allow-git-mutations --payload target/bench-reports/full/run.json --manifest target/bench-reports/full/evidence.json --report target/bench-reports/full/report.md
 
 # Measure the comparison suite while retaining baseline-phase nalgebra/faer context.
-performance-local-non-exact current_tag="" baseline_tag="": _ensure-gh python-sync
-    {{ _run }} uv run --locked scripts/archive_performance.py local {{ quote(current_tag) }} {{ quote(baseline_tag) }} --suite vs_linalg --stem target/bench-reports/performance-non-exact
+performance-local-non-exact: _ensure-gh python-sync
+    {{ _run }} uv run --locked research-repo-tools performance measure tooling/measurements/non-exact.toml --mode current-vs-latest --repository acgetchell/la-stack --allow-git-mutations --payload target/bench-reports/non-exact/run.json --manifest target/bench-reports/non-exact/evidence.json --report target/bench-reports/non-exact/report.md
 
-# Publish the dimension plot and README section directly from complete-run evidence.
-performance-readme metric="lu_solve" stat="median" sample="new" log_y="true": python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    args=(--metric {{ quote(metric) }} --stat {{ quote(stat) }} --sample {{ quote(sample) }} --update-readme)
-    if [ {{ quote(log_y) }} = "true" ]; then
-        args+=(--log-y)
-    fi
-    {{ _run }} uv run --locked scripts/archive_performance.py plot "${args[@]}"
+# Measure two existing tags with the full or non-exact declaration.
+performance-measure current_tag baseline_tag view="full": python-sync
+    {{ _run }} uv run --locked research-repo-tools performance measure {{ quote("tooling/measurements/" + view + ".toml") }} {{ quote(current_tag) }} {{ quote(baseline_tag) }} --allow-git-mutations --payload {{ quote("target/bench-reports/" + view + "/run.json") }} --manifest {{ quote("target/bench-reports/" + view + "/evidence.json") }} --report {{ quote("target/bench-reports/" + view + "/report.md") }}
+
+# Fetch measurement tags explicitly before the isolated measurement commands.
+performance-prepare:
+    git fetch origin --tags
+
+# Promote the explicitly selected full scratch run; missing inputs never fall back.
+performance-promote: python-sync
+    {{ _run }} uv run --locked research-repo-tools performance promote tooling/performance-report.toml --payload target/bench-reports/full/run.json --manifest target/bench-reports/full/evidence.json
+
+# Publish the canonical README view with independently asserted source identities.
+performance-readme current_tag current_revision baseline_tag baseline_revision: python-sync
+    {{ _run }} uv run --locked research-repo-tools performance publish tooling/performance-readme.toml --current-release {{ quote(current_tag) }} --current-revision {{ quote(current_revision) }} --baseline-release {{ quote(baseline_tag) }} --baseline-revision {{ quote(baseline_revision) }}
 
 # Measure, retain an immutable complete run, and promote distinct-release documentation.
 performance-release current_tag="" baseline_tag="": _ensure-gh python-sync
-    {{ _run }} uv run --locked scripts/archive_performance.py release {{ quote(current_tag) }} {{ quote(baseline_tag) }}
+    {{ _run }} uv run --locked research-repo-tools performance measure tooling/measurements/full.toml {{ quote(current_tag) }} {{ quote(baseline_tag) }} --repository acgetchell/la-stack --allow-git-mutations --payload target/bench-reports/full/run.json --manifest target/bench-reports/full/evidence.json --report target/bench-reports/full/report.md
+    {{ _run }} uv run --locked research-repo-tools performance promote tooling/performance-report.toml --payload target/bench-reports/full/run.json --manifest target/bench-reports/full/evidence.json
 
-# Plot the complete retained comparison without measuring again.
-plot-vs-linalg metric="lu_solve" stat="median" sample="new" log_y="false": python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    args=(--metric {{ quote(metric) }} --stat {{ quote(stat) }} --sample {{ quote(sample) }})
-    if [ {{ quote(log_y) }} = "true" ]; then
-        args+=(--log-y)
-    fi
-    {{ _run }} uv run --locked scripts/archive_performance.py plot "${args[@]}"
+# Render a named metric/statistic/axis view from explicitly retained or scratch inputs.
+plot-vs-linalg current_tag current_revision baseline_tag baseline_revision view="lu_solve-median-linear" input="retained": python-sync
+    {{ _run }} uv run --locked research-repo-tools performance publish {{ quote("tooling/plots/" + input + "/" + view + ".toml") }} --artifacts-only --current-release {{ quote(current_tag) }} --current-revision {{ quote(current_revision) }} --baseline-release {{ quote(baseline_tag) }} --baseline-revision {{ quote(baseline_revision) }}
 
 # Check Python formatting, lint, fixtures, and types.
 python-check: python-format-check python-lint python-fixture-lint python-typecheck
@@ -425,8 +434,8 @@ python-ci: python-format-check python-lint python-fixture-lint python-typecheck 
 
 # Apply Python lint fixes and formatting.
 python-fix: python-sync
-    uv run --locked ruff check scripts/ --fix
-    uv run --locked ruff format scripts/ tests/semgrep/scripts/
+    uv run --locked ruff check tooling/tests/ --fix
+    uv run --locked ruff format tooling/tests/ tests/semgrep/scripts/
 
 # Lint deliberate Python fixtures with their declared exceptions.
 python-fixture-lint: python-sync
@@ -434,11 +443,11 @@ python-fixture-lint: python-sync
 
 # Check Python formatting, including static-analysis fixtures.
 python-format-check: python-sync
-    uv run --locked ruff format --check scripts/ tests/semgrep/scripts/
+    uv run --locked ruff format --check tooling/tests/ tests/semgrep/scripts/
 
 # Lint Python support tools and their tests.
 python-lint: python-sync
-    uv run --locked ruff check scripts/
+    uv run --locked ruff check tooling/tests/
 
 # Synchronize the locked Python development environment.
 python-sync: _ensure-uv
@@ -446,7 +455,7 @@ python-sync: _ensure-uv
 
 # Check all Python support and fixture types; fail on every diagnostic.
 python-typecheck: python-sync
-    uv run --locked ty check scripts/ tests/semgrep/scripts/ --error all
+    uv run --locked ty check tooling/tests/ tests/semgrep/scripts/ --error all
 
 # Require the release event, reviewed commit, native checks, assets, and notes.
 release-gate tag:
