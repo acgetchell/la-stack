@@ -14,7 +14,7 @@ runs the installed-package integration tests. `just ci` is the final
 repository validation. Native Linux, macOS and Windows CI is required for
 adoption; local macOS results do not establish the other platforms.
 
-Semgrep 1.180.0 retains its separate locked Python 3.14 environment in
+Semgrep 1.182.0 retains its separate locked Python 3.14 environment in
 `tooling/semgrep/` while its wheels exclude Python 3.15. Ordinary Rust and
 Python tests remain scan targets; deliberate `tests/semgrep/` fixtures are
 checked separately by `just semgrep-test`.

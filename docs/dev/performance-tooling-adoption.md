@@ -143,7 +143,7 @@ reruns or new performance claims are needed.
 
 The dependency-only environment remains Python 3.15. Python supports shared
 tools and consumer tests; deleting production scripts does not remove it.
-Semgrep 1.180.0 still requires its separately locked Python 3.14 environment
+Semgrep 1.182.0 still requires its separately locked Python 3.14 environment
 under `tooling/semgrep/`. Retire that exception only when published scanner
 wheels support Python 3.15 and native gates pass.
 

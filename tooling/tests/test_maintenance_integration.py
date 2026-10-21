@@ -149,15 +149,16 @@ def test_semgrep_adapter_uses_real_consumer_rules_and_fixtures() -> None:
     assert "research-repo-tools semgrep check-fixtures" in result.stderr
 
 
-def test_semgrep_keeps_its_current_version_outside_the_python_315_environment() -> None:
-    """The generic dev updater cannot downgrade the isolated native scanner."""
+def test_semgrep_preserves_its_pin_and_mcp_override_in_python_314() -> None:
+    """The isolated native scanner retains its exact pin and patched MCP API."""
     root = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     scanner = tomllib.loads((REPO_ROOT / "tooling/semgrep/pyproject.toml").read_text(encoding="utf-8"))
     assert not any(isinstance(item, str) and item.startswith("semgrep") for item in root["dependency-groups"]["dev"])
-    assert scanner["project"]["dependencies"] == ["semgrep==1.180.0"]
+    assert scanner["project"]["dependencies"] == ["semgrep==1.182.0"]
     assert scanner["project"]["requires-python"] == ">=3.14,<3.15"
-    result = run_command("uv", ["run", "--locked", "--project", "tooling/semgrep", "semgrep", "--version"], cwd=REPO_ROOT)
-    assert result.stdout.strip() == "1.180.0"
+    assert scanner["tool"]["uv"]["override-dependencies"] == ["mcp>=1.30.0,<2"]
+    result = run_command("uv", ["run", "--locked", "--project", "tooling/semgrep", "semgrep", "--disable-version-check", "--version"], cwd=REPO_ROOT)
+    assert result.stdout.strip() == "1.182.0"
 
 
 def test_python_update_includes_the_isolated_semgrep_project() -> None:

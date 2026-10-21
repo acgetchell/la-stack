@@ -29,9 +29,7 @@ CARGO_UPDATE = [
     [*UPDATER, "toolchain", "run", "--", "cargo", "update"],
 ]
 PYTHON_UPDATE = [
-    [*UPDATER, "deps", "update-python"],
-    ["lock", "--upgrade"],
-    [*CHECKED, "uv", "sync", "--locked", "--managed-python", "--group", "dev"],
+    [*UPDATER, "deps", "update-python", "--all-projects"],
 ]
 WORKFLOWS = {
     "update": [UV_UPDATE, TOOL_UPDATE, SETUP, *CARGO_UPDATE, *PYTHON_UPDATE],
@@ -107,7 +105,7 @@ def test_update_recipes_sequence_and_preserve_coupled_exclusions(consumer: Path,
     assert calls == WORKFLOWS[recipe]
 
 
-@pytest.mark.parametrize("step", range(1, 9))
+@pytest.mark.parametrize("step", range(1, len(WORKFLOWS["update"]) + 1))
 def test_update_failure_stops_later_steps(consumer: Path, monkeypatch: pytest.MonkeyPatch, step: int) -> None:
     monkeypatch.setenv("UPDATE_FAIL_STEP", str(step))
     result, calls = invoke(consumer, "update")
