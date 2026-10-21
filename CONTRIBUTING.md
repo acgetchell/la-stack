@@ -9,9 +9,9 @@ clarity, and the fixed-dimension stack-allocation model.
 Reusable Python development tooling has moved into
 [`research-repo-tools`](https://github.com/acgetchell/research-repo-tools).
 It is a development dependency for this repository's setup, validation,
-maintenance, benchmark reporting, and release workflows. Local scripts retain
-la-stack's scientific policy and remaining benchmark adapters; see the
-[Scripts guide](scripts/README.md) for the ownership boundary.
+maintenance, benchmark reporting, and release workflows. Static declarations
+and native correctness gates retain la-stack's scientific policy; see the
+[Tooling guide](tooling/README.md) for the ownership boundary.
 
 Building and using `la-stack` as a Rust library does not require Python, `uv`,
 or `research-repo-tools`. The setup below is for contributors working on this
@@ -39,12 +39,12 @@ change files. Run bare `just` for the complete generated command list, including
 arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
 owns recipe naming and documentation placement.
 
-Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.0` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.2` package,
 locked in the `tooling` dependency group and included by `dev`. Normal setup
 and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
 checkout is unnecessary. To upgrade it deliberately, review the exact
 `tooling` and project runtime requirements and refresh `uv.lock` together, then run the consumer
-integration tests and `just ci`. See the [Scripts guide](scripts/README.md#changelog-and-release-tooling)
+integration tests and `just ci`. See the [Tooling guide](tooling/README.md#changelog-and-release-tooling)
 for the retained changelog policy and ownership boundary.
 
 The shared setup contract requires an existing uv and does not generate bootstrap
@@ -288,7 +288,7 @@ Use the existing canonical documents instead of duplicating their guidance:
 | Mathematical basis and numerical validity | [`docs/mathematical_basis.md`](docs/mathematical_basis.md) |
 | Package metadata, features, and dependencies | [`Cargo.toml`](Cargo.toml) |
 | Commands and validation workflow | [`justfile`](justfile), `just --list` |
-| Python support tooling | [`scripts/README.md`](scripts/README.md) |
+| Python support tooling | [`tooling/README.md`](tooling/README.md) |
 | Benchmark methodology and baselines | [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md) |
 | Coverage workflow and reports | [`docs/MEASURING_COVERAGE.md`](docs/MEASURING_COVERAGE.md) |
 | Citations and bibliography | [`CITATION.cff`](CITATION.cff), [`REFERENCES.md`](REFERENCES.md) |
@@ -339,10 +339,10 @@ for before-and-after measurements. The local release comparison is:
 just performance-local
 ```
 
-It writes `target/bench-reports/performance.md` without changing committed
-release documentation or requiring a version bump. Staged and unstaged changes
-to tracked files participate; untracked files are excluded, so stage any new
-benchmark-relevant file first. Treat regressions as design feedback. If a
+It writes `target/bench-reports/full/report.md` without changing committed
+release documentation or requiring a version bump. Tracked changes and
+nonignored untracked regular files participate; keep scratch output under
+ignored `target/`. Treat regressions as design feedback. If a
 slowdown is intentional, explain the correctness, API clarity, or composability
 benefit that justifies it.
 

@@ -31,7 +31,7 @@ if the scope expands. Unrelated guides need not be loaded for every task.
 | Module ownership, features, or file organization | [Code organization](docs/code_organization.md) |
 | Setup, commands, or validation selection | [Contributor workflow](CONTRIBUTING.md#validation-workflow), [justfile](justfile), `just --list` |
 | Benchmark execution or performance reports | [Benchmarking](docs/BENCHMARKING.md) |
-| Python support scripts | [Scripts guide](scripts/README.md) |
+| Python tooling and consumer tests | [Tooling guide](tooling/README.md) |
 | Maintainer-requested release work | [Releasing](docs/RELEASING.md) |
 
 ## Priorities
@@ -218,7 +218,7 @@ Favor the invariant over a convenient edit or faster implementation.
   Python scripts; never invoke `python` or `python3` directly.
 - Use pytest, not unittest, and add type hints to new code.
 - `just python-check` includes blocking type checking; all code must pass.
-- Read the [Scripts guide](scripts/README.md) for maintenance rules and
+- Read the [Tooling guide](tooling/README.md) for maintenance rules and
   entry-point ownership.
 
 ## Project Context

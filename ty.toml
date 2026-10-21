@@ -1,10 +1,10 @@
 # ty.toml
 # Astral ty configuration for la-stack
-# Python is auxiliary tooling only (scripts/), Rust is primary
+# Python contains tooling integration tests; Rust is primary.
 
 [src]
 # Restrict analysis strictly to Python tooling.
-include = [ "scripts" ]
+include = [ "tooling/tests" ]
 
 [terminal]
 # Keep output concise by default.

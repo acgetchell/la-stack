@@ -52,14 +52,14 @@ tooling = [
 dev = [
     { name = "actionlint-py", specifier = "==1.7.12.25" },
     { name = "pytest", specifier = "==9.1.1" },
-    { name = "research-repo-tools", specifier = "==0.2.0" },
+    { name = "research-repo-tools", specifier = "==0.2.2" },
     { name = "ruff", specifier = "==0.17.1" },
     { name = "shellcheck-py", specifier = "==0.11.0.1" },
     { name = "shfmt-py", specifier = "==4.2.0" },
     { name = "ty", specifier = "==0.0.89" },
     { name = "yamllint", specifier = "==1.38.0" },
 ]
-tooling = [{ name = "research-repo-tools", specifier = "==0.2.0" }]
+tooling = [{ name = "research-repo-tools", specifier = "==0.2.2" }]
 
 [[package]]
 name = "packaging"
@@ -121,16 +121,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd77
 
 [[package]]
 name = "research-repo-tools"
-version = "0.2.0"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "rust-just" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/57/b0/fdb4c8428e58a4528d34249be50221b240e598f24679e637dedbaeed0a77/research_repo_tools-0.2.0.tar.gz", hash = "sha256:6a173267d09c8495ecac909ef4201a3e9c71ed453e3295a05d8f1a21585096a6", size = 855482, upload-time = "2026-10-19T23:35:46.864Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9c/d1/a2f0444e568abe7529721d7b8e342c5fd4ecb9021333d06b66be420215d5/research_repo_tools-0.2.2.tar.gz", hash = "sha256:4937f202a55c5678af30bae915e01ddbc17f9dd8dd9e143b2f430331b42e8f50", size = 872467, upload-time = "2026-10-21T10:17:15.454Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/24/46ac38772a7925460f3973162ca438093115a3e2750de8bdf4cebe15a35d/research_repo_tools-0.2.0-py3-none-any.whl", hash = "sha256:73c4052993ca86fe4b1dec972b2b3bc9699493064c4acfdbe8969d89e453c602", size = 372885, upload-time = "2026-10-19T23:35:45.405Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/5c/cd74485ccb20cf85d615402097b5e216b55a95c83475cb9b51ed329a739a/research_repo_tools-0.2.2-py3-none-any.whl", hash = "sha256:b82e11ef8265f0b03c37cac93f59d5854a63543c29ee378f5980623af57d9381", size = 378782, upload-time = "2026-10-21T10:17:13.727Z" },
 ]
 
 [[package]]

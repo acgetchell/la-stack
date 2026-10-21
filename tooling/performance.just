@@ -5,20 +5,23 @@
 # Resolve the shared output tree before those working directories change.
 export CRITERION_HOME := absolute_path(env("CRITERION_HOME", "target/criterion"))
 
+# Compare native targets on the measured host regardless of a caller's target override.
+host_target := `rustc --print host-tuple`
+
 baseline-all mode="measure": (baseline-vs_linalg mode) (baseline-exact mode)
 
 baseline-exact mode="measure":
-    cargo bench --locked --features bench,exact --bench exact -- --noplot {{ if mode == "list" { "--list" } else { "" } }}
+    cargo bench --locked --target {{ host_target }} --features bench,exact --bench exact -- --noplot {{ if mode == "list" { "--list" } else { "" } }}
 
 baseline-vs_linalg mode="measure":
-    cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --noplot {{ if mode == "list" { "--list" } else { "" } }}
+    cargo bench --locked --target {{ host_target }} -p la-stack-comparison --features bench --bench vs_linalg -- --noplot {{ if mode == "list" { "--list" } else { "" } }}
 
 current-all mode="measure": (current-vs_linalg mode) (current-exact mode)
 
 current-exact mode="measure": (baseline-exact mode)
 
 current-vs_linalg mode="measure":
-    cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- la_stack --noplot {{ if mode == "list" { "--list" } else { "" } }}
+    cargo bench --locked --target {{ host_target }} -p la-stack-comparison --features bench --bench vs_linalg -- la_stack --noplot {{ if mode == "list" { "--list" } else { "" } }}
 
 gate:
-    cargo test --locked --workspace --features bench,exact --test vs_linalg_inputs --test exact_bench_config
+    cargo test --locked --target {{ host_target }} --workspace --features bench,exact --test vs_linalg_inputs --test exact_bench_config

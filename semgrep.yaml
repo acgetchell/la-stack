@@ -1038,10 +1038,10 @@ rules:
       rationale: "Git patches and hash inputs should retain their original bytes without passing through text encoding choices."
     paths:
       include:
-        - "/scripts/**/*.py"
+        - "/tooling/**/*.py"
         - "/tests/semgrep/scripts/**/*.py"
       exclude:
-        - "/scripts/tests/**"
+        - "/tooling/tests/**"
         - "/tests/semgrep/scripts/tests/**"
     patterns:
       - pattern-either:
@@ -1060,10 +1060,10 @@ rules:
       rationale: "Platform-default text writes make artifact bytes depend on the host OS, even when Git checkout conversion is disabled."
     paths:
       include:
-        - "/scripts/**/*.py"
+        - "/tooling/**/*.py"
         - "/tests/semgrep/scripts/**/*.py"
       exclude:
-        - "/scripts/tests/**"
+        - "/tooling/tests/**"
         - "/tests/semgrep/scripts/tests/**"
     pattern-either:
       - patterns:
@@ -1137,7 +1137,7 @@ rules:
         while failing on Windows when output contains Unicode symbols.
     paths:
       include:
-        - "/scripts/tests/**/*.py"
+        - "/tooling/tests/**/*.py"
         - "/tests/semgrep/scripts/tests/**/*.py"
     patterns:
       - pattern-either:
@@ -1162,7 +1162,7 @@ rules:
       rationale: "Python tooling should surface expected failure modes explicitly."
     paths:
       include:
-        - "/scripts/**/*.py"
+        - "/tooling/**/*.py"
         - "/tests/semgrep/scripts/tests/python_exceptions.py"
     pattern-regex: '^\s*except\s+Exception(?:\s+as\s+\w+)?\s*:'
 
@@ -1176,7 +1176,7 @@ rules:
       rationale: "Command-wrapper mocks should stay aligned with the real subprocess result shape."
     paths:
       include:
-        - "/scripts/tests/**/*.py"
+        - "/tooling/tests/**/*.py"
         - "/tests/semgrep/scripts/tests/python_exceptions.py"
     pattern-either:
       - patterns:
@@ -1254,8 +1254,8 @@ rules:
       rationale: "Support scripts should inherit the repository's subprocess hardening."
     paths:
       include:
-        - "/scripts/**/*.py"
+        - "/tooling/**/*.py"
         - "/tests/semgrep/scripts/tests/python_exceptions.py"
       exclude:
-        - "/scripts/tests/**/*.py"
+        - "/tooling/tests/**/*.py"
     pattern: subprocess.run(...)
