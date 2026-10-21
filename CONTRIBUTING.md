@@ -9,8 +9,8 @@ clarity, and the fixed-dimension stack-allocation model.
 Reusable Python development tooling has moved into
 [`research-repo-tools`](https://github.com/acgetchell/research-repo-tools).
 It is a development dependency for this repository's setup, validation,
-maintenance, benchmark reporting, and release workflows. Local scripts retain
-la-stack's scientific policy and remaining benchmark adapters; see the
+maintenance, benchmark reporting, and release workflows. Static declarations
+and native correctness gates retain la-stack's scientific policy; see the
 [Tooling guide](tooling/README.md) for the ownership boundary.
 
 Building and using `la-stack` as a Rust library does not require Python, `uv`,
@@ -340,9 +340,9 @@ just performance-local
 ```
 
 It writes `target/bench-reports/full/report.md` without changing committed
-release documentation or requiring a version bump. Staged and unstaged changes
-to tracked files participate; untracked files are excluded, so stage any new
-benchmark-relevant file first. Treat regressions as design feedback. If a
+release documentation or requiring a version bump. Tracked changes and
+nonignored untracked regular files participate; keep scratch output under
+ignored `target/`. Treat regressions as design feedback. If a
 slowdown is intentional, explain the correctness, API clarity, or composability
 benefit that justifies it.
 

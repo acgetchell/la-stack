@@ -125,13 +125,13 @@ inherit the root workspace lints and share the lockfile and target directory.
 
 The [Benchmarking guide](BENCHMARKING.md) owns benchmark commands, methodology,
 baselines, output locations, and report promotion. The [Tooling guide](../tooling/README.md)
-owns the Python script inventory and entry points for comparisons and plotting.
+owns the performance declaration inventory, consumer-test scope, and recipe ownership.
 The pinned published `research-repo-tools` dependency
 owns changelog generation, normalization, minor-series archiving, note lookup,
 and tag preparation through its CLI. Consumer identity and dependency-body policy
 stay in `[tool.research-repo-tools.changelog]` in `pyproject.toml`, with
 formatting in `changelog-rumdl.toml`; no common template is copied locally.
-focused integration checks live in `tooling/tests/test_changelog_integration.py`.
+Focused integration checks live in `tooling/tests/test_changelog_integration.py`.
 The same dependency owns CodeRabbit review orchestration through thin Just
 wrappers. `tooling/tests/test_review_integration.py` owns consumer wiring checks
 with local stubs; the [contributor review workflow](../CONTRIBUTING.md#coderabbit-review)
