@@ -8,23 +8,25 @@ belong to research-repo-tools.
 
 ## Publication boundary
 
-The dependency-only environment pins the published `research-repo-tools==0.2.2`
+The dependency-only environment pins the published `research-repo-tools==0.2.3`
 package, including the release workflow's isolated installations.
-Upstream [#118](https://github.com/acgetchell/research-repo-tools/pull/118)
-adds the missing minimum-release acquisition contract; release
-[#119](https://github.com/acgetchell/research-repo-tools/pull/119) published it
-from commit `e9310163d2789532bdcb155ef93b721473dc5523`. v0.2.1 supplied the declarative workflow interfaces but could
-not express the consumer's v0.5.0 measurement floor.
+Upstream [#123](https://github.com/acgetchell/research-repo-tools/pull/123)
+adds trusted main-validation artifact reuse for release promotion; v0.2.3
+was published from commit `4085125526e21b2855eb7c61a52ee312782ae31a`.
+It also refreshes explicitly declared independent Python projects while
+preserving their selectors, exact pins, overrides, and separate environments.
+The minimum-release acquisition contract introduced by v0.2.2 remains in place:
+v0.2.1 could not express the consumer's v0.5.0 measurement floor.
 
-[PyPI v0.2.2](https://pypi.org/project/research-repo-tools/0.2.2/) lists both
+[PyPI v0.2.3](https://pypi.org/project/research-repo-tools/0.2.3/) lists both
 distributions as unyanked. Their SHA-256 hashes match the signed
-[GitHub release assets](https://github.com/acgetchell/research-repo-tools/releases/tag/v0.2.2)
+[GitHub release assets](https://github.com/acgetchell/research-repo-tools/releases/tag/v0.2.3)
 and the exact registry lock entries:
 
 | Distribution | SHA-256 |
 | --- | --- |
-| Wheel | `b82e11ef8265f0b03c37cac93f59d5854a63543c29ee378f5980623af57d9381` |
-| Source distribution | `4937f202a55c5678af30bae915e01ddbc17f9dd8dd9e143b2f430331b42e8f50` |
+| Wheel | `da5f0259027662e7706b7f2b8a38d8e1f1d8a5dce314e2c996177b2947514fc6` |
+| Source distribution | `13700b174656ffad265ecb926dd66013949853b7a39c088ab6d3852aba72df95` |
 
 Runtime imports and acceptance checks use this installed package. No sibling
 checkout, private API, or release-candidate installation supplies final evidence.
