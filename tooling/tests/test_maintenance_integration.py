@@ -160,6 +160,15 @@ def test_semgrep_keeps_its_current_version_outside_the_python_315_environment() 
     assert result.stdout.strip() == "1.180.0"
 
 
+def test_python_update_includes_the_isolated_semgrep_project() -> None:
+    """The shared updater owns both locks while each project owns its constraints."""
+    root = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert root["tool"]["research-repo-tools"]["deps"]["python-projects"] == ["tooling/semgrep"]
+    result = dry_run(REPO_ROOT, "update-python-dependencies")
+    assert "research-repo-tools deps update-python --all-projects" in result.stderr
+    assert "uv lock --upgrade" not in result.stderr
+
+
 @pytest.mark.parametrize("output_args", [pytest.param((), id="local"), pytest.param(("--sarif",), id="sarif")])
 def test_semgrep_production_targets_include_tests_and_exclude_rule_fixtures(tmp_path: Path, output_args: tuple[str, ...]) -> None:
     """Exercise both scan formats without Git ignores masking Semgrep exclusions."""

@@ -66,6 +66,10 @@ Then `just update-dependencies` upgrades Cargo requirements and refreshes Cargo'
 lock, resolves exact direct Python `dev` pins, refreshes the complete `uv.lock`,
 and explicitly synchronizes `dev` with managed Rust available for native builds.
 Included groups retain their constraints, including the exact shared-package pin.
+The shared Python updater also refreshes `tooling/semgrep/uv.lock` and syncs its
+separate environment through `deps.python-projects`. It retains the scanner's
+exact Semgrep pin, Python 3.14 selector, and dependency overrides. Declare future
+independent uv projects in the same list so they participate in `just update`.
 `just update-cargo-dependencies` excludes `num-bigint` and `num-rational` from
 incompatible requirement upgrades because their public types must advance
 together; Cargo can still refresh locked versions within those requirements.

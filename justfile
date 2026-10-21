@@ -719,11 +719,9 @@ update-cargo-tools:
 # Dependency-only updates leave uv and managed Cargo tool pins unchanged.
 update-dependencies: update-cargo-dependencies update-python-dependencies
 
-# Advance direct dev pins, refresh the whole lock, and explicitly synchronize dev.
+# Advance main dev pins, then refresh and sync the root and Semgrep environments.
 update-python-dependencies:
-    uv run --locked --only-group tooling --inexact research-repo-tools deps update-python
-    uv lock --upgrade
-    {{ _run }} uv sync --locked --managed-python --group dev
+    uv run --locked --only-group tooling --inexact research-repo-tools deps update-python --all-projects
 
 alias update-python-deps := update-python-dependencies
 
