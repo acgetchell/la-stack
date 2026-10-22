@@ -64,16 +64,16 @@ jobs:
         # ruleid: la-stack.github-actions.external-action-version-comment
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
 
-      - name: Allowed setup-python action
-        # ok: la-stack.github-actions.external-action-approved-allowlist
+      - name: Pinned but unapproved setup-python action
         # ok: la-stack.github-actions.external-action-sha-pinned
         # ok: la-stack.github-actions.external-action-version-comment
+        # ruleid: la-stack.github-actions.external-action-approved-allowlist
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
 
-      - name: Allowed Rust cache action
-        # ok: la-stack.github-actions.external-action-approved-allowlist
+      - name: Pinned but unapproved Rust cache action
         # ok: la-stack.github-actions.external-action-sha-pinned
         # ok: la-stack.github-actions.external-action-version-comment
+        # ruleid: la-stack.github-actions.external-action-approved-allowlist
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Local action

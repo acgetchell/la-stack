@@ -607,9 +607,11 @@ update-version tag *args: _ensure-gh python-sync
 validate-json: _ensure-jq
     uv run --locked research-repo-tools files run --include '*.json' --batch-size 1 -- jq empty
 
-# Validate external workflow dependencies against the repository allowlist.
+# Validate external workflow and composite-action dependencies against the repository allowlist.
 workflow-allowlist-check: python-sync
     uv run --locked research-repo-tools actions allowlist --policy .github/actions-allowlist.json .github/workflows
+    # The v0.2.3 parser accepts workflows only; Semgrep checks composite actions.
+    uv run --locked --project tooling/semgrep semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .github/actions
 
 # Check YAML and CFF formatting and lint.
 yaml-check: yaml-fmt-check yaml-lint

@@ -39,6 +39,10 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
+          # Deliberate violations are exercised by just semgrep-test.
+          config: |
+            paths-ignore:
+              - tests/semgrep/**
 
       - name: Initialize CodeQL (Rust)
         if: matrix.language == 'rust'
@@ -47,6 +51,10 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: none
           queries: security-extended
+          # Keep ordinary tests in scope; exclude only rule fixtures.
+          config: |
+            paths-ignore:
+              - tests/semgrep/**
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3

@@ -184,6 +184,24 @@ def test_zizmor_workflow_separates_findings_from_sarif_export() -> None:
     assert "github.actor != 'dependabot[bot]'" in upload["if"]
 
 
+def test_composite_allowlist_agrees_with_repository_policy() -> None:
+    """Pinned references need approval in both workflow and composite checks."""
+    policy = json.loads((REPO_ROOT / ".github/actions-allowlist.json").read_bytes())
+    approved = {pattern.removesuffix("@*") for pattern in policy["patterns_allowed"]}
+    rules = yaml.safe_load((REPO_ROOT / "semgrep.yaml").read_bytes())["rules"]
+    rule = next(rule for rule in rules if rule["id"] == "la-stack.github-actions.external-action-approved-allowlist")
+    pattern = re.compile(rule["patterns"][0]["pattern-regex"])
+    unapproved = {"actions/setup-python", "swatinem/rust-cache", "zizmorcore/zizmor-action", "unapproved/setup-uv"}
+    candidates = approved | unapproved | {f"{action}/unapproved" for action in approved}
+    for action in candidates:
+        for prefix in ("        uses: ", "    - uses: "):
+            reference = f"{prefix}{action}@{'a' * 40} # v1.0.0"
+            assert bool(pattern.search(reference)) == (action not in approved), reference
+    commands = dry_run(REPO_ROOT, "workflow-allowlist-check").stderr
+    assert "--policy .github/actions-allowlist.json .github/workflows" in commands
+    assert "--config semgrep.yaml .github/actions" in commands
+
+
 def test_semgrep_sarif_upload_honors_only_in_source_suppressions() -> None:
     """GitHub receives actionable findings with their original metadata across every run."""
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/semgrep-sarif.yml").read_bytes())

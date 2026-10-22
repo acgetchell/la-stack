@@ -424,7 +424,7 @@ rules:
         - "/tests/semgrep/.github/workflows/**/*.yml"
         - "/tests/semgrep/.github/workflows/**/*.yaml"
     patterns:
-      - pattern-regex: '(?m)^[ \t]*(?:-[ \t]*)?uses:\s*(?!\./)(?!docker://)(?!(?:actions/attest|actions/checkout|actions/cache|actions/download-artifact|actions/github-script|actions/setup-python|actions/upload-artifact|actions-rust-lang/setup-rust-toolchain|astral-sh/setup-uv|codecov/codecov-action|github/codeql-action/(?:upload-sarif|init|analyze)|rust-lang/crates-io-auth-action|swatinem/rust-cache|taiki-e/cache-cargo-install-action|zizmorcore/zizmor-action|acgetchell/research-repo-tools/\.github/workflows/dependabot-approve\.yml)@)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*@' # yamllint disable-line rule:line-length
+      - pattern-regex: '(?m)^[ \t]*(?:-[ \t]*)?uses:\s*(?!\./)(?!docker://)(?!(?:actions/attest|actions/checkout|actions/cache|actions/download-artifact|actions/github-script|actions/upload-artifact|actions-rust-lang/setup-rust-toolchain|astral-sh/setup-uv|codecov/codecov-action|github/codeql-action/(?:upload-sarif|init|analyze)|rust-lang/crates-io-auth-action|taiki-e/cache-cargo-install-action|acgetchell/research-repo-tools/\.github/workflows/dependabot-approve\.yml)@)[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*@' # yamllint disable-line rule:line-length
 
   - id: la-stack.github-actions.external-action-version-comment
     languages:

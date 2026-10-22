@@ -11,6 +11,8 @@ runs:
     - uses: astral-sh/setup-uv@v10
     # ruleid: la-stack.github-actions.external-action-approved-allowlist
     - uses: unapproved/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+    # ruleid: la-stack.github-actions.external-action-approved-allowlist
+    - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
     # ruleid: la-stack.github-actions.external-action-version-comment
     - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
     # ok: la-stack.github-actions.external-action-sha-pinned
