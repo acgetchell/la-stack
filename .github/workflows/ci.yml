@@ -53,3 +53,58 @@ jobs:
 
       - name: Run CI checks
         run: just ci
+
+  release-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up declared tools without caches
+        uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
+        with:
+          cache: "false"
+      - name: Verify default and exact Cargo packages
+        run: just release-package
+
+  release-evidence:
+    needs: [build, release-package]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'acgetchell/la-stack'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version-file: pyproject.toml
+          python-version-file: .python-version
+          enable-cache: false
+      - name: Capture successful native validation identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --locked python -m tooling.release_evidence seal --output target/release-evidence/validation.json
+      - name: Sign original main validation evidence
+        id: validation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: target/release-evidence/validation.json
+          create-storage-record: false
+      - name: Retain the signature bundle
+        env:
+          VALIDATION_BUNDLE: ${{ steps.validation.outputs.bundle-path }}
+        run: cp "$VALIDATION_BUNDLE" target/release-evidence/validation.sigstore.json
+      - name: Upload signed validation evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/release-evidence/
+          if-no-files-found: error
+          retention-days: 30

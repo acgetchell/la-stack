@@ -21,8 +21,25 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TOOLING_REQUIREMENT = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["dependency-groups"]["tooling"][0]
 WORKFLOW = REPO_ROOT / ".github/workflows/release-benchmarks.yml"
 PREPARATION = REPO_ROOT / ".github/actions/prepare-release-benchmarks/action.yml"
-REQUIRED = load_discovery(REPO_ROOT, "tooling/criterion-inventory.toml").required
-IDS = {"vs_linalg": sorted(name for name in REQUIRED if name.startswith("d")), "exact": sorted(name for name in REQUIRED if not name.startswith("d"))}
+CATALOG = tomllib.loads((REPO_ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
+REQUIRED = {
+    *(f"{group}/{name}" for group, names in CATALOG["exact"].items() for name in names),
+    *(
+        f"d{dimension}/{name}"
+        for dimension in CATALOG["dimensions"]
+        for name in [*CATALOG["library-benchmarks"], *CATALOG["additional"].get(str(dimension), [])]
+    ),
+    *(f"d{dimension}/{peer}" for dimension in CATALOG["dimensions"] for peers in CATALOG["peers"].values() for peer in peers),
+}
+# Retain optional diagnostic additions without letting a declaration omission
+# remove independently required scientific cases from the archive fixture.
+DECLARED = set(load_discovery(REPO_ROOT, "tooling/criterion-inventory.toml").required) | set(
+    tomllib.loads((REPO_ROOT / "tooling/criterion-saved.toml").read_text(encoding="utf-8"))["required"]
+)
+IDS = {
+    "vs_linalg": sorted(name for name in REQUIRED | DECLARED if name.startswith("d")),
+    "exact": sorted(name for name in REQUIRED | DECLARED if not name.startswith("d")),
+}
 BASELINE = "v1.2.3"
 RAW_FILES = ("benchmark.json", "estimates.json", "sample.json", "tukey.json")
 
@@ -146,18 +163,38 @@ def test_report_consumers_require_canonical_paths(dataset: tuple[Path, Path], re
     assert {path: path.read_bytes() for path in criterion.rglob("*") if path.is_file()} == before
 
 
-def test_configured_inventory_includes_release_consumers_and_peers() -> None:
-    expected = set(REQUIRED)
-    assert {"d64/faer_lu_solve", "d64/nalgebra_lu_solve", "exact_hilbert_5x5/solve_exact", "rational_input_d8/solve_big_rational_gaussian"} <= expected
-    assert "d64/faer_dot_native" in expected
-    assert "d64/faer_dot" not in expected
-    discovery = load_discovery(REPO_ROOT, "tooling/criterion-inventory.toml")
+def assert_scientific_inventory(root: Path) -> None:
+    """Require the independent domain catalog while allowing diagnostic extras."""
+    discovery = load_discovery(root, "tooling/criterion-inventory.toml")
+    missing = REQUIRED - set(discovery.required)
+    assert not missing, f"discovery omitted scientific cases: {sorted(missing)}"
     assert {suite.name for suite in discovery.suites} == {"vs_linalg", "exact"}
     assert all(suite.command[-1] == "list" for suite in discovery.suites)
-    saved = tomllib.loads((REPO_ROOT / "tooling/criterion-saved.toml").read_text(encoding="utf-8"))
-    assert set(saved["required"]) == expected
-    assert saved["storage-paths"] == {name: name for name in expected}
+    saved = tomllib.loads((root / "tooling/criterion-saved.toml").read_text(encoding="utf-8"))
+    missing = REQUIRED - set(saved["required"])
+    assert not missing, f"saved inventory omitted scientific cases: {sorted(missing)}"
+    assert saved["storage-paths"] == {name: name for name in saved["required"]}
     assert saved["raw-files"] == list(RAW_FILES)
+
+
+def test_configured_inventory_includes_release_consumers_and_peers() -> None:
+    assert_scientific_inventory(REPO_ROOT)
+
+
+@pytest.mark.parametrize("declaration", ["criterion-inventory.toml", "criterion-saved.toml", "both"])
+def test_scientific_inventory_detects_a_nonsentinel_omission(tmp_path: Path, declaration: str) -> None:
+    removed = "d3/la_stack_norm2_sq"
+    tooling = tmp_path / "tooling"
+    tooling.mkdir()
+    for filename in ("criterion-inventory.toml", "criterion-saved.toml"):
+        contents = (REPO_ROOT / "tooling" / filename).read_text(encoding="utf-8")
+        if declaration in {filename, "both"}:
+            assert removed in tomllib.loads(contents)["required"]
+            contents = contents.replace(f'    "{removed}",\n', "").replace(f'"{removed}" = "{removed}"\n', "")
+            assert removed not in tomllib.loads(contents)["required"]
+        (tooling / filename).write_text(contents, encoding="utf-8", newline="\n")
+    with pytest.raises(AssertionError, match=f"omitted scientific cases:.*{re.escape(removed)}"):
+        assert_scientific_inventory(tmp_path)
 
 
 def test_workflow_requires_preflight_and_isolates_publication_permissions() -> None:

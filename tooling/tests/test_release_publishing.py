@@ -180,10 +180,12 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     jobs = workflow["jobs"]
     assert jobs["publish"]["needs"] == "verify"
     assert jobs["publish"]["environment"] == "crates-io"
-    assert jobs["verify"]["permissions"] == {"contents": "read", "checks": "read"}
-    assert jobs["publish"]["permissions"] == {"contents": "read", "checks": "read", "id-token": "write"}
+    assert jobs["verify"]["permissions"] == {"contents": "read", "checks": "read", "actions": "read"}
+    assert jobs["publish"]["permissions"] == {"contents": "read", "checks": "read", "actions": "read", "id-token": "write"}
     assert "github.repository == 'acgetchell/la-stack'" in jobs["verify"]["if"]
-    assert jobs["verify"]["steps"][-1]["run"] == "just release-package"
+    assert jobs["verify"]["steps"][-1]["id"] == "evidence"
+    assert "identity=$(just --quiet release-evidence)" in jobs["verify"]["steps"][-1]["run"]
+    assert jobs["verify"]["outputs"] == {"ci-evidence": "${{ steps.evidence.outputs.identity }}"}
     assert "CARGO_REGISTRY_TOKEN" not in yaml.safe_dump({"env": workflow["env"], "verify": jobs["verify"]})
     for job in jobs.values():
         checkout = job["steps"][0]
@@ -192,6 +194,9 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     steps = jobs["publish"]["steps"]
     gate = steps[2]["run"]
     assert 'just release-gate "$RELEASE_TAG"' in gate
+    assert 'test -n "$CI_EVIDENCE"' in gate
+    assert 'just release-evidence "$CI_EVIDENCE"' in gate
+    assert steps[2]["env"]["CI_EVIDENCE"] == "${{ needs.verify.outputs.ci-evidence }}"
     assert 'release registry "$RELEASE_TAG" --expect absent' in gate
     assert steps[3]["id"] == "auth"
     assert steps[4]["run"].endswith("cargo publish --locked --package la-stack --registry crates-io --no-verify")
@@ -206,23 +211,53 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert "--no-verify" not in commands
 
 
-@pytest.mark.parametrize(("failure", "expected_exit"), [("none", 0), ("evidence", 1), ("present", 1), ("unavailable", 2)])
+@pytest.mark.parametrize(("failure", "expected_exit"), [("none", 0), ("evidence", 1), ("ci-evidence", 1), ("empty-pin", 1), ("present", 1), ("unavailable", 2)])
 def test_actual_preupload_shell_requires_evidence_and_proven_absence(tmp_path: Path, failure: str, expected_exit: int) -> None:
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
     script = workflow["jobs"]["publish"]["steps"][2]["run"]
     marker = tmp_path / "upload-reached"
     gate = "just() { return 1; }" if failure == "evidence" else "just() { return 0; }"
+    if failure == "ci-evidence":
+        gate = 'just() { [[ "$1" != release-evidence ]]; }'
     registry_exit = expected_exit if failure in {"present", "unavailable"} else 0
     registry = f"uv() {{ return {registry_exit}; }}"
     script = f"{gate}\n{registry}\n{script}\ntouch {shlex.quote(marker.as_posix())}"
     result = run_command(
         "bash",
         ["--noprofile", "--norc", "-euc", script],
-        env={**{key: value for key, value in os.environ.items() if key not in {"BASH_ENV", "SHELLOPTS", "BASHOPTS"}}, "RELEASE_TAG": TAG},
+        env={
+            **{key: value for key, value in os.environ.items() if key not in {"BASH_ENV", "SHELLOPTS", "BASHOPTS"}},
+            "RELEASE_TAG": TAG,
+            "CI_EVIDENCE": "" if failure == "empty-pin" else '{"run_id": 11}',
+        },
         check=False,
     )
     assert result.returncode == expected_exit, result.stderr
     assert marker.exists() == (failure == "none")
+
+
+def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_bytes())
+    jobs = workflow["jobs"]
+    assert jobs["build"]["strategy"]["matrix"]["os"] == ["ubuntu-latest", "macos-latest", "windows-latest"]
+    assert jobs["build"]["steps"][-1] == {"name": "Run CI checks", "run": "just ci"}
+    package = jobs["release-package"]
+    assert package["steps"][1]["with"]["cache"] == "false"
+    assert package["steps"][-1] == {"name": "Verify default and exact Cargo packages", "run": "just release-package"}
+    evidence = jobs["release-evidence"]
+    assert evidence["needs"] == ["build", "release-package"]
+    assert evidence["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'acgetchell/la-stack'"
+    assert evidence["permissions"] == {"contents": "read", "actions": "read", "attestations": "write", "id-token": "write"}
+    steps = {step["name"]: step for step in evidence["steps"] if "name" in step}
+    assert steps["Capture successful native validation identities"]["run"].endswith("seal --output target/release-evidence/validation.json")
+    assert steps["Sign original main validation evidence"]["with"]["subject-path"] == "target/release-evidence/validation.json"
+    upload = steps["Upload signed validation evidence"]["with"]
+    assert upload == {
+        "name": "release-evidence-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": "target/release-evidence/",
+        "if-no-files-found": "error",
+        "retention-days": 30,
+    }
 
 
 def test_native_packaging_failure_stops_before_further_validation(tmp_path: Path) -> None:

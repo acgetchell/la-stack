@@ -2,6 +2,7 @@
 
 //! Criterion coverage for certified dot products and affine differences.
 
+use core::array::from_fn;
 use std::hint::black_box;
 
 use criterion::Criterion;
@@ -50,13 +51,13 @@ fn prepared_benchmarks<const D: usize>(criterion: &mut Criterion) {
         (
             "sparse",
             [2.0; D],
-            core::array::from_fn(|i| if i == 0 { 1.0 } else { 0.0 }),
+            from_fn(|i| if i == 0 { 1.0 } else { 0.0 }),
             [0.0; D],
             Some(true),
         ),
         (
             "cancellation",
-            core::array::from_fn(|i| {
+            from_fn(|i| {
                 if i == 0 {
                     1.0
                 } else if i == 1 {
@@ -131,18 +132,14 @@ fn batch_benchmarks<const D: usize>(criterion: &mut Criterion) {
         ("origin", [0.0; D]),
         (
             "translated",
-            core::array::from_fn(|i| {
-                f64::from(u32::try_from(i + 1).or_abort("small dimension")) / 8.0
-            }),
+            from_fn(|i| f64::from(u32::try_from(i + 1).or_abort("small dimension")) / 8.0),
         ),
     ] {
         let axis_rows = [2048.0; D];
-        let positive_rows: [[f64; D]; D] = core::array::from_fn(|i| {
-            core::array::from_fn(|j| shared_rows[j] + if i == j { 1.0 } else { 0.0 })
-        });
-        let negative_rows: [[f64; D]; D] = core::array::from_fn(|i| {
-            core::array::from_fn(|j| shared_rows[j] - if i == j { 1.0 } else { 0.0 })
-        });
+        let positive_rows: [[f64; D]; D] =
+            from_fn(|i| from_fn(|j| shared_rows[j] + if i == j { 1.0 } else { 0.0 }));
+        let negative_rows: [[f64; D]; D] =
+            from_fn(|i| from_fn(|j| shared_rows[j] - if i == j { 1.0 } else { 0.0 }));
         let axis = Vector::try_new(axis_rows).or_abort("batch axis");
         let shared = Vector::try_new(shared_rows).or_abort("batch shared");
         let positive = positive_rows.map(|row| Vector::try_new(row).or_abort("positive vertex"));

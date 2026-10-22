@@ -5,7 +5,6 @@
 [![Downloads](https://badgen.net/crates/d/la-stack)](https://crates.io/crates/la-stack)
 [![License](https://badgen.net/github/license/acgetchell/la-stack)](https://github.com/acgetchell/la-stack/blob/main/LICENSE)
 [![Docs.rs](https://docs.rs/la-stack/badge.svg)](https://docs.rs/la-stack)
-
 [![CI](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml)
 [![CodeQL][codeql-badge]][codeql-workflow]
 [![zizmor][zizmor-badge]][zizmor-workflow]
@@ -63,8 +62,9 @@ while keeping the API intentionally small and explicit.
   encode lengths and angles and support simplex/facet volume calculations; see
   [Gram matrices and geometric measures][refs-gram].
   Each independent dot product is checked once;
-  rounding has no certified error bound, and positive definiteness or affine
-  independence must still be established by factorization or the caller.
+  rounding has no certified error bound. Positive definiteness or affine
+  independence requires independent proof from the caller; successful
+  floating-point factorization is not a certificate.
 - `Interval` and `IntervalMatrix<const D: usize>` for outward-rounded,
   proof-bearing determinant filters through D=7
 - `Ldlt<const D: usize>` for no-pivot factorization intended for exactly

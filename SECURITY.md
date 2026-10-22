@@ -118,11 +118,11 @@ assignment in that file. Other assignments and paths remain checked.
 
 ### Python tool dependencies
 
-Semgrep 1.180.0 accepts `pyjwt[crypto]>=2.15.0,<3`, so the older security override
+Semgrep 1.182.0 accepts `pyjwt[crypto]>=2.15.0,<3`, so the older security override
 is retired. `tooling/semgrep/uv.lock` retains patched PyJWT 2.15.1 and its crypto
 dependencies. Validate native Semgrep scans when changing the scanner or lock.
 
-Semgrep 1.180.0 pins MCP 1.29.0, which is affected by
+Semgrep 1.182.0 pins MCP 1.29.0, which is affected by
 [GHSA-84m7-p3x7-pcfv](https://github.com/advisories/GHSA-84m7-p3x7-pcfv).
 The isolated environment overrides that pin with `mcp>=1.30.0,<2`, retaining
 the patched 1.x API. Remove the override when a released Semgrep dependency

@@ -1,0 +1,19 @@
+# Discover every binary example in the published package, including future targets.
+schema = 1
+package = "la-stack"
+profile = "dev"
+timeout = 300
+build-timeout = 1800
+
+# Numerical assertions live in each executable; these examples require exact arithmetic.
+[examples.exact_det_3x3]
+features = [ "exact" ]
+
+[examples.exact_sign_3x3]
+features = [ "exact" ]
+
+[examples.exact_solve_3x3]
+features = [ "exact" ]
+
+[examples.rational_input_5x5]
+features = [ "exact" ]

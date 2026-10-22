@@ -97,6 +97,9 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
   `just test-python` or the aggregate validation workflows.
 - `examples/` contains complete runnable workflows. README mirrors and public
   guide doctests live in `src/lib.rs`.
+- `tooling/examples.toml` owns the Cargo example package, feature overrides and
+  time budgets. The shared runner discovers every binary example from metadata;
+  executable numerical assertions stay in `examples/`.
 - `examples/vector_angles.rs` demonstrates fixed-vector and borrowed-slice angles,
   independent magnitude scaling, and subnormal separations.
 
@@ -137,6 +140,10 @@ wrappers. `tooling/tests/test_review_integration.py` owns consumer wiring checks
 with local stubs; the [contributor review workflow](../CONTRIBUTING.md#coderabbit-review)
 owns prerequisites and invocation policy.
 The [justfile](../justfile) owns executable development workflows.
+Shared complete-inventory Python and file runners own discovery and bounded
+execution; repository lint policy and archive exclusions stay in the recipes
+and native tool configuration. The [capability inventory](../tooling/README.md#shared-capability-adoption)
+records the v0.2.3 adoption boundary.
 
 `osv-scanner.toml` owns temporary advisory-specific dependency exceptions, and
 `.gitleaks.toml` owns narrow secret-scan false-positive exceptions. Their rationale
@@ -149,6 +156,11 @@ the exact published pin, registry lock, installed version and distribution hashe
 alongside actual recipe sequencing and native managed execution. The
 `.github/actions/setup-tools/action.yml` composite synchronizes the locked PyPI
 package and exports verified paths for CI. Release callers disable its caches.
+
+`.github/actions-allowlist.json` owns approved action identities for local
+validation and updates. Historical payloads under `.github/settings/` describe
+live GitHub settings separately; consult the
+[rollout guide](dev/MANAGING_CHANGES.md#dependabot-approval-rollout) before applying them.
 
 Release metadata, version checks, Markdown line checks, and Semgrep fixture
 validation also belong to the shared CLI. Consumer policy stays in
@@ -201,7 +213,7 @@ freshness checks and tagged evidence links. Static named configurations under
 `tooling/plots/{non-exact,retained,scratch}/` preserve eight metrics, mean/median and
 linear/log choices with explicit input ownership.
 
-Both production Python adapters and the root `scripts/` directory are retired.
+The former performance Python adapters and the root `scripts/` directory are retired.
 The installed CLI owns orchestration, validation and publication transactions.
 Working-tree measurements now include nonignored untracked regular files.
 `tooling/tests/test_performance_workflow.py` exercises actual recipes and
@@ -224,8 +236,12 @@ outputs remain outside production scans.
 `.github/actions/prepare-release-benchmarks/action.yml` groups tool installation,
 input validation, and inventory under the release workflow's shared setup timeout.
 
-`.github/workflows/publish-crates.yml` owns the reviewed-release event, native
-Cargo dry-run, deployment approval and OIDC upload. The publishing declaration
+`.github/workflows/ci.yml` owns native checks, default/exact Cargo dry-runs and
+signed main-push validation evidence. `tooling/release_evidence.py` supplies the
+Cargo-specific policy around shared run/job validation and artifact retrieval;
+`tooling/tests/test_release_evidence.py` owns its provider-boundary regressions.
+`.github/workflows/publish-crates.yml` owns the reviewed-release event, reuse of
+that exact CI attempt and artifact, deployment approval and OIDC upload. The publishing declaration
 in `pyproject.toml` selects `la-stack`, native checks and the Criterion asset;
 shared release gates own generic identity, ancestry and registry checks.
 `tooling/tests/test_release_publishing.py` owns installed-package consumer checks

@@ -3,13 +3,17 @@
 The installed `research-repo-tools` package owns common development and
 performance tooling. The exact released pin and registry hashes live in
 `pyproject.toml` and `uv.lock`. This dependency-only environment has no local
-Python distribution, console entry points, or production Python adapters.
+Python distribution or console entry points. `release_evidence.py` is the
+repository-specific Cargo evidence adapter around the installed validation
+helpers; shared tooling is not copied into this repository.
 
 ## Setup and validation
 
 Use `just setup`, then `uv run --locked` for Python commands. Python 3.15
 runs the shared package and the consumer tests in `tooling/tests/`.
-`just python-check` checks formatting, lint and types; `just test-python`
+`just python-check` delegates formatting, lint and strict types to the shared
+complete tracked/nonignored Python inventory, including static-analysis fixtures.
+`just test-python`
 runs the installed-package integration tests. `just ci` is the final
 repository validation. Native Linux, macOS and Windows CI is required for
 adoption; local macOS results do not establish the other platforms.
@@ -18,6 +22,53 @@ Semgrep 1.182.0 retains its separate locked Python 3.14 environment in
 `tooling/semgrep/` while its wheels exclude Python 3.15. Ordinary Rust and
 Python tests remain scan targets; deliberate `tests/semgrep/` fixtures are
 checked separately by `just semgrep-test`.
+
+## Shared capability adoption
+
+The capability inventory below was checked against the installed v0.2.3 CLI and
+its [versioned contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.2.3/README.md#common-workflows).
+Native Rust algorithms, assertions, benchmark selection and release decisions
+remain owned here.
+
+| Capability | Consumer use |
+| --- | --- |
+| Actions | `workflow-allowlist-check` gates external workflow dependencies; `update-actions` updates explicitly selected workflow pins |
+| Changelog and release | Shared generation, archives, metadata rules, registry gates and verification; the Cargo adapter reuses signed native/package evidence |
+| CI environment and toolchain | Shared setup/check/run/export and verified cached installations; `tools-clean` previews obsolete managed tools separately from Cargo `clean` |
+| Coverage | Native `cargo llvm-cov` acquisition; `coverage-report` summarizes its existing Cobertura output |
+| Dependencies | Shared uv/tool upgrades and `deps update-python --all-projects`; root Python 3.15 and isolated Semgrep Python 3.14 retain separate constraints |
+| Documentation and files | Shared tracked/nonignored selection and bounded argument batches for formatting, lint, spelling and syntax checks; one active Markdown policy preserves archives |
+| Performance | Declarative discovery, measurement, saved-sample validation, immutable evidence, offline rendering, report/README publication and release assets |
+| Python | Shared complete-inventory check/fix/typecheck with repository Ruff exceptions and strict ty diagnostics |
+| Review | Shared opt-in CodeRabbit branch and uncommitted review |
+| Security and workflow audit | Shared OSV, full-history Gitleaks and zizmor policy; consumer advisory exceptions and workflow permissions remain local |
+| Semgrep | Shared fixture validation; native production scans retain `.semgrepignore`, explicit status gates and the reviewed in-source suppression policy |
+| Validation | `tooling/examples.toml` selects the published Cargo package and exact-feature overrides; shared Cargo metadata discovery runs every binary example |
+
+The example runner uses compiler-reported executable paths, including configured
+native targets and output directories, with per-build and per-execution budgets.
+Ordinary examples run with default features; exact examples opt in individually.
+Their numerical assertions remain inside the executables. New examples join
+automatically; a new required feature needs a matching configuration entry.
+
+Notebook, paper/PDF and Tectonic capabilities do not apply to this repository.
+SARIF splitting is unnecessary for the existing individual scanner uploads;
+the native suppression filter retains the repository's specific GitHub policy.
+Templates are reference material when changing declarations, not generated copies
+to maintain here. Raw `files check-lines` intentionally does not replace
+`docs check-lines`: the latter preserves the existing Markdown table exemption.
+
+Use `just --list` for arguments. Actions updates and managed-tool removal are
+explicit maintenance operations; checking their wiring does not run them.
+
+`.github/actions-allowlist.json` owns exact action identities accepted by local
+validation and the updater. Workflows retain full commit pins. This source policy
+is separate from the historical GitHub settings payloads under `.github/settings/`,
+which also constrain the publishing action to a specific commit. Reconcile live
+settings before deploying a pin update; the local updater does not change them.
+The v0.2.3 Actions parser accepts workflow documents only. Semgrep rules
+check composite actions under `.github/actions/`, including their
+external dependencies and commit pins.
 
 ## Performance ownership
 
@@ -84,8 +135,13 @@ The publishing declaration selects only `la-stack`, requires native platform
 and scientific checks on the exact commit, and requires the durable Criterion
 release asset. `release-gate`, `release-publish` and `release-verify`
 use the shared release contract; `release-package` owns native default/exact
-Cargo dry-runs. `tests/test_release_publishing.py` checks consumer policy and
-upload barriers without registry credentials.
+Cargo dry-runs. Main CI signs those packaging and native validation identities;
+`release-evidence` verifies the original main-push attempt and immutable signed
+artifact before publication and rechecks its pinned identity after approval.
+`tests/test_release_evidence.py` checks the adapter's trust boundaries, while
+`tests/test_release_publishing.py` checks consumer policy and upload barriers
+without registry credentials. The release guide owns retention, complete-rerun
+recovery and the distinction between reused checks and Cargo repackaging.
 
 `tests/test_toolchain_integration.py` owns the package-identity check:
 manifest pin, registry lock, installed version and distribution hashes.

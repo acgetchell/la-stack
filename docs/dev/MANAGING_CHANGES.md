@@ -120,9 +120,9 @@ tasks related without inventing a blocking dependency.
 
 ## Dependabot approval rollout
 
-The caller in `.github/workflows/dependabot-auto-merge.yml` adopts the same
-reviewed research-repo-tools revision as markov-chain-monte-carlo:
-[`cbb2ea6`](https://github.com/acgetchell/research-repo-tools/commit/cbb2ea6dee8866b3f0547bca935aef48fdd71707).
+The caller in `.github/workflows/dependabot-auto-merge.yml` pins the reviewed
+research-repo-tools approval workflow at
+[`b972cbf`](https://github.com/acgetchell/research-repo-tools/commit/b972cbfd717319abaa68d9b1373711ad6f163294).
 It replaces the owner-issued CodeRabbit request that left bot PRs without an
 approving review (#258). A successful CodeRabbit status on a skipped review does
 not supply approval; the provider's underlying failure to process owner commands
@@ -135,7 +135,7 @@ deduplication belong to the shared workflow. It never checks out PR code or uses
 personal tokens. `.github/dependabot.yml` continues to own dependency eligibility.
 See the [shared approval contract][shared-approval].
 
-[shared-approval]: https://github.com/acgetchell/research-repo-tools/blob/cbb2ea6dee8866b3f0547bca935aef48fdd71707/docs/AUTOMATING_DEPENDABOT.md
+[shared-approval]: https://github.com/acgetchell/research-repo-tools/blob/b972cbfd717319abaa68d9b1373711ad6f163294/docs/AUTOMATING_DEPENDABOT.md
 
 The settings payloads under `.github/settings/` capture the October 1, 2026
 rollout. They enable Actions approvals with read-only default permissions, add
@@ -167,8 +167,11 @@ required checks and threads pass, and continued manual review for ineligible
 updates. Record PR, head, approval, workflow-run, and merge links. Installing the
 Python package does not deploy or configure this GitHub workflow.
 
-Merges using `GITHUB_TOKEN` may not trigger push workflows. Dispatch `ci.yml`
-against `main` and verify the run's `headSha` equals the merged commit before
-claiming default-branch validation. Remove `CODERABBIT_REVIEW_TOKEN` from Actions
+Merges using `GITHUB_TOKEN` may not trigger push workflows. A manual `ci.yml`
+dispatch against `main` can diagnose the merged commit, but cannot produce
+release-eligible signed evidence. Before selecting a release commit, require a
+successful main-push run as described in [Releasing](../RELEASING.md#reusable-ci-evidence).
+The CI signer and crates.io publishing workflows require manual dependency review.
+Remove `CODERABBIT_REVIEW_TOKEN` from Actions
 and Dependabot secrets only after the old caller has been replaced and no other
 workflow consumes it. Local opt-in CodeRabbit CLI review remains separate.

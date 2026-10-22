@@ -43,12 +43,12 @@ pub mod guide {
     //!
     //! Explore the topic guides for more workflows:
     //!
-    //! - [LDLT determinants and symmetry](ldlt)
+    //! - [Adaptive determinant filtering](adaptive)
+    //! - [Certified dot products and affine differences](certified)
     //! - [Compile-time determinants](compile_time)
+    //! - [LDLT determinants and symmetry](ldlt)
     //! - [Outward-rounded interval determinants](intervals)
     //! - [Overflow-safe Euclidean norms](norms)
-    //! - [Certified dot products and affine differences](certified)
-    //! - [Adaptive determinant filtering](adaptive)
     //!
     //! Enabling `exact` also adds the exact-arithmetic guide to the module list.
     //!
@@ -206,8 +206,8 @@ pub mod guide {
     //! [`Interval`](crate::Interval) stores two finite ordered bounds and supports
     //! point construction, outward-rounded subtraction, addition, multiplication,
     //! negation, and square. [`IntervalMatrix`](crate::IntervalMatrix) stores
-    //! `[[Interval; D]; D]` inline and uses a fixed 128-entry stack workspace for
-    //! supported determinant dimensions. [`IntervalDeterminantSign`](crate::IntervalDeterminantSign)
+    //! `[[Interval; D]; D]` inline and uses a dimension-sized stack workspace of
+    //! at most 128 entries. [`IntervalDeterminantSign`](crate::IntervalDeterminantSign)
     //! distinguishes positive, negative, exact zero, and inconclusive evidence.
     //!
     //! Parse numerical thresholds through [`Tolerance::try_new`](crate::Tolerance::try_new).
