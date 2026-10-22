@@ -54,7 +54,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          identity=$(just --quiet release-evidence)
+          identity=$(just release-evidence)
+          test -n "$identity"
           printf 'identity=%s\n' "$identity" >> "$GITHUB_OUTPUT"
 
   publish:

@@ -184,7 +184,6 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert jobs["publish"]["permissions"] == {"contents": "read", "checks": "read", "actions": "read", "id-token": "write"}
     assert "github.repository == 'acgetchell/la-stack'" in jobs["verify"]["if"]
     assert jobs["verify"]["steps"][-1]["id"] == "evidence"
-    assert "identity=$(just --quiet release-evidence)" in jobs["verify"]["steps"][-1]["run"]
     assert jobs["verify"]["outputs"] == {"ci-evidence": "${{ steps.evidence.outputs.identity }}"}
     assert "CARGO_REGISTRY_TOKEN" not in yaml.safe_dump({"env": workflow["env"], "verify": jobs["verify"]})
     for job in jobs.values():
@@ -209,6 +208,47 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert "--features exact" in commands
     assert "--allow-dirty" not in commands
     assert "--no-verify" not in commands
+
+
+@pytest.mark.parametrize(("outcome", "expected_exit"), [("valid", 0), ("empty", 1), ("failed", 17)])
+def test_evidence_capture_exports_json_through_real_just_or_fails_without_output(tmp_path: Path, outcome: str, expected_exit: int) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_bytes())
+    script = workflow["jobs"]["verify"]["steps"][-1]["run"]
+    root = tmp_path / "consumer with spaces"
+    root.mkdir()
+    (root / "justfile").write_text(f"import '{(REPO_ROOT / 'justfile').as_posix()}'\n", encoding="utf-8")
+    output = root / "github output"
+    identity = {"run_id": 101, "run_attempt": 2, "artifact_id": 301, "artifact_digest": "sha256:" + "a" * 64}
+    # Substitute only the evidence producer. The actual workflow shell, Just,
+    # and imported release-evidence recipe own stdout capture and propagation.
+    producer = (
+        "uv() {\n"
+        '  [[ "$*" == "run --locked --no-sync python -m tooling.release_evidence verify --identity " ]] || return 90\n'
+        "  printf '%s\\n' 'fixture evidence diagnostic' >&2\n"
+        "  printf '%s\\n' \"$FIXTURE_EVIDENCE\"\n"
+        '  return "$FIXTURE_EXIT"\n'
+        "}\n"
+        "export -f uv\n"
+    )
+    result = run_command(
+        "bash",
+        ["--noprofile", "--norc", "-euc", producer + script],
+        cwd=root,
+        env={
+            **{key: value for key, value in os.environ.items() if key not in {"BASH_ENV", "SHELLOPTS", "BASHOPTS", "JUST_QUIET", "JUST_DRY_RUN"}},
+            "GITHUB_OUTPUT": output.as_posix(),
+            "FIXTURE_EVIDENCE": "" if outcome == "empty" else json.dumps(identity, sort_keys=True),
+            "FIXTURE_EXIT": "17" if outcome == "failed" else "0",
+        },
+        check=False,
+    )
+    assert result.returncode == expected_exit, result.stderr
+    assert result.stdout == ""
+    if outcome == "valid":
+        assert output.read_text(encoding="utf-8").splitlines() == ["identity=" + json.dumps(identity, sort_keys=True)]
+        assert "fixture evidence diagnostic" in result.stderr
+    else:
+        assert not output.exists()
 
 
 @pytest.mark.parametrize(("failure", "expected_exit"), [("none", 0), ("evidence", 1), ("ci-evidence", 1), ("empty-pin", 1), ("present", 1), ("unavailable", 2)])
