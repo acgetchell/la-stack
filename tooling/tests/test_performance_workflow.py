@@ -221,6 +221,8 @@ def prepared(tmp_path: Path) -> tuple[Path, Path]:
                 destination = root / source.relative_to(ROOT)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, destination)
+        for name in ("__init__.py", "release_performance.py"):
+            shutil.copyfile(ROOT / "tooling" / name, root / "tooling" / name)
         (root / "src").mkdir()
         (root / "src/lib.rs").write_text(f"// {phase}\n", encoding="utf-8", newline="\n")
         (root / ".gitignore").write_text("/target/\n", encoding="utf-8", newline="\n")
@@ -363,7 +365,11 @@ def test_actual_retention_offline_plot_and_readme_recipes(complete_run: tuple[Pa
     assert "faer" in csv
     assert "baseline" in csv
     assert statistic in csv
-    result = recipe(root, "performance-readme", *identities(root))
+    if source == "retained":
+        prepared_inputs = root / "target/bench-reports/release-inputs.json"
+        prepared_inputs.parent.mkdir(parents=True)
+        prepared_inputs.write_text(json.dumps({"schema": 1, "assertions": identities(root)}), encoding="utf-8", newline="\n")
+    result = recipe(root, "performance-readme", *([] if source == "retained" else identities(root)))
     assert result.returncode == 0, result.stdout + result.stderr
     document = (root / "README.md").read_text(encoding="utf-8")
     assert "Speedup vs nalgebra" in document

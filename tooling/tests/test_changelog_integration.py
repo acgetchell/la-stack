@@ -9,6 +9,8 @@ from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run, inspect_justfile
 from research_repo_tools.process import run_command
 
+from tooling.release_changelog import main as release_changelog
+
 if TYPE_CHECKING:
     import pytest
 
@@ -27,7 +29,7 @@ def test_consumer_changelog_policy_uses_the_shared_formatter() -> None:
     assert not (ROOT / "cliff.toml").exists()
 
 
-def test_consumer_generation_preserves_an_authored_dependency_note(tmp_path: Path) -> None:
+def test_consumer_generation_preserves_an_authored_dependency_note(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Exercise the installed CLI with la-stack's actual formatter and policy."""
     for name in ("pyproject.toml", "changelog-rumdl.toml", ".python-version", "rust-toolchain.toml"):
         shutil.copyfile(ROOT / name, tmp_path / name)
@@ -39,11 +41,21 @@ def test_consumer_generation_preserves_an_authored_dependency_note(tmp_path: Pat
     note = "Read [release notes](https://github.com/astral-sh/ruff/compare/0.16.1...0.16.2) before changing `Vector<D>` checks."
     run_command("git", ["--no-pager", "commit", "--quiet", "--allow-empty", "-m", f"chore(deps-dev): bump ruff\n\n{note}"], cwd=tmp_path)
     (tmp_path / "CHANGELOG.md").write_text("# Changelog\n\n## [0.4.5] - 2000-01-02\n\n- Historical date.\n", encoding="utf-8")
-    args = ["--root", str(tmp_path), "changelog", "generate", "--tag", "v0.4.6", "--date", "2026-10-09"]
-    assert main(args) == 0
+    citation = tmp_path / "CITATION.cff"
+    citation.write_text('version: "0.4.6"\ndate-released: 2000-02-29\n', encoding="utf-8")
+    original_citation = citation.read_bytes()
+    monkeypatch.chdir(tmp_path)
+    assert release_changelog(["--tag", "v0.4.6"]) == 0
     generated = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "### Dependencies" in generated
     assert note in generated
+    assert "## [0.4.6] - 2000-02-29" in generated
+    assert "## [0.4.5] - 2000-01-02" in generated
+    assert release_changelog(["--tag", "v0.4.6"]) == 0
+    assert (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8") == generated
+    assert citation.read_bytes() == original_citation
+    assert release_changelog(["--tag", "v0.4.6", "--dry-run"]) == 0
+    assert (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8") == generated
 
 
 def test_consumer_recipes_and_retained_history(capsys: pytest.CaptureFixture[str]) -> None:
@@ -51,7 +63,7 @@ def test_consumer_recipes_and_retained_history(capsys: pytest.CaptureFixture[str
     recipes = inspect_justfile(ROOT)
     assert recipes.aliases["changelog-unreleased"] == "changelog-release"
     result = dry_run(ROOT, "changelog-preview", ["--tag", "v0.4.7", "--date", "2026-10-09"])
-    assert 'research-repo-tools changelog generate --dry-run "$@"' in result.stderr
+    assert 'python -m tooling.release_changelog --dry-run "$@"' in result.stderr
     assert main(["--root", str(ROOT), "changelog", "check"]) == 0
     for tag in ("v0.1.0", "v0.2.0", "v0.3.0", "v0.4.6"):
         assert main(["--root", str(ROOT), "changelog", "notes", tag]) == 0

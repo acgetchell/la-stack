@@ -73,8 +73,15 @@ external dependencies and commit pins.
 ## Performance ownership
 
 The [benchmark guide](../docs/BENCHMARKING.md) owns command selection,
-interpretation and output paths. Every performance recipe calls the installed
-CLI or a native Cargo command. There is no runtime configuration generator.
+interpretation and output paths. Measurement and publication use the installed
+CLI or native Cargo commands. `release_performance.py` temporarily captures the
+shared release selector's independent commit assertions during
+`performance-prepare` and reuses them during the separate `performance-readme`
+step. `performance-release` remains measurement and report promotion only.
+The adapter will be removed when the shared package publishes equivalent commands.
+That handoff is tracked in
+[research-repo-tools#129](https://github.com/acgetchell/research-repo-tools/issues/129).
+There is no runtime configuration generator.
 
 | Declaration | Responsibility |
 | --- | --- |
@@ -130,6 +137,14 @@ Use the shared commands exposed by `just --list`. The
 tagging and registry publication. Declarations in `pyproject.toml` retain
 the concept DOI, active link policy, declared date policy, formatter and
 authored dependency notes.
+
+`release_changelog.py` temporarily supplies the recorded `CITATION.cff`
+`date-released` when `changelog-release` (also named `changelog-unreleased`) or
+a tagged `changelog-preview` omits the date. Explicit dates remain supported.
+The adapter never chooses a new date or updates citation metadata; the shared
+CLI still owns generation, formatting, archives and publication.
+The shared replacement is tracked in
+[research-repo-tools#130](https://github.com/acgetchell/research-repo-tools/issues/130).
 
 The publishing declaration selects only `la-stack`, requires native platform
 and scientific checks on the exact commit, and requires the durable Criterion

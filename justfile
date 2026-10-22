@@ -197,16 +197,16 @@ changelog-check: tools-check python-sync
     uv run --locked --group dev research-repo-tools changelog check
     {{ _run }} rumdl check --no-cache --config pyproject.toml CHANGELOG.md docs/archives/changelog/*.md
 
-# Validate generation and print the root changelog without publishing candidates.
+# Preview changelog generation; tagged previews default to the prepared citation date.
 [positional-arguments]
 changelog-preview *args: tools-check python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    {{ _run }} research-repo-tools changelog generate --dry-run "$@"
+    {{ _run }} uv run --locked --no-sync python -m tooling.release_changelog --dry-run "$@"
 
-# Generate a prospective release using the explicit ISO date, without updating metadata.
-changelog-release tag date: tools-check python-sync
-    {{ _run }} research-repo-tools changelog generate --tag {{ quote(tag) }} --date {{ quote(date) }}
+# Generate a prospective release using the citation date unless an ISO date is supplied.
+changelog-release tag date="": tools-check python-sync
+    {{ _run }} uv run --locked --no-sync python -m tooling.release_changelog --tag {{ quote(tag) }} --date {{ quote(date) }}
 
 alias changelog-unreleased := changelog-release
 
@@ -343,17 +343,18 @@ performance-local-non-exact: _ensure-gh python-sync
 performance-measure current_tag baseline_tag view="full": python-sync
     {{ _run }} uv run --locked research-repo-tools performance measure {{ quote("tooling/measurements/" + view + ".toml") }} {{ quote(current_tag) }} {{ quote(baseline_tag) }} --allow-git-mutations --payload {{ quote("target/bench-reports/" + view + "/run.json") }} --manifest {{ quote("target/bench-reports/" + view + "/evidence.json") }} --report {{ quote("target/bench-reports/" + view + "/report.md") }}
 
-# Fetch measurement tags explicitly before the isolated measurement commands.
-performance-prepare:
+# Fetch tags and save independent README source assertions before measurement.
+performance-prepare current_tag="" baseline_tag="": _ensure-gh python-sync
     git fetch origin --tags
+    uv run --locked --no-sync python -m tooling.release_performance capture {{ quote(current_tag) }} {{ quote(baseline_tag) }}
 
 # Promote the explicitly selected full scratch run; missing inputs never fall back.
 performance-promote: python-sync
     {{ _run }} uv run --locked research-repo-tools performance promote tooling/performance-report.toml --payload target/bench-reports/full/run.json --manifest target/bench-reports/full/evidence.json
 
-# Publish the canonical README view with independently asserted source identities.
-performance-readme current_tag current_revision baseline_tag baseline_revision: python-sync
-    {{ _run }} uv run --locked research-repo-tools performance publish tooling/performance-readme.toml --current-release {{ quote(current_tag) }} --current-revision {{ quote(current_revision) }} --baseline-release {{ quote(baseline_tag) }} --baseline-revision {{ quote(baseline_revision) }}
+# Publish the README using prepared source assertions, or four explicit assertions.
+performance-readme current_tag="" current_revision="" baseline_tag="" baseline_revision="": python-sync
+    {{ _run }} uv run --locked --no-sync python -m tooling.release_performance publish {{ quote(current_tag) }} {{ quote(current_revision) }} {{ quote(baseline_tag) }} {{ quote(baseline_revision) }}
 
 # Measure, retain an immutable complete run, and promote distinct-release documentation.
 performance-release current_tag="" baseline_tag="": _ensure-gh python-sync

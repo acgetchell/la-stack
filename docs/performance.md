@@ -1,476 +1,476 @@
 <!-- research-repo-tools/run-report/v2 -->
 # la-stack complete benchmark measurements
 
-Run: `634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5`
+Run: `26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413`
 
-Evidence: [run payload](performance-runs/runs/634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5/run.json) · [evidence envelope](performance-runs/runs/634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5/evidence.json).
+Evidence: [run payload](performance-runs/runs/26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413/run.json) · [evidence envelope](performance-runs/runs/26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413/evidence.json).
 
 Intervals are marginal timing intervals. No significance or ratio interval is inferred.
 
-- la-stack baseline: measured in **baseline** phase (v0.4.6), revision `0215e65763f8eecb4bcad8bf29de4aca67531aa1`.
-- la-stack current: measured in **current** phase (v0.5.0), revision `51868ea4725c1a4790bba4c59341d2113b18b2bb`.
-- nalgebra: measured in **baseline** phase (v0.4.6), revision `0215e65763f8eecb4bcad8bf29de4aca67531aa1`.
-- faer: measured in **baseline** phase (v0.4.6), revision `0215e65763f8eecb4bcad8bf29de4aca67531aa1`.
+- la-stack baseline: measured in **baseline** phase (v0.5.0), revision `5d8f5b4ea1c0bd708cd748b86f426960b7597ab7`.
+- la-stack current: measured in **current** phase (v0.5.1), revision `eb6f071607c058527f6cb6a9bf86bb307c93ab02`.
+- nalgebra: measured in **baseline** phase (v0.5.0), revision `5d8f5b4ea1c0bd708cd748b86f426960b7597ab7`.
+- faer: measured in **baseline** phase (v0.5.0), revision `5d8f5b4ea1c0bd708cd748b86f426960b7597ab7`.
 
 ## Mean (ns)
 
 | Case | la-stack baseline | la-stack current | nalgebra | faer |
 | --- | --- | --- | --- | --- |
-| d16/la&#95;stack&#95;det | 381.877 ns [380.637, 383.185] (0.95 confidence) | 402.901 ns [400.348, 405.538] (0.95 confidence) | — | — |
-| d16/la&#95;stack&#95;det&#95;from&#95;ldlt | 2.88903 ns [2.88509, 2.89272] (0.95 confidence) | 2.96685 ns [2.96414, 2.96959] (0.95 confidence) | 1.69417 ns [1.68903, 1.69915] (0.95 confidence) | 4.38111 ns [4.35599, 4.40639] (0.95 confidence) |
-| d16/la&#95;stack&#95;det&#95;from&#95;lu | 3.27537 ns [3.27145, 3.27908] (0.95 confidence) | 3.36911 ns [3.35909, 3.38387] (0.95 confidence) | 1.77288 ns [1.76874, 1.77689] (0.95 confidence) | 4.84201 ns [4.80326, 4.88737] (0.95 confidence) |
-| d16/la&#95;stack&#95;det&#95;via&#95;lu | 361.076 ns [360.149, 362.072] (0.95 confidence) | 378.232 ns [376.384, 380.127] (0.95 confidence) | 449.519 ns [447.78, 451.056] (0.95 confidence) | 670.718 ns [668.126, 673.372] (0.95 confidence) |
-| d16/la&#95;stack&#95;dot | 2.33211 ns [2.3303, 2.33385] (0.95 confidence) | 2.38358 ns [2.37016, 2.40181] (0.95 confidence) | 1.84951 ns [1.84743, 1.85161] (0.95 confidence) | 3.33075 ns [3.32201, 3.34079] (0.95 confidence) |
-| d16/la&#95;stack&#95;inf&#95;norm | 32.3675 ns [32.3089, 32.4231] (0.95 confidence) | 33.5932 ns [33.5291, 33.6597] (0.95 confidence) | 32.4876 ns [32.4397, 32.5321] (0.95 confidence) | 32.4244 ns [32.3467, 32.5071] (0.95 confidence) |
-| d16/la&#95;stack&#95;ldlt | 339.413 ns [339.103, 339.73] (0.95 confidence) | 346.101 ns [345.399, 346.847] (0.95 confidence) | 421.755 ns [421.085, 422.399] (0.95 confidence) | 418.304 ns [417.574, 419.051] (0.95 confidence) |
-| d16/la&#95;stack&#95;ldlt&#95;solve | 382.168 ns [381.957, 382.379] (0.95 confidence) | 391.674 ns [390.916, 392.472] (0.95 confidence) | 627.153 ns [626.113, 628.155] (0.95 confidence) | 612.374 ns [611.444, 613.316] (0.95 confidence) |
-| d16/la&#95;stack&#95;lu | 351.056 ns [349.975, 352.238] (0.95 confidence) | 368.085 ns [366.506, 369.652] (0.95 confidence) | 466.726 ns [465.278, 468.463] (0.95 confidence) | 642.229 ns [638.899, 645.695] (0.95 confidence) |
-| d16/la&#95;stack&#95;lu&#95;solve | 657.445 ns [645.98, 669.183] (0.95 confidence) | 705.624 ns [692.434, 718.691] (0.95 confidence) | 591.452 ns [589.116, 594.421] (0.95 confidence) | 937.4 ns [933.866, 940.955] (0.95 confidence) |
-| d16/la&#95;stack&#95;norm2&#95;sq | 2.11274 ns [2.10163, 2.12181] (0.95 confidence) | 2.14769 ns [2.14117, 2.15295] (0.95 confidence) | 1.73252 ns [1.73063, 1.73425] (0.95 confidence) | 4.09505 ns [4.09295, 4.09779] (0.95 confidence) |
-| d16/la&#95;stack&#95;solve&#95;from&#95;ldlt | 27.7874 ns [27.7543, 27.8255] (0.95 confidence) | 29.0296 ns [28.9327, 29.1361] (0.95 confidence) | 119.383 ns [119.111, 119.643] (0.95 confidence) | 182.77 ns [182.572, 182.977] (0.95 confidence) |
-| d16/la&#95;stack&#95;solve&#95;from&#95;lu | 191.094 ns [190.45, 191.748] (0.95 confidence) | 209.039 ns [208.68, 209.397] (0.95 confidence) | 93.5301 ns [93.2916, 93.7761] (0.95 confidence) | 257.724 ns [257.076, 258.442] (0.95 confidence) |
-| d2/la&#95;stack&#95;det | 0.572913 ns [0.572679, 0.573159] (0.95 confidence) | 0.574026 ns [0.573741, 0.574325] (0.95 confidence) | — | — |
-| d2/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.500962 ns [0.498793, 0.503394] (0.95 confidence) | 0.499362 ns [0.497568, 0.501539] (0.95 confidence) | 0.438693 ns [0.437689, 0.440203] (0.95 confidence) | 0.561681 ns [0.558912, 0.564336] (0.95 confidence) |
-| d2/la&#95;stack&#95;det&#95;from&#95;lu | 0.520734 ns [0.520625, 0.520855] (0.95 confidence) | 0.522398 ns [0.521702, 0.523272] (0.95 confidence) | 0.454669 ns [0.452677, 0.457018] (0.95 confidence) | 0.744466 ns [0.744105, 0.744866] (0.95 confidence) |
-| d2/la&#95;stack&#95;det&#95;via&#95;lu | 1.77012 ns [1.76894, 1.7713] (0.95 confidence) | 1.74177 ns [1.73791, 1.74545] (0.95 confidence) | 0.823722 ns [0.822379, 0.825152] (0.95 confidence) | 111.409 ns [110.955, 111.884] (0.95 confidence) |
-| d2/la&#95;stack&#95;dot | 0.613022 ns [0.608747, 0.618254] (0.95 confidence) | 0.609238 ns [0.603744, 0.615701] (0.95 confidence) | 0.598959 ns [0.596814, 0.60111] (0.95 confidence) | 2.49854 ns [2.48847, 2.51019] (0.95 confidence) |
-| d2/la&#95;stack&#95;inf&#95;norm | 0.703036 ns [0.702728, 0.70336] (0.95 confidence) | 0.703414 ns [0.70302, 0.703828] (0.95 confidence) | 0.559914 ns [0.559665, 0.560193] (0.95 confidence) | 0.702043 ns [0.69971, 0.704562] (0.95 confidence) |
-| d2/la&#95;stack&#95;ldlt | 6.89019 ns [6.86966, 6.91184] (0.95 confidence) | 6.57264 ns [6.55792, 6.58782] (0.95 confidence) | 1.72147 ns [1.71961, 1.72315] (0.95 confidence) | 87.8513 ns [87.5879, 88.1188] (0.95 confidence) |
-| d2/la&#95;stack&#95;ldlt&#95;solve | 9.63446 ns [9.59263, 9.68741] (0.95 confidence) | 9.49552 ns [9.47364, 9.52069] (0.95 confidence) | 2.61452 ns [2.60732, 2.62125] (0.95 confidence) | 126.156 ns [125.859, 126.469] (0.95 confidence) |
-| d2/la&#95;stack&#95;lu | 1.55973 ns [1.55555, 1.56384] (0.95 confidence) | 1.56503 ns [1.56276, 1.56702] (0.95 confidence) | 1.73762 ns [1.72118, 1.75451] (0.95 confidence) | 110.571 ns [109.243, 111.965] (0.95 confidence) |
-| d2/la&#95;stack&#95;lu&#95;solve | 2.03852 ns [2.02892, 2.04945] (0.95 confidence) | 2.1184 ns [2.10452, 2.13304] (0.95 confidence) | 4.56865 ns [4.555, 4.58322] (0.95 confidence) | 155.728 ns [155.154, 156.321] (0.95 confidence) |
-| d2/la&#95;stack&#95;norm2&#95;sq | 0.395341 ns [0.395056, 0.395603] (0.95 confidence) | 0.394679 ns [0.393798, 0.395596] (0.95 confidence) | 0.388882 ns [0.388576, 0.389166] (0.95 confidence) | 4.12739 ns [4.12475, 4.13006] (0.95 confidence) |
-| d2/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1.2274 ns [1.22166, 1.2324] (0.95 confidence) | 1.22675 ns [1.22129, 1.23174] (0.95 confidence) | 1.24962 ns [1.24721, 1.25192] (0.95 confidence) | 39.4451 ns [39.3679, 39.523] (0.95 confidence) |
-| d2/la&#95;stack&#95;solve&#95;from&#95;lu | 1.24875 ns [1.24645, 1.25126] (0.95 confidence) | 1.26313 ns [1.26011, 1.26619] (0.95 confidence) | 2.90591 ns [2.8988, 2.91369] (0.95 confidence) | 49.2788 ns [49.1287, 49.4294] (0.95 confidence) |
-| d3/la&#95;stack&#95;det | 1.35771 ns [1.35126, 1.36442] (0.95 confidence) | 1.35469 ns [1.34796, 1.36169] (0.95 confidence) | — | — |
-| d3/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.614083 ns [0.612319, 0.616346] (0.95 confidence) | 0.595951 ns [0.595668, 0.596257] (0.95 confidence) | 0.498063 ns [0.497033, 0.499209] (0.95 confidence) | 0.764778 ns [0.76241, 0.767909] (0.95 confidence) |
-| d3/la&#95;stack&#95;det&#95;from&#95;lu | 0.711127 ns [0.710008, 0.712378] (0.95 confidence) | 0.694031 ns [0.693802, 0.694265] (0.95 confidence) | 0.484274 ns [0.483243, 0.485335] (0.95 confidence) | 1.01339 ns [1.01104, 1.01612] (0.95 confidence) |
-| d3/la&#95;stack&#95;det&#95;via&#95;lu | 8.82548 ns [8.7993, 8.8528] (0.95 confidence) | 8.71392 ns [8.69608, 8.73389] (0.95 confidence) | 12.7489 ns [12.7001, 12.7992] (0.95 confidence) | 138.965 ns [138.652, 139.286] (0.95 confidence) |
-| d3/la&#95;stack&#95;dot | 0.685432 ns [0.683514, 0.687459] (0.95 confidence) | 0.673633 ns [0.672134, 0.675244] (0.95 confidence) | 0.708431 ns [0.706012, 0.711061] (0.95 confidence) | 3.0376 ns [3.01401, 3.06103] (0.95 confidence) |
-| d3/la&#95;stack&#95;inf&#95;norm | 1.388 ns [1.38622, 1.38986] (0.95 confidence) | 1.37242 ns [1.36981, 1.37579] (0.95 confidence) | 1.19893 ns [1.19719, 1.20096] (0.95 confidence) | 1.34545 ns [1.34132, 1.34945] (0.95 confidence) |
-| d3/la&#95;stack&#95;ldlt | 13.4432 ns [13.3942, 13.4942] (0.95 confidence) | 13.0217 ns [12.9829, 13.0597] (0.95 confidence) | 3.95291 ns [3.94565, 3.96002] (0.95 confidence) | 99.436 ns [99.2032, 99.6837] (0.95 confidence) |
-| d3/la&#95;stack&#95;ldlt&#95;solve | 9.86949 ns [9.83823, 9.90216] (0.95 confidence) | 9.81578 ns [9.77303, 9.86134] (0.95 confidence) | 5.73265 ns [5.71507, 5.74869] (0.95 confidence) | 147.806 ns [146.995, 149.019] (0.95 confidence) |
-| d3/la&#95;stack&#95;lu | 8.69776 ns [8.64958, 8.75174] (0.95 confidence) | 8.37318 ns [8.35947, 8.38655] (0.95 confidence) | 12.8778 ns [12.7868, 12.9756] (0.95 confidence) | 139.028 ns [138.531, 139.552] (0.95 confidence) |
-| d3/la&#95;stack&#95;lu&#95;solve | 9.9778 ns [9.96433, 9.9906] (0.95 confidence) | 9.91611 ns [9.89981, 9.93134] (0.95 confidence) | 33.086 ns [32.9543, 33.2231] (0.95 confidence) | 191.944 ns [191.471, 192.41] (0.95 confidence) |
-| d3/la&#95;stack&#95;norm2&#95;sq | 0.509357 ns [0.507526, 0.511601] (0.95 confidence) | 0.4988 ns [0.497818, 0.500049] (0.95 confidence) | 0.45501 ns [0.452661, 0.458448] (0.95 confidence) | 4.26834 ns [4.25797, 4.27851] (0.95 confidence) |
-| d3/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1.84441 ns [1.82821, 1.86838] (0.95 confidence) | 1.78465 ns [1.78277, 1.78675] (0.95 confidence) | 3.03299 ns [3.01328, 3.06015] (0.95 confidence) | 41.4997 ns [41.3809, 41.6231] (0.95 confidence) |
-| d3/la&#95;stack&#95;solve&#95;from&#95;lu | 2.12983 ns [2.12464, 2.13515] (0.95 confidence) | 2.06385 ns [2.06024, 2.06793] (0.95 confidence) | 4.70164 ns [4.68838, 4.72005] (0.95 confidence) | 54.0274 ns [53.7538, 54.346] (0.95 confidence) |
-| d32/la&#95;stack&#95;det | 2178.59 ns [2173.51, 2183.86] (0.95 confidence) | 2252.39 ns [2247.91, 2256.88] (0.95 confidence) | — | — |
-| d32/la&#95;stack&#95;det&#95;from&#95;ldlt | 7.78595 ns [7.77144, 7.79968] (0.95 confidence) | 8.16646 ns [8.15442, 8.17878] (0.95 confidence) | 3.07986 ns [3.07157, 3.08763] (0.95 confidence) | 8.61234 ns [8.58365, 8.64235] (0.95 confidence) |
-| d32/la&#95;stack&#95;det&#95;from&#95;lu | 9.12572 ns [9.10623, 9.14645] (0.95 confidence) | 9.57734 ns [9.54482, 9.61145] (0.95 confidence) | 3.06712 ns [3.06069, 3.07261] (0.95 confidence) | 8.77433 ns [8.74152, 8.80883] (0.95 confidence) |
-| d32/la&#95;stack&#95;det&#95;via&#95;lu | 2043.73 ns [2040.32, 2047.24] (0.95 confidence) | 2106.39 ns [2100.31, 2113.01] (0.95 confidence) | 2268.7 ns [2263.43, 2274.04] (0.95 confidence) | 2389.34 ns [2384.5, 2394.1] (0.95 confidence) |
-| d32/la&#95;stack&#95;dot | 4.0179 ns [4.01365, 4.02204] (0.95 confidence) | 4.09956 ns [4.09462, 4.1045] (0.95 confidence) | 4.00272 ns [3.99739, 4.00814] (0.95 confidence) | 4.89614 ns [4.88595, 4.90669] (0.95 confidence) |
-| d32/la&#95;stack&#95;inf&#95;norm | 127.564 ns [127.21, 127.884] (0.95 confidence) | 133.649 ns [133.334, 134.06] (0.95 confidence) | 160.034 ns [158.875, 161.173] (0.95 confidence) | 162.59 ns [162.29, 162.884] (0.95 confidence) |
-| d32/la&#95;stack&#95;ldlt | 2392.54 ns [2386.27, 2402.48] (0.95 confidence) | 2430.23 ns [2426.93, 2433.6] (0.95 confidence) | 2117.9 ns [2097.96, 2145.6] (0.95 confidence) | 1400.06 ns [1395.44, 1404.88] (0.95 confidence) |
-| d32/la&#95;stack&#95;ldlt&#95;solve | 2710.85 ns [2707.16, 2714.57] (0.95 confidence) | 2778.27 ns [2771.53, 2785.45] (0.95 confidence) | 2765.06 ns [2748.24, 2781.59] (0.95 confidence) | 1864.35 ns [1861.11, 1867.91] (0.95 confidence) |
-| d32/la&#95;stack&#95;lu | 2136.08 ns [2131.23, 2140.81] (0.95 confidence) | 2218.43 ns [2211.08, 2225.47] (0.95 confidence) | 2123.07 ns [2119.46, 2126.64] (0.95 confidence) | 2367.71 ns [2362.3, 2373.17] (0.95 confidence) |
-| d32/la&#95;stack&#95;lu&#95;solve | 2764.68 ns [2760.11, 2769.3] (0.95 confidence) | 2835.01 ns [2827.86, 2842.8] (0.95 confidence) | 2693.92 ns [2678.98, 2707.72] (0.95 confidence) | 3030.93 ns [3023.73, 3038.55] (0.95 confidence) |
-| d32/la&#95;stack&#95;norm2&#95;sq | 3.96169 ns [3.95641, 3.96658] (0.95 confidence) | 4.11365 ns [4.10097, 4.12831] (0.95 confidence) | 3.61741 ns [3.60959, 3.62457] (0.95 confidence) | 4.2178 ns [4.21225, 4.22402] (0.95 confidence) |
-| d32/la&#95;stack&#95;solve&#95;from&#95;ldlt | 311.146 ns [310.312, 312.038] (0.95 confidence) | 320.497 ns [319.642, 321.43] (0.95 confidence) | 547.331 ns [546.18, 548.448] (0.95 confidence) | 469.58 ns [469.101, 470.078] (0.95 confidence) |
-| d32/la&#95;stack&#95;solve&#95;from&#95;lu | 670.442 ns [667.718, 673.547] (0.95 confidence) | 736.257 ns [734.399, 738.2] (0.95 confidence) | 328.251 ns [327.657, 328.798] (0.95 confidence) | 639.747 ns [638.454, 641.443] (0.95 confidence) |
-| d4/la&#95;stack&#95;det | 2.60575 ns [2.59285, 2.62314] (0.95 confidence) | 2.54743 ns [2.53963, 2.55628] (0.95 confidence) | — | — |
-| d4/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.792381 ns [0.790149, 0.794662] (0.95 confidence) | 0.771954 ns [0.771298, 0.772628] (0.95 confidence) | 0.504207 ns [0.501823, 0.506781] (0.95 confidence) | 1.00565 ns [1.00376, 1.00786] (0.95 confidence) |
-| d4/la&#95;stack&#95;det&#95;from&#95;lu | 0.888149 ns [0.886686, 0.889733] (0.95 confidence) | 0.872037 ns [0.87126, 0.872845] (0.95 confidence) | 0.594308 ns [0.592273, 0.596502] (0.95 confidence) | 1.25897 ns [1.25659, 1.26189] (0.95 confidence) |
-| d4/la&#95;stack&#95;det&#95;via&#95;lu | 14.5843 ns [14.5431, 14.6307] (0.95 confidence) | 14.3903 ns [14.3579, 14.4264] (0.95 confidence) | 31.3107 ns [31.2583, 31.366] (0.95 confidence) | 165.205 ns [164.673, 165.745] (0.95 confidence) |
-| d4/la&#95;stack&#95;dot | 0.69749 ns [0.694191, 0.701078] (0.95 confidence) | 0.687464 ns [0.685363, 0.689699] (0.95 confidence) | 0.670387 ns [0.668655, 0.672222] (0.95 confidence) | 2.69579 ns [2.67877, 2.71198] (0.95 confidence) |
-| d4/la&#95;stack&#95;inf&#95;norm | 2.39947 ns [2.39632, 2.40289] (0.95 confidence) | 2.37035 ns [2.36783, 2.37291] (0.95 confidence) | 2.08687 ns [2.0825, 2.09242] (0.95 confidence) | 2.10548 ns [2.09838, 2.11288] (0.95 confidence) |
-| d4/la&#95;stack&#95;ldlt | 18.2527 ns [18.2261, 18.2822] (0.95 confidence) | 17.8838 ns [17.8541, 17.9128] (0.95 confidence) | 8.89904 ns [8.41541, 9.46346] (0.95 confidence) | 124.877 ns [124.327, 125.456] (0.95 confidence) |
-| d4/la&#95;stack&#95;ldlt&#95;solve | 18.1806 ns [18.1449, 18.2196] (0.95 confidence) | 18.0042 ns [17.9668, 18.0427] (0.95 confidence) | 11.5421 ns [11.5154, 11.5682] (0.95 confidence) | 166.424 ns [166.006, 166.846] (0.95 confidence) |
-| d4/la&#95;stack&#95;lu | 13.9015 ns [13.8778, 13.9256] (0.95 confidence) | 13.781 ns [13.7598, 13.8022] (0.95 confidence) | 30.1319 ns [30.0809, 30.1859] (0.95 confidence) | 158.856 ns [158.369, 159.35] (0.95 confidence) |
-| d4/la&#95;stack&#95;lu&#95;solve | 22.1298 ns [22.0973, 22.1616] (0.95 confidence) | 21.7429 ns [21.7173, 21.7676] (0.95 confidence) | 54.9585 ns [54.8726, 55.0434] (0.95 confidence) | 222.052 ns [221.391, 222.733] (0.95 confidence) |
-| d4/la&#95;stack&#95;norm2&#95;sq | 0.462637 ns [0.461733, 0.463576] (0.95 confidence) | 0.486285 ns [0.481086, 0.49246] (0.95 confidence) | 0.545274 ns [0.543567, 0.547246] (0.95 confidence) | 4.22054 ns [4.21341, 4.22791] (0.95 confidence) |
-| d4/la&#95;stack&#95;solve&#95;from&#95;ldlt | 2.55737 ns [2.54503, 2.57192] (0.95 confidence) | 2.52901 ns [2.51247, 2.5479] (0.95 confidence) | 5.81531 ns [5.80181, 5.82826] (0.95 confidence) | 41.7363 ns [41.6474, 41.8243] (0.95 confidence) |
-| d4/la&#95;stack&#95;solve&#95;from&#95;lu | 4.04715 ns [4.03604, 4.0589] (0.95 confidence) | 3.9379 ns [3.9308, 3.94505] (0.95 confidence) | 5.83199 ns [5.82423, 5.84028] (0.95 confidence) | 55.4299 ns [55.2979, 55.5682] (0.95 confidence) |
-| d5/la&#95;stack&#95;det | 40.9326 ns [40.8844, 40.9807] (0.95 confidence) | 41.1163 ns [41.0652, 41.1706] (0.95 confidence) | — | — |
-| d5/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.877508 ns [0.877122, 0.877986] (0.95 confidence) | 0.881074 ns [0.879439, 0.883348] (0.95 confidence) | 0.58162 ns [0.580574, 0.582497] (0.95 confidence) | 1.23603 ns [1.23446, 1.2376] (0.95 confidence) |
-| d5/la&#95;stack&#95;det&#95;from&#95;lu | 1.03418 ns [1.03344, 1.03503] (0.95 confidence) | 1.03383 ns [1.0329, 1.03483] (0.95 confidence) | 0.670221 ns [0.666679, 0.673956] (0.95 confidence) | 1.4881 ns [1.48622, 1.49048] (0.95 confidence) |
-| d5/la&#95;stack&#95;det&#95;via&#95;lu | 33.4257 ns [33.3587, 33.4966] (0.95 confidence) | 33.6302 ns [33.5526, 33.7071] (0.95 confidence) | 51.4905 ns [51.3641, 51.6174] (0.95 confidence) | 191.54 ns [191.07, 192.02] (0.95 confidence) |
-| d5/la&#95;stack&#95;dot | 0.836779 ns [0.833711, 0.83957] (0.95 confidence) | 0.831733 ns [0.827993, 0.835329] (0.95 confidence) | 0.764813 ns [0.763295, 0.766305] (0.95 confidence) | 2.68543 ns [2.66798, 2.70487] (0.95 confidence) |
-| d5/la&#95;stack&#95;inf&#95;norm | 3.46401 ns [3.46135, 3.4665] (0.95 confidence) | 3.46346 ns [3.4591, 3.46757] (0.95 confidence) | 3.2708 ns [3.26629, 3.2751] (0.95 confidence) | 3.15991 ns [3.15843, 3.16134] (0.95 confidence) |
-| d5/la&#95;stack&#95;ldlt | 24.9692 ns [24.9211, 25.0139] (0.95 confidence) | 25.0969 ns [25.0624, 25.1293] (0.95 confidence) | 25.349 ns [24.6129, 26.0987] (0.95 confidence) | 137.428 ns [137.072, 137.782] (0.95 confidence) |
-| d5/la&#95;stack&#95;ldlt&#95;solve | 30.391 ns [30.341, 30.4413] (0.95 confidence) | 30.5802 ns [30.5263, 30.6359] (0.95 confidence) | 40.6196 ns [40.3922, 40.9033] (0.95 confidence) | 200.976 ns [200.255, 201.734] (0.95 confidence) |
-| d5/la&#95;stack&#95;lu | 33.4374 ns [33.3708, 33.506] (0.95 confidence) | 33.4032 ns [33.3242, 33.4834] (0.95 confidence) | 50.6301 ns [50.2232, 51.1681] (0.95 confidence) | 180.438 ns [180.051, 180.816] (0.95 confidence) |
-| d5/la&#95;stack&#95;lu&#95;solve | 48.4078 ns [48.2116, 48.5877] (0.95 confidence) | 49.1281 ns [49.0529, 49.2046] (0.95 confidence) | 74.7195 ns [74.4329, 74.997] (0.95 confidence) | 272.634 ns [271.856, 273.405] (0.95 confidence) |
-| d5/la&#95;stack&#95;norm2&#95;sq | 0.526476 ns [0.526056, 0.526905] (0.95 confidence) | 0.526933 ns [0.526405, 0.52746] (0.95 confidence) | 0.503805 ns [0.503496, 0.504142] (0.95 confidence) | 4.13517 ns [4.13249, 4.13792] (0.95 confidence) |
-| d5/la&#95;stack&#95;solve&#95;from&#95;ldlt | 3.94011 ns [3.93095, 3.94896] (0.95 confidence) | 3.90871 ns [3.90269, 3.91439] (0.95 confidence) | 9.15833 ns [9.04235, 9.33769] (0.95 confidence) | 60.2768 ns [60.118, 60.4392] (0.95 confidence) |
-| d5/la&#95;stack&#95;solve&#95;from&#95;lu | 6.0822 ns [6.05978, 6.10429] (0.95 confidence) | 6.13798 ns [6.12943, 6.1468] (0.95 confidence) | 8.98041 ns [8.96122, 8.99972] (0.95 confidence) | 84.2034 ns [84.0547, 84.3511] (0.95 confidence) |
-| d64/la&#95;stack&#95;det | 15387.5 ns [15288.9, 15484.2] (0.95 confidence) | 15537.1 ns [15450.8, 15624] (0.95 confidence) | — | — |
-| d64/la&#95;stack&#95;det&#95;from&#95;ldlt | 23.0039 ns [22.9162, 23.0988] (0.95 confidence) | 24.3583 ns [24.3062, 24.4099] (0.95 confidence) | 8.42777 ns [8.41132, 8.44438] (0.95 confidence) | 20.9039 ns [20.8362, 20.976] (0.95 confidence) |
-| d64/la&#95;stack&#95;det&#95;from&#95;lu | 23.1735 ns [23.1279, 23.2159] (0.95 confidence) | 24.3531 ns [24.3013, 24.4068] (0.95 confidence) | 8.62853 ns [8.61019, 8.64531] (0.95 confidence) | 21.2206 ns [21.1872, 21.2522] (0.95 confidence) |
-| d64/la&#95;stack&#95;det&#95;via&#95;lu | 14581.7 ns [14536.4, 14627.3] (0.95 confidence) | 14845.3 ns [14796.5, 14894] (0.95 confidence) | 13016.8 ns [13002.1, 13031.3] (0.95 confidence) | 11082.9 ns [11056.6, 11112.3] (0.95 confidence) |
-| d64/la&#95;stack&#95;dot | 10.8549 ns [10.8255, 10.8815] (0.95 confidence) | 11.5028 ns [11.4821, 11.523] (0.95 confidence) | 7.98078 ns [7.96332, 7.99756] (0.95 confidence) | 8.20819 ns [8.1802, 8.23787] (0.95 confidence) |
-| d64/la&#95;stack&#95;inf&#95;norm | 626.923 ns [625.576, 628.207] (0.95 confidence) | 676.668 ns [674.536, 679.046] (0.95 confidence) | 1248.06 ns [1244.39, 1251.4] (0.95 confidence) | 1563.64 ns [1560.04, 1567.18] (0.95 confidence) |
-| d64/la&#95;stack&#95;ldlt | 16846.1 ns [16801.6, 16898.6] (0.95 confidence) | 17169.9 ns [17148.4, 17192.6] (0.95 confidence) | 10743.9 ns [10734.7, 10752.7] (0.95 confidence) | 7015.69 ns [7001.32, 7034.73] (0.95 confidence) |
-| d64/la&#95;stack&#95;ldlt&#95;solve | 19083.2 ns [19057.2, 19108.6] (0.95 confidence) | 19515.9 ns [19474.6, 19564.5] (0.95 confidence) | 12295.2 ns [12278, 12311.8] (0.95 confidence) | 8289.7 ns [8276.38, 8307.26] (0.95 confidence) |
-| d64/la&#95;stack&#95;lu | 14704.2 ns [14683.9, 14725.4] (0.95 confidence) | 14949.5 ns [14919.7, 14979.8] (0.95 confidence) | 13518 ns [13474.3, 13555.6] (0.95 confidence) | 11156.9 ns [11118.2, 11197.3] (0.95 confidence) |
-| d64/la&#95;stack&#95;lu&#95;solve | 17976.7 ns [17911.4, 18039.2] (0.95 confidence) | 18307.6 ns [18202.4, 18412.5] (0.95 confidence) | 13841.5 ns [13828.4, 13854.6] (0.95 confidence) | 12773.7 ns [12732.2, 12819.9] (0.95 confidence) |
-| d64/la&#95;stack&#95;norm2&#95;sq | 10.8698 ns [10.8185, 10.9261] (0.95 confidence) | 11.4462 ns [11.4135, 11.4806] (0.95 confidence) | 8.49885 ns [8.48628, 8.51061] (0.95 confidence) | 6.38979 ns [6.33342, 6.44895] (0.95 confidence) |
-| d64/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1074.91 ns [1072.26, 1077.89] (0.95 confidence) | 1105.08 ns [1102.15, 1108.29] (0.95 confidence) | 1285.03 ns [1282.74, 1287.24] (0.95 confidence) | 1255.36 ns [1253.06, 1257.76] (0.95 confidence) |
-| d64/la&#95;stack&#95;solve&#95;from&#95;lu | 2531.46 ns [2526.7, 2536.23] (0.95 confidence) | 2719.87 ns [2713.15, 2726.53] (0.95 confidence) | 790.936 ns [790.432, 791.429] (0.95 confidence) | 1684.65 ns [1682.86, 1686.39] (0.95 confidence) |
-| d8/la&#95;stack&#95;det | 95.1736 ns [94.8209, 95.5046] (0.95 confidence) | 95.4649 ns [95.0827, 95.8222] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;det&#95;from&#95;ldlt | 1.31426 ns [1.31128, 1.31763] (0.95 confidence) | 1.30756 ns [1.30637, 1.30868] (0.95 confidence) | 0.906331 ns [0.901297, 0.911379] (0.95 confidence) | 2.00406 ns [1.98489, 2.02829] (0.95 confidence) |
-| d8/la&#95;stack&#95;det&#95;from&#95;ldlt&#95;balanced&#95;range | 8.77584 ns [8.75176, 8.79992] (0.95 confidence) | 9.02872 ns [9.00819, 9.04959] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;det&#95;from&#95;lu | 1.46542 ns [1.46401, 1.46677] (0.95 confidence) | 1.47263 ns [1.46917, 1.47648] (0.95 confidence) | 0.988416 ns [0.984047, 0.992586] (0.95 confidence) | 2.31004 ns [2.27776, 2.34696] (0.95 confidence) |
-| d8/la&#95;stack&#95;det&#95;from&#95;lu&#95;balanced&#95;range | 9.37731 ns [9.34858, 9.40608] (0.95 confidence) | 9.53277 ns [9.38008, 9.72639] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;det&#95;via&#95;lu | 89.5977 ns [89.0677, 90.1101] (0.95 confidence) | 91.1588 ns [90.6694, 91.6617] (0.95 confidence) | 140.441 ns [140.02, 140.873] (0.95 confidence) | 268.759 ns [267.679, 269.843] (0.95 confidence) |
-| d8/la&#95;stack&#95;dot | 0.921649 ns [0.919907, 0.923464] (0.95 confidence) | 0.940921 ns [0.938419, 0.943604] (0.95 confidence) | 1.33039 ns [1.32865, 1.33213] (0.95 confidence) | 2.57592 ns [2.55781, 2.59931] (0.95 confidence) |
-| d8/la&#95;stack&#95;inf&#95;norm | 8.40687 ns [8.38488, 8.42637] (0.95 confidence) | 8.43383 ns [8.41901, 8.44747] (0.95 confidence) | 8.0359 ns [8.02179, 8.04917] (0.95 confidence) | 8.09335 ns [8.08499, 8.10121] (0.95 confidence) |
-| d8/la&#95;stack&#95;ldlt | 90.7807 ns [90.5801, 90.9944] (0.95 confidence) | 90.5629 ns [90.4554, 90.6769] (0.95 confidence) | 101.992 ns [101.338, 103.027] (0.95 confidence) | 195.409 ns [195.078, 195.749] (0.95 confidence) |
-| d8/la&#95;stack&#95;ldlt&#95;ill&#95;conditioned | 90.3923 ns [90.2556, 90.5439] (0.95 confidence) | 90.2935 ns [90.2018, 90.3852] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;ldlt&#95;solve | 103.719 ns [103.505, 103.96] (0.95 confidence) | 105.515 ns [105.221, 105.816] (0.95 confidence) | 146.11 ns [144.922, 147.301] (0.95 confidence) | 266.909 ns [266.634, 267.191] (0.95 confidence) |
-| d8/la&#95;stack&#95;lu | 89.8157 ns [89.4433, 90.1605] (0.95 confidence) | 90.2377 ns [90.0297, 90.4463] (0.95 confidence) | 133.03 ns [132.41, 133.614] (0.95 confidence) | 258.431 ns [257.648, 259.234] (0.95 confidence) |
-| d8/la&#95;stack&#95;lu&#95;ill&#95;conditioned | 89.7279 ns [89.2354, 90.2294] (0.95 confidence) | 89.0322 ns [88.591, 89.4492] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;lu&#95;pivoting | 94.4715 ns [94.2755, 94.6681] (0.95 confidence) | 95.5521 ns [95.3155, 95.7964] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;lu&#95;solve | 130.536 ns [130.281, 130.8] (0.95 confidence) | 133.72 ns [133.437, 134.014] (0.95 confidence) | 166.473 ns [166.13, 166.819] (0.95 confidence) | 374.434 ns [373.338, 375.529] (0.95 confidence) |
-| d8/la&#95;stack&#95;norm2&#95;sq | 0.671224 ns [0.668953, 0.673608] (0.95 confidence) | 0.66535 ns [0.664149, 0.66646] (0.95 confidence) | 0.938623 ns [0.935849, 0.941726] (0.95 confidence) | 4.15172 ns [4.14727, 4.15633] (0.95 confidence) |
-| d8/la&#95;stack&#95;solve&#95;from&#95;ldlt | 8.20154 ns [8.19397, 8.20861] (0.95 confidence) | 8.19407 ns [8.18184, 8.2057] (0.95 confidence) | 21.7461 ns [21.6501, 21.8547] (0.95 confidence) | 69.7129 ns [69.6386, 69.7896] (0.95 confidence) |
-| d8/la&#95;stack&#95;solve&#95;from&#95;lu | 13.3991 ns [13.3776, 13.4204] (0.95 confidence) | 13.4357 ns [13.4092, 13.4667] (0.95 confidence) | 16.1861 ns [16.1545, 16.2149] (0.95 confidence) | 102.928 ns [102.7, 103.162] (0.95 confidence) |
-| exact&#95;d2/det | 0.438193 ns [0.437655, 0.438771] (0.95 confidence) | 0.460065 ns [0.452834, 0.470007] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;direct | 0.441632 ns [0.44026, 0.44306] (0.95 confidence) | 0.449694 ns [0.447109, 0.452912] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;direct&#95;with&#95;errbound | 1.74211 ns [1.73988, 1.7443] (0.95 confidence) | 1.77617 ns [1.77383, 1.77893] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;errbound | 1.59072 ns [1.58958, 1.59192] (0.95 confidence) | 1.62371 ns [1.6209, 1.62705] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;exact | 105.56 ns [105.366, 105.711] (0.95 confidence) | 107.55 ns [106.786, 108.249] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;exact&#95;f64&#95;result | 66.7252 ns [66.5659, 66.8851] (0.95 confidence) | 69.1351 ns [68.9925, 69.2744] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;exact&#95;rounded&#95;f64 | 68.598 ns [68.4678, 68.7306] (0.95 confidence) | 71.2031 ns [70.9945, 71.4249] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;sign&#95;exact | 2.98341 ns [2.978, 2.98886] (0.95 confidence) | 3.06474 ns [3.05713, 3.07371] (0.95 confidence) | — | — |
-| exact&#95;d2/solve&#95;exact | 7101.53 ns [7090.38, 7112.74] (0.95 confidence) | 7308.61 ns [7282.98, 7340.25] (0.95 confidence) | — | — |
-| exact&#95;d2/solve&#95;exact&#95;f64&#95;result | 7239.05 ns [7223.45, 7256.51] (0.95 confidence) | 7492.75 ns [7479.79, 7506.44] (0.95 confidence) | — | — |
-| exact&#95;d2/solve&#95;exact&#95;rounded&#95;f64 | 7533.28 ns [7513.86, 7554.41] (0.95 confidence) | 7669.97 ns [7653.92, 7686.35] (0.95 confidence) | — | — |
-| exact&#95;d3/det | 0.830687 ns [0.828107, 0.833417] (0.95 confidence) | 0.84932 ns [0.846959, 0.85175] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;direct | 0.822643 ns [0.821397, 0.824092] (0.95 confidence) | 0.846636 ns [0.844202, 0.849169] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;direct&#95;with&#95;errbound | 3.32045 ns [3.31512, 3.32655] (0.95 confidence) | 3.4032 ns [3.39678, 3.40996] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;errbound | 3.2997 ns [3.29731, 3.30252] (0.95 confidence) | 3.37902 ns [3.37142, 3.38805] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;exact | 334.11 ns [333.523, 334.726] (0.95 confidence) | 347.209 ns [346.755, 347.654] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;exact&#95;f64&#95;result | 302.755 ns [301.839, 303.884] (0.95 confidence) | 308.088 ns [307.635, 308.556] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;exact&#95;rounded&#95;f64 | 303.78 ns [303.492, 304.073] (0.95 confidence) | 311.269 ns [310.686, 311.827] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;sign&#95;exact | 4.71189 ns [4.70753, 4.71633] (0.95 confidence) | 4.80312 ns [4.79668, 4.80958] (0.95 confidence) | — | — |
-| exact&#95;d3/solve&#95;exact | 31219.5 ns [31095.6, 31360.1] (0.95 confidence) | 31410.7 ns [31353.4, 31469.3] (0.95 confidence) | — | — |
-| exact&#95;d3/solve&#95;exact&#95;f64&#95;result | 30895 ns [30833.8, 30955.8] (0.95 confidence) | 33106.6 ns [32764.1, 33600.4] (0.95 confidence) | — | — |
-| exact&#95;d3/solve&#95;exact&#95;rounded&#95;f64 | 31328.3 ns [31283.9, 31372.9] (0.95 confidence) | 31914.8 ns [31842.1, 31989.9] (0.95 confidence) | — | — |
-| exact&#95;d4/det | 3.22311 ns [3.21642, 3.23298] (0.95 confidence) | 3.259 ns [3.24465, 3.276] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;direct | 2.35399 ns [2.35274, 2.3554] (0.95 confidence) | 2.37516 ns [2.36789, 2.38652] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;direct&#95;with&#95;errbound | 6.77204 ns [6.76653, 6.77706] (0.95 confidence) | 6.81027 ns [6.80147, 6.8206] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;errbound | 6.75024 ns [6.74157, 6.75886] (0.95 confidence) | 6.79247 ns [6.77999, 6.80542] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;exact | 997.174 ns [994.009, 1000.41] (0.95 confidence) | 994.8 ns [991.392, 998.362] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;exact&#95;f64&#95;result | 952.917 ns [948.439, 957.382] (0.95 confidence) | 941.657 ns [938.485, 944.856] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;exact&#95;rounded&#95;f64 | 994.725 ns [990.92, 998.48] (0.95 confidence) | 954.803 ns [950.651, 959.021] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;sign&#95;exact | 7.93276 ns [7.92856, 7.93724] (0.95 confidence) | 7.98889 ns [7.97367, 8.00617] (0.95 confidence) | — | — |
-| exact&#95;d4/solve&#95;exact | 79448 ns [79250.3, 79659.6] (0.95 confidence) | 79419.2 ns [79293.5, 79547.5] (0.95 confidence) | — | — |
-| exact&#95;d4/solve&#95;exact&#95;f64&#95;result | 79484.3 ns [79394.2, 79575.5] (0.95 confidence) | 79460.4 ns [79329.4, 79591.9] (0.95 confidence) | — | — |
-| exact&#95;d4/solve&#95;exact&#95;rounded&#95;f64 | 80357.2 ns [80175.3, 80565.9] (0.95 confidence) | 80490.9 ns [80334.1, 80650.4] (0.95 confidence) | — | — |
-| exact&#95;d5/det | 27.7094 ns [27.6543, 27.7667] (0.95 confidence) | 27.9543 ns [27.8822, 28.0263] (0.95 confidence) | — | — |
-| exact&#95;d5/det&#95;exact | 3444.94 ns [3439.22, 3450.7] (0.95 confidence) | 3493.37 ns [3487.82, 3498.91] (0.95 confidence) | — | — |
-| exact&#95;d5/det&#95;exact&#95;f64&#95;result | 3398.76 ns [3391.83, 3405.8] (0.95 confidence) | 3435.43 ns [3428.97, 3442.55] (0.95 confidence) | — | — |
-| exact&#95;d5/det&#95;exact&#95;rounded&#95;f64 | 3376.17 ns [3371.34, 3381] (0.95 confidence) | 3463.3 ns [3457.91, 3468.72] (0.95 confidence) | — | — |
-| exact&#95;d5/det&#95;sign&#95;exact | 3364.89 ns [3359.61, 3370.23] (0.95 confidence) | 3443.45 ns [3436.91, 3450.32] (0.95 confidence) | — | — |
-| exact&#95;d5/solve&#95;exact | 156623 ns [156400, 156852] (0.95 confidence) | 157629 ns [157389, 157872] (0.95 confidence) | — | — |
-| exact&#95;d5/solve&#95;exact&#95;f64&#95;result | 156857 ns [156635, 157081] (0.95 confidence) | 158041 ns [157742, 158345] (0.95 confidence) | — | — |
-| exact&#95;d5/solve&#95;exact&#95;rounded&#95;f64 | 157493 ns [157276, 157717] (0.95 confidence) | 159404 ns [158863, 160068] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;4x4/det&#95;exact | 1064.71 ns [1057.77, 1071.42] (0.95 confidence) | 1024.85 ns [1019.28, 1030.83] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;4x4/det&#95;sign&#95;exact | 8.07959 ns [8.06018, 8.09947] (0.95 confidence) | 7.91835 ns [7.91319, 7.92302] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;4x4/solve&#95;exact | 59655.4 ns [59580.3, 59728.7] (0.95 confidence) | 59527.9 ns [59410.5, 59646] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;4x4/solve&#95;exact&#95;f64&#95;result | 59918.6 ns [59834.9, 60005.5] (0.95 confidence) | 59465.3 ns [59360.6, 59568.6] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;4x4/solve&#95;exact&#95;rounded&#95;f64 | 60493.4 ns [60401.8, 60583.5] (0.95 confidence) | 60077.2 ns [59962, 60190.8] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;5x5/det&#95;exact | 3596 ns [3590.09, 3601.87] (0.95 confidence) | 3705.67 ns [3699.39, 3712.02] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;5x5/det&#95;sign&#95;exact | 3583.33 ns [3571.22, 3595.49] (0.95 confidence) | 3676.59 ns [3665.63, 3688.39] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;5x5/solve&#95;exact | 123691 ns [123407, 124000] (0.95 confidence) | 122501 ns [122253, 122748] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;5x5/solve&#95;exact&#95;f64&#95;result | 122495 ns [122283, 122711] (0.95 confidence) | 122956 ns [122437, 123748] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;5x5/solve&#95;exact&#95;rounded&#95;f64 | 123567 ns [123372, 123762] (0.95 confidence) | 131935 ns [130386, 133861] (0.95 confidence) | — | — |
-| exact&#95;large&#95;entries&#95;3x3/det&#95;exact | 320.927 ns [320.384, 321.487] (0.95 confidence) | 322.039 ns [321.459, 322.66] (0.95 confidence) | — | — |
-| exact&#95;large&#95;entries&#95;3x3/det&#95;sign&#95;exact | 313.249 ns [312.481, 314.043] (0.95 confidence) | 312.551 ns [312.197, 312.919] (0.95 confidence) | — | — |
-| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact | 92432.9 ns [92308.6, 92560.9] (0.95 confidence) | 93469.4 ns [93382, 93557.2] (0.95 confidence) | — | — |
-| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact&#95;f64&#95;result | 92313.6 ns [92182.9, 92444.5] (0.95 confidence) | 94078.7 ns [93922.8, 94245.2] (0.95 confidence) | — | — |
-| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact&#95;rounded&#95;f64 | 93037.8 ns [92919, 93158.3] (0.95 confidence) | 95379.1 ns [95112.2, 95743.5] (0.95 confidence) | — | — |
-| exact&#95;near&#95;singular&#95;3x3/det&#95;exact | 330.658 ns [330.155, 331.218] (0.95 confidence) | 331.575 ns [331.123, 332.053] (0.95 confidence) | — | — |
-| exact&#95;near&#95;singular&#95;3x3/det&#95;sign&#95;exact | 382.485 ns [381.592, 383.421] (0.95 confidence) | 383.104 ns [381.834, 384.285] (0.95 confidence) | — | — |
-| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact | 2639.39 ns [2635.26, 2643.52] (0.95 confidence) | 2658.68 ns [2653.54, 2663.92] (0.95 confidence) | — | — |
-| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact&#95;f64&#95;result | 2674.76 ns [2667.73, 2682.9] (0.95 confidence) | 2655.98 ns [2649.46, 2662.29] (0.95 confidence) | — | — |
-| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact&#95;rounded&#95;f64 | 2662.97 ns [2658.73, 2667.28] (0.95 confidence) | 2672.55 ns [2668.49, 2677.22] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d2/det&#95;exact | 3075.83 ns [3073.67, 3078.22] (0.95 confidence) | 3117.36 ns [3113.97, 3121.09] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d2/det&#95;sign&#95;exact | 150.183 ns [149.231, 151.209] (0.95 confidence) | 145.468 ns [145.085, 145.856] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact | 73943.1 ns [73801.6, 74084.5] (0.95 confidence) | 74677.1 ns [74538.4, 74813.9] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact&#95;f64&#95;result | 74789.7 ns [74640.9, 74950] (0.95 confidence) | 75858.3 ns [75719.8, 76004.6] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact&#95;rounded&#95;f64 | 75116.3 ns [74965.5, 75269.8] (0.95 confidence) | 76457.9 ns [76242.4, 76681.3] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d3/det&#95;exact | 8953.7 ns [8829.82, 9114.2] (0.95 confidence) | 8965.63 ns [8933.22, 8999.98] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d3/det&#95;sign&#95;exact | 225.109 ns [224.834, 225.397] (0.95 confidence) | 225.832 ns [225.61, 226.053] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact | 236413 ns [235835, 237009] (0.95 confidence) | 232370 ns [232162, 232582] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact&#95;f64&#95;result | 233709 ns [233360, 234053] (0.95 confidence) | 233079 ns [232683, 233453] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact&#95;rounded&#95;f64 | 232855 ns [232546, 233185] (0.95 confidence) | 234107 ns [233724, 234489] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d4/det&#95;exact | 21561.5 ns [21442.9, 21690.8] (0.95 confidence) | 21894.3 ns [21805.9, 21989.7] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d4/det&#95;sign&#95;exact | 443.25 ns [442.946, 443.556] (0.95 confidence) | 445.317 ns [444.541, 446.14] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact | 514994 ns [514483, 515517] (0.95 confidence) | 524619 ns [523548, 525744] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact&#95;f64&#95;result | 515398 ns [514737, 516102] (0.95 confidence) | 522851 ns [522158, 523528] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact&#95;rounded&#95;f64 | 516704 ns [516028, 517373] (0.95 confidence) | 525305 ns [524419, 526135] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d5/det&#95;exact | 55370.6 ns [55120.8, 55649.7] (0.95 confidence) | 56219.7 ns [55937, 56522.6] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d5/det&#95;sign&#95;exact | 54984.3 ns [54776, 55197.6] (0.95 confidence) | 55193.7 ns [54994.6, 55404.9] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact | 1.01308e+06 ns [1.01078e+06, 1.01545e+06] (0.95 confidence) | 1.02002e+06 ns [1.01876e+06, 1.02122e+06] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact&#95;f64&#95;result | 1.01018e+06 ns [1.00909e+06, 1.01127e+06] (0.95 confidence) | 1.02136e+06 ns [1.01858e+06, 1.02434e+06] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact&#95;rounded&#95;f64 | 1.01063e+06 ns [1.00927e+06, 1.01192e+06] (0.95 confidence) | 1.01802e+06 ns [1.01571e+06, 1.0201e+06] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d2/det&#95;big&#95;rational&#95;gaussian | 1101.74 ns [1100.24, 1103.35] (0.95 confidence) | 1106.92 ns [1104.44, 1110.22] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d2/det&#95;row&#95;cleared&#95;bareiss | 178.104 ns [177.862, 178.353] (0.95 confidence) | 180.318 ns [179.918, 180.746] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d2/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 77.0368 ns [76.9432, 77.1334] (0.95 confidence) | 77.9081 ns [77.743, 78.0791] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d2/solve&#95;big&#95;rational&#95;gaussian | 2105.43 ns [2101.63, 2109.5] (0.95 confidence) | 2116.51 ns [2113.51, 2119.55] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d2/solve&#95;row&#95;cleared&#95;bareiss | 926.427 ns [925.508, 927.351] (0.95 confidence) | 931.53 ns [930.581, 932.578] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d3/det&#95;big&#95;rational&#95;gaussian | 4614.22 ns [4602.18, 4626.62] (0.95 confidence) | 4628.07 ns [4615.68, 4641.06] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d3/det&#95;row&#95;cleared&#95;bareiss | 562.68 ns [561.488, 564.029] (0.95 confidence) | 568.154 ns [567.323, 569.022] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d3/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 362.361 ns [361.303, 363.502] (0.95 confidence) | 356.702 ns [355.781, 357.705] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d3/solve&#95;big&#95;rational&#95;gaussian | 7974.74 ns [7953.05, 7996.88] (0.95 confidence) | 8054.63 ns [8025.89, 8084.71] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d3/solve&#95;row&#95;cleared&#95;bareiss | 2402.19 ns [2397.85, 2406.79] (0.95 confidence) | 2425.42 ns [2414.75, 2439.47] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d4/det&#95;big&#95;rational&#95;gaussian | 13576.4 ns [13527.7, 13624] (0.95 confidence) | 13416.5 ns [13370.5, 13462.4] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d4/det&#95;row&#95;cleared&#95;bareiss | 1140.83 ns [1138.74, 1142.92] (0.95 confidence) | 1146.18 ns [1144.82, 1147.56] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d4/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 761.432 ns [759.768, 763.137] (0.95 confidence) | 757.253 ns [756.353, 758.199] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d4/solve&#95;big&#95;rational&#95;gaussian | 23725.2 ns [23664.2, 23789.3] (0.95 confidence) | 23719.6 ns [23657.8, 23780.9] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d4/solve&#95;row&#95;cleared&#95;bareiss | 5500.13 ns [5405.68, 5602.14] (0.95 confidence) | 5911.87 ns [5768.75, 6065.51] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d5/det&#95;big&#95;rational&#95;gaussian | 23205.6 ns [23111.8, 23314.3] (0.95 confidence) | 23137.7 ns [23099.9, 23177] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d5/det&#95;row&#95;cleared&#95;bareiss | 2055.53 ns [2051.42, 2059.61] (0.95 confidence) | 2077.81 ns [2075.3, 2080.37] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d5/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 1540.19 ns [1537.47, 1542.93] (0.95 confidence) | 1572.43 ns [1570.28, 1574.59] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d5/solve&#95;big&#95;rational&#95;gaussian | 39427.5 ns [39267.9, 39593.4] (0.95 confidence) | 39299.3 ns [39219.9, 39378.8] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d5/solve&#95;row&#95;cleared&#95;bareiss | 9350.24 ns [9331.51, 9369.2] (0.95 confidence) | 9464.07 ns [9448.98, 9479.42] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d6/det&#95;big&#95;rational&#95;gaussian | 55982.3 ns [55847.8, 56113.5] (0.95 confidence) | 56994.4 ns [56875, 57112.8] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d6/det&#95;row&#95;cleared&#95;bareiss | 3601.81 ns [3595.16, 3608.46] (0.95 confidence) | 3640.98 ns [3631.9, 3652.73] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d6/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 2947.81 ns [2942.41, 2953.28] (0.95 confidence) | 2983.67 ns [2978.91, 2988.4] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d6/solve&#95;big&#95;rational&#95;gaussian | 89277.2 ns [89057.2, 89501.4] (0.95 confidence) | 90181.9 ns [89971.9, 90397.4] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d6/solve&#95;row&#95;cleared&#95;bareiss | 17424.9 ns [17367.6, 17488.8] (0.95 confidence) | 17803.2 ns [17772.1, 17834.1] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d7/det&#95;big&#95;rational&#95;gaussian | 108611 ns [108354, 108873] (0.95 confidence) | 110246 ns [109941, 110600] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d7/det&#95;row&#95;cleared&#95;bareiss | 5850.32 ns [5839.08, 5863.38] (0.95 confidence) | 5889.54 ns [5872.79, 5907.38] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d7/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 5003.98 ns [4992.98, 5015.6] (0.95 confidence) | 5000.2 ns [4991.23, 5009.15] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d7/solve&#95;big&#95;rational&#95;gaussian | 159309 ns [158679, 160020] (0.95 confidence) | 162486 ns [162175, 162790] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d7/solve&#95;row&#95;cleared&#95;bareiss | 28193.8 ns [28128.1, 28260.2] (0.95 confidence) | 28918.5 ns [28872.2, 28964] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d8/det&#95;big&#95;rational&#95;gaussian | 187569 ns [187131, 188019] (0.95 confidence) | 190172 ns [189753, 190586] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d8/det&#95;row&#95;cleared&#95;bareiss | 9020.66 ns [8897.13, 9189.34] (0.95 confidence) | 8883.24 ns [8871.22, 8894.84] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d8/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 7985.48 ns [7971.39, 7999.63] (0.95 confidence) | 7942.5 ns [7923.98, 7962.36] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d8/solve&#95;big&#95;rational&#95;gaussian | 262705 ns [262251, 263168] (0.95 confidence) | 268790 ns [268225, 269354] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d8/solve&#95;row&#95;cleared&#95;bareiss | 40881 ns [40819.1, 40944.1] (0.95 confidence) | 41790.7 ns [41637, 42001.2] (0.95 confidence) | — | — |
+| d16/la&#95;stack&#95;det | 432.469 ns [430.85, 434.114] (0.95 confidence) | 437.002 ns [434.599, 439.443] (0.95 confidence) | — | — |
+| d16/la&#95;stack&#95;det&#95;from&#95;ldlt | 2.90166 ns [2.8958, 2.90769] (0.95 confidence) | 2.91988 ns [2.91681, 2.92322] (0.95 confidence) | 1.68498 ns [1.67984, 1.68998] (0.95 confidence) | 4.36875 ns [4.35419, 4.38386] (0.95 confidence) |
+| d16/la&#95;stack&#95;det&#95;from&#95;lu | 3.29887 ns [3.29433, 3.30389] (0.95 confidence) | 3.30704 ns [3.30356, 3.31067] (0.95 confidence) | 1.76792 ns [1.76184, 1.7738] (0.95 confidence) | 4.73194 ns [4.71044, 4.75406] (0.95 confidence) |
+| d16/la&#95;stack&#95;det&#95;via&#95;lu | 414.274 ns [411.546, 417.013] (0.95 confidence) | 421.585 ns [419.219, 423.987] (0.95 confidence) | 456.433 ns [454.978, 457.827] (0.95 confidence) | 638.639 ns [635.078, 642.406] (0.95 confidence) |
+| d16/la&#95;stack&#95;dot | 2.3743 ns [2.3492, 2.40641] (0.95 confidence) | 2.35592 ns [2.34842, 2.3642] (0.95 confidence) | 1.85114 ns [1.84813, 1.85426] (0.95 confidence) | 3.26553 ns [3.25954, 3.27282] (0.95 confidence) |
+| d16/la&#95;stack&#95;inf&#95;norm | 32.0114 ns [31.9385, 32.0688] (0.95 confidence) | 32.959 ns [32.9022, 33.0249] (0.95 confidence) | 32.2007 ns [32.1547, 32.2431] (0.95 confidence) | 32.1679 ns [32.1187, 32.2437] (0.95 confidence) |
+| d16/la&#95;stack&#95;ldlt | 341.417 ns [340.871, 342.047] (0.95 confidence) | 341.817 ns [341.382, 342.26] (0.95 confidence) | 416.84 ns [415.6, 418.099] (0.95 confidence) | 406.349 ns [405.247, 407.521] (0.95 confidence) |
+| d16/la&#95;stack&#95;ldlt&#95;solve | 384.197 ns [383.703, 384.758] (0.95 confidence) | 384.37 ns [384, 384.763] (0.95 confidence) | 640.119 ns [638.248, 642.154] (0.95 confidence) | 603.036 ns [601.461, 604.667] (0.95 confidence) |
+| d16/la&#95;stack&#95;lu | 409.202 ns [407.245, 411.202] (0.95 confidence) | 399.34 ns [397.163, 401.571] (0.95 confidence) | 462.711 ns [461.337, 464.122] (0.95 confidence) | 618.121 ns [614.263, 622.061] (0.95 confidence) |
+| d16/la&#95;stack&#95;lu&#95;solve | 657.55 ns [655.399, 659.732] (0.95 confidence) | 665.676 ns [663.951, 667.409] (0.95 confidence) | 591.906 ns [590.665, 593.121] (0.95 confidence) | 876.838 ns [873.041, 880.783] (0.95 confidence) |
+| d16/la&#95;stack&#95;norm2&#95;sq | 2.11166 ns [2.10732, 2.11616] (0.95 confidence) | 2.11555 ns [2.11069, 2.12022] (0.95 confidence) | 1.73143 ns [1.72795, 1.73516] (0.95 confidence) | 4.10491 ns [4.09957, 4.11065] (0.95 confidence) |
+| d16/la&#95;stack&#95;solve&#95;from&#95;ldlt | 27.8592 ns [27.8277, 27.893] (0.95 confidence) | 27.9577 ns [27.9166, 28.003] (0.95 confidence) | 119.104 ns [118.781, 119.449] (0.95 confidence) | 180.01 ns [179.756, 180.273] (0.95 confidence) |
+| d16/la&#95;stack&#95;solve&#95;from&#95;lu | 190.929 ns [190.353, 191.617] (0.95 confidence) | 201.063 ns [200.672, 201.451] (0.95 confidence) | 93.7524 ns [93.5974, 93.9088] (0.95 confidence) | 246.609 ns [246.109, 247.113] (0.95 confidence) |
+| d2/la&#95;stack&#95;det | 0.590869 ns [0.589738, 0.592083] (0.95 confidence) | 0.581027 ns [0.580077, 0.582046] (0.95 confidence) | — | — |
+| d2/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.510214 ns [0.507717, 0.512974] (0.95 confidence) | 0.510046 ns [0.507561, 0.512768] (0.95 confidence) | 0.446264 ns [0.445735, 0.446802] (0.95 confidence) | 0.575151 ns [0.572903, 0.577217] (0.95 confidence) |
+| d2/la&#95;stack&#95;det&#95;from&#95;lu | 0.560553 ns [0.559914, 0.561257] (0.95 confidence) | 0.553751 ns [0.552483, 0.555069] (0.95 confidence) | 0.470425 ns [0.468357, 0.472816] (0.95 confidence) | 0.772088 ns [0.770581, 0.773706] (0.95 confidence) |
+| d2/la&#95;stack&#95;det&#95;via&#95;lu | 1.79031 ns [1.78515, 1.79569] (0.95 confidence) | 1.77958 ns [1.7735, 1.78576] (0.95 confidence) | 0.848914 ns [0.847146, 0.850911] (0.95 confidence) | 88.4573 ns [88.1649, 88.7537] (0.95 confidence) |
+| d2/la&#95;stack&#95;dot | 0.602951 ns [0.598412, 0.608423] (0.95 confidence) | 0.621421 ns [0.616888, 0.626594] (0.95 confidence) | 0.605373 ns [0.603622, 0.60732] (0.95 confidence) | 2.45289 ns [2.44599, 2.46009] (0.95 confidence) |
+| d2/la&#95;stack&#95;inf&#95;norm | 0.714153 ns [0.713474, 0.71494] (0.95 confidence) | 0.714906 ns [0.713251, 0.716698] (0.95 confidence) | 0.571747 ns [0.571097, 0.572463] (0.95 confidence) | 0.711529 ns [0.710137, 0.713079] (0.95 confidence) |
+| d2/la&#95;stack&#95;ldlt | 7.41642 ns [7.39426, 7.43885] (0.95 confidence) | 7.01843 ns [6.98417, 7.05275] (0.95 confidence) | 1.77697 ns [1.77451, 1.77957] (0.95 confidence) | 75.3138 ns [74.9406, 75.6948] (0.95 confidence) |
+| d2/la&#95;stack&#95;ldlt&#95;solve | 10.8502 ns [10.8156, 10.8863] (0.95 confidence) | 10.3573 ns [10.3067, 10.409] (0.95 confidence) | 2.81236 ns [2.80708, 2.81743] (0.95 confidence) | 115.097 ns [114.805, 115.393] (0.95 confidence) |
+| d2/la&#95;stack&#95;lu | 1.60051 ns [1.5963, 1.60468] (0.95 confidence) | 1.58253 ns [1.57907, 1.58587] (0.95 confidence) | 1.66035 ns [1.65767, 1.66333] (0.95 confidence) | 84.5829 ns [84.2704, 84.9011] (0.95 confidence) |
+| d2/la&#95;stack&#95;lu&#95;solve | 2.11536 ns [2.10737, 2.12377] (0.95 confidence) | 2.0934 ns [2.08389, 2.10314] (0.95 confidence) | 4.67941 ns [4.67473, 4.68429] (0.95 confidence) | 134.298 ns [133.957, 134.646] (0.95 confidence) |
+| d2/la&#95;stack&#95;norm2&#95;sq | 0.397284 ns [0.396598, 0.398006] (0.95 confidence) | 0.401982 ns [0.400667, 0.403351] (0.95 confidence) | 0.398959 ns [0.397257, 0.40113] (0.95 confidence) | 4.20422 ns [4.19792, 4.21097] (0.95 confidence) |
+| d2/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1.26348 ns [1.2574, 1.26989] (0.95 confidence) | 1.25824 ns [1.25426, 1.262] (0.95 confidence) | 1.29493 ns [1.29232, 1.29782] (0.95 confidence) | 35.0087 ns [34.8983, 35.1253] (0.95 confidence) |
+| d2/la&#95;stack&#95;solve&#95;from&#95;lu | 1.29843 ns [1.29535, 1.30161] (0.95 confidence) | 1.29294 ns [1.287, 1.29985] (0.95 confidence) | 3.00986 ns [2.99598, 3.02624] (0.95 confidence) | 42.9869 ns [42.8791, 43.0971] (0.95 confidence) |
+| d3/la&#95;stack&#95;det | 1.35654 ns [1.34947, 1.36389] (0.95 confidence) | 1.36898 ns [1.36205, 1.37623] (0.95 confidence) | — | — |
+| d3/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.595074 ns [0.594486, 0.595847] (0.95 confidence) | 0.605429 ns [0.604267, 0.606636] (0.95 confidence) | 0.486194 ns [0.48555, 0.486894] (0.95 confidence) | 0.743291 ns [0.742724, 0.743957] (0.95 confidence) |
+| d3/la&#95;stack&#95;det&#95;from&#95;lu | 0.694443 ns [0.69384, 0.695162] (0.95 confidence) | 0.704082 ns [0.702824, 0.705367] (0.95 confidence) | 0.475397 ns [0.47495, 0.475924] (0.95 confidence) | 0.993279 ns [0.991798, 0.99504] (0.95 confidence) |
+| d3/la&#95;stack&#95;det&#95;via&#95;lu | 8.80459 ns [8.78623, 8.82453] (0.95 confidence) | 8.94119 ns [8.89718, 8.99881] (0.95 confidence) | 13.3016 ns [13.2505, 13.3549] (0.95 confidence) | 112.754 ns [112.344, 113.174] (0.95 confidence) |
+| d3/la&#95;stack&#95;dot | 0.668047 ns [0.666654, 0.669535] (0.95 confidence) | 0.677372 ns [0.675675, 0.679158] (0.95 confidence) | 0.685014 ns [0.68365, 0.686638] (0.95 confidence) | 2.70561 ns [2.67013, 2.74218] (0.95 confidence) |
+| d3/la&#95;stack&#95;inf&#95;norm | 1.36475 ns [1.36296, 1.36712] (0.95 confidence) | 1.37796 ns [1.37597, 1.37997] (0.95 confidence) | 1.17786 ns [1.17687, 1.17896] (0.95 confidence) | 1.34143 ns [1.33314, 1.35018] (0.95 confidence) |
+| d3/la&#95;stack&#95;ldlt | 13.3476 ns [13.2991, 13.3968] (0.95 confidence) | 13.6916 ns [13.6368, 13.748] (0.95 confidence) | 3.94829 ns [3.94235, 3.95429] (0.95 confidence) | 84.305 ns [84.1388, 84.478] (0.95 confidence) |
+| d3/la&#95;stack&#95;ldlt&#95;solve | 9.87846 ns [9.8374, 9.92295] (0.95 confidence) | 9.87467 ns [9.82948, 9.92171] (0.95 confidence) | 5.72641 ns [5.71402, 5.73905] (0.95 confidence) | 125.076 ns [124.892, 125.286] (0.95 confidence) |
+| d3/la&#95;stack&#95;lu | 8.41008 ns [8.39866, 8.42146] (0.95 confidence) | 8.45659 ns [8.4397, 8.47299] (0.95 confidence) | 12.3022 ns [12.26, 12.3453] (0.95 confidence) | 107.261 ns [107.058, 107.47] (0.95 confidence) |
+| d3/la&#95;stack&#95;lu&#95;solve | 9.90226 ns [9.87697, 9.93391] (0.95 confidence) | 10.1174 ns [10.0838, 10.1539] (0.95 confidence) | 32.8967 ns [32.7525, 33.0512] (0.95 confidence) | 155.301 ns [155.005, 155.611] (0.95 confidence) |
+| d3/la&#95;stack&#95;norm2&#95;sq | 0.445269 ns [0.444449, 0.446226] (0.95 confidence) | 0.462042 ns [0.456977, 0.468409] (0.95 confidence) | 0.444969 ns [0.444348, 0.445567] (0.95 confidence) | 4.1323 ns [4.12855, 4.13642] (0.95 confidence) |
+| d3/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1.78285 ns [1.78078, 1.78517] (0.95 confidence) | 1.81893 ns [1.81132, 1.8286] (0.95 confidence) | 2.83441 ns [2.82922, 2.83921] (0.95 confidence) | 35.2794 ns [35.0231, 35.5519] (0.95 confidence) |
+| d3/la&#95;stack&#95;solve&#95;from&#95;lu | 2.04759 ns [2.04383, 2.052] (0.95 confidence) | 2.09995 ns [2.09392, 2.10609] (0.95 confidence) | 4.55087 ns [4.54295, 4.55885] (0.95 confidence) | 43.652 ns [43.464, 43.8506] (0.95 confidence) |
+| d32/la&#95;stack&#95;det | 2178.76 ns [2174.46, 2182.97] (0.95 confidence) | 2226.47 ns [2220.08, 2233.52] (0.95 confidence) | — | — |
+| d32/la&#95;stack&#95;det&#95;from&#95;ldlt | 7.68009 ns [7.66713, 7.69229] (0.95 confidence) | 8.04439 ns [8.01937, 8.07767] (0.95 confidence) | 2.94124 ns [2.93636, 2.94609] (0.95 confidence) | 8.26594 ns [8.25378, 8.27749] (0.95 confidence) |
+| d32/la&#95;stack&#95;det&#95;from&#95;lu | 9.01043 ns [8.99001, 9.03247] (0.95 confidence) | 9.34347 ns [9.30653, 9.38186] (0.95 confidence) | 3.05002 ns [3.04597, 3.05398] (0.95 confidence) | 8.65583 ns [8.63648, 8.67459] (0.95 confidence) |
+| d32/la&#95;stack&#95;det&#95;via&#95;lu | 2045.67 ns [2042.74, 2048.63] (0.95 confidence) | 2068.16 ns [2064.79, 2071.52] (0.95 confidence) | 2265.99 ns [2260.38, 2271.6] (0.95 confidence) | 2320.76 ns [2317.61, 2324.09] (0.95 confidence) |
+| d32/la&#95;stack&#95;dot | 3.98436 ns [3.97782, 3.99137] (0.95 confidence) | 4.08448 ns [4.07581, 4.09513] (0.95 confidence) | 3.98898 ns [3.9845, 3.9933] (0.95 confidence) | 4.84085 ns [4.83736, 4.84497] (0.95 confidence) |
+| d32/la&#95;stack&#95;inf&#95;norm | 129.881 ns [129.603, 130.186] (0.95 confidence) | 131.582 ns [131.324, 131.871] (0.95 confidence) | 161.517 ns [160.399, 162.632] (0.95 confidence) | 164.558 ns [164.182, 164.934] (0.95 confidence) |
+| d32/la&#95;stack&#95;ldlt | 2376.09 ns [2374.46, 2377.76] (0.95 confidence) | 2405.75 ns [2401.49, 2410.48] (0.95 confidence) | 2069.61 ns [2063.28, 2075.37] (0.95 confidence) | 1362.44 ns [1358.04, 1367.02] (0.95 confidence) |
+| d32/la&#95;stack&#95;ldlt&#95;solve | 2693.12 ns [2689.48, 2696.96] (0.95 confidence) | 2754.43 ns [2745.44, 2763.88] (0.95 confidence) | 2800 ns [2786.21, 2813.19] (0.95 confidence) | 1866.72 ns [1861.86, 1871.76] (0.95 confidence) |
+| d32/la&#95;stack&#95;lu | 2234.77 ns [2222.62, 2247.29] (0.95 confidence) | 2277.76 ns [2261.76, 2294.07] (0.95 confidence) | 2136.83 ns [2133.34, 2140.41] (0.95 confidence) | 2273.44 ns [2269.98, 2276.94] (0.95 confidence) |
+| d32/la&#95;stack&#95;lu&#95;solve | 2740.83 ns [2735.54, 2745.6] (0.95 confidence) | 2814.24 ns [2807.44, 2822.15] (0.95 confidence) | 2625.48 ns [2601.68, 2648.63] (0.95 confidence) | 2904.46 ns [2898.17, 2911.03] (0.95 confidence) |
+| d32/la&#95;stack&#95;norm2&#95;sq | 3.91906 ns [3.91386, 3.92407] (0.95 confidence) | 4.04294 ns [4.03471, 4.05352] (0.95 confidence) | 3.5769 ns [3.57217, 3.58149] (0.95 confidence) | 4.21873 ns [4.2125, 4.22578] (0.95 confidence) |
+| d32/la&#95;stack&#95;solve&#95;from&#95;ldlt | 310.464 ns [309.302, 311.795] (0.95 confidence) | 316.933 ns [315.869, 318.171] (0.95 confidence) | 559.272 ns [557.325, 561.362] (0.95 confidence) | 466.93 ns [466.212, 467.641] (0.95 confidence) |
+| d32/la&#95;stack&#95;solve&#95;from&#95;lu | 658.466 ns [656.148, 661.196] (0.95 confidence) | 697.653 ns [696.063, 699.269] (0.95 confidence) | 327.239 ns [326.551, 328.038] (0.95 confidence) | 627.965 ns [626.998, 628.93] (0.95 confidence) |
+| d4/la&#95;stack&#95;det | 2.55124 ns [2.54593, 2.55717] (0.95 confidence) | 2.58731 ns [2.57665, 2.59814] (0.95 confidence) | — | — |
+| d4/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.768516 ns [0.767923, 0.769216] (0.95 confidence) | 0.77732 ns [0.776232, 0.778421] (0.95 confidence) | 0.48641 ns [0.48378, 0.489175] (0.95 confidence) | 0.993584 ns [0.992183, 0.9953] (0.95 confidence) |
+| d4/la&#95;stack&#95;det&#95;from&#95;lu | 0.869856 ns [0.86857, 0.871561] (0.95 confidence) | 0.876722 ns [0.875299, 0.878225] (0.95 confidence) | 0.592761 ns [0.590054, 0.59564] (0.95 confidence) | 1.24049 ns [1.23895, 1.24221] (0.95 confidence) |
+| d4/la&#95;stack&#95;det&#95;via&#95;lu | 14.2103 ns [14.1878, 14.2334] (0.95 confidence) | 14.433 ns [14.4124, 14.454] (0.95 confidence) | 32.1832 ns [32.1137, 32.2566] (0.95 confidence) | 132.871 ns [132.594, 133.172] (0.95 confidence) |
+| d4/la&#95;stack&#95;dot | 0.683454 ns [0.681931, 0.685063] (0.95 confidence) | 0.688374 ns [0.68628, 0.690556] (0.95 confidence) | 0.656873 ns [0.655282, 0.658617] (0.95 confidence) | 2.49008 ns [2.48666, 2.49318] (0.95 confidence) |
+| d4/la&#95;stack&#95;inf&#95;norm | 2.34543 ns [2.34265, 2.34804] (0.95 confidence) | 2.38532 ns [2.38064, 2.39056] (0.95 confidence) | 2.02266 ns [2.01992, 2.02527] (0.95 confidence) | 2.05452 ns [2.04944, 2.06015] (0.95 confidence) |
+| d4/la&#95;stack&#95;ldlt | 18.3556 ns [18.2888, 18.4202] (0.95 confidence) | 18.1601 ns [18.1223, 18.2039] (0.95 confidence) | 8.34482 ns [7.94179, 8.8199] (0.95 confidence) | 105.553 ns [105.263, 105.858] (0.95 confidence) |
+| d4/la&#95;stack&#95;ldlt&#95;solve | 17.8342 ns [17.8042, 17.8661] (0.95 confidence) | 18.1142 ns [17.9995, 18.2758] (0.95 confidence) | 10.6812 ns [10.6631, 10.7003] (0.95 confidence) | 147.74 ns [147.374, 148.141] (0.95 confidence) |
+| d4/la&#95;stack&#95;lu | 13.7308 ns [13.7147, 13.7468] (0.95 confidence) | 13.9444 ns [13.9083, 13.9811] (0.95 confidence) | 29.6785 ns [29.6526, 29.7078] (0.95 confidence) | 127.729 ns [127.446, 128.022] (0.95 confidence) |
+| d4/la&#95;stack&#95;lu&#95;solve | 21.7783 ns [21.747, 21.8085] (0.95 confidence) | 22.4324 ns [22.3586, 22.5161] (0.95 confidence) | 52.9834 ns [52.863, 53.1145] (0.95 confidence) | 180.555 ns [180.21, 180.91] (0.95 confidence) |
+| d4/la&#95;stack&#95;norm2&#95;sq | 0.467722 ns [0.465841, 0.469641] (0.95 confidence) | 0.461323 ns [0.459937, 0.462879] (0.95 confidence) | 0.541316 ns [0.537781, 0.546089] (0.95 confidence) | 4.13045 ns [4.12802, 4.13298] (0.95 confidence) |
+| d4/la&#95;stack&#95;solve&#95;from&#95;ldlt | 2.48106 ns [2.47432, 2.48881] (0.95 confidence) | 2.52077 ns [2.50806, 2.53411] (0.95 confidence) | 5.36961 ns [5.35828, 5.38113] (0.95 confidence) | 38.1218 ns [38.0318, 38.2184] (0.95 confidence) |
+| d4/la&#95;stack&#95;solve&#95;from&#95;lu | 3.92242 ns [3.91404, 3.93106] (0.95 confidence) | 3.96815 ns [3.95874, 3.97748] (0.95 confidence) | 5.70857 ns [5.69901, 5.71793] (0.95 confidence) | 46.7236 ns [46.6336, 46.8143] (0.95 confidence) |
+| d5/la&#95;stack&#95;det | 40.5626 ns [40.4776, 40.641] (0.95 confidence) | 41.0548 ns [40.976, 41.1364] (0.95 confidence) | — | — |
+| d5/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.875943 ns [0.875524, 0.876385] (0.95 confidence) | 0.881993 ns [0.88059, 0.883704] (0.95 confidence) | 0.577311 ns [0.575677, 0.578849] (0.95 confidence) | 1.22278 ns [1.22115, 1.22429] (0.95 confidence) |
+| d5/la&#95;stack&#95;det&#95;from&#95;lu | 1.02983 ns [1.0292, 1.03043] (0.95 confidence) | 1.03599 ns [1.03485, 1.03721] (0.95 confidence) | 0.661631 ns [0.65847, 0.665089] (0.95 confidence) | 1.48064 ns [1.47929, 1.48183] (0.95 confidence) |
+| d5/la&#95;stack&#95;det&#95;via&#95;lu | 33.3326 ns [33.2636, 33.4063] (0.95 confidence) | 33.5825 ns [33.4853, 33.6888] (0.95 confidence) | 50.8016 ns [50.6699, 50.932] (0.95 confidence) | 171.129 ns [170.768, 171.51] (0.95 confidence) |
+| d5/la&#95;stack&#95;dot | 0.829773 ns [0.825979, 0.833375] (0.95 confidence) | 0.834933 ns [0.830421, 0.839274] (0.95 confidence) | 0.763618 ns [0.762249, 0.76501] (0.95 confidence) | 2.64238 ns [2.63714, 2.64823] (0.95 confidence) |
+| d5/la&#95;stack&#95;inf&#95;norm | 3.44363 ns [3.43631, 3.45162] (0.95 confidence) | 3.65047 ns [3.58593, 3.75601] (0.95 confidence) | 3.22854 ns [3.22463, 3.23224] (0.95 confidence) | 3.15102 ns [3.14822, 3.15352] (0.95 confidence) |
+| d5/la&#95;stack&#95;ldlt | 24.9443 ns [24.909, 24.9819] (0.95 confidence) | 25.4779 ns [25.4368, 25.5205] (0.95 confidence) | 23.3595 ns [22.776, 23.9525] (0.95 confidence) | 125.769 ns [125.433, 126.108] (0.95 confidence) |
+| d5/la&#95;stack&#95;ldlt&#95;solve | 30.3116 ns [30.2458, 30.3809] (0.95 confidence) | 30.4785 ns [30.4198, 30.5411] (0.95 confidence) | 40.3623 ns [40.1731, 40.608] (0.95 confidence) | 184.387 ns [184.024, 184.746] (0.95 confidence) |
+| d5/la&#95;stack&#95;lu | 33.516 ns [33.4495, 33.5834] (0.95 confidence) | 33.6877 ns [33.5797, 33.8048] (0.95 confidence) | 49.6134 ns [49.4432, 49.783] (0.95 confidence) | 162.691 ns [162.411, 162.977] (0.95 confidence) |
+| d5/la&#95;stack&#95;lu&#95;solve | 48.6994 ns [48.5885, 48.8095] (0.95 confidence) | 48.7733 ns [48.7081, 48.8338] (0.95 confidence) | 73.3974 ns [73.1831, 73.6133] (0.95 confidence) | 267.463 ns [258.808, 282.377] (0.95 confidence) |
+| d5/la&#95;stack&#95;norm2&#95;sq | 0.525 ns [0.524521, 0.525507] (0.95 confidence) | 0.525996 ns [0.525322, 0.526869] (0.95 confidence) | 0.502362 ns [0.502014, 0.502753] (0.95 confidence) | 4.11399 ns [4.11151, 4.11646] (0.95 confidence) |
+| d5/la&#95;stack&#95;solve&#95;from&#95;ldlt | 3.8729 ns [3.86687, 3.87899] (0.95 confidence) | 3.93807 ns [3.92238, 3.95582] (0.95 confidence) | 8.83912 ns [8.83055, 8.84903] (0.95 confidence) | 57.2651 ns [57.1884, 57.3422] (0.95 confidence) |
+| d5/la&#95;stack&#95;solve&#95;from&#95;lu | 6.08649 ns [6.0788, 6.09462] (0.95 confidence) | 6.13959 ns [6.12707, 6.1538] (0.95 confidence) | 8.83838 ns [8.82537, 8.85105] (0.95 confidence) | 78.0131 ns [77.8362, 78.1879] (0.95 confidence) |
+| d64/la&#95;stack&#95;det | 15049.4 ns [14981.1, 15117.4] (0.95 confidence) | 14827.6 ns [14785.2, 14875.4] (0.95 confidence) | — | — |
+| d64/la&#95;stack&#95;det&#95;from&#95;ldlt | 23.5902 ns [23.5189, 23.6648] (0.95 confidence) | 23.691 ns [23.641, 23.7465] (0.95 confidence) | 8.6143 ns [8.58258, 8.64927] (0.95 confidence) | 21.1847 ns [21.1282, 21.2413] (0.95 confidence) |
+| d64/la&#95;stack&#95;det&#95;from&#95;lu | 23.8456 ns [23.7874, 23.9062] (0.95 confidence) | 23.8288 ns [23.7853, 23.8742] (0.95 confidence) | 8.86397 ns [8.83947, 8.88813] (0.95 confidence) | 22.5292 ns [22.386, 22.6794] (0.95 confidence) |
+| d64/la&#95;stack&#95;det&#95;via&#95;lu | 14601.3 ns [14477.8, 14742.2] (0.95 confidence) | 14403.3 ns [14339.3, 14471.8] (0.95 confidence) | 13621.6 ns [13594.7, 13651] (0.95 confidence) | 11249.4 ns [11213.9, 11285.9] (0.95 confidence) |
+| d64/la&#95;stack&#95;dot | 10.9747 ns [10.952, 10.9974] (0.95 confidence) | 11.2887 ns [11.2595, 11.3201] (0.95 confidence) | 8.0296 ns [8.00277, 8.05639] (0.95 confidence) | 8.09611 ns [8.08582, 8.10758] (0.95 confidence) |
+| d64/la&#95;stack&#95;inf&#95;norm | 663.278 ns [662.471, 664.147] (0.95 confidence) | 644.586 ns [643.187, 645.984] (0.95 confidence) | 1342.8 ns [1339.89, 1346.03] (0.95 confidence) | 1606.65 ns [1600.76, 1613.09] (0.95 confidence) |
+| d64/la&#95;stack&#95;ldlt | 17230.5 ns [17193.5, 17269.3] (0.95 confidence) | 16883.2 ns [16862.5, 16906.3] (0.95 confidence) | 10914.4 ns [10840, 10994.7] (0.95 confidence) | 7202.42 ns [7172.92, 7234.92] (0.95 confidence) |
+| d64/la&#95;stack&#95;ldlt&#95;solve | 19119.2 ns [19085.8, 19153.4] (0.95 confidence) | 19323 ns [19282.7, 19364.8] (0.95 confidence) | 12248.7 ns [12232.9, 12265.2] (0.95 confidence) | 8376.88 ns [8362.22, 8393.55] (0.95 confidence) |
+| d64/la&#95;stack&#95;lu | 15530.4 ns [15479.9, 15582.8] (0.95 confidence) | 15224.6 ns [15190.8, 15261.1] (0.95 confidence) | 12839.5 ns [12787.8, 12894.7] (0.95 confidence) | 11163 ns [11141.4, 11185.6] (0.95 confidence) |
+| d64/la&#95;stack&#95;lu&#95;solve | 17440.1 ns [17346.3, 17556.5] (0.95 confidence) | 17342.3 ns [17295.7, 17393.7] (0.95 confidence) | 14468.6 ns [14438.2, 14501.7] (0.95 confidence) | 12986.9 ns [12949.9, 13023.7] (0.95 confidence) |
+| d64/la&#95;stack&#95;norm2&#95;sq | 11.4621 ns [11.3945, 11.5309] (0.95 confidence) | 11.0976 ns [11.0725, 11.1214] (0.95 confidence) | 8.94431 ns [8.90637, 8.98568] (0.95 confidence) | 6.40725 ns [6.36537, 6.45128] (0.95 confidence) |
+| d64/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1121.49 ns [1117.84, 1125.87] (0.95 confidence) | 1100.18 ns [1097.91, 1102.58] (0.95 confidence) | 1325 ns [1321.67, 1328.81] (0.95 confidence) | 1276.12 ns [1269.81, 1283.06] (0.95 confidence) |
+| d64/la&#95;stack&#95;solve&#95;from&#95;lu | 2664.88 ns [2649.22, 2680.47] (0.95 confidence) | 2618.03 ns [2610.79, 2625.88] (0.95 confidence) | 815.944 ns [813.85, 818.129] (0.95 confidence) | 1707.09 ns [1703.71, 1710.59] (0.95 confidence) |
+| d8/la&#95;stack&#95;det | 93.4319 ns [93.0029, 93.8484] (0.95 confidence) | 96.7167 ns [96.0907, 97.3599] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;det&#95;from&#95;ldlt | 1.32003 ns [1.31814, 1.32212] (0.95 confidence) | 1.32934 ns [1.32635, 1.3324] (0.95 confidence) | 0.94603 ns [0.928354, 0.969663] (0.95 confidence) | 2.04618 ns [2.02106, 2.0763] (0.95 confidence) |
+| d8/la&#95;stack&#95;det&#95;from&#95;ldlt&#95;balanced&#95;range | 8.91368 ns [8.89804, 8.92844] (0.95 confidence) | 8.93074 ns [8.91084, 8.9503] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;det&#95;from&#95;lu | 1.48156 ns [1.47986, 1.48345] (0.95 confidence) | 1.50098 ns [1.49806, 1.50396] (0.95 confidence) | 0.998838 ns [0.994562, 1.00287] (0.95 confidence) | 2.33274 ns [2.2976, 2.37236] (0.95 confidence) |
+| d8/la&#95;stack&#95;det&#95;from&#95;lu&#95;balanced&#95;range | 9.23268 ns [9.21257, 9.25348] (0.95 confidence) | 9.29322 ns [9.2702, 9.3174] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;det&#95;via&#95;lu | 90.3591 ns [89.7671, 90.9393] (0.95 confidence) | 88.5765 ns [87.9204, 89.2792] (0.95 confidence) | 137.682 ns [137.457, 137.905] (0.95 confidence) | 243.108 ns [242.667, 243.552] (0.95 confidence) |
+| d8/la&#95;stack&#95;dot | 0.941413 ns [0.939238, 0.94378] (0.95 confidence) | 0.928519 ns [0.92603, 0.931247] (0.95 confidence) | 1.38149 ns [1.37268, 1.39128] (0.95 confidence) | 2.67403 ns [2.65094, 2.69868] (0.95 confidence) |
+| d8/la&#95;stack&#95;inf&#95;norm | 8.48411 ns [8.46971, 8.49943] (0.95 confidence) | 8.56628 ns [8.55053, 8.58604] (0.95 confidence) | 8.086 ns [8.07027, 8.10178] (0.95 confidence) | 8.14067 ns [8.12845, 8.15271] (0.95 confidence) |
+| d8/la&#95;stack&#95;ldlt | 91.717 ns [91.1439, 92.5411] (0.95 confidence) | 91.5053 ns [91.3342, 91.6824] (0.95 confidence) | 104.495 ns [103.83, 105.268] (0.95 confidence) | 186.414 ns [185.972, 186.858] (0.95 confidence) |
+| d8/la&#95;stack&#95;ldlt&#95;ill&#95;conditioned | 90.7398 ns [90.6416, 90.8375] (0.95 confidence) | 91.2669 ns [91.1005, 91.4395] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;ldlt&#95;solve | 104.31 ns [103.961, 104.69] (0.95 confidence) | 104.888 ns [104.544, 105.274] (0.95 confidence) | 147.287 ns [145.988, 148.603] (0.95 confidence) | 263.89 ns [262.768, 265.108] (0.95 confidence) |
+| d8/la&#95;stack&#95;lu | 88.9922 ns [88.5584, 89.4008] (0.95 confidence) | 90.6949 ns [90.2205, 91.1759] (0.95 confidence) | 133.305 ns [132.852, 133.702] (0.95 confidence) | 231.746 ns [230.781, 232.785] (0.95 confidence) |
+| d8/la&#95;stack&#95;lu&#95;ill&#95;conditioned | 89.3846 ns [88.9696, 89.7872] (0.95 confidence) | 90.0925 ns [89.6298, 90.5498] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;lu&#95;pivoting | 96.7127 ns [96.3621, 97.0772] (0.95 confidence) | 95.6654 ns [95.4061, 95.9271] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;lu&#95;solve | 130.625 ns [130.283, 131.008] (0.95 confidence) | 134.478 ns [133.489, 135.995] (0.95 confidence) | 165.573 ns [165.151, 166.045] (0.95 confidence) | 344.186 ns [342.441, 346.1] (0.95 confidence) |
+| d8/la&#95;stack&#95;norm2&#95;sq | 0.657056 ns [0.655199, 0.658876] (0.95 confidence) | 0.65978 ns [0.657268, 0.662373] (0.95 confidence) | 0.941667 ns [0.940616, 0.942819] (0.95 confidence) | 4.17722 ns [4.17268, 4.18212] (0.95 confidence) |
+| d8/la&#95;stack&#95;solve&#95;from&#95;ldlt | 8.23761 ns [8.22317, 8.25198] (0.95 confidence) | 8.22696 ns [8.20965, 8.24439] (0.95 confidence) | 21.9222 ns [21.8563, 21.997] (0.95 confidence) | 68.6883 ns [68.5996, 68.7819] (0.95 confidence) |
+| d8/la&#95;stack&#95;solve&#95;from&#95;lu | 13.6434 ns [13.5957, 13.7003] (0.95 confidence) | 13.5593 ns [13.5302, 13.5893] (0.95 confidence) | 16.3146 ns [16.2753, 16.3525] (0.95 confidence) | 96.5555 ns [96.3241, 96.7952] (0.95 confidence) |
+| exact&#95;d2/det | 0.464907 ns [0.45892, 0.471229] (0.95 confidence) | 0.438622 ns [0.437109, 0.44045] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;direct | 0.461442 ns [0.456221, 0.466904] (0.95 confidence) | 0.436723 ns [0.435053, 0.439191] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;direct&#95;with&#95;errbound | 1.76793 ns [1.7644, 1.77151] (0.95 confidence) | 1.74735 ns [1.7449, 1.75002] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;errbound | 1.61701 ns [1.61379, 1.6208] (0.95 confidence) | 1.60287 ns [1.59941, 1.60668] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;exact | 86.0365 ns [85.7999, 86.2716] (0.95 confidence) | 88.6251 ns [88.4409, 88.8313] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;exact&#95;f64&#95;result | 61.0576 ns [60.8153, 61.3381] (0.95 confidence) | 65.7729 ns [65.5712, 66.0239] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;exact&#95;rounded&#95;f64 | 62.2699 ns [62.1371, 62.4026] (0.95 confidence) | 68.1264 ns [67.9205, 68.3313] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;sign&#95;exact | 3.03592 ns [3.03191, 3.04033] (0.95 confidence) | 2.99344 ns [2.99019, 2.99695] (0.95 confidence) | — | — |
+| exact&#95;d2/solve&#95;exact | 7537.1 ns [7475.86, 7598.94] (0.95 confidence) | 3018.79 ns [3013.79, 3024.01] (0.95 confidence) | — | — |
+| exact&#95;d2/solve&#95;exact&#95;f64&#95;result | 7292.51 ns [7283.1, 7302.31] (0.95 confidence) | 3162.04 ns [3156.26, 3167.84] (0.95 confidence) | — | — |
+| exact&#95;d2/solve&#95;exact&#95;rounded&#95;f64 | 7525.39 ns [7507.21, 7545.57] (0.95 confidence) | 3340.97 ns [3335.36, 3346.73] (0.95 confidence) | — | — |
+| exact&#95;d3/det | 0.845755 ns [0.843419, 0.848107] (0.95 confidence) | 0.829088 ns [0.82724, 0.831074] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;direct | 0.833231 ns [0.831605, 0.835012] (0.95 confidence) | 0.835991 ns [0.833528, 0.838534] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;direct&#95;with&#95;errbound | 3.36017 ns [3.35539, 3.36518] (0.95 confidence) | 3.34331 ns [3.33932, 3.34744] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;errbound | 3.34429 ns [3.34085, 3.3481] (0.95 confidence) | 3.34289 ns [3.33442, 3.35338] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;exact | 292.325 ns [291.789, 292.926] (0.95 confidence) | 302.6 ns [302.175, 303.049] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;exact&#95;f64&#95;result | 266.492 ns [265.909, 267.122] (0.95 confidence) | 278.371 ns [277.979, 278.784] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;exact&#95;rounded&#95;f64 | 271.485 ns [270.855, 272.19] (0.95 confidence) | 282.931 ns [282.19, 283.718] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;sign&#95;exact | 4.79567 ns [4.7893, 4.80252] (0.95 confidence) | 4.75107 ns [4.74541, 4.75719] (0.95 confidence) | — | — |
+| exact&#95;d3/solve&#95;exact | 30383.4 ns [30339.2, 30430.7] (0.95 confidence) | 9174.5 ns [9142.84, 9205.56] (0.95 confidence) | — | — |
+| exact&#95;d3/solve&#95;exact&#95;f64&#95;result | 30435.4 ns [30358.5, 30511.4] (0.95 confidence) | 9291.59 ns [9266.41, 9317.15] (0.95 confidence) | — | — |
+| exact&#95;d3/solve&#95;exact&#95;rounded&#95;f64 | 30825.5 ns [30771.2, 30882.2] (0.95 confidence) | 9621.4 ns [9581.51, 9666.6] (0.95 confidence) | — | — |
+| exact&#95;d4/det | 3.28635 ns [3.28048, 3.29261] (0.95 confidence) | 3.23493 ns [3.23169, 3.23836] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;direct | 2.44448 ns [2.4335, 2.45702] (0.95 confidence) | 2.3744 ns [2.37144, 2.37765] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;direct&#95;with&#95;errbound | 6.86216 ns [6.84796, 6.87715] (0.95 confidence) | 6.8604 ns [6.84425, 6.87811] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;errbound | 6.80357 ns [6.79007, 6.81857] (0.95 confidence) | 6.82216 ns [6.81282, 6.83201] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;exact | 820.307 ns [815.294, 825.391] (0.95 confidence) | 852.843 ns [850.565, 855.164] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;exact&#95;f64&#95;result | 804.866 ns [798.701, 811.207] (0.95 confidence) | 811.722 ns [809.784, 813.748] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;exact&#95;rounded&#95;f64 | 780.739 ns [777.45, 784.306] (0.95 confidence) | 849.567 ns [840.736, 863.589] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;sign&#95;exact | 8.01255 ns [8.00282, 8.02293] (0.95 confidence) | 8.09025 ns [8.06866, 8.11287] (0.95 confidence) | — | — |
+| exact&#95;d4/solve&#95;exact | 79076.2 ns [78837.3, 79318.4] (0.95 confidence) | 18444.1 ns [18406.8, 18481.3] (0.95 confidence) | — | — |
+| exact&#95;d4/solve&#95;exact&#95;f64&#95;result | 79069.8 ns [78920.9, 79220.3] (0.95 confidence) | 18609.3 ns [18574.3, 18644.9] (0.95 confidence) | — | — |
+| exact&#95;d4/solve&#95;exact&#95;rounded&#95;f64 | 79528.3 ns [79388.4, 79680.7] (0.95 confidence) | 19199.3 ns [19175.1, 19224.1] (0.95 confidence) | — | — |
+| exact&#95;d5/det | 28.0197 ns [27.9559, 28.0857] (0.95 confidence) | 27.541 ns [27.5043, 27.5801] (0.95 confidence) | — | — |
+| exact&#95;d5/det&#95;exact | 2945.78 ns [2940.09, 2951.63] (0.95 confidence) | 2877.53 ns [2871.03, 2884.36] (0.95 confidence) | — | — |
+| exact&#95;d5/det&#95;exact&#95;f64&#95;result | 2902.11 ns [2895.72, 2909.22] (0.95 confidence) | 2838.26 ns [2832.07, 2844.78] (0.95 confidence) | — | — |
+| exact&#95;d5/det&#95;exact&#95;rounded&#95;f64 | 2930.32 ns [2924.26, 2936.49] (0.95 confidence) | 2894.38 ns [2885.57, 2903.09] (0.95 confidence) | — | — |
+| exact&#95;d5/det&#95;sign&#95;exact | 2907.28 ns [2899.71, 2915.84] (0.95 confidence) | 2852.69 ns [2847.17, 2858.4] (0.95 confidence) | — | — |
+| exact&#95;d5/solve&#95;exact | 155228 ns [154979, 155486] (0.95 confidence) | 29946.2 ns [29871.4, 30024.3] (0.95 confidence) | — | — |
+| exact&#95;d5/solve&#95;exact&#95;f64&#95;result | 155448 ns [155242, 155666] (0.95 confidence) | 30219.4 ns [30119.8, 30321.7] (0.95 confidence) | — | — |
+| exact&#95;d5/solve&#95;exact&#95;rounded&#95;f64 | 156528 ns [156244, 156839] (0.95 confidence) | 31044.4 ns [30949, 31144.4] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;4x4/det&#95;exact | 891.058 ns [887.612, 894.765] (0.95 confidence) | 920.824 ns [918.883, 922.932] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;4x4/det&#95;sign&#95;exact | 8.03062 ns [8.01891, 8.0425] (0.95 confidence) | 7.94933 ns [7.93841, 7.96289] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;4x4/solve&#95;exact | 58847.5 ns [58697.6, 58999.6] (0.95 confidence) | 15244.7 ns [15183.9, 15306.6] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;4x4/solve&#95;exact&#95;f64&#95;result | 58994.6 ns [58835.1, 59212.5] (0.95 confidence) | 15746.7 ns [15669.6, 15829] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;4x4/solve&#95;exact&#95;rounded&#95;f64 | 59434.9 ns [59277.4, 59605] (0.95 confidence) | 15822.8 ns [15790.9, 15855.2] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;5x5/det&#95;exact | 3112.34 ns [3103.53, 3121.59] (0.95 confidence) | 3005.41 ns [2999.04, 3011.71] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;5x5/det&#95;sign&#95;exact | 3084.84 ns [3078.17, 3091.58] (0.95 confidence) | 2920.05 ns [2914.93, 2925.26] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;5x5/solve&#95;exact | 123307 ns [122931, 123735] (0.95 confidence) | 24944.5 ns [24871.9, 25020.4] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;5x5/solve&#95;exact&#95;f64&#95;result | 122084 ns [121814, 122360] (0.95 confidence) | 25183 ns [25127.4, 25239.9] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;5x5/solve&#95;exact&#95;rounded&#95;f64 | 123499 ns [123173, 123840] (0.95 confidence) | 25915.2 ns [25870.7, 25960.7] (0.95 confidence) | — | — |
+| exact&#95;large&#95;entries&#95;3x3/det&#95;exact | 311.839 ns [310.664, 313.034] (0.95 confidence) | 323.307 ns [322.517, 324.173] (0.95 confidence) | — | — |
+| exact&#95;large&#95;entries&#95;3x3/det&#95;sign&#95;exact | 287.356 ns [286.531, 288.211] (0.95 confidence) | 299.469 ns [298.25, 300.804] (0.95 confidence) | — | — |
+| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact | 95674.4 ns [95431.2, 95932.8] (0.95 confidence) | 9124.89 ns [9098.44, 9155.92] (0.95 confidence) | — | — |
+| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact&#95;f64&#95;result | 95695.7 ns [95423.5, 96056.2] (0.95 confidence) | 9180.66 ns [9167.34, 9197.66] (0.95 confidence) | — | — |
+| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact&#95;rounded&#95;f64 | 95947.4 ns [95764.7, 96139.2] (0.95 confidence) | 9550.61 ns [9536.34, 9565.4] (0.95 confidence) | — | — |
+| exact&#95;near&#95;singular&#95;3x3/det&#95;exact | 297.329 ns [296.509, 298.201] (0.95 confidence) | 185.434 ns [185.047, 185.863] (0.95 confidence) | — | — |
+| exact&#95;near&#95;singular&#95;3x3/det&#95;sign&#95;exact | 323.245 ns [322.205, 324.332] (0.95 confidence) | 168.077 ns [167.735, 168.434] (0.95 confidence) | — | — |
+| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact | 2476.26 ns [2470.38, 2482.22] (0.95 confidence) | 988.409 ns [985.691, 991.339] (0.95 confidence) | — | — |
+| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact&#95;f64&#95;result | 2512.44 ns [2502.16, 2523.84] (0.95 confidence) | 1013.99 ns [1012.38, 1015.63] (0.95 confidence) | — | — |
+| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact&#95;rounded&#95;f64 | 2516.79 ns [2511.2, 2522.2] (0.95 confidence) | 1015.92 ns [1012.72, 1019.25] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d2/det&#95;exact | 3105 ns [3100.9, 3109.17] (0.95 confidence) | 3464.77 ns [3457.91, 3471.56] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d2/det&#95;sign&#95;exact | 148.313 ns [147.831, 148.806] (0.95 confidence) | 144.304 ns [143.768, 144.909] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact | 75398.3 ns [75234.5, 75567] (0.95 confidence) | 35843.4 ns [35739.9, 35954.7] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact&#95;f64&#95;result | 76281.8 ns [76124.8, 76440.9] (0.95 confidence) | 36496.1 ns [36430.2, 36566.2] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact&#95;rounded&#95;f64 | 76464.5 ns [76303.4, 76628.3] (0.95 confidence) | 36770.7 ns [36681.3, 36872.1] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d3/det&#95;exact | 8942.22 ns [8931.27, 8953.46] (0.95 confidence) | 9414.13 ns [9403.91, 9424.97] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d3/det&#95;sign&#95;exact | 228.254 ns [227.729, 228.888] (0.95 confidence) | 225.823 ns [225.61, 226.056] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact | 235284 ns [235052, 235542] (0.95 confidence) | 81151.3 ns [81042.1, 81260.5] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact&#95;f64&#95;result | 236745 ns [236408, 237100] (0.95 confidence) | 81956.8 ns [81834.2, 82094.9] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact&#95;rounded&#95;f64 | 236941 ns [236667, 237238] (0.95 confidence) | 81960.2 ns [81866.9, 82059.1] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d4/det&#95;exact | 22390.6 ns [22303.4, 22487.1] (0.95 confidence) | 23197.9 ns [23134.6, 23262.5] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d4/det&#95;sign&#95;exact | 459.599 ns [458.585, 460.815] (0.95 confidence) | 444.786 ns [444.035, 445.643] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact | 559687 ns [558956, 560522] (0.95 confidence) | 144803 ns [144613, 145004] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact&#95;f64&#95;result | 560387 ns [559863, 560933] (0.95 confidence) | 145684 ns [145515, 145862] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact&#95;rounded&#95;f64 | 557999 ns [557228, 558830] (0.95 confidence) | 146546 ns [146402, 146693] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d5/det&#95;exact | 56764.7 ns [56506.1, 57052.2] (0.95 confidence) | 55924.2 ns [55843.4, 56009.9] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d5/det&#95;sign&#95;exact | 56003 ns [55800, 56225.7] (0.95 confidence) | 54997.7 ns [54895.1, 55106] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact | 1.11323e+06 ns [1.11161e+06, 1.11501e+06] (0.95 confidence) | 239488 ns [238616, 240500] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact&#95;f64&#95;result | 1.1119e+06 ns [1.11028e+06, 1.11349e+06] (0.95 confidence) | 238779 ns [238398, 239195] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact&#95;rounded&#95;f64 | 1.11509e+06 ns [1.11124e+06, 1.11931e+06] (0.95 confidence) | 240106 ns [239644, 240636] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d2/det&#95;big&#95;rational&#95;gaussian | 1133 ns [1128.22, 1138.26] (0.95 confidence) | 1113.9 ns [1112.29, 1115.58] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d2/det&#95;row&#95;cleared&#95;bareiss | 180.27 ns [179.87, 180.69] (0.95 confidence) | 184.677 ns [182.891, 186.533] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d2/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 77.4542 ns [77.3284, 77.5811] (0.95 confidence) | 77.5408 ns [77.3608, 77.7628] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d2/solve&#95;big&#95;rational&#95;gaussian | 2156.08 ns [2149.25, 2164.12] (0.95 confidence) | 2134.63 ns [2129.79, 2140.59] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d2/solve&#95;row&#95;cleared&#95;bareiss | 936.195 ns [934.232, 938.594] (0.95 confidence) | 612.613 ns [611.602, 613.711] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d3/det&#95;big&#95;rational&#95;gaussian | 4773.7 ns [4762.67, 4785.17] (0.95 confidence) | 4757.51 ns [4743.32, 4772.24] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d3/det&#95;row&#95;cleared&#95;bareiss | 570.351 ns [568.925, 571.835] (0.95 confidence) | 571.875 ns [570.466, 573.34] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d3/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 361.694 ns [360.876, 362.579] (0.95 confidence) | 371.405 ns [368.669, 374.253] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d3/solve&#95;big&#95;rational&#95;gaussian | 8252.29 ns [8230.16, 8274.62] (0.95 confidence) | 8156.96 ns [8139.08, 8175.63] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d3/solve&#95;row&#95;cleared&#95;bareiss | 2504.33 ns [2479.3, 2538.74] (0.95 confidence) | 1245.75 ns [1243.53, 1248.3] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d4/det&#95;big&#95;rational&#95;gaussian | 14030.8 ns [13993.7, 14067.5] (0.95 confidence) | 13763.4 ns [13735.3, 13791.8] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d4/det&#95;row&#95;cleared&#95;bareiss | 1174.21 ns [1171.29, 1177.42] (0.95 confidence) | 1169.83 ns [1166.78, 1173.78] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d4/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 776.357 ns [774.662, 778.148] (0.95 confidence) | 781.737 ns [779.595, 783.941] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d4/solve&#95;big&#95;rational&#95;gaussian | 24157.7 ns [24100.8, 24216.8] (0.95 confidence) | 24446.8 ns [24139.4, 24971.8] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d4/solve&#95;row&#95;cleared&#95;bareiss | 6282.84 ns [6181.89, 6385.94] (0.95 confidence) | 2191.78 ns [2189.08, 2194.59] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d5/det&#95;big&#95;rational&#95;gaussian | 23789.7 ns [23703.9, 23876.5] (0.95 confidence) | 23922.4 ns [23867.9, 23978.9] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d5/det&#95;row&#95;cleared&#95;bareiss | 2058.93 ns [2055.11, 2063.08] (0.95 confidence) | 2079.25 ns [2075.91, 2082.75] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d5/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 1554.91 ns [1551.3, 1558.57] (0.95 confidence) | 1566.96 ns [1563.79, 1570.23] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d5/solve&#95;big&#95;rational&#95;gaussian | 40182.1 ns [40060.5, 40304.3] (0.95 confidence) | 39652.6 ns [39591.6, 39716.5] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d5/solve&#95;row&#95;cleared&#95;bareiss | 9578.22 ns [9557.99, 9599.99] (0.95 confidence) | 3391.9 ns [3384.43, 3400.11] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d6/det&#95;big&#95;rational&#95;gaussian | 56861.2 ns [56750.8, 56973.9] (0.95 confidence) | 58123.1 ns [57997.4, 58265.5] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d6/det&#95;row&#95;cleared&#95;bareiss | 3543.09 ns [3537.04, 3549.27] (0.95 confidence) | 3529.54 ns [3521.29, 3538.61] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d6/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 2859.34 ns [2853.28, 2865.5] (0.95 confidence) | 2915.53 ns [2900.21, 2935.73] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d6/solve&#95;big&#95;rational&#95;gaussian | 91090.5 ns [90854.2, 91346.7] (0.95 confidence) | 96016.6 ns [95344.3, 96732.7] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d6/solve&#95;row&#95;cleared&#95;bareiss | 17872.1 ns [17839.8, 17906.8] (0.95 confidence) | 5774.91 ns [5762.19, 5788.64] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d7/det&#95;big&#95;rational&#95;gaussian | 110964 ns [110577, 111406] (0.95 confidence) | 112441 ns [112208, 112697] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d7/det&#95;row&#95;cleared&#95;bareiss | 5614.79 ns [5605.19, 5624.57] (0.95 confidence) | 5595.66 ns [5586.14, 5605.54] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d7/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 4666.84 ns [4660.3, 4673.55] (0.95 confidence) | 4760.44 ns [4752.12, 4768.72] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d7/solve&#95;big&#95;rational&#95;gaussian | 162196 ns [161885, 162525] (0.95 confidence) | 169179 ns [168176, 170257] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d7/solve&#95;row&#95;cleared&#95;bareiss | 27619.4 ns [27571.4, 27666.7] (0.95 confidence) | 10132.3 ns [10112.8, 10153.3] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d8/det&#95;big&#95;rational&#95;gaussian | 188248 ns [187806, 188689] (0.95 confidence) | 194331 ns [193766, 194947] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d8/det&#95;row&#95;cleared&#95;bareiss | 8097.63 ns [8078.87, 8117.44] (0.95 confidence) | 8237.34 ns [8219.85, 8256.1] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d8/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 7241.89 ns [7229.39, 7254.24] (0.95 confidence) | 7386.17 ns [7369.49, 7403.23] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d8/solve&#95;big&#95;rational&#95;gaussian | 268381 ns [267729, 269058] (0.95 confidence) | 272901 ns [272515, 273317] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d8/solve&#95;row&#95;cleared&#95;bareiss | 40862.4 ns [40797.8, 40931] (0.95 confidence) | 15394.7 ns [15364.1, 15426.3] (0.95 confidence) | — | — |
 
 ## Median (ns)
 
 | Case | la-stack baseline | la-stack current | nalgebra | faer |
 | --- | --- | --- | --- | --- |
-| d16/la&#95;stack&#95;det | 379.272 ns [378.451, 380.366] (0.95 confidence) | 401.093 ns [398.153, 404.658] (0.95 confidence) | — | — |
-| d16/la&#95;stack&#95;det&#95;from&#95;ldlt | 2.89094 ns [2.88425, 2.90038] (0.95 confidence) | 2.96543 ns [2.96339, 2.96871] (0.95 confidence) | 1.70051 ns [1.69525, 1.70445] (0.95 confidence) | 4.3533 ns [4.33624, 4.36853] (0.95 confidence) |
-| d16/la&#95;stack&#95;det&#95;from&#95;lu | 3.28159 ns [3.27565, 3.28649] (0.95 confidence) | 3.35471 ns [3.35195, 3.35876] (0.95 confidence) | 1.77532 ns [1.76963, 1.77906] (0.95 confidence) | 4.82318 ns [4.76454, 4.8634] (0.95 confidence) |
-| d16/la&#95;stack&#95;det&#95;via&#95;lu | 360.619 ns [359.716, 361.689] (0.95 confidence) | 377.718 ns [374.568, 381.126] (0.95 confidence) | 451.034 ns [449.913, 451.762] (0.95 confidence) | 666.409 ns [663.273, 673.084] (0.95 confidence) |
-| d16/la&#95;stack&#95;dot | 2.33315 ns [2.33218, 2.33422] (0.95 confidence) | 2.36585 ns [2.36324, 2.36963] (0.95 confidence) | 1.84921 ns [1.84831, 1.84993] (0.95 confidence) | 3.31767 ns [3.31433, 3.32792] (0.95 confidence) |
-| d16/la&#95;stack&#95;inf&#95;norm | 32.4514 ns [32.3366, 32.4761] (0.95 confidence) | 33.5202 ns [33.4712, 33.5765] (0.95 confidence) | 32.5791 ns [32.5201, 32.605] (0.95 confidence) | 32.2307 ns [32.2168, 32.2844] (0.95 confidence) |
-| d16/la&#95;stack&#95;ldlt | 338.907 ns [338.69, 339.485] (0.95 confidence) | 345.474 ns [344.655, 346.116] (0.95 confidence) | 422.509 ns [421.62, 422.946] (0.95 confidence) | 418.131 ns [417.556, 418.894] (0.95 confidence) |
-| d16/la&#95;stack&#95;ldlt&#95;solve | 382.109 ns [381.947, 382.505] (0.95 confidence) | 390.634 ns [390.107, 391.056] (0.95 confidence) | 628.019 ns [626.887, 629.04] (0.95 confidence) | 612.089 ns [610.79, 613.119] (0.95 confidence) |
-| d16/la&#95;stack&#95;lu | 350.086 ns [348.492, 351.41] (0.95 confidence) | 368.462 ns [364.863, 371.298] (0.95 confidence) | 464.597 ns [463.776, 465.843] (0.95 confidence) | 633.175 ns [631.494, 640.576] (0.95 confidence) |
-| d16/la&#95;stack&#95;lu&#95;solve | 627.457 ns [613.21, 635.397] (0.95 confidence) | 750.027 ns [649.969, 761.453] (0.95 confidence) | 589.011 ns [586.474, 592.341] (0.95 confidence) | 938.943 ns [932.02, 944.127] (0.95 confidence) |
-| d16/la&#95;stack&#95;norm2&#95;sq | 2.12017 ns [2.11718, 2.1233] (0.95 confidence) | 2.14796 ns [2.14589, 2.15195] (0.95 confidence) | 1.73558 ns [1.73353, 1.7364] (0.95 confidence) | 4.09384 ns [4.09297, 4.09492] (0.95 confidence) |
-| d16/la&#95;stack&#95;solve&#95;from&#95;ldlt | 27.7905 ns [27.7687, 27.8075] (0.95 confidence) | 29.016 ns [28.9085, 29.1021] (0.95 confidence) | 119.414 ns [118.977, 119.984] (0.95 confidence) | 182.626 ns [182.299, 182.82] (0.95 confidence) |
-| d16/la&#95;stack&#95;solve&#95;from&#95;lu | 191.074 ns [190.623, 191.465] (0.95 confidence) | 209.188 ns [208.682, 209.517] (0.95 confidence) | 93.6387 ns [93.394, 93.7612] (0.95 confidence) | 257.154 ns [256.905, 257.7] (0.95 confidence) |
-| d2/la&#95;stack&#95;det | 0.572876 ns [0.572777, 0.57299] (0.95 confidence) | 0.573987 ns [0.573647, 0.574175] (0.95 confidence) | — | — |
-| d2/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.496238 ns [0.496192, 0.496347] (0.95 confidence) | 0.496604 ns [0.496449, 0.496839] (0.95 confidence) | 0.438546 ns [0.438, 0.4387] (0.95 confidence) | 0.570374 ns [0.569774, 0.57083] (0.95 confidence) |
-| d2/la&#95;stack&#95;det&#95;from&#95;lu | 0.520624 ns [0.520547, 0.520724] (0.95 confidence) | 0.520987 ns [0.520651, 0.52145] (0.95 confidence) | 0.45059 ns [0.450332, 0.451806] (0.95 confidence) | 0.743834 ns [0.743654, 0.744151] (0.95 confidence) |
-| d2/la&#95;stack&#95;det&#95;via&#95;lu | 1.77086 ns [1.76992, 1.77177] (0.95 confidence) | 1.7435 ns [1.7374, 1.75313] (0.95 confidence) | 0.822672 ns [0.821112, 0.823663] (0.95 confidence) | 110.718 ns [110.261, 111.408] (0.95 confidence) |
-| d2/la&#95;stack&#95;dot | 0.612921 ns [0.612366, 0.613432] (0.95 confidence) | 0.610449 ns [0.606927, 0.613366] (0.95 confidence) | 0.598043 ns [0.593009, 0.599721] (0.95 confidence) | 2.47931 ns [2.47867, 2.47984] (0.95 confidence) |
-| d2/la&#95;stack&#95;inf&#95;norm | 0.703132 ns [0.702861, 0.703304] (0.95 confidence) | 0.703434 ns [0.703269, 0.703603] (0.95 confidence) | 0.559833 ns [0.559717, 0.559959] (0.95 confidence) | 0.695855 ns [0.695335, 0.696852] (0.95 confidence) |
-| d2/la&#95;stack&#95;ldlt | 6.89114 ns [6.87985, 6.91103] (0.95 confidence) | 6.55722 ns [6.54552, 6.57972] (0.95 confidence) | 1.72375 ns [1.72274, 1.7245] (0.95 confidence) | 87.7743 ns [87.4516, 88.1834] (0.95 confidence) |
-| d2/la&#95;stack&#95;ldlt&#95;solve | 9.60901 ns [9.59092, 9.63616] (0.95 confidence) | 9.49351 ns [9.47354, 9.50791] (0.95 confidence) | 2.62395 ns [2.61761, 2.62944] (0.95 confidence) | 125.726 ns [125.433, 126.029] (0.95 confidence) |
-| d2/la&#95;stack&#95;lu | 1.56569 ns [1.56284, 1.5679] (0.95 confidence) | 1.56693 ns [1.56549, 1.56814] (0.95 confidence) | 1.68189 ns [1.67891, 1.68622] (0.95 confidence) | 108.948 ns [107.575, 110.523] (0.95 confidence) |
-| d2/la&#95;stack&#95;lu&#95;solve | 2.01731 ns [2.01633, 2.01805] (0.95 confidence) | 2.10359 ns [2.08908, 2.11912] (0.95 confidence) | 4.53894 ns [4.53141, 4.54661] (0.95 confidence) | 154.45 ns [153.658, 155.846] (0.95 confidence) |
-| d2/la&#95;stack&#95;norm2&#95;sq | 0.395429 ns [0.395177, 0.395569] (0.95 confidence) | 0.395034 ns [0.394428, 0.395421] (0.95 confidence) | 0.389089 ns [0.388885, 0.389318] (0.95 confidence) | 4.1265 ns [4.12534, 4.12826] (0.95 confidence) |
-| d2/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1.23867 ns [1.2383, 1.23904] (0.95 confidence) | 1.23932 ns [1.23805, 1.24032] (0.95 confidence) | 1.24972 ns [1.24834, 1.25148] (0.95 confidence) | 39.463 ns [39.3332, 39.5216] (0.95 confidence) |
-| d2/la&#95;stack&#95;solve&#95;from&#95;lu | 1.24468 ns [1.24094, 1.24904] (0.95 confidence) | 1.26331 ns [1.25802, 1.26633] (0.95 confidence) | 2.894 ns [2.89321, 2.89545] (0.95 confidence) | 49.3097 ns [49.1857, 49.4274] (0.95 confidence) |
-| d3/la&#95;stack&#95;det | 1.33913 ns [1.33765, 1.34325] (0.95 confidence) | 1.33991 ns [1.33668, 1.34289] (0.95 confidence) | — | — |
-| d3/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.612948 ns [0.611813, 0.614127] (0.95 confidence) | 0.595467 ns [0.595158, 0.595737] (0.95 confidence) | 0.496208 ns [0.495686, 0.49675] (0.95 confidence) | 0.760555 ns [0.759415, 0.763128] (0.95 confidence) |
-| d3/la&#95;stack&#95;det&#95;from&#95;lu | 0.709547 ns [0.708629, 0.710965] (0.95 confidence) | 0.693946 ns [0.693803, 0.694034] (0.95 confidence) | 0.483905 ns [0.48194, 0.485024] (0.95 confidence) | 1.01064 ns [1.00857, 1.01164] (0.95 confidence) |
-| d3/la&#95;stack&#95;det&#95;via&#95;lu | 8.79971 ns [8.76753, 8.84205] (0.95 confidence) | 8.68592 ns [8.67467, 8.69586] (0.95 confidence) | 12.61 ns [12.603, 12.6328] (0.95 confidence) | 138.806 ns [138.328, 139.246] (0.95 confidence) |
-| d3/la&#95;stack&#95;dot | 0.681535 ns [0.680378, 0.683296] (0.95 confidence) | 0.671023 ns [0.669925, 0.672805] (0.95 confidence) | 0.706024 ns [0.703341, 0.70755] (0.95 confidence) | 3.0367 ns [3.02574, 3.04921] (0.95 confidence) |
-| d3/la&#95;stack&#95;inf&#95;norm | 1.38741 ns [1.3859, 1.38884] (0.95 confidence) | 1.36927 ns [1.36835, 1.37046] (0.95 confidence) | 1.19754 ns [1.19605, 1.19858] (0.95 confidence) | 1.34749 ns [1.34389, 1.3515] (0.95 confidence) |
-| d3/la&#95;stack&#95;ldlt | 13.4093 ns [13.3568, 13.4652] (0.95 confidence) | 13.0128 ns [12.9757, 13.0532] (0.95 confidence) | 3.95925 ns [3.95144, 3.97094] (0.95 confidence) | 99.0856 ns [98.9316, 99.2756] (0.95 confidence) |
-| d3/la&#95;stack&#95;ldlt&#95;solve | 9.80848 ns [9.78745, 9.84487] (0.95 confidence) | 9.74358 ns [9.71499, 9.76146] (0.95 confidence) | 5.75807 ns [5.73394, 5.76789] (0.95 confidence) | 147.084 ns [146.664, 147.499] (0.95 confidence) |
-| d3/la&#95;stack&#95;lu | 8.68803 ns [8.62311, 8.7214] (0.95 confidence) | 8.38217 ns [8.36225, 8.39415] (0.95 confidence) | 12.7922 ns [12.7034, 12.8895] (0.95 confidence) | 139.091 ns [138.443, 139.316] (0.95 confidence) |
-| d3/la&#95;stack&#95;lu&#95;solve | 9.98135 ns [9.97281, 9.9906] (0.95 confidence) | 9.93879 ns [9.92881, 9.95117] (0.95 confidence) | 32.9342 ns [32.8554, 33.057] (0.95 confidence) | 191.85 ns [191.206, 192.814] (0.95 confidence) |
-| d3/la&#95;stack&#95;norm2&#95;sq | 0.507066 ns [0.505861, 0.508281] (0.95 confidence) | 0.498095 ns [0.496577, 0.499413] (0.95 confidence) | 0.452066 ns [0.451062, 0.453544] (0.95 confidence) | 4.26639 ns [4.25754, 4.28818] (0.95 confidence) |
-| d3/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1.82795 ns [1.82373, 1.83132] (0.95 confidence) | 1.78095 ns [1.78017, 1.78173] (0.95 confidence) | 3.00925 ns [2.99857, 3.02052] (0.95 confidence) | 41.4065 ns [41.2795, 41.5182] (0.95 confidence) |
-| d3/la&#95;stack&#95;solve&#95;from&#95;lu | 2.13084 ns [2.12446, 2.13602] (0.95 confidence) | 2.05702 ns [2.05559, 2.05822] (0.95 confidence) | 4.69852 ns [4.68887, 4.70656] (0.95 confidence) | 53.7473 ns [53.5314, 53.9728] (0.95 confidence) |
-| d32/la&#95;stack&#95;det | 2175.6 ns [2167.52, 2183.12] (0.95 confidence) | 2253.83 ns [2248.47, 2257.61] (0.95 confidence) | — | — |
-| d32/la&#95;stack&#95;det&#95;from&#95;ldlt | 7.80178 ns [7.78797, 7.81116] (0.95 confidence) | 8.16296 ns [8.14651, 8.1759] (0.95 confidence) | 3.0888 ns [3.08514, 3.09175] (0.95 confidence) | 8.60059 ns [8.5721, 8.63071] (0.95 confidence) |
-| d32/la&#95;stack&#95;det&#95;from&#95;lu | 9.09263 ns [9.08045, 9.11029] (0.95 confidence) | 9.55091 ns [9.52895, 9.59579] (0.95 confidence) | 3.07434 ns [3.06716, 3.07811] (0.95 confidence) | 8.78609 ns [8.73977, 8.82193] (0.95 confidence) |
-| d32/la&#95;stack&#95;det&#95;via&#95;lu | 2042.01 ns [2039.57, 2044.43] (0.95 confidence) | 2097.15 ns [2093.25, 2104.1] (0.95 confidence) | 2269.4 ns [2260.57, 2275.1] (0.95 confidence) | 2391.84 ns [2384.89, 2394.43] (0.95 confidence) |
-| d32/la&#95;stack&#95;dot | 4.02217 ns [4.0174, 4.02843] (0.95 confidence) | 4.09795 ns [4.09615, 4.10263] (0.95 confidence) | 4.00127 ns [3.9967, 4.0067] (0.95 confidence) | 4.87016 ns [4.86241, 4.87819] (0.95 confidence) |
-| d32/la&#95;stack&#95;inf&#95;norm | 127.933 ns [127.73, 128.284] (0.95 confidence) | 133.153 ns [133.06, 133.385] (0.95 confidence) | 160.906 ns [158.963, 162.054] (0.95 confidence) | 162.784 ns [162.45, 162.981] (0.95 confidence) |
-| d32/la&#95;stack&#95;ldlt | 2384.2 ns [2382.57, 2386.09] (0.95 confidence) | 2431.22 ns [2428.58, 2433.78] (0.95 confidence) | 2092.05 ns [2082.88, 2102.77] (0.95 confidence) | 1399.49 ns [1390.69, 1408.7] (0.95 confidence) |
-| d32/la&#95;stack&#95;ldlt&#95;solve | 2707.43 ns [2704.76, 2712.19] (0.95 confidence) | 2768.09 ns [2762.52, 2774.48] (0.95 confidence) | 2810.35 ns [2784.92, 2816.19] (0.95 confidence) | 1861.98 ns [1859.82, 1865.27] (0.95 confidence) |
-| d32/la&#95;stack&#95;lu | 2138.35 ns [2134.27, 2143.88] (0.95 confidence) | 2226.92 ns [2218.65, 2230.7] (0.95 confidence) | 2120.89 ns [2118.28, 2124.36] (0.95 confidence) | 2366.95 ns [2363.16, 2370.37] (0.95 confidence) |
-| d32/la&#95;stack&#95;lu&#95;solve | 2762.99 ns [2758.9, 2767.72] (0.95 confidence) | 2829.62 ns [2819.66, 2837.22] (0.95 confidence) | 2722.74 ns [2720.98, 2729.21] (0.95 confidence) | 3023.87 ns [3017.73, 3030.19] (0.95 confidence) |
-| d32/la&#95;stack&#95;norm2&#95;sq | 3.9658 ns [3.96092, 3.97436] (0.95 confidence) | 4.1013 ns [4.08692, 4.10916] (0.95 confidence) | 3.62609 ns [3.61571, 3.63556] (0.95 confidence) | 4.21289 ns [4.21225, 4.21392] (0.95 confidence) |
-| d32/la&#95;stack&#95;solve&#95;from&#95;ldlt | 311.264 ns [310.487, 312.295] (0.95 confidence) | 320.496 ns [319.713, 321.007] (0.95 confidence) | 548.658 ns [546.83, 549.753] (0.95 confidence) | 469.109 ns [468.904, 469.465] (0.95 confidence) |
-| d32/la&#95;stack&#95;solve&#95;from&#95;lu | 666.961 ns [665.864, 668.213] (0.95 confidence) | 735.74 ns [734.025, 737.377] (0.95 confidence) | 328.48 ns [328.138, 329.019] (0.95 confidence) | 639.316 ns [638.049, 640.345] (0.95 confidence) |
-| d4/la&#95;stack&#95;det | 2.59079 ns [2.58535, 2.60559] (0.95 confidence) | 2.5437 ns [2.52985, 2.55742] (0.95 confidence) | — | — |
-| d4/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.787562 ns [0.786422, 0.791756] (0.95 confidence) | 0.77159 ns [0.770293, 0.772868] (0.95 confidence) | 0.499227 ns [0.498689, 0.4997] (0.95 confidence) | 1.00377 ns [1.00289, 1.00498] (0.95 confidence) |
-| d4/la&#95;stack&#95;det&#95;from&#95;lu | 0.886058 ns [0.884854, 0.887513] (0.95 confidence) | 0.870765 ns [0.870079, 0.872809] (0.95 confidence) | 0.590961 ns [0.588626, 0.592034] (0.95 confidence) | 1.25584 ns [1.25455, 1.2569] (0.95 confidence) |
-| d4/la&#95;stack&#95;det&#95;via&#95;lu | 14.5493 ns [14.5287, 14.5816] (0.95 confidence) | 14.3681 ns [14.3312, 14.3953] (0.95 confidence) | 31.2562 ns [31.1699, 31.3552] (0.95 confidence) | 164.743 ns [164.348, 165.425] (0.95 confidence) |
-| d4/la&#95;stack&#95;dot | 0.691713 ns [0.688447, 0.693459] (0.95 confidence) | 0.68448 ns [0.681956, 0.688119] (0.95 confidence) | 0.666976 ns [0.665682, 0.668425] (0.95 confidence) | 2.73962 ns [2.7005, 2.74687] (0.95 confidence) |
-| d4/la&#95;stack&#95;inf&#95;norm | 2.39495 ns [2.39335, 2.39861] (0.95 confidence) | 2.37107 ns [2.36854, 2.374] (0.95 confidence) | 2.08273 ns [2.08038, 2.08506] (0.95 confidence) | 2.08911 ns [2.08339, 2.10665] (0.95 confidence) |
-| d4/la&#95;stack&#95;ldlt | 18.2285 ns [18.2088, 18.2493] (0.95 confidence) | 17.9138 ns [17.8725, 17.9542] (0.95 confidence) | 7.92229 ns [7.9045, 7.95379] (0.95 confidence) | 124.238 ns [123.806, 124.89] (0.95 confidence) |
-| d4/la&#95;stack&#95;ldlt&#95;solve | 18.1373 ns [18.0834, 18.1765] (0.95 confidence) | 17.9777 ns [17.9146, 18.0244] (0.95 confidence) | 11.5452 ns [11.4995, 11.5868] (0.95 confidence) | 166.26 ns [165.641, 166.955] (0.95 confidence) |
-| d4/la&#95;stack&#95;lu | 13.8975 ns [13.8774, 13.9233] (0.95 confidence) | 13.7862 ns [13.7637, 13.8035] (0.95 confidence) | 30.0526 ns [30.0148, 30.1072] (0.95 confidence) | 158.857 ns [157.98, 159.484] (0.95 confidence) |
-| d4/la&#95;stack&#95;lu&#95;solve | 22.1488 ns [22.1185, 22.1688] (0.95 confidence) | 21.7341 ns [21.7035, 21.776] (0.95 confidence) | 55.0106 ns [54.9217, 55.0615] (0.95 confidence) | 221.887 ns [221.678, 222.673] (0.95 confidence) |
-| d4/la&#95;stack&#95;norm2&#95;sq | 0.461115 ns [0.460671, 0.462203] (0.95 confidence) | 0.477166 ns [0.474712, 0.481989] (0.95 confidence) | 0.54413 ns [0.543035, 0.545759] (0.95 confidence) | 4.21735 ns [4.20825, 4.22393] (0.95 confidence) |
-| d4/la&#95;stack&#95;solve&#95;from&#95;ldlt | 2.54384 ns [2.53093, 2.55676] (0.95 confidence) | 2.49308 ns [2.48506, 2.50136] (0.95 confidence) | 5.82202 ns [5.81192, 5.83516] (0.95 confidence) | 41.7311 ns [41.6519, 41.8151] (0.95 confidence) |
-| d4/la&#95;stack&#95;solve&#95;from&#95;lu | 4.0318 ns [4.02105, 4.04677] (0.95 confidence) | 3.9445 ns [3.93473, 3.94977] (0.95 confidence) | 5.83637 ns [5.82832, 5.84141] (0.95 confidence) | 55.3476 ns [55.2688, 55.4685] (0.95 confidence) |
-| d5/la&#95;stack&#95;det | 40.9715 ns [40.8612, 41.0168] (0.95 confidence) | 41.1138 ns [41.0703, 41.1471] (0.95 confidence) | — | — |
-| d5/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.877386 ns [0.877116, 0.877632] (0.95 confidence) | 0.878577 ns [0.877941, 0.879622] (0.95 confidence) | 0.583159 ns [0.582517, 0.58354] (0.95 confidence) | 1.23782 ns [1.23634, 1.23875] (0.95 confidence) |
-| d5/la&#95;stack&#95;det&#95;from&#95;lu | 1.03418 ns [1.03346, 1.03456] (0.95 confidence) | 1.033 ns [1.03162, 1.03452] (0.95 confidence) | 0.66136 ns [0.657915, 0.668257] (0.95 confidence) | 1.48662 ns [1.48628, 1.48713] (0.95 confidence) |
-| d5/la&#95;stack&#95;det&#95;via&#95;lu | 33.4972 ns [33.4588, 33.5131] (0.95 confidence) | 33.6162 ns [33.5415, 33.6868] (0.95 confidence) | 51.4294 ns [51.3175, 51.524] (0.95 confidence) | 191.177 ns [190.659, 191.624] (0.95 confidence) |
-| d5/la&#95;stack&#95;dot | 0.843249 ns [0.8426, 0.843671] (0.95 confidence) | 0.842959 ns [0.839884, 0.843939] (0.95 confidence) | 0.764448 ns [0.763663, 0.76533] (0.95 confidence) | 2.63811 ns [2.63731, 2.64365] (0.95 confidence) |
-| d5/la&#95;stack&#95;inf&#95;norm | 3.46955 ns [3.46784, 3.47043] (0.95 confidence) | 3.46893 ns [3.46542, 3.47116] (0.95 confidence) | 3.2796 ns [3.27431, 3.28241] (0.95 confidence) | 3.16084 ns [3.15981, 3.16145] (0.95 confidence) |
-| d5/la&#95;stack&#95;ldlt | 25.0049 ns [24.944, 25.0526] (0.95 confidence) | 25.1376 ns [25.11, 25.154] (0.95 confidence) | 25.2354 ns [24.3772, 26.3912] (0.95 confidence) | 137.376 ns [136.651, 137.838] (0.95 confidence) |
-| d5/la&#95;stack&#95;ldlt&#95;solve | 30.4296 ns [30.3614, 30.4628] (0.95 confidence) | 30.5698 ns [30.4626, 30.6452] (0.95 confidence) | 40.2172 ns [40.2036, 40.2558] (0.95 confidence) | 199.907 ns [199.061, 200.506] (0.95 confidence) |
-| d5/la&#95;stack&#95;lu | 33.5064 ns [33.317, 33.5916] (0.95 confidence) | 33.2397 ns [33.1367, 33.6301] (0.95 confidence) | 50.0776 ns [49.8946, 50.5527] (0.95 confidence) | 180.626 ns [180.122, 181.097] (0.95 confidence) |
-| d5/la&#95;stack&#95;lu&#95;solve | 48.7153 ns [48.6718, 48.7504] (0.95 confidence) | 49.1031 ns [49.0318, 49.1659] (0.95 confidence) | 74.629 ns [74.3476, 74.9906] (0.95 confidence) | 272.864 ns [272.009, 273.512] (0.95 confidence) |
-| d5/la&#95;stack&#95;norm2&#95;sq | 0.525661 ns [0.525259, 0.526131] (0.95 confidence) | 0.527524 ns [0.525701, 0.528065] (0.95 confidence) | 0.503771 ns [0.503572, 0.503944] (0.95 confidence) | 4.13532 ns [4.13289, 4.13641] (0.95 confidence) |
-| d5/la&#95;stack&#95;solve&#95;from&#95;ldlt | 3.94677 ns [3.93389, 3.96169] (0.95 confidence) | 3.91732 ns [3.91421, 3.92183] (0.95 confidence) | 9.03899 ns [9.00572, 9.05456] (0.95 confidence) | 60.1795 ns [60.1129, 60.3863] (0.95 confidence) |
-| d5/la&#95;stack&#95;solve&#95;from&#95;lu | 6.08472 ns [6.06153, 6.11231] (0.95 confidence) | 6.12656 ns [6.11897, 6.14238] (0.95 confidence) | 8.9966 ns [8.97481, 9.01403] (0.95 confidence) | 84.2009 ns [84.0597, 84.3299] (0.95 confidence) |
-| d64/la&#95;stack&#95;det | 15419.7 ns [15317.1, 15517.3] (0.95 confidence) | 15607.4 ns [15525.1, 15681.8] (0.95 confidence) | — | — |
-| d64/la&#95;stack&#95;det&#95;from&#95;ldlt | 22.9949 ns [22.8735, 23.0413] (0.95 confidence) | 24.3353 ns [24.2589, 24.4077] (0.95 confidence) | 8.43186 ns [8.40615, 8.45378] (0.95 confidence) | 20.8183 ns [20.7795, 20.8946] (0.95 confidence) |
-| d64/la&#95;stack&#95;det&#95;from&#95;lu | 23.231 ns [23.1874, 23.2604] (0.95 confidence) | 24.3422 ns [24.295, 24.3796] (0.95 confidence) | 8.64464 ns [8.63183, 8.65888] (0.95 confidence) | 21.2372 ns [21.2039, 21.2809] (0.95 confidence) |
-| d64/la&#95;stack&#95;det&#95;via&#95;lu | 14596.6 ns [14537.5, 14694.7] (0.95 confidence) | 14869.9 ns [14823.1, 14944.5] (0.95 confidence) | 13020.4 ns [13001.5, 13032.7] (0.95 confidence) | 11036.6 ns [11027.5, 11059] (0.95 confidence) |
-| d64/la&#95;stack&#95;dot | 10.8944 ns [10.8602, 10.9125] (0.95 confidence) | 11.5095 ns [11.4922, 11.5295] (0.95 confidence) | 7.99232 ns [7.96211, 8.00956] (0.95 confidence) | 8.17384 ns [8.10427, 8.23606] (0.95 confidence) |
-| d64/la&#95;stack&#95;inf&#95;norm | 627.793 ns [626.723, 629.574] (0.95 confidence) | 674.478 ns [672.691, 676.417] (0.95 confidence) | 1251.53 ns [1248.47, 1255.67] (0.95 confidence) | 1568.14 ns [1562.6, 1570.88] (0.95 confidence) |
-| d64/la&#95;stack&#95;ldlt | 16774.7 ns [16761.3, 16786.9] (0.95 confidence) | 17153.1 ns [17130, 17175.4] (0.95 confidence) | 10747.5 ns [10740.8, 10757.6] (0.95 confidence) | 7001.9 ns [6997.07, 7009.98] (0.95 confidence) |
-| d64/la&#95;stack&#95;ldlt&#95;solve | 19075.4 ns [19037.7, 19105.9] (0.95 confidence) | 19478.7 ns [19456.8, 19523] (0.95 confidence) | 12299.4 ns [12291.5, 12313.2] (0.95 confidence) | 8273.44 ns [8262.32, 8283.77] (0.95 confidence) |
-| d64/la&#95;stack&#95;lu | 14682.2 ns [14663.6, 14702.9] (0.95 confidence) | 14924.1 ns [14891.1, 14997.4] (0.95 confidence) | 13604.1 ns [13575, 13616.4] (0.95 confidence) | 11098.4 ns [11037.4, 11167.1] (0.95 confidence) |
-| d64/la&#95;stack&#95;lu&#95;solve | 18014.7 ns [17849.1, 18166.4] (0.95 confidence) | 18280.4 ns [18138, 18489.9] (0.95 confidence) | 13835.1 ns [13822.9, 13852.2] (0.95 confidence) | 12678.8 ns [12660.2, 12699.3] (0.95 confidence) |
-| d64/la&#95;stack&#95;norm2&#95;sq | 10.8165 ns [10.8016, 10.8318] (0.95 confidence) | 11.3915 ns [11.3645, 11.4378] (0.95 confidence) | 8.52183 ns [8.50728, 8.5323] (0.95 confidence) | 6.21011 ns [6.20027, 6.26274] (0.95 confidence) |
-| d64/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1074.14 ns [1072.88, 1076.54] (0.95 confidence) | 1103.32 ns [1099.25, 1105.99] (0.95 confidence) | 1289.2 ns [1286.32, 1290.23] (0.95 confidence) | 1252.76 ns [1249.61, 1255.61] (0.95 confidence) |
-| d64/la&#95;stack&#95;solve&#95;from&#95;lu | 2530.99 ns [2524.36, 2541.55] (0.95 confidence) | 2719.71 ns [2714.93, 2728.93] (0.95 confidence) | 791.158 ns [790.924, 791.33] (0.95 confidence) | 1685.24 ns [1683.32, 1686.69] (0.95 confidence) |
-| d8/la&#95;stack&#95;det | 95.5337 ns [95.422, 95.6859] (0.95 confidence) | 96.0299 ns [95.7172, 96.1538] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;det&#95;from&#95;ldlt | 1.30998 ns [1.30856, 1.31208] (0.95 confidence) | 1.30758 ns [1.30593, 1.30941] (0.95 confidence) | 0.913542 ns [0.896885, 0.918783] (0.95 confidence) | 1.97881 ns [1.97447, 1.98117] (0.95 confidence) |
-| d8/la&#95;stack&#95;det&#95;from&#95;ldlt&#95;balanced&#95;range | 8.73914 ns [8.68084, 8.82264] (0.95 confidence) | 9.02925 ns [8.99874, 9.0541] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;det&#95;from&#95;lu | 1.46489 ns [1.46432, 1.46598] (0.95 confidence) | 1.46681 ns [1.46544, 1.46859] (0.95 confidence) | 0.997928 ns [0.990364, 0.998579] (0.95 confidence) | 2.23371 ns [2.23129, 2.23987] (0.95 confidence) |
-| d8/la&#95;stack&#95;det&#95;from&#95;lu&#95;balanced&#95;range | 9.40991 ns [9.36982, 9.41723] (0.95 confidence) | 9.36441 ns [9.19918, 9.46503] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;det&#95;via&#95;lu | 90.0003 ns [89.4881, 90.7238] (0.95 confidence) | 91.1377 ns [90.9825, 91.3288] (0.95 confidence) | 140.38 ns [140.256, 140.682] (0.95 confidence) | 268.382 ns [267.16, 270.555] (0.95 confidence) |
-| d8/la&#95;stack&#95;dot | 0.920693 ns [0.919859, 0.921825] (0.95 confidence) | 0.938248 ns [0.935731, 0.940223] (0.95 confidence) | 1.33079 ns [1.32954, 1.3322] (0.95 confidence) | 2.54972 ns [2.54228, 2.57066] (0.95 confidence) |
-| d8/la&#95;stack&#95;inf&#95;norm | 8.43703 ns [8.42209, 8.45037] (0.95 confidence) | 8.46336 ns [8.44575, 8.47159] (0.95 confidence) | 8.05139 ns [8.03854, 8.06795] (0.95 confidence) | 8.10969 ns [8.10081, 8.11662] (0.95 confidence) |
-| d8/la&#95;stack&#95;ldlt | 90.4337 ns [90.2549, 90.6032] (0.95 confidence) | 90.4841 ns [90.4109, 90.6392] (0.95 confidence) | 101.46 ns [100.991, 102.101] (0.95 confidence) | 195.344 ns [195.102, 195.453] (0.95 confidence) |
-| d8/la&#95;stack&#95;ldlt&#95;ill&#95;conditioned | 90.2188 ns [90.1175, 90.3155] (0.95 confidence) | 90.2188 ns [90.1527, 90.4098] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;ldlt&#95;solve | 103.441 ns [103.298, 103.708] (0.95 confidence) | 105.555 ns [105.215, 105.799] (0.95 confidence) | 147.45 ns [141.922, 149.357] (0.95 confidence) | 266.801 ns [266.3, 267.128] (0.95 confidence) |
-| d8/la&#95;stack&#95;lu | 90.0189 ns [89.8607, 90.3413] (0.95 confidence) | 90.1784 ns [89.9849, 90.362] (0.95 confidence) | 133.545 ns [132.756, 133.916] (0.95 confidence) | 257.893 ns [257.102, 259.004] (0.95 confidence) |
-| d8/la&#95;stack&#95;lu&#95;ill&#95;conditioned | 89.6288 ns [88.9996, 90.2728] (0.95 confidence) | 89.6705 ns [89.4697, 89.882] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;lu&#95;pivoting | 94.4911 ns [94.3366, 94.8131] (0.95 confidence) | 95.2265 ns [95.0854, 95.5085] (0.95 confidence) | — | — |
-| d8/la&#95;stack&#95;lu&#95;solve | 130.471 ns [130.304, 130.733] (0.95 confidence) | 133.665 ns [133.426, 133.861] (0.95 confidence) | 166.317 ns [166.02, 166.604] (0.95 confidence) | 374.912 ns [372.746, 376.096] (0.95 confidence) |
-| d8/la&#95;stack&#95;norm2&#95;sq | 0.668475 ns [0.667505, 0.669308] (0.95 confidence) | 0.66656 ns [0.665109, 0.668505] (0.95 confidence) | 0.932707 ns [0.931802, 0.933498] (0.95 confidence) | 4.14741 ns [4.14266, 4.15215] (0.95 confidence) |
-| d8/la&#95;stack&#95;solve&#95;from&#95;ldlt | 8.21381 ns [8.20853, 8.21669] (0.95 confidence) | 8.20724 ns [8.19176, 8.21578] (0.95 confidence) | 21.6993 ns [21.6244, 21.7363] (0.95 confidence) | 69.6593 ns [69.6017, 69.6999] (0.95 confidence) |
-| d8/la&#95;stack&#95;solve&#95;from&#95;lu | 13.3948 ns [13.3776, 13.4128] (0.95 confidence) | 13.4109 ns [13.3987, 13.4503] (0.95 confidence) | 16.2178 ns [16.186, 16.2658] (0.95 confidence) | 102.443 ns [102.246, 102.805] (0.95 confidence) |
-| exact&#95;d2/det | 0.437607 ns [0.437261, 0.43802] (0.95 confidence) | 0.450079 ns [0.449262, 0.451482] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;direct | 0.438443 ns [0.437972, 0.439661] (0.95 confidence) | 0.44589 ns [0.444961, 0.44701] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;direct&#95;with&#95;errbound | 1.74342 ns [1.74005, 1.74601] (0.95 confidence) | 1.77356 ns [1.77148, 1.77481] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;errbound | 1.58811 ns [1.5874, 1.58956] (0.95 confidence) | 1.61984 ns [1.61872, 1.62252] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;exact | 105.681 ns [105.555, 105.714] (0.95 confidence) | 108.898 ns [108.622, 109.16] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;exact&#95;f64&#95;result | 66.6816 ns [66.3984, 67.107] (0.95 confidence) | 69.2162 ns [69.1264, 69.3796] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;exact&#95;rounded&#95;f64 | 68.5379 ns [68.3688, 68.7476] (0.95 confidence) | 70.9349 ns [70.8286, 71.0535] (0.95 confidence) | — | — |
-| exact&#95;d2/det&#95;sign&#95;exact | 2.97719 ns [2.97444, 2.98201] (0.95 confidence) | 3.05619 ns [3.0517, 3.05976] (0.95 confidence) | — | — |
-| exact&#95;d2/solve&#95;exact | 7101.58 ns [7076.55, 7114.39] (0.95 confidence) | 7287.66 ns [7269.82, 7303.67] (0.95 confidence) | — | — |
-| exact&#95;d2/solve&#95;exact&#95;f64&#95;result | 7211.4 ns [7198.57, 7221.83] (0.95 confidence) | 7486.5 ns [7474.23, 7503.96] (0.95 confidence) | — | — |
-| exact&#95;d2/solve&#95;exact&#95;rounded&#95;f64 | 7521.46 ns [7503.04, 7541.24] (0.95 confidence) | 7667.74 ns [7653.73, 7681.71] (0.95 confidence) | — | — |
-| exact&#95;d3/det | 0.824679 ns [0.82185, 0.826576] (0.95 confidence) | 0.844887 ns [0.84331, 0.847052] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;direct | 0.820217 ns [0.819999, 0.820613] (0.95 confidence) | 0.841538 ns [0.839892, 0.843676] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;direct&#95;with&#95;errbound | 3.31432 ns [3.31121, 3.31644] (0.95 confidence) | 3.39753 ns [3.38846, 3.40442] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;errbound | 3.2961 ns [3.29439, 3.29739] (0.95 confidence) | 3.37007 ns [3.36717, 3.37234] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;exact | 333.2 ns [332.537, 334.062] (0.95 confidence) | 347.228 ns [346.674, 347.694] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;exact&#95;f64&#95;result | 301.192 ns [300.546, 301.931] (0.95 confidence) | 307.89 ns [307.366, 308.632] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;exact&#95;rounded&#95;f64 | 303.616 ns [303.313, 304.146] (0.95 confidence) | 311.716 ns [310.916, 312.184] (0.95 confidence) | — | — |
-| exact&#95;d3/det&#95;sign&#95;exact | 4.70867 ns [4.70694, 4.71219] (0.95 confidence) | 4.80631 ns [4.79645, 4.81409] (0.95 confidence) | — | — |
-| exact&#95;d3/solve&#95;exact | 31151.7 ns [30971.3, 31260.6] (0.95 confidence) | 31421.8 ns [31340, 31484.2] (0.95 confidence) | — | — |
-| exact&#95;d3/solve&#95;exact&#95;f64&#95;result | 30868.5 ns [30801.3, 30901] (0.95 confidence) | 32665 ns [32367.3, 32932.5] (0.95 confidence) | — | — |
-| exact&#95;d3/solve&#95;exact&#95;rounded&#95;f64 | 31301.8 ns [31224.5, 31382.9] (0.95 confidence) | 31889.1 ns [31809.7, 31976.6] (0.95 confidence) | — | — |
-| exact&#95;d4/det | 3.21436 ns [3.21379, 3.21571] (0.95 confidence) | 3.22868 ns [3.22382, 3.23502] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;direct | 2.35275 ns [2.35217, 2.35392] (0.95 confidence) | 2.36516 ns [2.36235, 2.36771] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;direct&#95;with&#95;errbound | 6.77784 ns [6.77585, 6.77884] (0.95 confidence) | 6.79239 ns [6.78985, 6.79734] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;errbound | 6.75278 ns [6.74407, 6.75666] (0.95 confidence) | 6.78473 ns [6.76819, 6.79724] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;exact | 995.982 ns [992.447, 998.628] (0.95 confidence) | 994.463 ns [989.647, 997.38] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;exact&#95;f64&#95;result | 953.334 ns [946.67, 956.673] (0.95 confidence) | 942.457 ns [939.248, 946.725] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;exact&#95;rounded&#95;f64 | 997.858 ns [992.58, 1001.8] (0.95 confidence) | 953.063 ns [947.833, 958.796] (0.95 confidence) | — | — |
-| exact&#95;d4/det&#95;sign&#95;exact | 7.92726 ns [7.92438, 7.92858] (0.95 confidence) | 7.96825 ns [7.95719, 7.9766] (0.95 confidence) | — | — |
-| exact&#95;d4/solve&#95;exact | 79180.8 ns [79084.4, 79417.8] (0.95 confidence) | 79433 ns [79240.9, 79558.3] (0.95 confidence) | — | — |
-| exact&#95;d4/solve&#95;exact&#95;f64&#95;result | 79524.9 ns [79375.2, 79623.1] (0.95 confidence) | 79595.9 ns [79338.6, 79742.8] (0.95 confidence) | — | — |
-| exact&#95;d4/solve&#95;exact&#95;rounded&#95;f64 | 80130.8 ns [80036.9, 80288.4] (0.95 confidence) | 80440.7 ns [80332.6, 80657.4] (0.95 confidence) | — | — |
-| exact&#95;d5/det | 27.7235 ns [27.6692, 27.766] (0.95 confidence) | 27.9531 ns [27.866, 28.1329] (0.95 confidence) | — | — |
-| exact&#95;d5/det&#95;exact | 3443.38 ns [3437.65, 3453.31] (0.95 confidence) | 3496.21 ns [3485.51, 3503.35] (0.95 confidence) | — | — |
-| exact&#95;d5/det&#95;exact&#95;f64&#95;result | 3399.92 ns [3390.22, 3405.48] (0.95 confidence) | 3425.94 ns [3422.05, 3429.93] (0.95 confidence) | — | — |
-| exact&#95;d5/det&#95;exact&#95;rounded&#95;f64 | 3371.59 ns [3365.66, 3384.72] (0.95 confidence) | 3464.17 ns [3457.26, 3472] (0.95 confidence) | — | — |
-| exact&#95;d5/det&#95;sign&#95;exact | 3366.38 ns [3356.93, 3373.04] (0.95 confidence) | 3443.89 ns [3431.94, 3449.15] (0.95 confidence) | — | — |
-| exact&#95;d5/solve&#95;exact | 156461 ns [156212, 156628] (0.95 confidence) | 157713 ns [157301, 158021] (0.95 confidence) | — | — |
-| exact&#95;d5/solve&#95;exact&#95;f64&#95;result | 156745 ns [156557, 157013] (0.95 confidence) | 158057 ns [157661, 158457] (0.95 confidence) | — | — |
-| exact&#95;d5/solve&#95;exact&#95;rounded&#95;f64 | 157433 ns [157193, 157646] (0.95 confidence) | 158819 ns [158422, 159037] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;4x4/det&#95;exact | 1076.5 ns [1068.35, 1087.49] (0.95 confidence) | 1013.79 ns [1010.21, 1019.36] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;4x4/det&#95;sign&#95;exact | 8.05776 ns [8.03223, 8.08877] (0.95 confidence) | 7.92417 ns [7.92002, 7.92615] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;4x4/solve&#95;exact | 59638.5 ns [59580.5, 59746.1] (0.95 confidence) | 59591.1 ns [59495.9, 59686.2] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;4x4/solve&#95;exact&#95;f64&#95;result | 59811.3 ns [59764.6, 59928.3] (0.95 confidence) | 59446.4 ns [59318, 59581.2] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;4x4/solve&#95;exact&#95;rounded&#95;f64 | 60476.9 ns [60337.1, 60612.8] (0.95 confidence) | 60139.9 ns [60076.1, 60207.2] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;5x5/det&#95;exact | 3596.17 ns [3588.46, 3605.22] (0.95 confidence) | 3703.79 ns [3696.35, 3713.21] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;5x5/det&#95;sign&#95;exact | 3590.06 ns [3575.21, 3605.64] (0.95 confidence) | 3670.86 ns [3651.49, 3686.03] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;5x5/solve&#95;exact | 123340 ns [123059, 123696] (0.95 confidence) | 122365 ns [122128, 122554] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;5x5/solve&#95;exact&#95;f64&#95;result | 122512 ns [122299, 122707] (0.95 confidence) | 122484 ns [122326, 122754] (0.95 confidence) | — | — |
-| exact&#95;hilbert&#95;5x5/solve&#95;exact&#95;rounded&#95;f64 | 123587 ns [123413, 123844] (0.95 confidence) | 129890 ns [129489, 130259] (0.95 confidence) | — | — |
-| exact&#95;large&#95;entries&#95;3x3/det&#95;exact | 320.36 ns [319.794, 321.303] (0.95 confidence) | 321.245 ns [320.736, 322.073] (0.95 confidence) | — | — |
-| exact&#95;large&#95;entries&#95;3x3/det&#95;sign&#95;exact | 313.534 ns [312.574, 314.258] (0.95 confidence) | 312.382 ns [312.027, 312.8] (0.95 confidence) | — | — |
-| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact | 92374.7 ns [92255.2, 92526.3] (0.95 confidence) | 93423.1 ns [93319.1, 93553.1] (0.95 confidence) | — | — |
-| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact&#95;f64&#95;result | 92292.6 ns [92189.6, 92467.7] (0.95 confidence) | 93917.6 ns [93809.9, 94023.6] (0.95 confidence) | — | — |
-| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact&#95;rounded&#95;f64 | 92993.5 ns [92788.4, 93187.4] (0.95 confidence) | 95011.1 ns [94877.7, 95275] (0.95 confidence) | — | — |
-| exact&#95;near&#95;singular&#95;3x3/det&#95;exact | 330.396 ns [329.774, 330.732] (0.95 confidence) | 331.719 ns [331.215, 332.041] (0.95 confidence) | — | — |
-| exact&#95;near&#95;singular&#95;3x3/det&#95;sign&#95;exact | 381.617 ns [380.891, 382.738] (0.95 confidence) | 384.296 ns [383.549, 385.741] (0.95 confidence) | — | — |
-| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact | 2640.57 ns [2634.42, 2648.9] (0.95 confidence) | 2661.62 ns [2657.04, 2664.72] (0.95 confidence) | — | — |
-| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact&#95;f64&#95;result | 2666.04 ns [2662.54, 2670.71] (0.95 confidence) | 2664.43 ns [2658.27, 2668.62] (0.95 confidence) | — | — |
-| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact&#95;rounded&#95;f64 | 2661.42 ns [2656.71, 2666.63] (0.95 confidence) | 2669.25 ns [2665.89, 2672.32] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d2/det&#95;exact | 3074.61 ns [3073.48, 3076.5] (0.95 confidence) | 3113.29 ns [3110.98, 3116.17] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d2/det&#95;sign&#95;exact | 149.951 ns [148.821, 150.311] (0.95 confidence) | 145.447 ns [145.019, 145.8] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact | 73898.7 ns [73785.4, 74041.7] (0.95 confidence) | 74691.2 ns [74552.8, 74879.2] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact&#95;f64&#95;result | 74636 ns [74528.3, 74739.7] (0.95 confidence) | 75679.1 ns [75588.4, 75805] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact&#95;rounded&#95;f64 | 74998.9 ns [74909.1, 75146.1] (0.95 confidence) | 76119.2 ns [75828.6, 76475.4] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d3/det&#95;exact | 8735.9 ns [8706.82, 8747.5] (0.95 confidence) | 8916.02 ns [8890.29, 8952.93] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d3/det&#95;sign&#95;exact | 225.041 ns [224.843, 225.166] (0.95 confidence) | 225.856 ns [225.386, 226.057] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact | 236603 ns [234555, 237500] (0.95 confidence) | 232425 ns [232059, 232620] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact&#95;f64&#95;result | 233964 ns [233377, 234178] (0.95 confidence) | 233273 ns [232820, 233741] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact&#95;rounded&#95;f64 | 232670 ns [232372, 232989] (0.95 confidence) | 234259 ns [233846, 234719] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d4/det&#95;exact | 21465.1 ns [21329.4, 21524.8] (0.95 confidence) | 21767.8 ns [21688.3, 21846.1] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d4/det&#95;sign&#95;exact | 443.083 ns [442.756, 443.478] (0.95 confidence) | 444.827 ns [443.47, 445.771] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact | 514860 ns [514153, 515277] (0.95 confidence) | 524102 ns [523441, 525063] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact&#95;f64&#95;result | 515182 ns [514699, 515836] (0.95 confidence) | 522636 ns [522137, 522990] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact&#95;rounded&#95;f64 | 516974 ns [515876, 517511] (0.95 confidence) | 525773 ns [524838, 527087] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d5/det&#95;exact | 55095.3 ns [54756.3, 55363.3] (0.95 confidence) | 55825.8 ns [55684.2, 56051.1] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d5/det&#95;sign&#95;exact | 54917.3 ns [54608.2, 55126.3] (0.95 confidence) | 55009.3 ns [54885, 55329.4] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact | 1.01098e+06 ns [1.00922e+06, 1.01757e+06] (0.95 confidence) | 1.02105e+06 ns [1.01928e+06, 1.0227e+06] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact&#95;f64&#95;result | 1.0099e+06 ns [1.00872e+06, 1.01108e+06] (0.95 confidence) | 1.02094e+06 ns [1.01881e+06, 1.02267e+06] (0.95 confidence) | — | — |
-| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact&#95;rounded&#95;f64 | 1.0115e+06 ns [1.01054e+06, 1.0123e+06] (0.95 confidence) | 1.01892e+06 ns [1.01752e+06, 1.02096e+06] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d2/det&#95;big&#95;rational&#95;gaussian | 1101.62 ns [1099.34, 1102.96] (0.95 confidence) | 1104.07 ns [1102.04, 1107.44] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d2/det&#95;row&#95;cleared&#95;bareiss | 178.295 ns [177.825, 178.437] (0.95 confidence) | 179.604 ns [179.355, 180.059] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d2/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 76.9844 ns [76.8428, 77.153] (0.95 confidence) | 77.8888 ns [77.737, 78.0925] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d2/solve&#95;big&#95;rational&#95;gaussian | 2101.82 ns [2099, 2106.11] (0.95 confidence) | 2115.58 ns [2112.65, 2118.49] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d2/solve&#95;row&#95;cleared&#95;bareiss | 926.348 ns [924.941, 927.762] (0.95 confidence) | 931.625 ns [930.645, 932.404] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d3/det&#95;big&#95;rational&#95;gaussian | 4607.84 ns [4591.84, 4618.04] (0.95 confidence) | 4618.71 ns [4606.42, 4629.37] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d3/det&#95;row&#95;cleared&#95;bareiss | 561.084 ns [560.655, 561.946] (0.95 confidence) | 567.794 ns [566.479, 568.868] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d3/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 361.636 ns [360.405, 362.795] (0.95 confidence) | 356.108 ns [355.037, 356.669] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d3/solve&#95;big&#95;rational&#95;gaussian | 7954.99 ns [7935.36, 7982.04] (0.95 confidence) | 8041.07 ns [8011.87, 8073.69] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d3/solve&#95;row&#95;cleared&#95;bareiss | 2399.62 ns [2397.75, 2401.91] (0.95 confidence) | 2415.2 ns [2410.25, 2420.77] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d4/det&#95;big&#95;rational&#95;gaussian | 13591.5 ns [13511.7, 13635.6] (0.95 confidence) | 13455.6 ns [13419.5, 13507.7] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d4/det&#95;row&#95;cleared&#95;bareiss | 1142.12 ns [1138.56, 1143.7] (0.95 confidence) | 1145.98 ns [1143.13, 1147.91] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d4/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 761.999 ns [759.33, 763.949] (0.95 confidence) | 756.302 ns [755.292, 757.201] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d4/solve&#95;big&#95;rational&#95;gaussian | 23663.8 ns [23615.8, 23716.4] (0.95 confidence) | 23719.3 ns [23645.2, 23790.2] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d4/solve&#95;row&#95;cleared&#95;bareiss | 5289.48 ns [5280.14, 5298.04] (0.95 confidence) | 5772.1 ns [5438.53, 5833.49] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d5/det&#95;big&#95;rational&#95;gaussian | 23230.8 ns [23150.3, 23279.4] (0.95 confidence) | 23137 ns [23102.7, 23164.8] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d5/det&#95;row&#95;cleared&#95;bareiss | 2055.03 ns [2051.28, 2060.1] (0.95 confidence) | 2077 ns [2074.49, 2079.9] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d5/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 1538.17 ns [1535.12, 1542.43] (0.95 confidence) | 1571.96 ns [1570.15, 1575.37] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d5/solve&#95;big&#95;rational&#95;gaussian | 39295.2 ns [39086.4, 39466.5] (0.95 confidence) | 39284.3 ns [39220, 39359.5] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d5/solve&#95;row&#95;cleared&#95;bareiss | 9337.06 ns [9322.82, 9367.19] (0.95 confidence) | 9466.7 ns [9442.65, 9484.9] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d6/det&#95;big&#95;rational&#95;gaussian | 56010.1 ns [55774.6, 56174.1] (0.95 confidence) | 56994.6 ns [56766, 57163.9] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d6/det&#95;row&#95;cleared&#95;bareiss | 3600.36 ns [3590.3, 3610.64] (0.95 confidence) | 3634.44 ns [3625.5, 3643.79] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d6/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 2941.38 ns [2937.33, 2948.15] (0.95 confidence) | 2981.62 ns [2978.38, 2987.35] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d6/solve&#95;big&#95;rational&#95;gaussian | 89102.5 ns [88929.7, 89313.1] (0.95 confidence) | 90044.2 ns [89810.5, 90232.2] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d6/solve&#95;row&#95;cleared&#95;bareiss | 17413.4 ns [17310.6, 17491.9] (0.95 confidence) | 17813.1 ns [17775.4, 17853] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d7/det&#95;big&#95;rational&#95;gaussian | 108117 ns [107947, 108683] (0.95 confidence) | 110131 ns [109794, 110370] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d7/det&#95;row&#95;cleared&#95;bareiss | 5842.88 ns [5824.17, 5856.91] (0.95 confidence) | 5874.12 ns [5853.19, 5886.59] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d7/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 5000.46 ns [4988.05, 5011.27] (0.95 confidence) | 4997.34 ns [4990.86, 5005.29] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d7/solve&#95;big&#95;rational&#95;gaussian | 158783 ns [158480, 159372] (0.95 confidence) | 162794 ns [162278, 163066] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d7/solve&#95;row&#95;cleared&#95;bareiss | 28160.2 ns [28040.7, 28265.3] (0.95 confidence) | 28929.7 ns [28904, 28967.5] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d8/det&#95;big&#95;rational&#95;gaussian | 187037 ns [186707, 187403] (0.95 confidence) | 190295 ns [189907, 190514] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d8/det&#95;row&#95;cleared&#95;bareiss | 8821.33 ns [8793.62, 8847.83] (0.95 confidence) | 8890.39 ns [8876.42, 8901.57] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d8/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 7984.02 ns [7972.89, 8000.1] (0.95 confidence) | 7938.35 ns [7921.87, 7948.98] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d8/solve&#95;big&#95;rational&#95;gaussian | 261996 ns [261648, 262655] (0.95 confidence) | 268285 ns [267897, 268994] (0.95 confidence) | — | — |
-| rational&#95;input&#95;d8/solve&#95;row&#95;cleared&#95;bareiss | 40878.2 ns [40802.8, 40944] (0.95 confidence) | 41625.7 ns [41560.5, 41757.9] (0.95 confidence) | — | — |
+| d16/la&#95;stack&#95;det | 431.355 ns [429.554, 433.409] (0.95 confidence) | 435.958 ns [434.147, 439.205] (0.95 confidence) | — | — |
+| d16/la&#95;stack&#95;det&#95;from&#95;ldlt | 2.89883 ns [2.88973, 2.90569] (0.95 confidence) | 2.91858 ns [2.9156, 2.92263] (0.95 confidence) | 1.68913 ns [1.68305, 1.69439] (0.95 confidence) | 4.36104 ns [4.35315, 4.3734] (0.95 confidence) |
+| d16/la&#95;stack&#95;det&#95;from&#95;lu | 3.29569 ns [3.29208, 3.29911] (0.95 confidence) | 3.30504 ns [3.30178, 3.31021] (0.95 confidence) | 1.77695 ns [1.76877, 1.78267] (0.95 confidence) | 4.6818 ns [4.65863, 4.76215] (0.95 confidence) |
+| d16/la&#95;stack&#95;det&#95;via&#95;lu | 414.441 ns [409.712, 417.837] (0.95 confidence) | 419.372 ns [416.471, 424.374] (0.95 confidence) | 456.7 ns [455.176, 459.057] (0.95 confidence) | 637.56 ns [633.11, 642.581] (0.95 confidence) |
+| d16/la&#95;stack&#95;dot | 2.34307 ns [2.33946, 2.34768] (0.95 confidence) | 2.34721 ns [2.3409, 2.35083] (0.95 confidence) | 1.84897 ns [1.84649, 1.85204] (0.95 confidence) | 3.25757 ns [3.25467, 3.2636] (0.95 confidence) |
+| d16/la&#95;stack&#95;inf&#95;norm | 32.0776 ns [32.0146, 32.1088] (0.95 confidence) | 32.8858 ns [32.8579, 32.9355] (0.95 confidence) | 32.2176 ns [32.1884, 32.2615] (0.95 confidence) | 32.1229 ns [32.1084, 32.1492] (0.95 confidence) |
+| d16/la&#95;stack&#95;ldlt | 340.841 ns [340.049, 341.613] (0.95 confidence) | 341.567 ns [340.675, 342.421] (0.95 confidence) | 417.765 ns [414.879, 418.891] (0.95 confidence) | 404.975 ns [403.504, 406.537] (0.95 confidence) |
+| d16/la&#95;stack&#95;ldlt&#95;solve | 383.51 ns [383.128, 383.934] (0.95 confidence) | 384.304 ns [383.895, 384.793] (0.95 confidence) | 637.749 ns [636.778, 639.595] (0.95 confidence) | 602.783 ns [601.444, 605.333] (0.95 confidence) |
+| d16/la&#95;stack&#95;lu | 407.869 ns [405.9, 411.207] (0.95 confidence) | 397.951 ns [394.518, 399.731] (0.95 confidence) | 462.218 ns [460.297, 463.499] (0.95 confidence) | 614.536 ns [610.04, 618.949] (0.95 confidence) |
+| d16/la&#95;stack&#95;lu&#95;solve | 657.049 ns [654.101, 659.92] (0.95 confidence) | 664.211 ns [662.337, 667.556] (0.95 confidence) | 592.628 ns [590.988, 594.368] (0.95 confidence) | 871.515 ns [869.043, 873.723] (0.95 confidence) |
+| d16/la&#95;stack&#95;norm2&#95;sq | 2.10975 ns [2.10679, 2.11445] (0.95 confidence) | 2.11572 ns [2.11167, 2.12005] (0.95 confidence) | 1.72908 ns [1.7266, 1.73194] (0.95 confidence) | 4.10049 ns [4.09225, 4.10847] (0.95 confidence) |
+| d16/la&#95;stack&#95;solve&#95;from&#95;ldlt | 27.8216 ns [27.7944, 27.8683] (0.95 confidence) | 27.934 ns [27.9019, 27.9761] (0.95 confidence) | 118.985 ns [118.77, 119.395] (0.95 confidence) | 179.969 ns [179.588, 180.171] (0.95 confidence) |
+| d16/la&#95;stack&#95;solve&#95;from&#95;lu | 190.734 ns [190.126, 191.305] (0.95 confidence) | 200.99 ns [200.711, 201.414] (0.95 confidence) | 93.6653 ns [93.4961, 93.806] (0.95 confidence) | 247.034 ns [246.643, 247.187] (0.95 confidence) |
+| d2/la&#95;stack&#95;det | 0.589071 ns [0.58771, 0.590455] (0.95 confidence) | 0.580101 ns [0.579276, 0.581777] (0.95 confidence) | — | — |
+| d2/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.504966 ns [0.504045, 0.505835] (0.95 confidence) | 0.506699 ns [0.504713, 0.508559] (0.95 confidence) | 0.44602 ns [0.445693, 0.446374] (0.95 confidence) | 0.578853 ns [0.578537, 0.579115] (0.95 confidence) |
+| d2/la&#95;stack&#95;det&#95;from&#95;lu | 0.560109 ns [0.559738, 0.560774] (0.95 confidence) | 0.553998 ns [0.553136, 0.554527] (0.95 confidence) | 0.467319 ns [0.465846, 0.46907] (0.95 confidence) | 0.771338 ns [0.769893, 0.77228] (0.95 confidence) |
+| d2/la&#95;stack&#95;det&#95;via&#95;lu | 1.78382 ns [1.77935, 1.79074] (0.95 confidence) | 1.78332 ns [1.77429, 1.78663] (0.95 confidence) | 0.846381 ns [0.845059, 0.848121] (0.95 confidence) | 88.3003 ns [88.0676, 88.6565] (0.95 confidence) |
+| d2/la&#95;stack&#95;dot | 0.594018 ns [0.592489, 0.59575] (0.95 confidence) | 0.621878 ns [0.620068, 0.623559] (0.95 confidence) | 0.601261 ns [0.600803, 0.60237] (0.95 confidence) | 2.43825 ns [2.43058, 2.45104] (0.95 confidence) |
+| d2/la&#95;stack&#95;inf&#95;norm | 0.712774 ns [0.712264, 0.713288] (0.95 confidence) | 0.712689 ns [0.711605, 0.715323] (0.95 confidence) | 0.570926 ns [0.570514, 0.571607] (0.95 confidence) | 0.708844 ns [0.70798, 0.709461] (0.95 confidence) |
+| d2/la&#95;stack&#95;ldlt | 7.40784 ns [7.39823, 7.41923] (0.95 confidence) | 7.01983 ns [6.97531, 7.04159] (0.95 confidence) | 1.77699 ns [1.77357, 1.77972] (0.95 confidence) | 75.2039 ns [74.6867, 75.6538] (0.95 confidence) |
+| d2/la&#95;stack&#95;ldlt&#95;solve | 10.8182 ns [10.792, 10.8503] (0.95 confidence) | 10.2846 ns [10.2338, 10.4365] (0.95 confidence) | 2.81043 ns [2.80574, 2.81848] (0.95 confidence) | 114.949 ns [114.708, 115.549] (0.95 confidence) |
+| d2/la&#95;stack&#95;lu | 1.60072 ns [1.59544, 1.60676] (0.95 confidence) | 1.58602 ns [1.58198, 1.58856] (0.95 confidence) | 1.65908 ns [1.65715, 1.66273] (0.95 confidence) | 84.4946 ns [84.1955, 84.9341] (0.95 confidence) |
+| d2/la&#95;stack&#95;lu&#95;solve | 2.10013 ns [2.09514, 2.10964] (0.95 confidence) | 2.08604 ns [2.07011, 2.10324] (0.95 confidence) | 4.67756 ns [4.66983, 4.68294] (0.95 confidence) | 134.191 ns [133.728, 134.733] (0.95 confidence) |
+| d2/la&#95;stack&#95;norm2&#95;sq | 0.396282 ns [0.395772, 0.397039] (0.95 confidence) | 0.401382 ns [0.400177, 0.402878] (0.95 confidence) | 0.396352 ns [0.39566, 0.397058] (0.95 confidence) | 4.18786 ns [4.18646, 4.19618] (0.95 confidence) |
+| d2/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1.27006 ns [1.26598, 1.27132] (0.95 confidence) | 1.26198 ns [1.25696, 1.26744] (0.95 confidence) | 1.29209 ns [1.28845, 1.29526] (0.95 confidence) | 34.9752 ns [34.816, 35.0867] (0.95 confidence) |
+| d2/la&#95;stack&#95;solve&#95;from&#95;lu | 1.29707 ns [1.29403, 1.30025] (0.95 confidence) | 1.29248 ns [1.28377, 1.29784] (0.95 confidence) | 2.9914 ns [2.98343, 3.00375] (0.95 confidence) | 42.9799 ns [42.824, 43.151] (0.95 confidence) |
+| d3/la&#95;stack&#95;det | 1.3452 ns [1.33846, 1.34912] (0.95 confidence) | 1.35317 ns [1.34688, 1.36196] (0.95 confidence) | — | — |
+| d3/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.594023 ns [0.59398, 0.594086] (0.95 confidence) | 0.604845 ns [0.602909, 0.606165] (0.95 confidence) | 0.485039 ns [0.484764, 0.485341] (0.95 confidence) | 0.742339 ns [0.742234, 0.742411] (0.95 confidence) |
+| d3/la&#95;stack&#95;det&#95;from&#95;lu | 0.693126 ns [0.692947, 0.693409] (0.95 confidence) | 0.703788 ns [0.702007, 0.70615] (0.95 confidence) | 0.474913 ns [0.474849, 0.474982] (0.95 confidence) | 0.990024 ns [0.989822, 0.990483] (0.95 confidence) |
+| d3/la&#95;stack&#95;det&#95;via&#95;lu | 8.77423 ns [8.75813, 8.8006] (0.95 confidence) | 8.92086 ns [8.8869, 8.95247] (0.95 confidence) | 13.1366 ns [13.108, 13.2644] (0.95 confidence) | 112.513 ns [111.955, 113.031] (0.95 confidence) |
+| d3/la&#95;stack&#95;dot | 0.664367 ns [0.66369, 0.665379] (0.95 confidence) | 0.676309 ns [0.674337, 0.678252] (0.95 confidence) | 0.683378 ns [0.682914, 0.683667] (0.95 confidence) | 2.72049 ns [2.55765, 2.72198] (0.95 confidence) |
+| d3/la&#95;stack&#95;inf&#95;norm | 1.36208 ns [1.36199, 1.3622] (0.95 confidence) | 1.3786 ns [1.37657, 1.38027] (0.95 confidence) | 1.17687 ns [1.17677, 1.17696] (0.95 confidence) | 1.33943 ns [1.32765, 1.3461] (0.95 confidence) |
+| d3/la&#95;stack&#95;ldlt | 13.3075 ns [13.2508, 13.3931] (0.95 confidence) | 13.6252 ns [13.5597, 13.6886] (0.95 confidence) | 3.95167 ns [3.94481, 3.95668] (0.95 confidence) | 84.2451 ns [84.0766, 84.3537] (0.95 confidence) |
+| d3/la&#95;stack&#95;ldlt&#95;solve | 9.79675 ns [9.77665, 9.83857] (0.95 confidence) | 9.84898 ns [9.77585, 9.93792] (0.95 confidence) | 5.72724 ns [5.71149, 5.73425] (0.95 confidence) | 124.904 ns [124.791, 125.083] (0.95 confidence) |
+| d3/la&#95;stack&#95;lu | 8.40997 ns [8.39921, 8.42334] (0.95 confidence) | 8.46337 ns [8.44305, 8.4874] (0.95 confidence) | 12.324 ns [12.1421, 12.4366] (0.95 confidence) | 106.969 ns [106.816, 107.43] (0.95 confidence) |
+| d3/la&#95;stack&#95;lu&#95;solve | 9.92161 ns [9.91361, 9.9287] (0.95 confidence) | 10.1267 ns [10.0964, 10.1596] (0.95 confidence) | 32.6591 ns [32.5867, 32.7761] (0.95 confidence) | 154.854 ns [154.671, 155.247] (0.95 confidence) |
+| d3/la&#95;stack&#95;norm2&#95;sq | 0.44411 ns [0.443798, 0.444522] (0.95 confidence) | 0.454869 ns [0.453578, 0.457309] (0.95 confidence) | 0.445103 ns [0.444813, 0.445429] (0.95 confidence) | 4.12934 ns [4.1273, 4.13111] (0.95 confidence) |
+| d3/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1.77795 ns [1.77767, 1.77892] (0.95 confidence) | 1.80842 ns [1.80526, 1.81416] (0.95 confidence) | 2.83668 ns [2.83173, 2.84155] (0.95 confidence) | 35.3107 ns [35.0784, 35.4992] (0.95 confidence) |
+| d3/la&#95;stack&#95;solve&#95;from&#95;lu | 2.0399 ns [2.0391, 2.04149] (0.95 confidence) | 2.09998 ns [2.08953, 2.10686] (0.95 confidence) | 4.54803 ns [4.54059, 4.55782] (0.95 confidence) | 43.3184 ns [43.0145, 43.5935] (0.95 confidence) |
+| d32/la&#95;stack&#95;det | 2182 ns [2175.58, 2187.04] (0.95 confidence) | 2223.08 ns [2218.7, 2227.55] (0.95 confidence) | — | — |
+| d32/la&#95;stack&#95;det&#95;from&#95;ldlt | 7.69107 ns [7.67645, 7.7027] (0.95 confidence) | 8.03731 ns [8.00739, 8.05051] (0.95 confidence) | 2.94299 ns [2.9393, 2.94622] (0.95 confidence) | 8.27568 ns [8.25958, 8.29245] (0.95 confidence) |
+| d32/la&#95;stack&#95;det&#95;from&#95;lu | 8.977 ns [8.97317, 8.99046] (0.95 confidence) | 9.3028 ns [9.25894, 9.3643] (0.95 confidence) | 3.05277 ns [3.04703, 3.05856] (0.95 confidence) | 8.67523 ns [8.64858, 8.69204] (0.95 confidence) |
+| d32/la&#95;stack&#95;det&#95;via&#95;lu | 2045.35 ns [2041.17, 2046.43] (0.95 confidence) | 2065.25 ns [2061.39, 2071.94] (0.95 confidence) | 2269.24 ns [2261.85, 2276.18] (0.95 confidence) | 2319.85 ns [2315.48, 2326.17] (0.95 confidence) |
+| d32/la&#95;stack&#95;dot | 3.98429 ns [3.97772, 3.9934] (0.95 confidence) | 4.08529 ns [4.07284, 4.09232] (0.95 confidence) | 3.98987 ns [3.98694, 3.99393] (0.95 confidence) | 4.83929 ns [4.83707, 4.84133] (0.95 confidence) |
+| d32/la&#95;stack&#95;inf&#95;norm | 129.791 ns [129.619, 130.037] (0.95 confidence) | 131.099 ns [130.947, 131.372] (0.95 confidence) | 161.098 ns [159.761, 163.155] (0.95 confidence) | 164.596 ns [164.063, 164.812] (0.95 confidence) |
+| d32/la&#95;stack&#95;ldlt | 2377.19 ns [2375.64, 2378.38] (0.95 confidence) | 2397.51 ns [2395.36, 2400.46] (0.95 confidence) | 2071.76 ns [2064.14, 2078.73] (0.95 confidence) | 1359.7 ns [1356.07, 1364.35] (0.95 confidence) |
+| d32/la&#95;stack&#95;ldlt&#95;solve | 2688.18 ns [2685.55, 2692.42] (0.95 confidence) | 2740.05 ns [2729.13, 2752.71] (0.95 confidence) | 2822.03 ns [2812.14, 2831.33] (0.95 confidence) | 1863.74 ns [1859.28, 1870.81] (0.95 confidence) |
+| d32/la&#95;stack&#95;lu | 2198.74 ns [2193.65, 2206.81] (0.95 confidence) | 2248.36 ns [2232.33, 2267.13] (0.95 confidence) | 2135.75 ns [2131.1, 2138.6] (0.95 confidence) | 2269.67 ns [2266.36, 2274.27] (0.95 confidence) |
+| d32/la&#95;stack&#95;lu&#95;solve | 2741.43 ns [2735.77, 2745.53] (0.95 confidence) | 2808.97 ns [2803.87, 2818.34] (0.95 confidence) | 2690.31 ns [2670.38, 2705.41] (0.95 confidence) | 2896.79 ns [2891.24, 2903.54] (0.95 confidence) |
+| d32/la&#95;stack&#95;norm2&#95;sq | 3.92321 ns [3.91686, 3.92944] (0.95 confidence) | 4.03852 ns [4.03006, 4.0452] (0.95 confidence) | 3.58156 ns [3.57374, 3.58809] (0.95 confidence) | 4.20525 ns [4.20511, 4.20554] (0.95 confidence) |
+| d32/la&#95;stack&#95;solve&#95;from&#95;ldlt | 308.973 ns [308.386, 309.722] (0.95 confidence) | 315.168 ns [314.772, 316.089] (0.95 confidence) | 555.61 ns [554.315, 557.585] (0.95 confidence) | 466.763 ns [466.289, 467.357] (0.95 confidence) |
+| d32/la&#95;stack&#95;solve&#95;from&#95;lu | 656.305 ns [653.956, 659.365] (0.95 confidence) | 697.839 ns [696.782, 699.084] (0.95 confidence) | 327.023 ns [326.009, 327.433] (0.95 confidence) | 627.953 ns [627.26, 628.939] (0.95 confidence) |
+| d4/la&#95;stack&#95;det | 2.55314 ns [2.55229, 2.55395] (0.95 confidence) | 2.58978 ns [2.57461, 2.60745] (0.95 confidence) | — | — |
+| d4/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.767416 ns [0.767354, 0.767469] (0.95 confidence) | 0.777446 ns [0.775474, 0.778829] (0.95 confidence) | 0.483954 ns [0.479339, 0.487772] (0.95 confidence) | 0.991797 ns [0.99148, 0.992335] (0.95 confidence) |
+| d4/la&#95;stack&#95;det&#95;from&#95;lu | 0.867575 ns [0.867409, 0.867884] (0.95 confidence) | 0.875126 ns [0.873052, 0.877122] (0.95 confidence) | 0.587088 ns [0.583528, 0.592817] (0.95 confidence) | 1.23724 ns [1.23702, 1.23742] (0.95 confidence) |
+| d4/la&#95;stack&#95;det&#95;via&#95;lu | 14.201 ns [14.1908, 14.2162] (0.95 confidence) | 14.4292 ns [14.3915, 14.451] (0.95 confidence) | 32.0753 ns [31.9999, 32.3066] (0.95 confidence) | 132.607 ns [132.3, 132.863] (0.95 confidence) |
+| d4/la&#95;stack&#95;dot | 0.679943 ns [0.679453, 0.680522] (0.95 confidence) | 0.684804 ns [0.682462, 0.686139] (0.95 confidence) | 0.653494 ns [0.653246, 0.653695] (0.95 confidence) | 2.48786 ns [2.48554, 2.49104] (0.95 confidence) |
+| d4/la&#95;stack&#95;inf&#95;norm | 2.34899 ns [2.34712, 2.35047] (0.95 confidence) | 2.38909 ns [2.38083, 2.39082] (0.95 confidence) | 2.02545 ns [2.02312, 2.02753] (0.95 confidence) | 2.04242 ns [2.04234, 2.04263] (0.95 confidence) |
+| d4/la&#95;stack&#95;ldlt | 18.5227 ns [18.4585, 18.5709] (0.95 confidence) | 18.1184 ns [18.0769, 18.1652] (0.95 confidence) | 7.65423 ns [7.64598, 7.6731] (0.95 confidence) | 105.356 ns [105.087, 105.612] (0.95 confidence) |
+| d4/la&#95;stack&#95;ldlt&#95;solve | 17.7808 ns [17.7637, 17.7899] (0.95 confidence) | 17.9666 ns [17.9392, 17.9894] (0.95 confidence) | 10.6718 ns [10.6558, 10.6911] (0.95 confidence) | 147.393 ns [147.018, 147.715] (0.95 confidence) |
+| d4/la&#95;stack&#95;lu | 13.7463 ns [13.7391, 13.7544] (0.95 confidence) | 13.9351 ns [13.8969, 13.9667] (0.95 confidence) | 29.644 ns [29.6321, 29.6551] (0.95 confidence) | 127.412 ns [127.175, 127.693] (0.95 confidence) |
+| d4/la&#95;stack&#95;lu&#95;solve | 21.8137 ns [21.772, 21.8502] (0.95 confidence) | 22.3772 ns [22.2802, 22.459] (0.95 confidence) | 53.0406 ns [52.9385, 53.1043] (0.95 confidence) | 180.446 ns [179.949, 180.87] (0.95 confidence) |
+| d4/la&#95;stack&#95;norm2&#95;sq | 0.467956 ns [0.464323, 0.470412] (0.95 confidence) | 0.459498 ns [0.458269, 0.460469] (0.95 confidence) | 0.536845 ns [0.535356, 0.538889] (0.95 confidence) | 4.13013 ns [4.12802, 4.13245] (0.95 confidence) |
+| d4/la&#95;stack&#95;solve&#95;from&#95;ldlt | 2.46601 ns [2.46472, 2.4675] (0.95 confidence) | 2.49014 ns [2.4848, 2.49479] (0.95 confidence) | 5.37537 ns [5.35887, 5.38824] (0.95 confidence) | 38.0564 ns [37.9689, 38.1541] (0.95 confidence) |
+| d4/la&#95;stack&#95;solve&#95;from&#95;lu | 3.91906 ns [3.90746, 3.93628] (0.95 confidence) | 3.97481 ns [3.96095, 3.989] (0.95 confidence) | 5.71357 ns [5.70559, 5.71961] (0.95 confidence) | 46.7493 ns [46.555, 46.8708] (0.95 confidence) |
+| d5/la&#95;stack&#95;det | 40.5954 ns [40.4881, 40.6886] (0.95 confidence) | 41.0598 ns [40.8595, 41.1037] (0.95 confidence) | — | — |
+| d5/la&#95;stack&#95;det&#95;from&#95;ldlt | 0.875865 ns [0.875681, 0.876044] (0.95 confidence) | 0.879522 ns [0.878943, 0.880689] (0.95 confidence) | 0.579098 ns [0.577543, 0.580635] (0.95 confidence) | 1.22362 ns [1.22259, 1.2253] (0.95 confidence) |
+| d5/la&#95;stack&#95;det&#95;from&#95;lu | 1.02922 ns [1.02904, 1.02934] (0.95 confidence) | 1.03525 ns [1.03377, 1.03593] (0.95 confidence) | 0.653228 ns [0.652906, 0.656333] (0.95 confidence) | 1.48377 ns [1.48143, 1.48413] (0.95 confidence) |
+| d5/la&#95;stack&#95;det&#95;via&#95;lu | 33.4002 ns [33.2745, 33.4551] (0.95 confidence) | 33.5907 ns [33.4759, 33.6353] (0.95 confidence) | 50.8343 ns [50.6228, 51.0608] (0.95 confidence) | 170.689 ns [170.243, 171.072] (0.95 confidence) |
+| d5/la&#95;stack&#95;dot | 0.841179 ns [0.838923, 0.842128] (0.95 confidence) | 0.844329 ns [0.84204, 0.852426] (0.95 confidence) | 0.762545 ns [0.761668, 0.764225] (0.95 confidence) | 2.63178 ns [2.63138, 2.63254] (0.95 confidence) |
+| d5/la&#95;stack&#95;inf&#95;norm | 3.44479 ns [3.43898, 3.4515] (0.95 confidence) | 3.5738 ns [3.56102, 3.58815] (0.95 confidence) | 3.23395 ns [3.2273, 3.23911] (0.95 confidence) | 3.15523 ns [3.15319, 3.15562] (0.95 confidence) |
+| d5/la&#95;stack&#95;ldlt | 24.93 ns [24.906, 24.9826] (0.95 confidence) | 25.4578 ns [25.4307, 25.486] (0.95 confidence) | 22.7947 ns [21.6891, 23.9297] (0.95 confidence) | 125.613 ns [125.245, 126.079] (0.95 confidence) |
+| d5/la&#95;stack&#95;ldlt&#95;solve | 30.2591 ns [30.2128, 30.3451] (0.95 confidence) | 30.4307 ns [30.3607, 30.4917] (0.95 confidence) | 40.0729 ns [40.0625, 40.0837] (0.95 confidence) | 184.375 ns [184.027, 184.871] (0.95 confidence) |
+| d5/la&#95;stack&#95;lu | 33.5307 ns [33.484, 33.5691] (0.95 confidence) | 33.6523 ns [33.5058, 33.7452] (0.95 confidence) | 49.6228 ns [49.3422, 49.8434] (0.95 confidence) | 162.362 ns [162.013, 162.886] (0.95 confidence) |
+| d5/la&#95;stack&#95;lu&#95;solve | 48.7029 ns [48.5833, 48.8509] (0.95 confidence) | 48.8084 ns [48.777, 48.8493] (0.95 confidence) | 73.0617 ns [72.815, 73.8988] (0.95 confidence) | 257.861 ns [256.801, 259.666] (0.95 confidence) |
+| d5/la&#95;stack&#95;norm2&#95;sq | 0.523922 ns [0.523551, 0.524413] (0.95 confidence) | 0.524923 ns [0.524289, 0.526392] (0.95 confidence) | 0.50218 ns [0.502061, 0.502439] (0.95 confidence) | 4.11539 ns [4.11368, 4.11693] (0.95 confidence) |
+| d5/la&#95;stack&#95;solve&#95;from&#95;ldlt | 3.86968 ns [3.86118, 3.87836] (0.95 confidence) | 3.93299 ns [3.91599, 3.93909] (0.95 confidence) | 8.83247 ns [8.82543, 8.84179] (0.95 confidence) | 57.1795 ns [57.1152, 57.2948] (0.95 confidence) |
+| d5/la&#95;stack&#95;solve&#95;from&#95;lu | 6.08215 ns [6.07524, 6.08969] (0.95 confidence) | 6.12587 ns [6.11194, 6.1346] (0.95 confidence) | 8.8573 ns [8.83692, 8.86672] (0.95 confidence) | 78.1927 ns [77.8529, 78.45] (0.95 confidence) |
+| d64/la&#95;stack&#95;det | 15099 ns [15011.2, 15199] (0.95 confidence) | 14814.9 ns [14781.9, 14851.7] (0.95 confidence) | — | — |
+| d64/la&#95;stack&#95;det&#95;from&#95;ldlt | 23.4905 ns [23.3812, 23.5796] (0.95 confidence) | 23.6613 ns [23.6266, 23.6998] (0.95 confidence) | 8.57614 ns [8.54886, 8.59401] (0.95 confidence) | 21.2024 ns [21.1229, 21.2797] (0.95 confidence) |
+| d64/la&#95;stack&#95;det&#95;from&#95;lu | 23.8202 ns [23.7592, 23.8701] (0.95 confidence) | 23.8007 ns [23.7531, 23.8604] (0.95 confidence) | 8.85422 ns [8.83878, 8.87139] (0.95 confidence) | 22.3252 ns [22.2381, 22.4876] (0.95 confidence) |
+| d64/la&#95;stack&#95;det&#95;via&#95;lu | 14373 ns [14321.7, 14423.3] (0.95 confidence) | 14279.6 ns [14264, 14301.2] (0.95 confidence) | 13582.4 ns [13563.7, 13616.6] (0.95 confidence) | 11190.7 ns [11146.1, 11258.7] (0.95 confidence) |
+| d64/la&#95;stack&#95;dot | 10.9769 ns [10.955, 10.9995] (0.95 confidence) | 11.2595 ns [11.2297, 11.2853] (0.95 confidence) | 8.04063 ns [8.01696, 8.06084] (0.95 confidence) | 8.08276 ns [8.07748, 8.09128] (0.95 confidence) |
+| d64/la&#95;stack&#95;inf&#95;norm | 662.324 ns [661.753, 662.849] (0.95 confidence) | 644.322 ns [642.754, 645.656] (0.95 confidence) | 1338 ns [1336.57, 1340.01] (0.95 confidence) | 1594.46 ns [1591.27, 1598.52] (0.95 confidence) |
+| d64/la&#95;stack&#95;ldlt | 17220.6 ns [17166.6, 17244.9] (0.95 confidence) | 16856.6 ns [16848.1, 16876.3] (0.95 confidence) | 10734.5 ns [10714.4, 10767] (0.95 confidence) | 7155.37 ns [7134.26, 7170.86] (0.95 confidence) |
+| d64/la&#95;stack&#95;ldlt&#95;solve | 19129.7 ns [19078.3, 19167.5] (0.95 confidence) | 19315.9 ns [19280.2, 19362.2] (0.95 confidence) | 12244.3 ns [12226.7, 12260.1] (0.95 confidence) | 8358.63 ns [8350.02, 8376.27] (0.95 confidence) |
+| d64/la&#95;stack&#95;lu | 15522.6 ns [15484.8, 15552.6] (0.95 confidence) | 15190.5 ns [15164.8, 15236.7] (0.95 confidence) | 12743.8 ns [12703, 12757.6] (0.95 confidence) | 11152.5 ns [11142.7, 11181.3] (0.95 confidence) |
+| d64/la&#95;stack&#95;lu&#95;solve | 17300.2 ns [17256.8, 17337.8] (0.95 confidence) | 17282 ns [17249.2, 17323.3] (0.95 confidence) | 14432 ns [14407.6, 14464.9] (0.95 confidence) | 12989.7 ns [12951.4, 13040.3] (0.95 confidence) |
+| d64/la&#95;stack&#95;norm2&#95;sq | 11.4593 ns [11.3548, 11.5663] (0.95 confidence) | 11.1089 ns [11.0989, 11.1307] (0.95 confidence) | 8.93083 ns [8.88963, 8.96048] (0.95 confidence) | 6.41099 ns [6.26565, 6.43075] (0.95 confidence) |
+| d64/la&#95;stack&#95;solve&#95;from&#95;ldlt | 1115.47 ns [1112.76, 1120.19] (0.95 confidence) | 1098.07 ns [1094.66, 1102.1] (0.95 confidence) | 1321.98 ns [1318.65, 1325.22] (0.95 confidence) | 1270.44 ns [1262.76, 1276.09] (0.95 confidence) |
+| d64/la&#95;stack&#95;solve&#95;from&#95;lu | 2669.11 ns [2624.77, 2712.47] (0.95 confidence) | 2611.06 ns [2605.12, 2621.88] (0.95 confidence) | 813.067 ns [810.889, 817.177] (0.95 confidence) | 1706.62 ns [1703.31, 1709.81] (0.95 confidence) |
+| d8/la&#95;stack&#95;det | 94.4297 ns [93.8917, 94.7198] (0.95 confidence) | 96.5096 ns [95.8312, 96.8879] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;det&#95;from&#95;ldlt | 1.31833 ns [1.3161, 1.32035] (0.95 confidence) | 1.32512 ns [1.32139, 1.33136] (0.95 confidence) | 0.925975 ns [0.920341, 0.935258] (0.95 confidence) | 1.99876 ns [1.99712, 2.00292] (0.95 confidence) |
+| d8/la&#95;stack&#95;det&#95;from&#95;ldlt&#95;balanced&#95;range | 8.92545 ns [8.91765, 8.93489] (0.95 confidence) | 8.93058 ns [8.92071, 8.9554] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;det&#95;from&#95;lu | 1.47907 ns [1.47769, 1.48124] (0.95 confidence) | 1.50032 ns [1.49594, 1.5065] (0.95 confidence) | 1.00522 ns [1.00379, 1.00679] (0.95 confidence) | 2.25317 ns [2.25041, 2.2595] (0.95 confidence) |
+| d8/la&#95;stack&#95;det&#95;from&#95;lu&#95;balanced&#95;range | 9.21361 ns [9.18956, 9.23661] (0.95 confidence) | 9.23756 ns [9.22415, 9.29228] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;det&#95;via&#95;lu | 90.6719 ns [90.0715, 91.2476] (0.95 confidence) | 88.3343 ns [87.2426, 89.3322] (0.95 confidence) | 137.8 ns [137.575, 137.945] (0.95 confidence) | 243.153 ns [242.647, 243.861] (0.95 confidence) |
+| d8/la&#95;stack&#95;dot | 0.940209 ns [0.939374, 0.941332] (0.95 confidence) | 0.927324 ns [0.924937, 0.929722] (0.95 confidence) | 1.36474 ns [1.36288, 1.36772] (0.95 confidence) | 2.61538 ns [2.60534, 2.62536] (0.95 confidence) |
+| d8/la&#95;stack&#95;inf&#95;norm | 8.48378 ns [8.47377, 8.49436] (0.95 confidence) | 8.55112 ns [8.54346, 8.56367] (0.95 confidence) | 8.08498 ns [8.06452, 8.09826] (0.95 confidence) | 8.13716 ns [8.12354, 8.14716] (0.95 confidence) |
+| d8/la&#95;stack&#95;ldlt | 90.9843 ns [90.5604, 91.4939] (0.95 confidence) | 91.3422 ns [91.0941, 91.6294] (0.95 confidence) | 104.214 ns [103.545, 104.746] (0.95 confidence) | 186.501 ns [186.112, 187.032] (0.95 confidence) |
+| d8/la&#95;stack&#95;ldlt&#95;ill&#95;conditioned | 90.7093 ns [90.5635, 90.8494] (0.95 confidence) | 91.1547 ns [91.0196, 91.3356] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;ldlt&#95;solve | 103.694 ns [103.47, 104.097] (0.95 confidence) | 104.466 ns [104.038, 104.878] (0.95 confidence) | 149.394 ns [143.506, 150.493] (0.95 confidence) | 261.824 ns [261.002, 263.752] (0.95 confidence) |
+| d8/la&#95;stack&#95;lu | 89.6213 ns [89.4622, 89.806] (0.95 confidence) | 90.4649 ns [89.9379, 91.1991] (0.95 confidence) | 133.806 ns [133.458, 134.063] (0.95 confidence) | 230.049 ns [229.557, 231.408] (0.95 confidence) |
+| d8/la&#95;stack&#95;lu&#95;ill&#95;conditioned | 89.9146 ns [89.1801, 90.2248] (0.95 confidence) | 90.4408 ns [89.551, 90.8016] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;lu&#95;pivoting | 96.3611 ns [96.1327, 96.7414] (0.95 confidence) | 95.4818 ns [95.1756, 95.8917] (0.95 confidence) | — | — |
+| d8/la&#95;stack&#95;lu&#95;solve | 130.313 ns [129.926, 130.665] (0.95 confidence) | 133.645 ns [133.022, 134.192] (0.95 confidence) | 165.323 ns [164.976, 165.544] (0.95 confidence) | 343.132 ns [341.19, 344.925] (0.95 confidence) |
+| d8/la&#95;stack&#95;norm2&#95;sq | 0.656376 ns [0.654619, 0.659467] (0.95 confidence) | 0.659491 ns [0.656381, 0.661156] (0.95 confidence) | 0.940483 ns [0.939902, 0.941394] (0.95 confidence) | 4.17276 ns [4.16914, 4.17632] (0.95 confidence) |
+| d8/la&#95;stack&#95;solve&#95;from&#95;ldlt | 8.23446 ns [8.21941, 8.26455] (0.95 confidence) | 8.22664 ns [8.2065, 8.25128] (0.95 confidence) | 21.8696 ns [21.7953, 21.929] (0.95 confidence) | 68.6217 ns [68.5514, 68.6858] (0.95 confidence) |
+| d8/la&#95;stack&#95;solve&#95;from&#95;lu | 13.6594 ns [13.632, 13.6841] (0.95 confidence) | 13.5354 ns [13.5057, 13.5614] (0.95 confidence) | 16.3345 ns [16.2846, 16.3732] (0.95 confidence) | 96.1579 ns [95.9001, 96.758] (0.95 confidence) |
+| exact&#95;d2/det | 0.447061 ns [0.445505, 0.448842] (0.95 confidence) | 0.436911 ns [0.435776, 0.438239] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;direct | 0.446168 ns [0.44433, 0.448788] (0.95 confidence) | 0.434805 ns [0.434504, 0.435449] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;direct&#95;with&#95;errbound | 1.76545 ns [1.76255, 1.76855] (0.95 confidence) | 1.74506 ns [1.7421, 1.74715] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;errbound | 1.61193 ns [1.60877, 1.61366] (0.95 confidence) | 1.59569 ns [1.59216, 1.59849] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;exact | 86.2495 ns [85.8077, 86.4668] (0.95 confidence) | 88.4997 ns [88.3078, 88.7312] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;exact&#95;f64&#95;result | 60.781 ns [60.6175, 60.9605] (0.95 confidence) | 65.494 ns [65.4462, 65.5977] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;exact&#95;rounded&#95;f64 | 62.2712 ns [62.079, 62.445] (0.95 confidence) | 68.1834 ns [67.9814, 68.3201] (0.95 confidence) | — | — |
+| exact&#95;d2/det&#95;sign&#95;exact | 3.03183 ns [3.02998, 3.03508] (0.95 confidence) | 2.98818 ns [2.98512, 2.99248] (0.95 confidence) | — | — |
+| exact&#95;d2/solve&#95;exact | 7348.2 ns [7316.64, 7627.86] (0.95 confidence) | 3016.03 ns [3010.21, 3024.57] (0.95 confidence) | — | — |
+| exact&#95;d2/solve&#95;exact&#95;f64&#95;result | 7291.2 ns [7279.36, 7304.6] (0.95 confidence) | 3156.23 ns [3152.6, 3170.15] (0.95 confidence) | — | — |
+| exact&#95;d2/solve&#95;exact&#95;rounded&#95;f64 | 7526.79 ns [7499.52, 7543.58] (0.95 confidence) | 3341.95 ns [3335.58, 3346.4] (0.95 confidence) | — | — |
+| exact&#95;d3/det | 0.8458 ns [0.841489, 0.848934] (0.95 confidence) | 0.825558 ns [0.824, 0.827777] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;direct | 0.828476 ns [0.828314, 0.828806] (0.95 confidence) | 0.831781 ns [0.829159, 0.834748] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;direct&#95;with&#95;errbound | 3.35589 ns [3.3517, 3.3589] (0.95 confidence) | 3.34142 ns [3.33546, 3.34569] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;errbound | 3.33839 ns [3.33525, 3.34047] (0.95 confidence) | 3.33136 ns [3.32587, 3.33689] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;exact | 291.945 ns [291.461, 292.362] (0.95 confidence) | 302.343 ns [302.011, 302.631] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;exact&#95;f64&#95;result | 265.915 ns [264.984, 266.697] (0.95 confidence) | 277.97 ns [277.365, 278.315] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;exact&#95;rounded&#95;f64 | 271.053 ns [270.821, 271.521] (0.95 confidence) | 282.347 ns [281.351, 282.815] (0.95 confidence) | — | — |
+| exact&#95;d3/det&#95;sign&#95;exact | 4.78565 ns [4.77962, 4.79698] (0.95 confidence) | 4.74248 ns [4.73657, 4.75222] (0.95 confidence) | — | — |
+| exact&#95;d3/solve&#95;exact | 30337.2 ns [30306.6, 30360.4] (0.95 confidence) | 9194.78 ns [9159.27, 9246.59] (0.95 confidence) | — | — |
+| exact&#95;d3/solve&#95;exact&#95;f64&#95;result | 30433.3 ns [30315.1, 30501.7] (0.95 confidence) | 9280.51 ns [9250.27, 9324.82] (0.95 confidence) | — | — |
+| exact&#95;d3/solve&#95;exact&#95;rounded&#95;f64 | 30809.1 ns [30758.5, 30861.8] (0.95 confidence) | 9597.44 ns [9559.69, 9639.71] (0.95 confidence) | — | — |
+| exact&#95;d4/det | 3.28729 ns [3.27918, 3.2968] (0.95 confidence) | 3.23082 ns [3.22817, 3.23488] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;direct | 2.42967 ns [2.42463, 2.43468] (0.95 confidence) | 2.36794 ns [2.36618, 2.37203] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;direct&#95;with&#95;errbound | 6.85923 ns [6.8384, 6.86431] (0.95 confidence) | 6.82974 ns [6.81826, 6.8489] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;errbound | 6.79328 ns [6.78353, 6.80274] (0.95 confidence) | 6.81918 ns [6.80793, 6.82838] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;exact | 811.978 ns [804.182, 830.689] (0.95 confidence) | 853.407 ns [850.642, 854.307] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;exact&#95;f64&#95;result | 793.076 ns [783.916, 817.067] (0.95 confidence) | 811.592 ns [807.415, 814.233] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;exact&#95;rounded&#95;f64 | 777.651 ns [775.258, 781.116] (0.95 confidence) | 839.889 ns [835.828, 844.656] (0.95 confidence) | — | — |
+| exact&#95;d4/det&#95;sign&#95;exact | 7.99175 ns [7.98779, 8.00063] (0.95 confidence) | 8.06773 ns [8.04558, 8.0854] (0.95 confidence) | — | — |
+| exact&#95;d4/solve&#95;exact | 79011.1 ns [78417, 79339.6] (0.95 confidence) | 18473.2 ns [18429.9, 18500.8] (0.95 confidence) | — | — |
+| exact&#95;d4/solve&#95;exact&#95;f64&#95;result | 78971.9 ns [78834.5, 79203.3] (0.95 confidence) | 18602.9 ns [18579, 18634.7] (0.95 confidence) | — | — |
+| exact&#95;d4/solve&#95;exact&#95;rounded&#95;f64 | 79421.8 ns [79255.7, 79534] (0.95 confidence) | 19189.3 ns [19165.4, 19210.5] (0.95 confidence) | — | — |
+| exact&#95;d5/det | 28.0208 ns [27.9559, 28.1076] (0.95 confidence) | 27.492 ns [27.4697, 27.5499] (0.95 confidence) | — | — |
+| exact&#95;d5/det&#95;exact | 2940.38 ns [2936.46, 2947.21] (0.95 confidence) | 2871.87 ns [2860.42, 2881.17] (0.95 confidence) | — | — |
+| exact&#95;d5/det&#95;exact&#95;f64&#95;result | 2895.01 ns [2891.48, 2899.19] (0.95 confidence) | 2825.57 ns [2821.31, 2832.48] (0.95 confidence) | — | — |
+| exact&#95;d5/det&#95;exact&#95;rounded&#95;f64 | 2927.16 ns [2920.96, 2934.79] (0.95 confidence) | 2898.08 ns [2887.16, 2916.11] (0.95 confidence) | — | — |
+| exact&#95;d5/det&#95;sign&#95;exact | 2901.26 ns [2894.54, 2910.68] (0.95 confidence) | 2848.02 ns [2843.84, 2853.08] (0.95 confidence) | — | — |
+| exact&#95;d5/solve&#95;exact | 155170 ns [154910, 155363] (0.95 confidence) | 29911.1 ns [29841.4, 30037.4] (0.95 confidence) | — | — |
+| exact&#95;d5/solve&#95;exact&#95;f64&#95;result | 155426 ns [155150, 155794] (0.95 confidence) | 30179.8 ns [30082.2, 30333.5] (0.95 confidence) | — | — |
+| exact&#95;d5/solve&#95;exact&#95;rounded&#95;f64 | 156296 ns [155976, 156565] (0.95 confidence) | 31008.2 ns [30903.7, 31094.6] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;4x4/det&#95;exact | 886.169 ns [882.918, 890.396] (0.95 confidence) | 918.798 ns [916.54, 920.971] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;4x4/det&#95;sign&#95;exact | 8.02681 ns [8.01052, 8.03637] (0.95 confidence) | 7.93198 ns [7.92195, 7.93987] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;4x4/solve&#95;exact | 58849.7 ns [58608.2, 59031.7] (0.95 confidence) | 15232.3 ns [15183.6, 15313.7] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;4x4/solve&#95;exact&#95;f64&#95;result | 58908.4 ns [58763.4, 59018] (0.95 confidence) | 15606.1 ns [15571.2, 15639.9] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;4x4/solve&#95;exact&#95;rounded&#95;f64 | 59340.4 ns [59147.2, 59494.3] (0.95 confidence) | 15815.1 ns [15778.8, 15842.7] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;5x5/det&#95;exact | 3109.48 ns [3098.42, 3117.94] (0.95 confidence) | 3006.3 ns [2997.79, 3016.29] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;5x5/det&#95;sign&#95;exact | 3081.58 ns [3072.34, 3091.41] (0.95 confidence) | 2919 ns [2913.88, 2926.19] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;5x5/solve&#95;exact | 123197 ns [122852, 123553] (0.95 confidence) | 24903.4 ns [24849, 24948.5] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;5x5/solve&#95;exact&#95;f64&#95;result | 121815 ns [121626, 122186] (0.95 confidence) | 25144.3 ns [25080.6, 25204.6] (0.95 confidence) | — | — |
+| exact&#95;hilbert&#95;5x5/solve&#95;exact&#95;rounded&#95;f64 | 123372 ns [122999, 123693] (0.95 confidence) | 25911.8 ns [25849.8, 25988.7] (0.95 confidence) | — | — |
+| exact&#95;large&#95;entries&#95;3x3/det&#95;exact | 311.991 ns [311.48, 312.654] (0.95 confidence) | 322.854 ns [322.226, 323.314] (0.95 confidence) | — | — |
+| exact&#95;large&#95;entries&#95;3x3/det&#95;sign&#95;exact | 287.26 ns [286.009, 288.378] (0.95 confidence) | 298.219 ns [296.831, 299.471] (0.95 confidence) | — | — |
+| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact | 95480.2 ns [95244.8, 95775.3] (0.95 confidence) | 9092.68 ns [9069.45, 9115.61] (0.95 confidence) | — | — |
+| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact&#95;f64&#95;result | 95462.4 ns [95313.1, 95677.7] (0.95 confidence) | 9165.22 ns [9161.29, 9171.24] (0.95 confidence) | — | — |
+| exact&#95;large&#95;entries&#95;3x3/solve&#95;exact&#95;rounded&#95;f64 | 95845.9 ns [95604.6, 96090] (0.95 confidence) | 9544.94 ns [9517.59, 9569.46] (0.95 confidence) | — | — |
+| exact&#95;near&#95;singular&#95;3x3/det&#95;exact | 296.858 ns [295.444, 297.515] (0.95 confidence) | 185.153 ns [184.825, 185.518] (0.95 confidence) | — | — |
+| exact&#95;near&#95;singular&#95;3x3/det&#95;sign&#95;exact | 321.698 ns [321.176, 322.72] (0.95 confidence) | 167.592 ns [167.296, 168.096] (0.95 confidence) | — | — |
+| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact | 2472.61 ns [2466.18, 2480.96] (0.95 confidence) | 987.024 ns [983.077, 988.592] (0.95 confidence) | — | — |
+| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact&#95;f64&#95;result | 2494.61 ns [2490.02, 2502.66] (0.95 confidence) | 1014.36 ns [1011.89, 1016.14] (0.95 confidence) | — | — |
+| exact&#95;near&#95;singular&#95;3x3/solve&#95;exact&#95;rounded&#95;f64 | 2517.85 ns [2512.63, 2521.55] (0.95 confidence) | 1014.35 ns [1008.42, 1018.01] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d2/det&#95;exact | 3108 ns [3101.57, 3110.89] (0.95 confidence) | 3470.69 ns [3461.42, 3479.63] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d2/det&#95;sign&#95;exact | 147.929 ns [147.371, 148.55] (0.95 confidence) | 143.384 ns [143.117, 143.599] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact | 75185.6 ns [75070, 75278.3] (0.95 confidence) | 35625 ns [35557.1, 35661.9] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact&#95;f64&#95;result | 76152.1 ns [75926, 76304.1] (0.95 confidence) | 36439.6 ns [36378.1, 36490.1] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d2/solve&#95;exact&#95;rounded&#95;f64 | 76193.4 ns [76029.7, 76711.2] (0.95 confidence) | 36649.3 ns [36544.2, 36793.5] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d3/det&#95;exact | 8937.02 ns [8928.87, 8951.56] (0.95 confidence) | 9408.85 ns [9399.03, 9416.69] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d3/det&#95;sign&#95;exact | 227.702 ns [227.337, 227.941] (0.95 confidence) | 225.451 ns [225.335, 225.569] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact | 235100 ns [234917, 235393] (0.95 confidence) | 81283.3 ns [80965.5, 81348.2] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact&#95;f64&#95;result | 236378 ns [236066, 236634] (0.95 confidence) | 81756 ns [81694.5, 81871.8] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d3/solve&#95;exact&#95;rounded&#95;f64 | 236568 ns [236431, 236871] (0.95 confidence) | 81895 ns [81837, 82009.9] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d4/det&#95;exact | 22304.4 ns [22257.5, 22382.6] (0.95 confidence) | 23096.5 ns [23052.7, 23217.6] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d4/det&#95;sign&#95;exact | 458.212 ns [457.679, 458.856] (0.95 confidence) | 443.819 ns [443.388, 444.319] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact | 558971 ns [558553, 559607] (0.95 confidence) | 144832 ns [144561, 144984] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact&#95;f64&#95;result | 560222 ns [559444, 561033] (0.95 confidence) | 145657 ns [145515, 145777] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d4/solve&#95;exact&#95;rounded&#95;f64 | 556988 ns [556105, 558198] (0.95 confidence) | 146541 ns [146435, 146671] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d5/det&#95;exact | 56497.4 ns [56262.1, 56699.9] (0.95 confidence) | 55785.3 ns [55721.7, 55853.3] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d5/det&#95;sign&#95;exact | 55844.3 ns [55626.3, 56004.5] (0.95 confidence) | 54821.9 ns [54720.9, 54962.5] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact | 1.11253e+06 ns [1.11113e+06, 1.11508e+06] (0.95 confidence) | 238283 ns [237402, 238931] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact&#95;f64&#95;result | 1.11324e+06 ns [1.10959e+06, 1.11532e+06] (0.95 confidence) | 238497 ns [238038, 238820] (0.95 confidence) | — | — |
+| exact&#95;random&#95;corpus&#95;d5/solve&#95;exact&#95;rounded&#95;f64 | 1.10892e+06 ns [1.10482e+06, 1.11365e+06] (0.95 confidence) | 239783 ns [239562, 240425] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d2/det&#95;big&#95;rational&#95;gaussian | 1124.88 ns [1121.92, 1126.54] (0.95 confidence) | 1112.35 ns [1110.98, 1114.29] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d2/det&#95;row&#95;cleared&#95;bareiss | 179.956 ns [179.493, 180.513] (0.95 confidence) | 180.64 ns [179.437, 182.352] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d2/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 77.4413 ns [77.228, 77.609] (0.95 confidence) | 77.414 ns [77.2865, 77.5376] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d2/solve&#95;big&#95;rational&#95;gaussian | 2149.64 ns [2142.37, 2154.45] (0.95 confidence) | 2128.03 ns [2123.92, 2132.87] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d2/solve&#95;row&#95;cleared&#95;bareiss | 934.448 ns [932.297, 936.493] (0.95 confidence) | 611.085 ns [610.542, 612.449] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d3/det&#95;big&#95;rational&#95;gaussian | 4760.34 ns [4749.4, 4771.38] (0.95 confidence) | 4749.5 ns [4728.58, 4781.11] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d3/det&#95;row&#95;cleared&#95;bareiss | 569.43 ns [568.248, 571.027] (0.95 confidence) | 570.294 ns [568.207, 572.797] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d3/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 360.808 ns [359.832, 361.702] (0.95 confidence) | 368.327 ns [364.907, 372.358] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d3/solve&#95;big&#95;rational&#95;gaussian | 8238.12 ns [8214.12, 8274.56] (0.95 confidence) | 8154.58 ns [8137.35, 8161.65] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d3/solve&#95;row&#95;cleared&#95;bareiss | 2470.93 ns [2455.06, 2487.43] (0.95 confidence) | 1242.7 ns [1241.43, 1244.97] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d4/det&#95;big&#95;rational&#95;gaussian | 14063.7 ns [14006.3, 14108.8] (0.95 confidence) | 13746.5 ns [13709.8, 13770.1] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d4/det&#95;row&#95;cleared&#95;bareiss | 1170.02 ns [1168.15, 1174.38] (0.95 confidence) | 1167.28 ns [1164.99, 1169.25] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d4/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 775.91 ns [773.321, 777.669] (0.95 confidence) | 780.759 ns [778.043, 784.302] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d4/solve&#95;big&#95;rational&#95;gaussian | 24087.4 ns [24045, 24167] (0.95 confidence) | 24061.4 ns [23974, 24165.9] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d4/solve&#95;row&#95;cleared&#95;bareiss | 6053.42 ns [5977.7, 6424.57] (0.95 confidence) | 2192.29 ns [2188.82, 2193.59] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d5/det&#95;big&#95;rational&#95;gaussian | 23772.3 ns [23706.2, 23852.9] (0.95 confidence) | 23913.2 ns [23827.5, 24005] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d5/det&#95;row&#95;cleared&#95;bareiss | 2055.73 ns [2053.82, 2058.3] (0.95 confidence) | 2075.87 ns [2072.09, 2078.93] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d5/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 1555.74 ns [1551.2, 1558.2] (0.95 confidence) | 1565.28 ns [1560.95, 1568.14] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d5/solve&#95;big&#95;rational&#95;gaussian | 40244.3 ns [40116.4, 40361.6] (0.95 confidence) | 39605.7 ns [39546.7, 39664.3] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d5/solve&#95;row&#95;cleared&#95;bareiss | 9572.44 ns [9545.8, 9586.93] (0.95 confidence) | 3389.42 ns [3374.06, 3399.43] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d6/det&#95;big&#95;rational&#95;gaussian | 56898 ns [56735.2, 56988.2] (0.95 confidence) | 58101.2 ns [57920.6, 58199.8] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d6/det&#95;row&#95;cleared&#95;bareiss | 3543.68 ns [3536.61, 3551.44] (0.95 confidence) | 3520.67 ns [3516.19, 3527.03] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d6/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 2860.43 ns [2844.73, 2866.39] (0.95 confidence) | 2907.82 ns [2886.86, 2924.07] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d6/solve&#95;big&#95;rational&#95;gaussian | 90819.1 ns [90512.9, 91105.1] (0.95 confidence) | 94520.2 ns [94151.1, 94771.5] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d6/solve&#95;row&#95;cleared&#95;bareiss | 17846.2 ns [17800.5, 17876.3] (0.95 confidence) | 5763.11 ns [5752.48, 5776.2] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d7/det&#95;big&#95;rational&#95;gaussian | 110709 ns [110499, 110885] (0.95 confidence) | 112144 ns [111938, 112464] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d7/det&#95;row&#95;cleared&#95;bareiss | 5611.26 ns [5594.35, 5620.66] (0.95 confidence) | 5594.87 ns [5586.85, 5602.95] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d7/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 4658.33 ns [4652.07, 4669.75] (0.95 confidence) | 4764.17 ns [4755.87, 4770.82] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d7/solve&#95;big&#95;rational&#95;gaussian | 162045 ns [161702, 162312] (0.95 confidence) | 167832 ns [167087, 168309] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d7/solve&#95;row&#95;cleared&#95;bareiss | 27621.5 ns [27601.4, 27675.2] (0.95 confidence) | 10111.2 ns [10097.6, 10128.9] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d8/det&#95;big&#95;rational&#95;gaussian | 188217 ns [187912, 188633] (0.95 confidence) | 193407 ns [193086, 194082] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d8/det&#95;row&#95;cleared&#95;bareiss | 8066.77 ns [8051.61, 8090.2] (0.95 confidence) | 8221.63 ns [8211.07, 8253.95] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d8/det&#95;sign&#95;row&#95;cleared&#95;bareiss | 7240.46 ns [7227.54, 7253.83] (0.95 confidence) | 7377.06 ns [7363.19, 7401.44] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d8/solve&#95;big&#95;rational&#95;gaussian | 268034 ns [267183, 268878] (0.95 confidence) | 272292 ns [272046, 272658] (0.95 confidence) | — | — |
+| rational&#95;input&#95;d8/solve&#95;row&#95;cleared&#95;bareiss | 40814.3 ns [40749.5, 40889.6] (0.95 confidence) | 15364.7 ns [15329.1, 15406.2] (0.95 confidence) | — | — |
 
 ## Recorded measurement provenance
 
@@ -480,12 +480,12 @@ These observations belong to the measured phases. Rerendering does not recapture
 
 | Field | Recorded value |
 | --- | --- |
-| Release | v0.4.6 |
-| Revision | 0215e65763f8eecb4bcad8bf29de4aca67531aa1 |
+| Release | v0.5.0 |
+| Revision | 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7 |
 | Measurement mode | tag |
-| Original source SHA-256 | d5054a85bd6b163fa142cb94ffc01a217d033893dd9ea8b5e422a442dcbc5074 |
-| Measured source SHA-256 | c4756ecf0cde859b365b4c082e12fccf66f21b7e4752c323eb10e9a74bc4f6fa |
-| Common harness SHA-256 | bdb17ee72a8f6482ab66fbd92781bba3137a02c528302068f1c3119dc547b17d |
+| Original source SHA-256 | 1d876cd1476f52283a2f9dbf1bdbf46baec54b86834115f1eddefee601ad6b68 |
+| Measured source SHA-256 | 36efc0af7c97d4a2508f9ad26b692dff69296e1cb9a94878d323b767f98d78c7 |
+| Common harness SHA-256 | 2a5139b9eae822eb41751dfb2003eb74f76b192b79c1acbcba9923927f3e8ee3 |
 | Fingerprint schema | research-repo-tools/files/v1 |
 | OS | macOS-27.0.1-arm64-arm-64bit-Mach-O |
 | Architecture | arm64 |
@@ -493,13 +493,13 @@ These observations belong to the measured phases. Rerendering does not recapture
 | Physical cores | 16 |
 | Logical threads | 16 |
 | Memory (bytes) | 68719476736 |
-| Tool: cargo | cargo 1.99.0 (5f94df478 2026-08-27) |
-| Tool: just | just 1.58.0 |
-| Tool: rustc | rustc 1.99.0 (b940084d7 2026-09-28)<br>binary: rustc<br>commit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4<br>commit-date: 2026-09-28<br>host: aarch64-apple-darwin<br>release: 1.99.0<br>LLVM version: 23.1.1 |
+| Tool: cargo | cargo 1.99.1 (5f94df478 2026-08-27) |
+| Tool: just | just 1.59.0 |
+| Tool: rustc | rustc 1.99.1 (58cf8f9c3 2026-10-13)<br>binary: rustc<br>commit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67<br>commit-date: 2026-10-13<br>host: aarch64-apple-darwin<br>release: 1.99.1<br>LLVM version: 23.1.1 |
 | Dependency: criterion | 0.8.2 |
 | Dependency: faer | 0.24.4 |
 | Dependency: nalgebra | 0.35.0 |
-| Environment overrides (names only) | CARGO&#95;TARGET&#95;DIR, CRITERION&#95;HOME, RUSTFLAGS, RUSTUP&#95;TOOLCHAIN |
+| Environment overrides (names only) | CARGO&#95;ENCODED&#95;RUSTFLAGS, CARGO&#95;TARGET&#95;DIR, CRITERION&#95;HOME, RUSTC, RUSTC&#95;WORKSPACE&#95;WRAPPER, RUSTC&#95;WRAPPER, RUSTFLAGS, RUSTUP&#95;TOOLCHAIN |
 | Measurement command (argv) | &#91;&quot;just&quot;, &quot;--justfile&quot;, &quot;tooling/performance.just&quot;, &quot;--working-directory&quot;, &quot;.&quot;, &quot;baseline-all&quot;&#93; |
 | Independent correctness gate | passed |
 | Gate command (argv) | &#91;&quot;just&quot;, &quot;--justfile&quot;, &quot;tooling/performance.just&quot;, &quot;--working-directory&quot;, &quot;.&quot;, &quot;gate&quot;&#93; |
@@ -508,12 +508,12 @@ These observations belong to the measured phases. Rerendering does not recapture
 
 | Field | Recorded value |
 | --- | --- |
-| Release | v0.5.0 |
-| Revision | 51868ea4725c1a4790bba4c59341d2113b18b2bb |
+| Release | v0.5.1 |
+| Revision | eb6f071607c058527f6cb6a9bf86bb307c93ab02 |
 | Measurement mode | working-tree |
-| Original source SHA-256 | 1d876cd1476f52283a2f9dbf1bdbf46baec54b86834115f1eddefee601ad6b68 |
-| Measured source SHA-256 | 1d876cd1476f52283a2f9dbf1bdbf46baec54b86834115f1eddefee601ad6b68 |
-| Common harness SHA-256 | bdb17ee72a8f6482ab66fbd92781bba3137a02c528302068f1c3119dc547b17d |
+| Original source SHA-256 | 8edc38caa565097a74ebe12ad80493067168403c4e7bc8c4cadc1d653152892f |
+| Measured source SHA-256 | 8edc38caa565097a74ebe12ad80493067168403c4e7bc8c4cadc1d653152892f |
+| Common harness SHA-256 | 2a5139b9eae822eb41751dfb2003eb74f76b192b79c1acbcba9923927f3e8ee3 |
 | Fingerprint schema | research-repo-tools/files/v1 |
 | OS | macOS-27.0.1-arm64-arm-64bit-Mach-O |
 | Architecture | arm64 |
@@ -521,13 +521,13 @@ These observations belong to the measured phases. Rerendering does not recapture
 | Physical cores | 16 |
 | Logical threads | 16 |
 | Memory (bytes) | 68719476736 |
-| Tool: cargo | cargo 1.99.0 (5f94df478 2026-08-27) |
-| Tool: just | just 1.58.0 |
-| Tool: rustc | rustc 1.99.0 (b940084d7 2026-09-28)<br>binary: rustc<br>commit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4<br>commit-date: 2026-09-28<br>host: aarch64-apple-darwin<br>release: 1.99.0<br>LLVM version: 23.1.1 |
+| Tool: cargo | cargo 1.99.1 (5f94df478 2026-08-27) |
+| Tool: just | just 1.59.0 |
+| Tool: rustc | rustc 1.99.1 (58cf8f9c3 2026-10-13)<br>binary: rustc<br>commit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67<br>commit-date: 2026-10-13<br>host: aarch64-apple-darwin<br>release: 1.99.1<br>LLVM version: 23.1.1 |
 | Dependency: criterion | 0.8.2 |
 | Dependency: faer | 0.24.4 |
 | Dependency: nalgebra | 0.35.0 |
-| Environment overrides (names only) | CARGO&#95;TARGET&#95;DIR, CRITERION&#95;HOME, RUSTFLAGS, RUSTUP&#95;TOOLCHAIN |
+| Environment overrides (names only) | CARGO&#95;ENCODED&#95;RUSTFLAGS, CARGO&#95;TARGET&#95;DIR, CRITERION&#95;HOME, RUSTC, RUSTC&#95;WORKSPACE&#95;WRAPPER, RUSTC&#95;WRAPPER, RUSTFLAGS, RUSTUP&#95;TOOLCHAIN |
 | Measurement command (argv) | &#91;&quot;just&quot;, &quot;--justfile&quot;, &quot;tooling/performance.just&quot;, &quot;--working-directory&quot;, &quot;.&quot;, &quot;current-all&quot;&#93; |
 | Independent correctness gate | passed |
 | Gate command (argv) | &#91;&quot;just&quot;, &quot;--justfile&quot;, &quot;tooling/performance.just&quot;, &quot;--working-directory&quot;, &quot;.&quot;, &quot;gate&quot;&#93; |

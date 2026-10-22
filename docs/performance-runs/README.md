@@ -1,3 +1,4 @@
 # Complete performance runs
 
+- [v0.5.1 vs v0.5.0 — 26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413](runs/26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413/report.md)
 - [v0.5.0 vs v0.4.6 — 634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5](runs/634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5/report.md)

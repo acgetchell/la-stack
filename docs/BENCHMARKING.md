@@ -26,6 +26,10 @@ the commands measure and where their outputs go.
 Run `just performance-prepare` before measurements to fetch the release tags.
 This explicit Git operation and the measurement recipes' temporary worktrees
 require authorization. Both labels of new measurements must be v0.5.0 or newer.
+Preparation also saves independent release tags and commits for a later
+`just performance-readme` invocation in ignored
+`target/bench-reports/release-inputs.json`. For an explicit release pair, use
+`just performance-prepare "$CURRENT_TAG" "$PREVIOUS_TAG"`.
 
 | Goal | Recipe |
 | --- | --- |
@@ -45,6 +49,8 @@ that scratch pair explicitly and requires a distinct release pair.
 `performance-doc` selects archived evidence explicitly. Missing or incomplete
 scratch cannot silently select history. `performance-release` composes fresh
 full measurement and promotion; a failed measurement stops before promotion.
+README publication stays in the separate `performance-readme` command so it can
+be retried without repeating measurements.
 
 README and plot publication require independent current/baseline tag and full
 commit assertions. The commands are shown below. Keep those assertions from the
@@ -245,12 +251,22 @@ the wrong path are errors.
 
 ### Update The README nalgebra/faer Table
 
-After promoting a full release comparison, supply the source identities
-captured independently before measurement:
+After promoting a full release comparison, use the source identities saved
+independently by `performance-prepare` before measurement:
+
+```bash
+just performance-readme
+```
+
+The original four explicit arguments are also supported:
 
 ```bash
 just performance-readme "$CURRENT_TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT"
 ```
+
+If the preparation record is missing or invalid, publication stops with guidance.
+Recapture the reviewed inputs or supply all four explicit assertions; neither
+publication path repeats measurements or promotes a different report.
 
 The canonical README view is LU solve, median, logarithmic time axis, declared
 in `tooling/performance-readme.toml`. It selects archived evidence and checks
@@ -306,6 +322,11 @@ labels select existing tags:
 ```bash
 just performance-release "$CURRENT_TAG" "$PREVIOUS_TAG"
 ```
+
+`performance-prepare` captures both source commits before measurement and prints
+the selected tags and commits for review. After the report is promoted, run
+`just performance-readme` separately to use those saved assertions. No
+parent-shell variables are required. README publication never repeats measurements.
 
 The shared release report configuration requires the full measurement policy,
 independent eligibility and distinct release labels. Non-exact runs retain
