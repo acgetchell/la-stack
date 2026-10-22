@@ -9,6 +9,8 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.version import Version
 from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
@@ -160,14 +162,28 @@ def test_semgrep_adapter_uses_real_consumer_rules_and_fixtures() -> None:
     assert "research-repo-tools semgrep check-fixtures" in result.stderr
 
 
-def test_semgrep_preserves_its_pin_and_mcp_override_in_python_314() -> None:
-    """The isolated native scanner retains its exact pin and patched MCP API."""
+def test_semgrep_preserves_its_pin_and_security_overrides_in_python_314() -> None:
+    """The isolated scanner excludes vulnerable dependencies and aligns telemetry."""
     root = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     scanner = tomllib.loads((REPO_ROOT / "tooling/semgrep/pyproject.toml").read_text(encoding="utf-8"))
     assert not any(isinstance(item, str) and item.startswith("semgrep") for item in root["dependency-groups"]["dev"])
     assert scanner["project"]["dependencies"] == ["semgrep==1.182.0"]
     assert scanner["project"]["requires-python"] == ">=3.14,<3.15"
-    assert scanner["tool"]["uv"]["override-dependencies"] == ["mcp>=1.30.0,<2"]
+    overrides = {requirement.name: requirement.specifier for requirement in map(Requirement, scanner["tool"]["uv"]["override-dependencies"])}
+    lock = tomllib.loads((REPO_ROOT / "tooling/semgrep/uv.lock").read_text(encoding="utf-8"))
+    versions = {package["name"]: Version(package["version"]) for package in lock["package"]}
+    for name, vulnerable, patched in (("mcp", "1.29.0", "1.30.0"), ("opentelemetry-api", "1.45.0", "1.45.1")):
+        assert Version(vulnerable) not in overrides[name]
+        assert Version(patched) in overrides[name]
+        assert versions[name] in overrides[name]
+        assert versions[name] >= Version(patched)
+    assert versions["mcp"] < Version("2")
+    assert versions["opentelemetry-api"] == versions["opentelemetry-sdk"] == versions["opentelemetry-exporter-otlp-proto-http"]
+    assert (
+        versions["opentelemetry-semantic-conventions"]
+        == versions["opentelemetry-instrumentation-requests"]
+        == versions["opentelemetry-instrumentation-threading"]
+    )
     result = run_command("uv", ["run", "--locked", "--project", "tooling/semgrep", "semgrep", "--disable-version-check", "--version"], cwd=REPO_ROOT)
     assert result.stdout.strip() == "1.182.0"
 
