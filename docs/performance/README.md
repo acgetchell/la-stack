@@ -1,9 +1,11 @@
 # Legacy Local Benchmark Summaries
 
 This directory preserves historical local measurement summaries across
-`just clean`. The last published report and README chart used these inputs.
-New measurements use shared complete-run evidence under `docs/performance-runs/`;
-the [Benchmarking guide](../BENCHMARKING.md) owns the current workflow.
+`just clean`. The retained v0.4.6 report and README chart used these inputs.
+The current v0.5.0-versus-v0.4.6 report and chart use shared complete-run evidence
+under [`docs/performance-runs/`](../performance-runs/README.md). New measurements
+use that complete-run format; the [Benchmarking guide](../BENCHMARKING.md)
+owns the current workflow.
 
 ## Contents
 

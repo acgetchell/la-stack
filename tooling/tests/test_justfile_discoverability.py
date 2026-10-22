@@ -3,12 +3,15 @@
 import json
 import re
 import shlex
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
+from research_repo_tools.cargo_examples import discover_examples
 from research_repo_tools.just_inspect import dry_run, inspect_justfile
 from research_repo_tools.process import run_command
+from research_repo_tools.selection import select_files
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -87,11 +90,29 @@ def test_ci_enforces_full_python_fixture_lint_policy() -> None:
     """Canonical CI should lint fixtures without narrowing the Ruff configuration."""
     recipes = just_recipes()
     ci_dependencies = {dependency["recipe"] for dependency in recipes["ci"]["dependencies"]}
-    fixture_lint_body = json.dumps(recipes["python-fixture-lint"]["body"])
+    python_body = json.dumps(recipes["python-check"]["body"])
 
-    assert "python-fixture-lint" in ci_dependencies
-    assert "ruff check tests/semgrep/scripts/" in fixture_lint_body
-    assert "--select" not in fixture_lint_body
+    assert "python-check" in ci_dependencies
+    assert "research-repo-tools python check" in python_body
+    assert "--select" not in python_body
+    inventory = set(select_files(REPO_ROOT, include=("*.py", "*.pyi")))
+    assert {"tooling/release_evidence.py", "tooling/tests/test_release_evidence.py", "tests/semgrep/scripts/python_portability.py"} <= inventory
+    assert not any(".venv" in Path(name).parts for name in inventory)
+
+
+def test_example_policy_covers_cargo_targets_and_required_features() -> None:
+    """Future Cargo examples join automatically; exact targets need explicit policy."""
+    policy = tomllib.loads((REPO_ROOT / "tooling/examples.toml").read_text(encoding="utf-8"))
+    assert policy["package"] == "la-stack"
+    assert "include" not in policy
+    assert "exclude" not in policy
+    discovered = discover_examples(REPO_ROOT, package="la-stack")
+    assert {example.name for example in discovered} >= {"vector_angles", "exact_solve_3x3", "rational_input_5x5"}
+    overrides = policy["examples"]
+    for example in discovered:
+        assert set(example.required_features) <= set(overrides.get(example.name, {}).get("features", []))
+    assert set(overrides) <= {example.name for example in discovered}
+    assert "validation cargo-examples tooling/examples.toml" in dry_run(REPO_ROOT, "examples").stderr
 
 
 def test_bare_just_lists_the_complete_documented_surface_after_source_sorting() -> None:
@@ -140,8 +161,8 @@ def test_dependabot_shared_caller_covers_dependencies_with_explicit_manual_revie
         for path in directory.rglob("*")
         if path.suffix in {".yml", ".yaml"}
     }
-    # Publishing action pins must be reconciled with the live selected-actions policy.
-    manual_review = {".github/workflows/publish-crates.yml"}
+    # Publication and signed evidence production retain maintainer review.
+    manual_review = {".github/workflows/publish-crates.yml", ".github/workflows/ci.yml"}
     assert manual_review <= actions
     assert set(policy["github_actions"]["files"]) == actions - manual_review
 

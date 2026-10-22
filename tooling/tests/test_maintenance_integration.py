@@ -2,6 +2,7 @@
 
 import os
 import re
+import shlex
 import shutil
 import sys
 import tomllib
@@ -130,13 +131,23 @@ def test_update_recipe_runs_the_installed_cli_with_preview_arguments(consumer: P
     assert snapshot(consumer) == before
 
 
-def test_markdown_recipe_uses_the_published_checker() -> None:
-    """Retain the consumer's tracked-file selection and quoted path forwarding."""
-    result = dry_run(REPO_ROOT, "markdown-check")
-    assert 'research-repo-tools docs check-lines "${raw_files[@]}"' in result.stderr
-    assert 'if [ "$file" != README.md ]; then' in result.stderr
-    assert '"${files[@]}" | xargs -0 -n100' in result.stderr
-    assert "git ls-files -co --exclude-standard -z" in result.stderr
+def test_markdown_recipe_preserves_active_and_historical_selection(consumer: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The real shared selector includes new guides and preserves measured history."""
+    run_command("git", ["init", "--quiet"], cwd=consumer)
+    added = consumer / "docs/new guide.md"
+    added.write_text("# New guide\n", encoding="utf-8")
+    selection = shlex.split(run_command("just", ["--evaluate", "_markdown_inputs"], cwd=REPO_ROOT).stdout)
+    assert main(["--root", str(consumer), "files", "list", *selection]) == 0
+    selected = set(capsys.readouterr().out.splitlines())
+    assert {"README.md", "docs/new guide.md", "docs/RELEASING.md", "tooling/README.md"} <= selected
+    assert not any(name.startswith(("docs/archive/", "docs/archives/changelog/", "docs/performance-runs/")) for name in selected)
+    assert not {"CHANGELOG.md", "docs/performance.md"} & selected
+    checked = dry_run(REPO_ROOT, "markdown-check").stderr
+    fixed = dry_run(REPO_ROOT, "markdown-fix").stderr
+    assert "research-repo-tools files run" in checked
+    assert "research-repo-tools files run" in fixed
+    assert "--exclude README.md -- research-repo-tools docs check-lines" in checked
+    assert "-- rumdl check" in checked
 
 
 def test_semgrep_adapter_uses_real_consumer_rules_and_fixtures() -> None:

@@ -36,7 +36,6 @@ jobs:
             ".github/actions/setup-tools/action.yml",
             ".github/workflows/audit.yml",
             ".github/workflows/benchmarks.yml",
-            ".github/workflows/ci.yml",
             ".github/workflows/codecov.yml",
             ".github/workflows/codeql.yml",
             ".github/workflows/dependabot-auto-merge.yml",

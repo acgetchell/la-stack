@@ -686,9 +686,7 @@ fn big_int_exp_ref_to_rounded_f64(
             .unwrap_or_else(|| unreachable!("rounded subnormal significand must fit u64"))
     };
 
-    if significand == 1_u64 << F64_FRACTION_BITS {
-        return Ok(f64::from_bits(sign | (1_u64 << F64_FRACTION_BITS)));
-    }
+    // Rounding up to 2^52 naturally sets the smallest normal exponent bit.
     Ok(f64::from_bits(sign | significand))
 }
 

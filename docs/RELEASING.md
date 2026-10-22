@@ -21,6 +21,52 @@ midnight alone requires no update: the `declared` date policy allows preparation
 and tagging on different UTC days when citation and changelog dates agree.
 Repeated `performance-release` runs can produce different measurements.
 
+## Contents
+
+- [Reusable CI evidence](#reusable-ci-evidence)
+- [Prepare the environment](#prepare-the-environment)
+- [Step 1: Prepare the release PR](#step-1-prepare-the-release-pr)
+- [Step 2: Publish after the PR is merged](#step-2-publish-after-the-pr-is-merged)
+- [Configure or verify Trusted Publishing](#configure-or-verify-trusted-publishing)
+
+## Reusable CI evidence
+
+The publishing process uses the installed `research-repo-tools==0.2.3`
+validation helpers. `tooling/release_evidence.py` supplies the Cargo-specific
+policy; it does not use the shared package's wheel/sdist release commands.
+Every successful protected `main` push produces signed evidence after all three
+native `just ci` jobs and the default/exact Cargo packaging job succeed.
+The `release-evidence` job signs their exact commit, run, attempt, job IDs and
+package identity, then retains the manifest and Sigstore bundle in an immutable
+Actions artifact for 30 days.
+
+`just release-evidence` verifies that evidence for the current checkout. It
+requires one unambiguous successful `push` run on `main` from this repository's
+active CI workflow, every required job and step from that same attempt, and a
+nonexpired artifact retrieved by immutable ID. The shared downloader checks its
+authoritative ZIP size and SHA-256 digest and exact file inventory. GitHub CLI
+then verifies the signed manifest's workflow, source commit, `main` ref, hosted
+runner, push event, run and attempt. The manifest must match the live job and
+package identities. Pending matching runs receive a bounded wait; missing,
+failed, ambiguous or expired evidence stops publication. PR, manual dispatch,
+fork, local and partial-rerun results cannot replace it.
+
+The publishing workflow reuses these completed checks, captures the run/attempt
+and artifact ID/digest, and revalidates that same identity after deployment
+approval. It also retains the independent release metadata, exact-commit SARIF,
+durable Criterion asset, immutable GitHub release and registry-absence gates.
+Release benchmarks remain a separate scientific measurement workflow; CI
+evidence does not replace their full sampling or durable archive.
+
+This reuses validation of the source. Cargo still packages the clean release
+commit when uploading, so it does not promise byte-for-byte promotion of the
+dry-run `.crate` archive. The shared tooling's Python distribution promotion
+process has a different artifact contract.
+
+Use a current GitHub CLI with `gh attestation verify` and the signer/source
+constraints used by the adapter. See GitHub's
+[attestation verification options](https://cli.github.com/manual/gh_attestation_verify).
+
 ## Prepare the environment
 
 Set the target tag once:
@@ -189,14 +235,16 @@ inputs, named metric/statistic/axis views, output ownership and methodology.
 
 ```bash
 just ci
-cargo publish --locked --allow-dirty --dry-run
+cargo publish --locked --package la-stack --registry crates-io --allow-dirty --dry-run
+cargo publish --locked --package la-stack --registry crates-io --allow-dirty --dry-run --features exact
 ```
 
 `just ci` includes the lockfile, citation, documentation, test, and benchmark
 compile checks.
-The preparation dry-run permits the uncommitted release artifacts. After review
-and merge, `just release-package` verifies the clean release source with both
-default and `exact` features and explicitly selects only `la-stack`.
+The preparation dry-runs permit the uncommitted release artifacts. After review
+and merge, main CI runs `just release-package` on the clean release source with
+both default and `exact` features and explicitly selects only `la-stack`.
+Those hosted results become the reusable packaging evidence.
 
 ### 7. Review, stage, and commit the release artifacts
 
@@ -273,7 +321,7 @@ git push origin "$TAG"
 ### 4. Verify the release commit
 
 ```bash
-just release-package
+just release-evidence
 ```
 
 Require successful native `CI` builds on Linux, macOS and Windows, plus Clippy
@@ -283,9 +331,12 @@ all-feature tests, interval and linear-form regressions, examples and benchmark
 compilation. The publishing policy in `pyproject.toml` binds all five check names
 to the GitHub Actions App. CodeRabbit and human review remain protected-PR
 requirements; CodeRabbit does not run on the merged `main` commit. Missing,
-pending, cancelled or failed native checks block publication. If a bot merge did
-not trigger push CI, dispatch the existing CI/security workflows on `main` and
-verify their `headSha` equals the release commit.
+pending, cancelled or failed native checks block publication. The evidence
+command also checks the original main CI packaging and signing jobs. If no
+eligible push run exists, stop and correct the event-delivery problem before
+selecting the release commit. A manually dispatched CI run cannot produce
+release evidence. A failed or expired main-push run requires a complete rerun
+of that original run, with fresh evidence from the new attempt.
 
 ### 5. Create the draft GitHub release
 
@@ -361,20 +412,22 @@ gh run list --workflow publish-crates.yml --limit 5
 This command authorizes GitHub Release publication. The shared gate checks the
 clean checkout, stable tag/package metadata, remote tag commit, protected default
 branch ancestry, successful exact-commit checks and required baseline asset.
-The local recipe also requires the release title and body to match the tag and
-generated notes. Human authentication is essential: publishing with a workflow's
+The local recipe also verifies signed main CI evidence and requires the release
+title and body to match the tag and generated notes. Human authentication is essential: publishing with a workflow's
 `GITHUB_TOKEN` does not trigger the separate `release: published` workflow.
 
 The publishing workflow checks out `github.sha`, rechecks the published event's
-repository, release ID, tag/ref/commit and evidence, then runs `just release-package`.
+repository, release ID, tag/ref/commit and evidence, then verifies the original
+signed main CI evidence without repeating the native checks or packaging builds.
 It also reads the captured release ID to require GitHub's immutable state.
 After it succeeds, approve the `crates-io` environment deployment in GitHub.
-The upload job rechecks the gate and requires proven absence of the exact registry
-version after approval, then obtains a short-lived OIDC token. Only that job has
-`id-token: write`; it has no repository write permission or dependency caches.
+The upload job rechecks the same selected run, attempt and artifact ID/digest,
+the release gate, and proven absence of the exact registry version after approval,
+then obtains a short-lived OIDC token. Within the publishing workflow, only that
+job has `id-token: write`; it has no repository write permission or dependency caches.
 Uploads for `la-stack` are serialized without cancellation.
 
-The verification job builds the default and `exact` packages without upload
+The original main CI job builds the default and `exact` packages without upload
 credentials. After approval, Cargo repackages the same clean, revalidated commit
 with `--locked --no-verify`, so build scripts do not run with the crates.io token.
 The dry-run archive is not transferred between jobs, and byte-identical archives
@@ -432,6 +485,16 @@ regression checks and hosted evidence requirements.
 
 ### Recovering a failed run
 
+For reusable CI evidence, rerun **all** jobs in the original main-push CI run.
+Failed-jobs-only reruns omit producers or validators from the new attempt and
+are rejected. A complete rerun creates a new signed artifact; it never changes
+the earlier artifact. If CI was rerun while deployment approval was pending,
+the pinned old attempt is stale: restart the publishing workflow's verification
+and obtain approval for the newly selected evidence. Do not bypass expiration
+or substitute manual-dispatch results. Local builds are useful diagnostics but
+cannot renew hosted attestations.
+
+The following recovery rules apply separately to `Release Benchmarks`.
 If preflight or the producer failed, rerun all jobs with `gh run rerun <run-id>`
 or dispatch again. The producer requires a preflight from the current attempt;
 rerunning failed benchmark jobs alone stops before tool setup or measurement
@@ -507,8 +570,9 @@ gates still apply after deployment approval. Add only the pinned
 `rust-lang/crates-io-auth-action` entry from `.github/settings/actions-selected.json`
 to the live selected-action allowlist, preserving newer entries. This reviewed
 v1.0.5 pin comes from the shared consumer template; update it through a reviewed
-dependency PR and reconcile the allowlist together. The publishing workflow is
-excluded from Dependabot automatic approval so these changes require maintainer
+dependency PR and reconcile the allowlist together. Both the publishing workflow
+and the CI workflow that signs reusable evidence are excluded from Dependabot
+automatic approval so these changes require maintainer
 review. Do not add a long-lived
 `CARGO_REGISTRY_TOKEN` secret.
 

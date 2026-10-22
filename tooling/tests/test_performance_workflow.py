@@ -44,8 +44,8 @@ assert Path("target/gates.txt").exists()
 for name in ids:
     path = Path(os.environ["CRITERION_HOME"]) / name / "new"
     path.mkdir(parents=True)
-    median = (16.0 if "/faer_" in name else 10.0) if phase == "baseline" else 8.0
-    mean = (32.0 if "/faer_" in name else 20.0) if phase == "baseline" else 12.0
+    median = TIMINGS[phase][name]["median"]
+    mean = TIMINGS[phase][name]["mean"]
     def estimate(value):
         return {"point_estimate": value, "confidence_interval": {"lower_bound": value * .9, "upper_bound": value * 1.1, "confidence_level": .95}}
     data = {
@@ -79,6 +79,17 @@ def scientific_ids() -> tuple[set[str], set[str]]:
     return library, peers
 
 
+def synthetic_timings() -> dict[str, dict[str, dict[str, float]]]:
+    """Distinguish every case, phase, and statistic so selection errors stay visible."""
+    library, peers = scientific_ids()
+    return {
+        phase: {
+            name: {"median": float(offset + index * 4), "mean": float(offset + index * 4 + 1)} for index, name in enumerate(sorted(library | peers), start=1)
+        }
+        for phase, offset in (("current", 0), ("baseline", 10_000))
+    }
+
+
 @pytest.mark.parametrize("view", ["full", "non-exact"])
 def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: str) -> None:
     library, peers = scientific_ids()
@@ -108,6 +119,14 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: st
         assert isinstance(item, RunSeries)
         if item.name.startswith("la-stack"):
             assert dict(item.rows) == {name: name for name in library}
+        else:
+            assert dict(item.rows) == {
+                f"d{dimension}/{name}": f"d{dimension}/{peer}"
+                for dimension in catalog["dimensions"]
+                for name, peer_names in catalog["peers"].items()
+                for peer in peer_names
+                if peer.startswith(f"{item.name}_")
+            }
     assert {"context.os", "context.architecture", "context.cpu", "harness_sha256"} <= set(plan.measurement.compatible)
     assert {"benches/**/*.rs", "tests/exact_bench_config.rs", "tooling/performance.just", "tooling/measurements/*.toml"} <= set(plan.harness)
 
@@ -138,6 +157,22 @@ def test_named_views_keep_every_metric_statistic_axis_and_explicit_input_choice(
             else:
                 assert "payload" not in view
                 assert "manifest" not in view
+
+
+def test_canonical_readme_selects_all_lu_solve_medians_and_peer_over_current_ratios() -> None:
+    catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
+    view = tomllib.loads((ROOT / "tooling/performance-readme.toml").read_text(encoding="utf-8"))
+    assert view["measurement"] == "tooling/measurements/full.toml"
+    assert view["statistic"] == "median"
+    assert view["unit"] == "ns"
+    assert view["rows"] == [{"key": str(d), "label": str(d), "coordinate": d} for d in catalog["dimensions"]]
+    assert [series["name"] for series in view["series"]] == ["la-stack current", "nalgebra", "faer"]
+    for series, benchmark in zip(view["series"], catalog["metrics"]["lu_solve"]["benchmarks"], strict=True):
+        assert series["rows"] == {str(d): f"d{d}/{benchmark}" for d in catalog["dimensions"]}
+    assert view["comparisons"] == [
+        {"numerator": "nalgebra", "denominator": "la-stack current"},
+        {"numerator": "faer", "denominator": "la-stack current"},
+    ]
 
 
 def recipe(root: Path, name: str, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -195,7 +230,7 @@ def prepared(tmp_path: Path) -> tuple[Path, Path]:
         contents = manifest.read_text(encoding="utf-8")
         version = tomllib.loads(contents)["package"]["version"]
         manifest.write_text(contents.replace(f'version = "{version}"', 'version = "0.5.1"', 1), encoding="utf-8", newline="\n")
-        (root / "tooling/fixture.py").write_text(f"IDS = {ids!r}\n" + DRIVER, encoding="utf-8", newline="\n")
+        (root / "tooling/fixture.py").write_text(f"IDS = {ids!r}\nTIMINGS = {synthetic_timings()!r}\n" + DRIVER, encoding="utf-8", newline="\n")
         driver = f"{shlex.quote(sys.executable)} -X utf8 tooling/fixture.py"
         native = 'export CRITERION_HOME := absolute_path(env("CRITERION_HOME", "target/criterion"))\n'
         for side in ("baseline", "current"):
@@ -336,6 +371,25 @@ def test_actual_retention_offline_plot_and_readme_recipes(complete_run: tuple[Pa
     assert "Complete run evidence" in document
     assert "Evidence envelope" in document
     assert "la-stack v0.5.1" in document
+    assert "Statistic: median. Unit: ns." in document
+    catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
+    rows = [
+        [cell.strip() for cell in line.strip("|").split("|")] for line in document.splitlines() if line.startswith("|") and line.split("|")[1].strip().isdigit()
+    ]
+    assert [row[0] for row in rows] == [str(d) for d in catalog["dimensions"]]
+    timings = synthetic_timings()
+    for dimension, row in zip(catalog["dimensions"], rows, strict=True):
+        assert len(row) == 6
+        expected = [
+            timings[phase][f"d{dimension}/{benchmark}"]["median"]
+            for phase, benchmark in zip(("current", "baseline", "baseline"), catalog["metrics"]["lu_solve"]["benchmarks"], strict=True)
+        ]
+        assert [float(cell.split("<br>")[0]) for cell in row[1:4]] == pytest.approx(expected)
+        # Published ratios have six significant digits; the oracle uses the
+        # intended peer/current medians, independently of the view declaration.
+        assert [float(cell.removesuffix("\N{MULTIPLICATION SIGN}")) for cell in row[4:]] == pytest.approx(
+            [expected[1] / expected[0], expected[2] / expected[0]], rel=1e-5
+        )
     checked = recipe(root, "markdown-check")
     assert checked.returncode == 0, checked.stderr
 

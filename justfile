@@ -8,6 +8,9 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 _run := "uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain run --"
 
+# One active-document selection for formatting and checks; retain measured history.
+_markdown_inputs := "--include '*.md' --exclude CHANGELOG.md --exclude 'docs/archive/**' --exclude 'docs/archives/changelog/**' --exclude docs/performance.md --exclude 'docs/performance-runs/**'"
+
 # Coverage (cargo-llvm-cov)
 #
 # Common cargo-llvm-cov arguments for all coverage runs.
@@ -59,19 +62,7 @@ _release-notes-check tag:
 
 # GitHub Actions workflow validation
 action-lint: _ensure-actionlint
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '.github/workflows/*.yml' '.github/workflows/*.yaml')
-    if [ "${#files[@]}" -gt 0 ]; then
-        printf '%s\0' "${files[@]}" | xargs -0 uv run --locked actionlint
-    else
-        echo "No workflow files found to lint."
-    fi
+    uv run --locked research-repo-tools files run --include '.github/workflows/*.yml' --include '.github/workflows/*.yaml' -- actionlint
 
 # Audit the repository's Python and Rust lockfiles with the managed OSV scanner.
 audit:
@@ -228,7 +219,7 @@ check-fast:
     {{ _run }} cargo check
 
 # Run the complete local CI validation, tests, examples, and benchmark compilation.
-ci: action-lint zizmor markdown-check spell-check docs-version-check changelog-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-format-check python-lint python-fixture-lint python-typecheck test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
+ci: action-lint workflow-allowlist-check zizmor markdown-check spell-check docs-version-check changelog-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-check test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
     @echo "🎯 CI checks complete!"
 
 # Validate CITATION.cff against the Citation File Format schema.
@@ -272,6 +263,10 @@ coverage-ci: tools-check
     mkdir -p coverage
     {{ _run }} cargo llvm-cov nextest {{ _coverage_base_args }} --cobertura --output-path coverage/cobertura.xml -P coverage
 
+# Summarize an existing Cobertura report without rerunning coverage.
+coverage-report report="coverage/cobertura.xml": python-sync
+    uv run --locked research-repo-tools coverage report --report {{ quote(report) }}
+
 # Documentation build checks for the default and exact-feature public APIs.
 doc-check:
     RUSTDOCFLAGS='-D warnings' {{ _run }} cargo doc --no-deps
@@ -283,24 +278,7 @@ docs-version-check: python-sync
 
 # Build and run all library examples, including exact arithmetic.
 examples:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    {{ _run }} cargo build --features exact --examples
-
-    exe_suffix=""
-    if [[ "${OS:-}" == "Windows_NT" ]]; then
-        exe_suffix=".exe"
-    fi
-
-    target_dir="${CARGO_TARGET_DIR:-target}"
-
-    shopt -s nullglob
-    for example_path in examples/*.rs; do
-        [[ -f "${example_path}" ]] || continue
-        example="${example_path##*/}"
-        example="${example%.rs}"
-        "${target_dir}/debug/examples/${example}${exe_suffix}"
-    done
+    {{ _run }} research-repo-tools validation cargo-examples tooling/examples.toml
 
 # Fix (mutating): apply formatters/auto-fixes
 fix: toml-fix fmt python-fix shell-fix markdown-fix yaml-fix
@@ -315,7 +293,7 @@ fmt-check:
     {{ _run }} cargo fmt --all -- --check
 
 # Check workflow syntax and security findings.
-github-actions-check: action-lint zizmor
+github-actions-check: action-lint workflow-allowlist-check zizmor
     @echo "✅ GitHub Actions checks complete!"
 
 # File validation
@@ -338,31 +316,8 @@ lint-docs: markdown-ci docs-version-check changelog-check
 
 # Check active Markdown formatting, local links, and line lengths.
 markdown-check: tools-check _ensure-uv
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    raw_files=()
-    while IFS= read -r -d '' file; do
-        case "$file" in
-            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*|docs/performance.md|docs/performance-runs/*) continue ;;
-        esac
-        if [ -f "$file" ]; then
-            files+=("$file")
-            # Shared README publication retains full immutable evidence URLs.
-            # rumdl still checks its prose, syntax, links, and rendered line length.
-            if [ "$file" != README.md ]; then
-                raw_files+=("$file")
-            fi
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.md')
-    if [ "${#files[@]}" -gt 0 ]; then
-        printf '%s\0' "${files[@]}" | xargs -0 -n100 {{ _run }} rumdl check
-        if [ "${#raw_files[@]}" -gt 0 ]; then
-            uv run --locked --group dev research-repo-tools docs check-lines "${raw_files[@]}"
-        fi
-    else
-        echo "No markdown files found to check."
-    fi
+    {{ _run }} research-repo-tools files run {{ _markdown_inputs }} -- rumdl check
+    uv run --locked research-repo-tools files run {{ _markdown_inputs }} --exclude README.md -- research-repo-tools docs check-lines
 
 # Check active Markdown and spelling without changing files.
 markdown-ci: markdown-check spell-check
@@ -370,23 +325,7 @@ markdown-ci: markdown-check spell-check
 
 # Format active Markdown files; preserve generated and archived records.
 markdown-fix: tools-check
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        case "$file" in
-            CHANGELOG.md|docs/archive/*|docs/archives/changelog/*|docs/performance.md|docs/performance-runs/*) continue ;;
-        esac
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.md')
-    if [ "${#files[@]}" -gt 0 ]; then
-        echo "📝 rumdl check --fix (${#files[@]} files)"
-        printf '%s\0' "${files[@]}" | xargs -0 -n100 {{ _run }} rumdl check --fix
-    else
-        echo "No markdown files found to format."
-    fi
+    {{ _run }} research-repo-tools files run {{ _markdown_inputs }} -- rumdl check --fix
 
 # Render the retained release report offline, with independent eligibility checks.
 performance-doc: python-sync
@@ -426,16 +365,16 @@ plot-vs-linalg current_tag current_revision baseline_tag baseline_revision view=
     {{ _run }} uv run --locked research-repo-tools performance publish {{ quote("tooling/plots/" + input + "/" + view + ".toml") }} --artifacts-only --current-release {{ quote(current_tag) }} --current-revision {{ quote(current_revision) }} --baseline-release {{ quote(baseline_tag) }} --baseline-revision {{ quote(baseline_revision) }}
 
 # Check Python formatting, lint, fixtures, and types.
-python-check: python-format-check python-lint python-fixture-lint python-typecheck
+python-check: python-sync
+    uv run --locked research-repo-tools python check
 
 # Check Python tooling and run its consumer integration tests.
-python-ci: python-format-check python-lint python-fixture-lint python-typecheck test-python
+python-ci: python-check test-python
     @echo "✅ Python checks complete!"
 
 # Apply Python lint fixes and formatting.
 python-fix: python-sync
-    uv run --locked ruff check tooling/tests/ --fix
-    uv run --locked ruff format tooling/tests/ tests/semgrep/scripts/
+    uv run --locked research-repo-tools python fix
 
 # Lint deliberate Python fixtures with their declared exceptions.
 python-fixture-lint: python-sync
@@ -443,11 +382,11 @@ python-fixture-lint: python-sync
 
 # Check Python formatting, including static-analysis fixtures.
 python-format-check: python-sync
-    uv run --locked ruff format --check tooling/tests/ tests/semgrep/scripts/
+    uv run --locked research-repo-tools files run --include '*.py' --include '*.pyi' -- ruff format --check --no-force-exclude --no-respect-gitignore
 
 # Lint Python support tools and their tests.
 python-lint: python-sync
-    uv run --locked ruff check tooling/tests/
+    uv run --locked research-repo-tools files run --include '*.py' --include '*.pyi' -- ruff check --no-fix --no-fix-only --no-force-exclude --no-respect-gitignore
 
 # Synchronize the locked Python development environment.
 python-sync: _ensure-uv
@@ -455,7 +394,11 @@ python-sync: _ensure-uv
 
 # Check all Python support and fixture types; fail on every diagnostic.
 python-typecheck: python-sync
-    uv run --locked ty check tooling/tests/ tests/semgrep/scripts/ --error all
+    uv run --locked research-repo-tools python typecheck
+
+# Verify signed default/exact packaging and native CI for HEAD; optionally pin the evidence identity.
+release-evidence identity="":
+    uv run --locked --no-sync python -m tooling.release_evidence verify --identity {{ quote(identity) }}
 
 # Require the release event, reviewed commit, native checks, assets, and notes.
 release-gate tag:
@@ -473,7 +416,7 @@ release-package:
     {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run --features exact
 
 # Approve the benchmark-equipped draft as the authenticated maintainer.
-release-publish tag: (_release-notes-check tag)
+release-publish tag: (_release-notes-check tag) release-evidence
     uv run --locked --no-sync research-repo-tools release publish {{ quote(tag) }} --approve
 
 # Verify the published GitHub release, required assets, and exact crates.io version.
@@ -518,56 +461,16 @@ setup-tools: _ensure-gh _ensure-jq
 
 # Check shell script lint and formatting.
 shell-check: _ensure-shellcheck _ensure-shfmt
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.sh')
-    if [ "${#files[@]}" -gt 0 ]; then
-        printf '%s\0' "${files[@]}" | xargs -0 -n4 uv run --locked shellcheck -x
-        printf '%s\0' "${files[@]}" | xargs -0 uv run --locked shfmt -d
-    else
-        echo "No shell files found to check."
-    fi
+    uv run --locked research-repo-tools files run --include '*.sh' --batch-size 4 -- shellcheck -x
+    uv run --locked research-repo-tools files run --include '*.sh' -- shfmt -d
 
 # Format maintained shell scripts.
 shell-fix: _ensure-shfmt
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.sh')
-    if [ "${#files[@]}" -gt 0 ]; then
-        echo "🧹 shfmt -w (${#files[@]} files)"
-        printf '%s\0' "${files[@]}" | xargs -0 -n1 uv run --locked shfmt -w
-    else
-        echo "No shell files found to format."
-    fi
+    uv run --locked research-repo-tools files run --include '*.sh' --batch-size 1 -- shfmt -w
 
 # Spell check (typos)
 spell-check: tools-check
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    # Check every tracked file plus untracked, non-ignored additions. This keeps
-    # clean CI checkouts covered while validating new files before they are staged.
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z)
-    if [ "${#files[@]}" -gt 0 ]; then
-        # Exclude typos.toml itself: it intentionally contains allowlisted fragments.
-        printf '%s\0' "${files[@]}" | xargs -0 -n100 {{ _run }} typos --config typos.toml --force-exclude --exclude typos.toml --
-    else
-        echo "No files found to spell-check."
-    fi
+    {{ _run }} research-repo-tools files run --exclude typos.toml -- typos --config typos.toml --force-exclude --
 
 # Create an annotated git tag from the CHANGELOG.md section for the given version
 tag version: python-sync
@@ -629,71 +532,28 @@ toml-check: toml-parse-check toml-fmt-check toml-lint
 
 # Format maintained TOML files.
 toml-fix: tools-check
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.toml')
-    if [ "${#files[@]}" -gt 0 ]; then
-        {{ _run }} taplo fmt "${files[@]}"
-    else
-        echo "No TOML files found to format."
-    fi
+    {{ _run }} research-repo-tools files run --include '*.toml' -- taplo fmt
 
 # Check TOML formatting without changing files.
 toml-fmt-check: tools-check
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.toml')
-    if [ "${#files[@]}" -gt 0 ]; then
-        {{ _run }} taplo fmt --check "${files[@]}"
-    else
-        echo "No TOML files found to check."
-    fi
+    {{ _run }} research-repo-tools files run --include '*.toml' -- taplo fmt --check
 
 # Lint maintained TOML files.
 toml-lint: tools-check
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.toml')
-    if [ "${#files[@]}" -gt 0 ]; then
-        {{ _run }} taplo lint "${files[@]}"
-    else
-        echo "No TOML files found to lint."
-    fi
+    {{ _run }} research-repo-tools files run --include '*.toml' -- taplo lint
 
 # Validate TOML syntax independently with Python's standard-library parser.
 toml-parse-check: python-sync
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.toml')
-    if [ "${#files[@]}" -gt 0 ]; then
-        uv run --locked python -c 'import pathlib, sys, tomllib; [tomllib.loads(pathlib.Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:]]' "${files[@]}"
-    else
-        echo "No TOML files found to parse."
-    fi
+    uv run --locked research-repo-tools files run --include '*.toml' -- uv run --locked python -c 'import pathlib, sys, tomllib; [tomllib.loads(pathlib.Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:]]'
 
 # Check installed tools without synchronization, downloads, or installation.
 tools-check:
     uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain check
+
+# Preview obsolete managed installations; pass --apply for explicit removal.
+[positional-arguments]
+tools-clean *args:
+    uv run --locked --no-sync research-repo-tools toolchain clean "$@"
 
 # Export verified managed paths to GITHUB_ENV in hosted workflows.
 tools-export:
@@ -706,6 +566,11 @@ unused-deps: tools-check
 # Upgrade tools before updating dependency requirements and lock resolutions.
 update: update-tools update-dependencies
     @echo "✅ Repository dependencies and tools updated."
+
+# Update explicitly selected Actions pins; --dry-run and --check only preview.
+[positional-arguments]
+update-actions +args:
+    uv run --locked research-repo-tools actions update --policy .github/actions-allowlist.json "$@"
 
 # num-bigint and num-rational share public types and must advance together.
 update-cargo-dependencies:
@@ -740,71 +605,26 @@ update-version tag *args: _ensure-gh python-sync
 
 # Check maintained JSON syntax.
 validate-json: _ensure-jq
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.json')
-    if [ "${#files[@]}" -gt 0 ]; then
-        printf '%s\0' "${files[@]}" | xargs -0 -n1 jq empty
-    else
-        echo "No JSON files found to validate."
-    fi
+    uv run --locked research-repo-tools files run --include '*.json' --batch-size 1 -- jq empty
+
+# Validate external workflow dependencies against the repository allowlist.
+workflow-allowlist-check: python-sync
+    uv run --locked research-repo-tools actions allowlist --policy .github/actions-allowlist.json .github/workflows
 
 # Check YAML and CFF formatting and lint.
 yaml-check: yaml-fmt-check yaml-lint
 
 # Format maintained YAML and CFF files.
 yaml-fix: tools-check
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.yml' '*.yaml' 'CITATION.cff')
-    if [ "${#files[@]}" -gt 0 ]; then
-        printf '%s\0' "${files[@]}" | xargs -0 {{ _run }} dprint fmt --incremental=false
-    else
-        echo "No YAML files found to format."
-    fi
+    {{ _run }} research-repo-tools files run --include '*.yml' --include '*.yaml' --include CITATION.cff -- dprint fmt --incremental=false
 
 # Check YAML and CFF formatting without changing files.
 yaml-fmt-check: tools-check
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.yml' '*.yaml' 'CITATION.cff')
-    if [ "${#files[@]}" -gt 0 ]; then
-        printf '%s\0' "${files[@]}" | xargs -0 {{ _run }} dprint check --incremental=false
-    else
-        echo "No YAML files found to check."
-    fi
+    {{ _run }} research-repo-tools files run --include '*.yml' --include '*.yaml' --include CITATION.cff -- dprint check --incremental=false
 
 # Lint maintained YAML and CFF files.
 yaml-lint: _ensure-yamllint
-    #!/usr/bin/env bash
-    set -euo pipefail
-    files=()
-    while IFS= read -r -d '' file; do
-        if [ -f "$file" ]; then
-            files+=("$file")
-        fi
-    done < <(git ls-files -co --exclude-standard -z -- '*.yml' '*.yaml' 'CITATION.cff')
-    if [ "${#files[@]}" -gt 0 ]; then
-        echo "🔍 yamllint (${#files[@]} YAML/CFF files)"
-        uv run --locked yamllint --strict -c .yamllint "${files[@]}"
-    else
-        echo "No YAML files found to lint."
-    fi
+    uv run --locked research-repo-tools files run --include '*.yml' --include '*.yaml' --include CITATION.cff -- yamllint --strict -c .yamllint
 
 # Audit workflows with the declared scanner and shared authentication policy.
 [positional-arguments]
