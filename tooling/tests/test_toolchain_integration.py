@@ -29,9 +29,7 @@ CARGO_UPDATE = [
     [*UPDATER, "toolchain", "run", "--", "cargo", "update"],
 ]
 PYTHON_UPDATE = [
-    [*UPDATER, "deps", "update-python"],
-    ["lock", "--upgrade"],
-    [*CHECKED, "uv", "sync", "--locked", "--managed-python", "--group", "dev"],
+    [*UPDATER, "deps", "update-python", "--all-projects"],
 ]
 WORKFLOWS = {
     "update": [UV_UPDATE, TOOL_UPDATE, SETUP, *CARGO_UPDATE, *PYTHON_UPDATE],
@@ -47,7 +45,7 @@ WORKFLOWS = {
 
 def test_published_tooling_package_matches_manifest_lock_and_installation() -> None:
     """Keep the exact published-package contract in one consumer test."""
-    expected_version = "0.2.2"
+    expected_version = "0.2.3"
     manifest = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert manifest["project"]["dependencies"] == []
     assert manifest["tool"]["uv"]["package"] is False
@@ -59,8 +57,8 @@ def test_published_tooling_package_matches_manifest_lock_and_installation() -> N
     package = next(item for item in lock["package"] if item["name"] == "research-repo-tools")
     assert package["version"] == expected_version
     assert package["source"] == {"registry": "https://pypi.org/simple"}
-    assert package["wheels"][0]["hash"] == "sha256:b82e11ef8265f0b03c37cac93f59d5854a63543c29ee378f5980623af57d9381"
-    assert package["sdist"]["hash"] == "sha256:4937f202a55c5678af30bae915e01ddbc17f9dd8dd9e143b2f430331b42e8f50"
+    assert package["wheels"][0]["hash"] == "sha256:da5f0259027662e7706b7f2b8a38d8e1f1d8a5dce314e2c996177b2947514fc6"
+    assert package["sdist"]["hash"] == "sha256:13700b174656ffad265ecb926dd66013949853b7a39c088ab6d3852aba72df95"
 
 
 @pytest.fixture
@@ -107,7 +105,7 @@ def test_update_recipes_sequence_and_preserve_coupled_exclusions(consumer: Path,
     assert calls == WORKFLOWS[recipe]
 
 
-@pytest.mark.parametrize("step", range(1, 9))
+@pytest.mark.parametrize("step", range(1, len(WORKFLOWS["update"]) + 1))
 def test_update_failure_stops_later_steps(consumer: Path, monkeypatch: pytest.MonkeyPatch, step: int) -> None:
     monkeypatch.setenv("UPDATE_FAIL_STEP", str(step))
     result, calls = invoke(consumer, "update")

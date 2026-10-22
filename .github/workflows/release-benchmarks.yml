@@ -54,7 +54,7 @@ jobs:
             echo "::error::Dispatch with --ref $RELEASE_TAG and the matching tag input"
             exit 1
           fi
-          target="$(uvx --python 3.15 --from research-repo-tools==0.2.2 research-repo-tools \
+          target="$(uvx --python 3.15 --from research-repo-tools==0.2.3 research-repo-tools \
             --root "$RUNNER_TEMP" performance release-draft "$GH_REPO" "$RELEASE_TAG" \
             --commit "$GITHUB_SHA" --expected-title "$RELEASE_TAG" | jq -c .)"
           echo "target=$target" >> "$GITHUB_OUTPUT"
@@ -194,7 +194,7 @@ jobs:
 
           [[ "$RELEASE_ASSET" == "la-stack-${RELEASE_TAG}-criterion-baseline.tar.gz" ]] || exit 1
           printf '%s\n' "$RELEASE_TARGET" > "$RUNNER_TEMP/release-target.json"
-          uvx --python 3.15 --from research-repo-tools==0.2.2 research-repo-tools \
+          uvx --python 3.15 --from research-repo-tools==0.2.3 research-repo-tools \
             --root "$RUNNER_TEMP" performance release-upload "$GH_REPO" "$RELEASE_TAG" \
             "$GITHUB_WORKSPACE/$RELEASE_ASSET" --target "$RUNNER_TEMP/release-target.json"
 

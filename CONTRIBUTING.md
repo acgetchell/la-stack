@@ -39,7 +39,7 @@ change files. Run bare `just` for the complete generated command list, including
 arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
 owns recipe naming and documentation placement.
 
-Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.2` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.3` package,
 locked in the `tooling` dependency group and included by `dev`. Normal setup
 and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
 checkout is unnecessary. To upgrade it deliberately, review the exact
@@ -66,6 +66,12 @@ Then `just update-dependencies` upgrades Cargo requirements and refreshes Cargo'
 lock, resolves exact direct Python `dev` pins, refreshes the complete `uv.lock`,
 and explicitly synchronizes `dev` with managed Rust available for native builds.
 Included groups retain their constraints, including the exact shared-package pin.
+The shared Python updater also refreshes `tooling/semgrep/uv.lock` and syncs its
+separate environment through `deps.python-projects`. It retains the scanner's
+exact Semgrep pin, Python 3.14 selector, and dependency overrides. Declare future
+independent uv projects in the same list so they participate in `just update`.
+The hosted dependency audit checks both Python lockfiles with the shared OSV
+adapter; its existing Cargo audit retains the native Rust advisory policy.
 `just update-cargo-dependencies` excludes `num-bigint` and `num-rational` from
 incompatible requirement upgrades because their public types must advance
 together; Cargo can still refresh locked versions within those requirements.

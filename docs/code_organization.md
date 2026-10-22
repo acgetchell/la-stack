@@ -213,7 +213,7 @@ Original artifacts, including the v0.5.0/v0.4.6 complete run, remain frozen
 without regeneration or invented acquisition records. New complete runs
 support offline rendering through the declared eligibility policy.
 
-`tooling/semgrep/` owns a locked Python 3.14 environment for Semgrep 1.180.0
+`tooling/semgrep/` owns a locked Python 3.14 environment for Semgrep 1.182.0
 while its wheels exclude Python 3.15. Local scans, shared fixture validation
 and hosted SARIF use it; ordinary support scripts use Python 3.15.
 The root `.semgrepignore` keeps ordinary Rust and Python tests in those scans
