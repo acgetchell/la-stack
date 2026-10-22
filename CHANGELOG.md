@@ -5,6 +5,199 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-10-22
+
+### Merged Pull Requests
+
+- Reuse signed release evidence and complete shared tooling adoption [#300](https://github.com/acgetchell/la-stack/pull/300)
+- Strengthen correctness checks and repository scan coverage [#294](https://github.com/acgetchell/la-stack/pull/294)
+- Scale exact determinants by row [#292](https://github.com/acgetchell/la-stack/pull/292)
+- Bump astral-sh/setup-uv [#291](https://github.com/acgetchell/la-stack/pull/291)
+- Streamline interval determinant subset traversal [#290](https://github.com/acgetchell/la-stack/pull/290)
+- Repair release recipe approval and notes output [#286](https://github.com/acgetchell/la-stack/pull/286)
+
+### Changed
+
+- Adopt shared README table formatting [`92ed845`](https://github.com/acgetchell/la-stack/commit/92ed84530482c2acd4d66149c06ab75cf6ec8048)
+
+  - Use published research-repo-tools v0.2.0 table styles for dimensions,
+    confidence bounds, and explicitly directed speedup ratios.
+  - Retire legacy CSV conversion and pre-Just phase replay while preserving
+    historical reports, assets, and evidence.
+  - Retain la-stack integration coverage and consolidate package identity
+    checks, leaving shared implementation matrices upstream.
+- Retire historical benchmark execution [`beddc9a`](https://github.com/acgetchell/la-stack/commit/beddc9ae1c5f62c0ee2e1b7cc186e4fcdfd2e2eb)
+
+  - Require v0.5.0 or newer on both sides of new benchmark measurements,
+    rejecting unsupported releases before fetching or creating worktrees.
+  - Remove legacy API and layout adapters, baseline-row exemptions, and
+    the performance-github-assets recipe and assets subcommand.
+  - Preserve scientific validation, archived artifacts, and offline replay
+    of retained runs that use the supported benchmark contract.
+  - Generalize the release guide for future releases and require uv 0.13.3.
+
+  Refs acgetchell/research-repo-tools#115
+- Retire local performance scripts [`580f5d3`](https://github.com/acgetchell/la-stack/commit/580f5d34f60abc92c8731175a657ad5c6d088542)
+
+  - Adopt published research-repo-tools v0.2.2 and its minimum-release
+    acquisition contract through static measurement and publication declarations.
+  - Replace local Python adapters with direct installed CLI recipes, preserve
+    independent scientific inventories, and move consumer tests into tooling.
+  - Require explicit source identities and input selection for publication;
+    preserve historical evidence as frozen records without regeneration.
+  - Document intentional tooling CLI changes, captured working-tree semantics,
+    fixed measurement settings, and immutable README/archive metadata links.
+  - Validate with just check and just ci: 108 Python tests, 1031 Rust tests,
+    doctests, static analysis, formatting, spelling, and documentation checks.
+
+### Dependencies
+
+- Bump astral-sh/setup-uv [#291](https://github.com/acgetchell/la-stack/pull/291)
+  [`1f84927`](https://github.com/acgetchell/la-stack/commit/1f8492786e6a047ba7263788571f42409bf0c2b1)
+
+  Bumps the github-actions group with 1 update: [astral-sh/setup-uv](https://github.com/astral-sh/setup-uv).
+
+  Updates `astral-sh/setup-uv` from 10.2.0 to 10.3.0
+
+  - [Release notes](https://github.com/astral-sh/setup-uv/releases)
+  - [Commits](https://github.com/astral-sh/setup-uv/compare/c18668ad3cf93ea998bef934396af7bb5c839dc7...1c37ad07a6a961277cf70c0d37d6f313000f5884)
+
+### Documentation
+
+- Document sparse angle benchmark replay [`f616e55`](https://github.com/acgetchell/la-stack/commit/f616e559ec77ce6be96b07b8e09090060388bf2f)
+
+  - Add exact commands to regenerate all three retained CSV summaries.
+  - Specify sample selection, median estimates, nanosecond units, and byte comparisons.
+  - Validate all three summaries byte for byte; just check and just ci passed.
+- Align contributor guidance with shared tooling [`2e7eec0`](https://github.com/acgetchell/la-stack/commit/2e7eec0636cae3cff4c6633558fa84c8a9a3480c)
+
+  Correct the working-tree snapshot and declaration ownership descriptions after retiring local adapters. Validate with markdown-fix, markdown-ci, and
+  doc-check.
+
+### Fixed
+
+- Repair release recipe approval and notes output [#286](https://github.com/acgetchell/la-stack/pull/286)
+  [`b2ad940`](https://github.com/acgetchell/la-stack/commit/b2ad940bb49c77f2d56b9f8c2ff8a58cd0cdfeac)
+
+  - Pass explicit approval when publishing a reviewed release draft.
+  - Send uv prerequisite diagnostics to stderr so generated notes stay clean.
+  - Update libc to 0.2.191 and the managed rumdl pin to 0.3.0 after v0.5.0.
+  - Sort the README design goals lexicographically.
+- Strengthen correctness checks and repository scan coverage [#294](https://github.com/acgetchell/la-stack/pull/294)
+  [`f8f2153`](https://github.com/acgetchell/la-stack/commit/f8f21538ab9d82f0ebc24df6654d0d70cb8700e3)
+
+#### fix: strengthen correctness checks and repository scan coverage
+
+- Include ordinary Rust and Python tests in production Semgrep scans while
+  keeping deliberate rule fixtures in their dedicated checks.
+- Reject unexpected errors in mixed-exponent determinant properties and
+  verify stale release targets cannot upload artifacts.
+- Keep scanner environments out of benchmark fixtures and align test code
+  with the expanded static-analysis coverage.
+- Correct exact row-scaling documentation, benchmark capacity estimates,
+  coverage tool ownership, and the released v0.5.0 roadmap.
+
+#### fix: preserve scan exclusions and match upload hosts precisely
+
+- Preserve Semgrep default exclusions while including ordinary Rust and
+  Python tests in local and SARIF scan selections.
+- Parse release-fixture URLs before matching GitHub's upload hostname.
+- Require uv 0.13.2 and refresh the cc and find-msvc-tools lockfile entries.
+- Align benchmark guidance with current measurement policy [`5635435`](https://github.com/acgetchell/la-stack/commit/56354352ae8fcfc42d89acb5117965a912028d87)
+
+  - Make the v0.5.0 measurement minimum unconditional and remove the obsolete
+    adoption deadline.
+  - Document direct norm API calls and complete rational-input comparisons,
+    while preserving the distinction for frozen historical reports.
+  - Remove redundant norm scopes from the benchmark and comparison tests.
+  - Validate with Markdown and spelling checks, default and exact-feature
+    documentation builds, Rust formatting, and git diff --check.
+  - Record that full local CI stopped at a Taplo macOS configuration panic;
+    subsequent CI stages were not reached.
+
+  Addresses review feedback on #295.
+- Prepare shared updates for the Semgrep environment [`06aa6cb`](https://github.com/acgetchell/la-stack/commit/06aa6cbf3579761f4609b1d4668069e787a21f07)
+
+  - Refresh certifi and the development-tool pins.
+  - Declare the isolated Semgrep project and route Python updates through the shared workflow.
+  - Require the forthcoming research-repo-tools v0.2.3 pin before merging this adoption.
+- Update Semgrep and preserve its isolated dependencies [`1c0bd85`](https://github.com/acgetchell/la-stack/commit/1c0bd85e28596315b191c11bbbe8e85144653098)
+
+  Pin Semgrep 1.182.0 in Python 3.14 while retaining the patched MCP override. Refresh its lock and current guidance, protect the override in consumer tests,
+  disable network version checks in the version probe, and align updater integration expectations with the shared orchestration. Focused updater and Semgrep
+  tests, Ruff and ty pass; published shared-package adoption remains pending.
+- Adopt published shared updater and audit Python locks [`fae5c9e`](https://github.com/acgetchell/la-stack/commit/fae5c9ebd7826ec2450045d2e6c5c27a3c91eeb1)
+
+  - Pin research-repo-tools 0.2.3 from PyPI and verify exact published hashes.
+  - Refresh root and isolated Semgrep locks through the released updater while
+    retaining Python selectors, exact tool pins, MCP override and certifi fix.
+  - Align release-tool installations and docs with the actual published package.
+  - Add read-only hosted OSV coverage for both Python locks while preserving the
+    native Cargo audit and its narrowly scoped SARIF permission.
+  - Validate 107 Python integration tests, scanner production and fixtures,
+    workflow/config lint, Markdown/spelling and default/exact Rustdocs.
+  - Record local OSV API HTTP 403 as an incomplete audit, not a security pass.
+
+### Maintenance
+
+- Include dprint update and clarify exact solve provenance [`bf39cf2`](https://github.com/acgetchell/la-stack/commit/bf39cf2c80b5a7f644952e12b6627b110c29e908)
+
+  - Include the staged dprint 0.64.0 tool-pin update.
+  - Attribute Bareiss elimination separately from the shared-denominator derivation.
+  - Correct the retained study's description of the PR scope.
+  - Validate with just ci and byte-for-byte benchmark summary replay.
+- Reuse signed release evidence and complete shared tooling adoption [#300](https://github.com/acgetchell/la-stack/pull/300)
+  [`eb6f071`](https://github.com/acgetchell/la-stack/commit/eb6f071607c058527f6cb6a9bf86bb307c93ab02)
+
+#### ci: reuse signed release evidence and complete shared tooling adoption
+
+- Validate default/exact Cargo packages in CI and sign successful main-push
+  native and packaging results for reuse during release publication.
+- Pin evidence through deployment approval and retain the existing Cargo
+  upload, registry checks, scientific release assets, and approval gates.
+- Adopt research-repo-tools v0.2.3 file discovery, Python checks, Cargo
+  examples, coverage summaries, tool cleanup, and Actions allowlist helpers.
+- Expand composite-action policy coverage, strengthen performance and
+  release regressions, clarify numerical documentation, and simplify an
+  equivalent exact-conversion branch.
+- Preserve the staged cargo-edit 0.13.14 and bracex 3.2 updates.
+
+### Performance
+
+- Skip shared-zero axes in vector angles [`1392e96`](https://github.com/acgetchell/la-stack/commit/1392e96809a1731d06250c4cd58ea618289857ee)
+
+  - Skip shared-zero contributions after validation while preserving scaling,
+    compensated reductions, subnormal angles, and zero allocations.
+  - Align the MSRV and contributor toolchain on Rust 1.99.1.
+  - Retain sparse and dense benchmark evidence and document the measured tradeoffs.
+  - Add a runnable vector-angle example and link every README example from
+    both GitHub and rustdoc.
+  - Validate the kernel and toolchain with just ci; verify subsequent docs
+    and examples with focused checks, doctests, and example execution.
+- Reduce rational normalization in exact solves [`c57258c`](https://github.com/acgetchell/la-stack/commit/c57258c19790f2e75ea9a8799c0b73e297b5e158)
+
+  - Accumulate general exact back-substitution over a minimal common
+    denominator, reducing once per row and canonicalizing final outputs.
+  - Preserve exact solutions, singularity metadata, and conversion semantics.
+  - Document the invariant and retain reproducible performance evidence,
+    including wide-input allocation costs and diagonal controls.
+- Streamline interval determinant subset traversal [#290](https://github.com/acgetchell/la-stack/pull/290)
+  [`6f82359`](https://github.com/acgetchell/la-stack/commit/6f823595de46238edb8ff66e42afbf4bb3eb62d9)
+
+  - Visit active subset columns directly while preserving interval arithmetic
+    order, cofactor signs, and first-error reporting.
+  - Extend exact determinant coverage across independent row scales and zero rows.
+  - Clarify exact-solve scaling and correct the archived benchmark replay command.
+- Scale exact determinants by row [#292](https://github.com/acgetchell/la-stack/pull/292)
+  [`d8bbb58`](https://github.com/acgetchell/la-stack/commit/d8bbb58f43d1f8e002b843a32a42ec6655b85d0b)
+
+  - Reduce integer growth for mixed-exponent and near-singular inputs by
+    lifting each row independently and restoring the summed binary scale.
+  - Preserve exact values, sign filtering, conversion contracts, and typed
+    scale-overflow errors.
+  - Add exponent-spread diagnostics and archive reproducible comparisons,
+    including small-control costs and conditional workload tradeoffs.
+
 ## [0.5.0] - 2026-10-17
 
 ### ⚠️ Breaking Changes
@@ -21,6 +214,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Merged Pull Requests
 
+- Allow cold setup for release benchmarks [#284](https://github.com/acgetchell/la-stack/pull/284)
 - Publish reviewed GitHub releases to crates.io [#282](https://github.com/acgetchell/la-stack/pull/282)
 - Record algebraic floating-point rejection [#281](https://github.com/acgetchell/la-stack/pull/281)
 - Bump the github-actions group with 6 updates [#280](https://github.com/acgetchell/la-stack/pull/280)
@@ -389,6 +583,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the publishing setup, release sequence, and recovery procedure.
 - Keep publishing action updates under manual review so their pins stay
   aligned with the selected-actions policy.
+- Allow cold setup for release benchmarks [#284](https://github.com/acgetchell/la-stack/pull/284)
+  [`5d8f5b4`](https://github.com/acgetchell/la-stack/commit/5d8f5b4ea1c0bd708cd748b86f426960b7597ab7)
+
+  - Budget uncached tools and both suite inventories before release measurements.
+  - Preserve full comparative and exact sampling within the hosted job limit.
+  - Document draft-tag recovery after a workflow correction.
 
 ### Performance
 
@@ -425,4 +625,5 @@ Older releases are archived by minor series:
 - [0.2.x](docs/archives/changelog/0.2.md)
 - [0.1.x](docs/archives/changelog/0.1.md)
 
+[0.5.1]: https://github.com/acgetchell/la-stack/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/acgetchell/la-stack/compare/v0.4.6...v0.5.0

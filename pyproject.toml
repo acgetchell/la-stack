@@ -86,7 +86,7 @@ line-length = 160
 
 [tool.uv]
 package = false
-required-version = "==0.13.4"
+required-version = "==0.13.5"
 # Semgrep has its own locked Python 3.14 environment under tooling/semgrep.
 
 [dependency-groups]

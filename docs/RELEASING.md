@@ -20,6 +20,9 @@ later UTC date intentionally advances the declared release date. Crossing
 midnight alone requires no update: the `declared` date policy allows preparation
 and tagging on different UTC days when citation and changelog dates agree.
 Repeated `performance-release` runs can produce different measurements.
+With unchanged history and configuration, repeating `changelog-unreleased`
+reuses the declared citation date and preserves the generated contents,
+including when a rerun happens after UTC midnight.
 
 ## Contents
 
@@ -144,19 +147,35 @@ continuing.
 ### 3. Generate the release changelog
 
 ```bash
+just changelog-unreleased "$TAG"
+```
+
+This generates `CHANGELOG.md` as though the target tag already existed, archives
+completed minor series under `docs/archives/changelog/`, and defaults to the
+`date-released` already recorded in `CITATION.cff` by `update-version`.
+No `RELEASE_DATE` shell variable is needed, and generation does not read today's
+date or update package or citation metadata. The citation version must match
+the target tag, and its date must be a valid ISO `YYYY-MM-DD` date; missing or
+invalid metadata stops generation with preparation guidance. Reruns reuse the
+recorded date even after UTC midnight and preserve existing release dates.
+
+The optional explicit date remains supported. For troubleshooting, populate
+`RELEASE_DATE` manually and pass it as the second argument:
+
+```bash
 RELEASE_DATE="$(date -u +%F)"
 just changelog-unreleased "$TAG" "$RELEASE_DATE"
 ```
 
-This generates `CHANGELOG.md` as though the target tag already existed, archives
-completed minor series under `docs/archives/changelog/`, and uses the explicit
-ISO release date. Verify that `RELEASE_DATE` equals the date recorded in
-`CITATION.cff` by metadata preparation. If preparation crossed UTC midnight,
-either reuse that declared date or deliberately advance it by rerunning
-`just update-version "$TAG"` first. Generation preserves existing release dates
-and does not update package or citation metadata.
-Use `just changelog-preview --tag "$TAG" --date "$RELEASE_DATE"` for a read-only
+This override explicitly chooses today's UTC date; keep it consistent with
+`CITATION.cff`. To intentionally change the declared release date, update the
+metadata first with `just update-version "$TAG" --date "$RELEASE_DATE"`.
+You can also set `RELEASE_DATE` to a reviewed `YYYY-MM-DD` value instead of today.
+
+Use `just changelog-preview --tag "$TAG"` for a read-only
 preview, and `just changelog-check` to validate the root and every archive.
+Tagged previews use the same citation-date default; `--date YYYY-MM-DD` remains
+available as an explicit override.
 Review the generated changelog and any archive changes. The
 [Tooling guide](../tooling/README.md#changelog-and-release-tooling) explains
 the supported `dependency-bodies = "preserve"` policy in `pyproject.toml`, which
@@ -175,25 +194,37 @@ original command and `just changelog-check`.
 
 ### 4. Generate the release performance comparison
 
-After updating the package version, fetch the tags and select the previous
-stable release shown by GitHub's publication history:
+After updating the package version, fetch the tags and capture the independent
+source assertions before measurement:
 
 ```bash
 just performance-prepare
-gh release list --exclude-drafts --exclude-pre-releases --json tagName,publishedAt
 ```
 
-Set `PREVIOUS_TAG` to that reviewed baseline. Capture the source commit
-assertions independently before measurement:
+Preparation selects the release pair using GitHub's publication history,
+resolves the current and baseline commits, and saves all four assertions to
+`target/bench-reports/release-inputs.json`, relative to the repository root.
+This Git-ignored file carries the tags and commits forward to
+`just performance-readme`; it survives closing and reopening your terminal.
+Review the printed tags and commits. A failed release lookup or missing tag
+stops preparation with a diagnostic.
+
+No shell variables or exports are needed. `performance-prepare` does not set
+`PREVIOUS_TAG`, `CURRENT_COMMIT`, or `PREVIOUS_COMMIT` in your shell; those
+variables may remain unset. Do not run the old manual `git rev-parse`
+assignments or pass those variables to the ordinary README step below.
+
+Then run the long measurement command:
 
 ```bash
-CURRENT_COMMIT=$(git --no-pager rev-parse HEAD)
-PREVIOUS_COMMIT=$(git --no-pager rev-parse "$PREVIOUS_TAG^{commit}")
 just performance-release
 ```
 
-The no-argument measurement compares the prospective package version with the
-latest stable published release. Review `docs/performance.md` and the complete
+The no-argument recipe compares the prospective package version with the
+latest stable published release. It measures and promotes the release report;
+README publication remains a separate, retryable step below.
+
+Review `docs/performance.md` and the complete
 new run and index changes under `docs/performance-runs/`. Its current/baseline
 tags and commits must match the selected assertions. Both labels must be v0.5.0
 or newer.
@@ -212,10 +243,13 @@ or relax current eligibility checks to replay it.
 ### 5. Refresh the README benchmark comparison
 
 ```bash
-just performance-readme "$TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT"
+just performance-readme
 ```
 
-This consumes archived, release-eligible evidence without benchmarking again.
+With no arguments, this reads the independent tags and commits from
+`target/bench-reports/release-inputs.json`, saved by `performance-prepare`.
+It consumes archived, release-eligible evidence without benchmarking again or
+requiring shell variables.
 It verifies the independent identities, current source/harness membership and
 hashes, package/report references and existing-tag artifact identity.
 The canonical LU-solve median/log view is declared in
@@ -227,6 +261,15 @@ complete-run payload and evidence envelope replace new plot-provenance sidecars;
 original sidecars remain unchanged. Tag-pinned links become available when the
 release tag is pushed. Until then, preview the SVG directly under
 `docs/assets/bench/`.
+
+The four explicit tag/commit arguments remain supported as described in the
+[benchmark guide](BENCHMARKING.md#update-the-readme-nalgebrafaer-table).
+If the saved inputs are missing or invalid, the command stops with preparation
+guidance. If an older invocation of `performance-release` is already running,
+let it finish; capture the reviewed inputs with `performance-prepare` or supply
+the four explicit arguments, then run `performance-readme` without repeating
+measurements. A README failure leaves the retained measurements available for
+another publication attempt.
 
 See [Benchmarking](BENCHMARKING.md) for explicit scratch versus retained plot
 inputs, named metric/statistic/axis views, output ownership and methodology.
@@ -286,7 +329,7 @@ focused release preparation without feature work.
 ### Handling fixes found during preparation
 
 For a critical fix that must be included, make and commit the fix, rerun
-`just changelog-unreleased "$TAG" "$RELEASE_DATE"`, review and stage only the resulting changelog
+`just changelog-unreleased "$TAG"`, review and stage only the resulting changelog
 files, and commit that generated update separately.
 
 For a non-critical fix, file an issue and defer it to a later release. Do not

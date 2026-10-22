@@ -135,6 +135,9 @@ and tag preparation through its CLI. Consumer identity and dependency-body polic
 stay in `[tool.research-repo-tools.changelog]` in `pyproject.toml`, with
 formatting in `changelog-rumdl.toml`; no common template is copied locally.
 Focused integration checks live in `tooling/tests/test_changelog_integration.py`.
+`tooling/release_changelog.py` temporarily resolves omitted prospective release
+dates from the prepared citation metadata before delegating generation and
+preview to the installed CLI. It does not update citation metadata or use a clock.
 The same dependency owns CodeRabbit review orchestration through thin Just
 wrappers. `tooling/tests/test_review_integration.py` owns consumer wiring checks
 with local stubs; the [contributor review workflow](../CONTRIBUTING.md#coderabbit-review)
@@ -213,7 +216,10 @@ freshness checks and tagged evidence links. Static named configurations under
 `tooling/plots/{non-exact,retained,scratch}/` preserve eight metrics, mean/median and
 linear/log choices with explicit input ownership.
 
-The former performance Python adapters and the root `scripts/` directory are retired.
+`tooling/release_performance.py` temporarily captures independent release tags and
+commits during `performance-prepare` and supplies them to the separate
+`performance-readme` publication step, pending equivalent published upstream commands.
+The former measurement/publication implementations and root `scripts/` directory are retired.
 The installed CLI owns orchestration, validation and publication transactions.
 Working-tree measurements now include nonignored untracked regular files.
 `tooling/tests/test_performance_workflow.py` exercises actual recipes and
