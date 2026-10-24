@@ -48,6 +48,17 @@ Favor the invariant over a convenient edit or faster implementation.
 
 ## Core Rules
 
+- **Scientific correctness is the acceptance criterion.** Passing tests alone
+  do not establish mathematical or numerical validity. When a legitimate
+  regression test fails, agents MUST correct the production code while
+  preserving the original input and intended behavior. Never weaken assertions,
+  substitute easier fixtures, reduce coverage, skip the test, or replace
+  expected success with accepted failure merely to obtain a green run. Change
+  a test's contract only when independent evidence demonstrates that its
+  mathematics, fixture, or expectation is wrong; explain that evidence and
+  preserve meaningful regression coverage. Typed errors and rollback are
+  required safeguards, not substitutes for supported successful behavior.
+
 ### Git and Editing
 
 - **Mutate version-control state only with explicit user approval.** Keep

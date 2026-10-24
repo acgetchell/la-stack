@@ -10,18 +10,24 @@ helpers; shared tooling is not copied into this repository.
 ## Setup and validation
 
 Use `just setup`, then `uv run --locked` for Python commands. Python 3.15
-runs the shared package and the consumer tests in `tooling/tests/`.
+runs the shared package, Semgrep and the consumer tests in `tests/tooling/`.
 `just python-check` delegates formatting, lint and strict types to the shared
 complete tracked/nonignored Python inventory, including static-analysis fixtures.
+The `research-repo-tools[python-tools]` extra owns the pytest, Ruff and Ty
+versions. `toolchain.inherit-python-tools` verifies declarations, the locked
+development graph and executable versions. Local lint rules remain in this
+repository; the `dev` group does not carry competing tool pins.
 `just test-python`
 runs the installed-package integration tests. `just ci` is the final
 repository validation. Native Linux, macOS and Windows CI is required for
 adoption; local macOS results do not establish the other platforms.
 
-Semgrep 1.182.0 retains its separate locked Python 3.14 environment in
-`tooling/semgrep/` while its wheels exclude Python 3.15. Ordinary Rust and
-Python tests remain scan targets; deliberate `tests/semgrep/` fixtures are
-checked separately by `just semgrep-test`.
+Semgrep shares the root Python 3.15 environment and lockfile. Preserve its
+native-wheel requirement and compatibility overrides in `pyproject.toml`.
+Local scans, fixture checks and SARIF retain the Linux stack-limit workaround
+for [Semgrep #11979](https://github.com/semgrep/semgrep/issues/11979).
+Ordinary Rust and Python tests remain scan targets; deliberate `tests/semgrep/`
+fixtures are checked separately by `just semgrep-test`.
 
 ## Shared capability adoption
 
@@ -36,7 +42,7 @@ remain owned here.
 | Changelog and release | Shared generation, archives, metadata rules, registry gates and verification; the Cargo adapter reuses signed native/package evidence |
 | CI environment and toolchain | Shared setup/check/run/export and verified cached installations; `tools-clean` previews obsolete managed tools separately from Cargo `clean` |
 | Coverage | Native `cargo llvm-cov` acquisition; `coverage-report` summarizes its existing Cobertura output |
-| Dependencies | Shared uv/tool upgrades and `deps update-python --all-projects`; root Python 3.15 and isolated Semgrep Python 3.14 retain separate constraints |
+| Dependencies | Shared uv/tool upgrades and `deps update-python --all-projects`; all Python tools share the root Python 3.15 environment and lock |
 | Documentation and files | Shared tracked/nonignored selection and bounded argument batches for formatting, lint, spelling and syntax checks; one active Markdown policy preserves archives |
 | Performance | Declarative discovery, measurement, saved-sample validation, immutable evidence, offline rendering, report/README publication and release assets |
 | Python | Shared complete-inventory check/fix/typecheck with repository Ruff exceptions and strict ty diagnostics |
@@ -153,12 +159,12 @@ use the shared release contract; `release-package` owns native default/exact
 Cargo dry-runs. Main CI signs those packaging and native validation identities;
 `release-evidence` verifies the original main-push attempt and immutable signed
 artifact before publication and rechecks its pinned identity after approval.
-`tests/test_release_evidence.py` checks the adapter's trust boundaries, while
-`tests/test_release_publishing.py` checks consumer policy and upload barriers
+`tests/tooling/test_release_evidence.py` checks the adapter's trust boundaries, while
+`tests/tooling/test_release_publishing.py` checks consumer policy and upload barriers
 without registry credentials. The release guide owns retention, complete-rerun
 recovery and the distinction between reused checks and Cargo repackaging.
 
-`tests/test_toolchain_integration.py` owns the package-identity check:
+`tests/tooling/test_toolchain_integration.py` owns the package-identity check:
 manifest pin, registry lock, installed version and distribution hashes.
 Dependency updates and release tests derive their requirement from the
 manifest. The shared package pin advances deliberately with its lockfile;

@@ -96,7 +96,7 @@ def test_ci_enforces_full_python_fixture_lint_policy() -> None:
     assert "research-repo-tools python check" in python_body
     assert "--select" not in python_body
     inventory = set(select_files(REPO_ROOT, include=("*.py", "*.pyi")))
-    assert {"tooling/release_evidence.py", "tooling/tests/test_release_evidence.py", "tests/semgrep/scripts/python_portability.py"} <= inventory
+    assert {"tooling/release_evidence.py", "tests/tooling/test_release_evidence.py", "tests/semgrep/scripts/python_portability.py"} <= inventory
     assert not any(".venv" in Path(name).parts for name in inventory)
 
 
@@ -207,6 +207,8 @@ def test_semgrep_sarif_upload_honors_only_in_source_suppressions() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/semgrep-sarif.yml").read_bytes())
     steps = workflow["jobs"]["semgrep-sarif"]["steps"]
     scan = next(step for step in steps if step.get("id") == "semgrep")
+    assert "uv run --locked --group dev semgrep" in scan["run"]
+    assert scan["run"].index("ulimit -s 1048576") < scan["run"].index("set +e")
     command = next(line.strip() for line in scan["run"].splitlines() if line.strip().startswith("jq "))
     arguments = shlex.split(command)
     actionable = {"ruleId": "actionable", "partialFingerprints": {"primaryLocationLineHash": "original"}}

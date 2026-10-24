@@ -14,11 +14,14 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+from packaging.requirements import Requirement
 from research_repo_tools.criterion_inventory import CriterionInventory, load_discovery, serialize_inventory
 from research_repo_tools.process import run_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TOOLING_REQUIREMENT = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["dependency-groups"]["tooling"][0]
+SHARED_REQUIREMENT = Requirement(tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["dependency-groups"]["tooling"][0])
+# Release orchestration needs the core package independently of contributor extras.
+TOOLING_REQUIREMENT = SHARED_REQUIREMENT.name + str(SHARED_REQUIREMENT.specifier)
 WORKFLOW = REPO_ROOT / ".github/workflows/release-benchmarks.yml"
 PREPARATION = REPO_ROOT / ".github/actions/prepare-release-benchmarks/action.yml"
 CATALOG = tomllib.loads((REPO_ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))

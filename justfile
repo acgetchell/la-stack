@@ -8,6 +8,10 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 _run := "uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain run --"
 
+# Semgrep misreads Python 3.15's positive RLIM_INFINITY on Linux.
+# Keep its inherited stack finite until semgrep/semgrep#11979 is fixed.
+semgrep_stack_limit := if os() == "linux" { 'if [[ "$(ulimit -Hs)" == unlimited ]]; then ulimit -s 1048576; fi;' } else { "" }
+
 # One active-document selection for formatting and checks; retain measured history.
 _markdown_inputs := "--include '*.md' --exclude CHANGELOG.md --exclude 'docs/archive/**' --exclude 'docs/archives/changelog/**' --exclude docs/performance.md --exclude 'docs/performance-runs/**'"
 
@@ -66,7 +70,7 @@ action-lint: _ensure-actionlint
 
 # Audit the repository's Python and Rust lockfiles with the managed OSV scanner.
 audit:
-    uv run --locked --group dev research-repo-tools security osv uv.lock tooling/semgrep/uv.lock Cargo.lock
+    uv run --locked --group dev research-repo-tools security osv uv.lock Cargo.lock
 
 # Run the fixed-dimension benchmark suites.
 bench:
@@ -445,11 +449,11 @@ security-secrets:
 
 # Repository-owned Semgrep rules for project-specific diagnostics.
 semgrep: _ensure-uv
-    uv run --locked --project tooling/semgrep semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .
+    {{ semgrep_stack_limit }} uv run --locked --group dev semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .
 
 # Fixture tests for repository-owned Semgrep rules.
 semgrep-test: python-sync
-    uv run --locked --project tooling/semgrep uv run --locked --project . --group dev research-repo-tools semgrep check-fixtures
+    {{ semgrep_stack_limit }} uv run --locked --group dev research-repo-tools semgrep check-fixtures
 
 # Install declared managed tools and explicitly synchronize dev.
 setup: _ensure-gh _ensure-jq
@@ -514,7 +518,7 @@ test-integration-compile: tools-check
 
 # Run Python consumer integration and benchmark-policy tests.
 test-python: tools-check python-sync
-    {{ _run }} uv run --locked pytest -q
+    {{ semgrep_stack_limit }} {{ _run }} uv run --locked pytest -q
 
 # Run all runnable Rust tests and both doctest configurations.
 test-rust: test-rust-ci test-doc test-doc-exact
@@ -585,7 +589,7 @@ update-cargo-tools:
 # Dependency-only updates leave uv and managed Cargo tool pins unchanged.
 update-dependencies: update-cargo-dependencies update-python-dependencies
 
-# Advance main dev pins, then refresh and sync the root and Semgrep environments.
+# Advance dev pins, then refresh and sync the root Python environment.
 update-python-dependencies:
     uv run --locked --only-group tooling --inexact research-repo-tools deps update-python --all-projects
 
@@ -612,7 +616,7 @@ validate-json: _ensure-jq
 workflow-allowlist-check: python-sync
     uv run --locked research-repo-tools actions allowlist --policy .github/actions-allowlist.json .github/workflows
     # The v0.2.3 parser accepts workflows only; Semgrep checks composite actions.
-    uv run --locked --project tooling/semgrep semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .github/actions
+    {{ semgrep_stack_limit }} uv run --locked --group dev semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .github/actions
 
 # Check YAML and CFF formatting and lint.
 yaml-check: yaml-fmt-check yaml-lint
