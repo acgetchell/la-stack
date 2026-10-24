@@ -212,32 +212,38 @@ def test_semgrep_enforces_python_test_policies_at_the_relocated_path(tmp_path: P
     target = tmp_path / "tests/tooling/test_policy.py"
     target.parent.mkdir(parents=True)
     shutil.copyfile(REPO_ROOT / "tests/semgrep/scripts/tests/python_exceptions.py", target)
-    result = run_command(
+    command = [
         "uv",
-        [
-            "run",
-            "--locked",
-            "--project",
-            str(REPO_ROOT),
+        "run",
+        "--locked",
+        "--project",
+        str(REPO_ROOT),
+        "semgrep",
+        "--metrics",
+        "off",
+        "--disable-version-check",
+        "--error",
+        "--strict",
+        "--config",
+        "semgrep.yaml",
+        "--json",
+        ".",
+    ]
+    if sys.platform == "linux":
+        # Cap both stack limits in the scanner child, including direct pytest runs.
+        command = [
+            "bash",
+            "-euc",
+            'if [[ "$(ulimit -Hs)" == unlimited ]]; then ulimit -s 1048576; fi; exec "$@"',
             "semgrep",
-            "--metrics",
-            "off",
-            "--disable-version-check",
-            "--error",
-            "--strict",
-            "--config",
-            "semgrep.yaml",
-            "--json",
-            ".",
-        ],
-        cwd=tmp_path,
-        check=False,
-    )
+            *command,
+        ]
+    result = run_command(command[0], command[1:], cwd=tmp_path, check=False)
     assert result.returncode == 1, result.stderr
     report = json.loads(result.stdout)
     assert report["errors"] == []
     findings = report["results"]
-    assert {finding["path"] for finding in findings} == {"tests/tooling/test_policy.py"}
+    assert {Path(finding["path"]).as_posix() for finding in findings} == {"tests/tooling/test_policy.py"}
     expected = {
         "la-stack.python.explicit-path-text-encoding-in-tests": 2,
         "la-stack.python.no-adhoc-completedprocess-mock": 4,
