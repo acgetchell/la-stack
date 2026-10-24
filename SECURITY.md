@@ -118,22 +118,25 @@ assignment in that file. Other assignments and paths remain checked.
 
 ### Python tool dependencies
 
-Semgrep 1.182.0 accepts `pyjwt[crypto]>=2.15.0,<3`, so the older security override
-is retired. `tooling/semgrep/uv.lock` retains patched PyJWT 2.15.1 and its crypto
-dependencies. Validate native Semgrep scans when changing the scanner or lock.
+Semgrep shares the root Python 3.15 environment. Its native-wheel requirement
+and compatibility overrides live in `pyproject.toml`; `uv.lock` retains patched
+PyJWT 2.15.1 with its crypto dependencies and Base64URL padding fix. Validate
+native Semgrep scans when changing the scanner or lock.
 
-Semgrep 1.182.0 pins MCP 1.29.0, which is affected by
+Semgrep 1.182.1 pins MCP 1.29.0, which is affected by
 [GHSA-84m7-p3x7-pcfv](https://github.com/advisories/GHSA-84m7-p3x7-pcfv).
-The isolated environment overrides that pin with `mcp>=1.30.0,<2`, retaining
+The root environment overrides that pin with `mcp==1.30.0`, retaining
 the patched 1.x API. Remove the override when a released Semgrep dependency
-accepts a patched MCP version. The root support environment has no MCP dependency.
+accepts a patched MCP version. Matching OpenTelemetry API, SDK, exporter and
+instrumentation overrides retain the patched API without breaking scanner startup.
 
-`just audit` includes both Python lockfiles, and Dependabot is configured for both
-environments. Its [root graph job](https://github.com/acgetchell/la-stack/actions/runs/38871146224)
-currently rejects Python 3.15, so the root dependency alerts can be stale; use
+`just audit` and Dependabot use the root Python lockfile.
+The [observed dependency graph job](https://github.com/acgetchell/la-stack/actions/runs/38871146224)
+rejected Python 3.15, so dependency alerts can be stale; use
 `just audit` to check the current inventory until upstream supports Python 3.15.
-The isolated scanner remains on Python 3.14 while its wheels exclude Python 3.15;
-support scripts run on Python 3.15.
+The root overrides select Python 3.15 Windows wheels. Local and hosted scans cap
+an unlimited Linux stack until [Semgrep #11979](https://github.com/semgrep/semgrep/issues/11979)
+is fixed.
 
 ### Numerical logging false positives
 

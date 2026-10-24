@@ -7,7 +7,7 @@ dependencies = [  ]
 
 [tool.ruff]
 line-length = 160
-src = [ "tooling/tests" ]
+src = [ "." ]
 
 [tool.ruff.lint]
 select = [ "E", "F", "W", "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN205", "ANN206", "C90", "I", "N", "UP", "YTT", "ASYNC", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "FA", "T10", "EM", "EXE", "FIX", "FLY", "FURB", "ISC", "ICN", "LOG", "G", "INP", "PERF", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "SLOT", "TC", "TID", "TD", "ARG", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "RUF", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107" ]
@@ -33,7 +33,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/test_*.py" = [ "S101", "SLF001", "D101", "D102", "D103" ]
+"tests/tooling/test_*.py" = [ "S101", "SLF001", "D101", "D102", "D103" ]
 # Static-analysis fixtures intentionally contain the patterns these rules reject.
 "tests/semgrep/scripts/python_portability.py" = [ "D103", "INP001", "N813", "PLW1510", "PTH123", "S603", "S607", "SIM115", "UP020" ]
 "tests/semgrep/scripts/tests/python_exceptions.py" = [ "BLE001", "D100", "D103", "EM101", "INP001", "S110", "S607", "SIM105" ]
@@ -63,7 +63,7 @@ line-ending = "auto"
 [tool.pytest.ini_options]
 minversion = "9.0"
 addopts = [ "-ra", "--strict-markers", "--strict-config", "--color=yes" ]
-testpaths = [ "tooling/tests" ]
+testpaths = [ "tests/tooling" ]
 python_files = [ "test_*.py", "*_test.py" ]
 python_classes = [ "Test*" ]
 python_functions = [ "test_*" ]
@@ -87,26 +87,36 @@ line-length = 160
 [tool.uv]
 package = false
 required-version = "==0.13.5"
-# Semgrep has its own locked Python 3.14 environment under tooling/semgrep.
+# Semgrep requires its wheel-bundled native engine.
+no-build-package = [ "semgrep" ]
+# Preserve patched MCP, PyJWT and matching OpenTelemetry, plus Python 3.15 Windows wheels.
+override-dependencies = [
+    "pyjwt[crypto]>=2.15.1,<3",
+    "mcp==1.30.0",
+    "opentelemetry-api==1.45.1",
+    "opentelemetry-sdk==1.45.1",
+    "opentelemetry-exporter-otlp-proto-http==1.45.1",
+    "opentelemetry-instrumentation-requests==0.66b1",
+    "opentelemetry-instrumentation-threading==0.66b1",
+    "pywin32==312; sys_platform == 'win32'",
+]
 
 [dependency-groups]
-tooling = [ "research-repo-tools==0.2.3" ]
+tooling = [ "research-repo-tools[python-tools]==0.2.3" ]
 dev = [
     { include-group = "tooling" },
     "actionlint-py==1.7.12.25",
-    "pytest==9.1.1",
-    "ruff==0.17.2",
+    "semgrep==1.182.1",
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.2.0",
-    "ty==0.0.91",
     "yamllint==1.38.0",
 ]
 
 [tool.research-repo-tools]
 schema = 1
 
-[tool.research-repo-tools.deps]
-python-projects = [ "tooling/semgrep" ]
+[tool.research-repo-tools.toolchain]
+inherit-python-tools = true
 
 [tool.research-repo-tools.toolchain.binaries]
 gitleaks = "8.30.1"
@@ -118,7 +128,7 @@ cargo-llvm-cov = "0.9.1"
 cargo-machete = "0.9.2"
 cargo-nextest = "0.9.149"
 clippy-sarif = "0.8.0"
-dprint = "0.64.1"
+dprint = "0.64.3"
 git-cliff = "2.14.2"
 rumdl = "0.3.0"
 sarif-fmt = "0.8.0"

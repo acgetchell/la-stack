@@ -49,8 +49,8 @@ jobs:
       - name: Set up declared tools
         uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
 
-      - name: Audit root and independent Python locks
-        run: uv run --locked --group dev research-repo-tools security osv uv.lock tooling/semgrep/uv.lock
+      - name: Audit Python lock
+        run: uv run --locked --group dev research-repo-tools security osv uv.lock
 
       - name: Retain dependency audit reports
         if: ${{ !cancelled() }}

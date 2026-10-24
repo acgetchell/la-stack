@@ -12,8 +12,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from packaging.requirements import Requirement
 from research_repo_tools.cli import main
 from research_repo_tools.process import run_command
+from research_repo_tools.python_tools import TOOLS, versions as shared_tool_versions
 
 if TYPE_CHECKING:
     import subprocess
@@ -50,8 +52,10 @@ def test_published_tooling_package_matches_manifest_lock_and_installation() -> N
     assert manifest["project"]["dependencies"] == []
     assert manifest["tool"]["uv"]["package"] is False
     assert "build-system" not in manifest
-    assert manifest["dependency-groups"]["tooling"] == [f"research-repo-tools=={expected_version}"]
+    assert manifest["dependency-groups"]["tooling"] == [f"research-repo-tools[python-tools]=={expected_version}"]
     assert {"include-group": "tooling"} in manifest["dependency-groups"]["dev"]
+    assert manifest["tool"]["research-repo-tools"]["toolchain"]["inherit-python-tools"] is True
+    assert not {Requirement(item).name for item in manifest["dependency-groups"]["dev"] if isinstance(item, str)} & TOOLS
     assert version("research-repo-tools") == expected_version
     lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
     package = next(item for item in lock["package"] if item["name"] == "research-repo-tools")
@@ -59,6 +63,9 @@ def test_published_tooling_package_matches_manifest_lock_and_installation() -> N
     assert package["source"] == {"registry": "https://pypi.org/simple"}
     assert package["wheels"][0]["hash"] == "sha256:da5f0259027662e7706b7f2b8a38d8e1f1d8a5dce314e2c996177b2947514fc6"
     assert package["sdist"]["hash"] == "sha256:13700b174656ffad265ecb926dd66013949853b7a39c088ab6d3852aba72df95"
+    locked = {item["name"]: item["version"] for item in lock["package"]}
+    for name, expected in shared_tool_versions().items():
+        assert locked[name] == version(name) == expected
 
 
 @pytest.fixture
@@ -138,11 +145,19 @@ def test_declared_tools_are_verified_and_cargo_edit_runs_from_managed_store(caps
 
 def fixture_wheel(registry: Path, requirement: str) -> None:
     """Supply offline resolution candidates; installed CLI code comes from the host."""
-    name, version = requirement.split("==")
+    parsed = Requirement(requirement)
+    pin = next(iter(parsed.specifier))
+    assert pin.operator == "=="
+    name, version = parsed.name, pin.version
     distribution = name.replace("-", "_")
     info = f"{distribution}-{version}.dist-info"
+    extra = ""
+    if name == "research-repo-tools":
+        extra = "Provides-Extra: python-tools\n" + "".join(
+            f"Requires-Dist: {tool}=={expected}; extra == 'python-tools'\n" for tool, expected in shared_tool_versions().items()
+        )
     with zipfile.ZipFile(registry / f"{distribution}-{version}-py3-none-any.whl", "w") as archive:
-        archive.writestr(f"{info}/METADATA", f"Metadata-Version: 2.3\nName: {name}\nVersion: {version}\nRequires-Python: >=3.15\n")
+        archive.writestr(f"{info}/METADATA", f"Metadata-Version: 2.3\nName: {name}\nVersion: {version}\nRequires-Python: >=3.15\n{extra}")
         archive.writestr(f"{info}/WHEEL", "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n")
         archive.writestr(f"{info}/RECORD", "")
 
@@ -160,7 +175,15 @@ def test_python_update_preserves_shared_pin_and_tools_with_explicit_dev_sync(tmp
     manifest.write_text(source, encoding="utf-8")
     before = tomllib.loads(source)
     groups = before["dependency-groups"]
-    for requirement in [*groups["tooling"], *(entry for entry in groups["dev"] if isinstance(entry, str)), "ruff==99.0.0"]:
+    shared = shared_tool_versions()
+    for requirement in [
+        *groups["tooling"],
+        *(entry for entry in groups["dev"] if isinstance(entry, str)),
+        *(f"{tool}=={expected}" for tool, expected in shared.items()),
+        "yamllint==99.0.0",
+        "ruff==99.0.0",
+        "ty==99.0.0",
+    ]:
         fixture_wheel(registry, requirement)
     for name in ("UV_PROJECT", "UV_WORKING_DIR", "UV_WORKING_DIRECTORY", "UV_CONFIG_FILE"):
         monkeypatch.delenv(name, raising=False)
@@ -175,18 +198,21 @@ def test_python_update_preserves_shared_pin_and_tools_with_explicit_dev_sync(tmp
     }.items():
         monkeypatch.setenv(name, value)
 
+    run_command("uv", ["lock"], cwd=root)
     assert main(["--root", str(root), "deps", "update-python"]) == 0
     after = tomllib.loads(manifest.read_text(encoding="utf-8"))
-    assert "ruff==99.0.0" in after["dependency-groups"]["dev"]
+    assert "yamllint==99.0.0" in after["dependency-groups"]["dev"]
     assert after["dependency-groups"]["tooling"] == groups["tooling"]
     assert after["tool"]["research-repo-tools"] == before["tool"]["research-repo-tools"]
     assert after["tool"]["uv"] == before["tool"]["uv"]
     run_command("uv", ["lock", "--upgrade"], cwd=root)
     lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
     packages = {package["name"]: package["version"] for package in lock["package"]}
-    shared_name, shared_version = groups["tooling"][0].split("==")
-    assert packages[shared_name] == shared_version
-    assert packages["ruff"] == "99.0.0"
+    requirement = Requirement(groups["tooling"][0])
+    assert packages[requirement.name] in requirement.specifier
+    assert packages["yamllint"] == "99.0.0"
+    for name, expected in shared.items():
+        assert packages[name] == expected
     run_command("uv", ["sync", "--locked", "--group", "dev"], cwd=root)
     installed = run_command("uv", ["run", "--locked", "--no-sync", "python", "-c", "from importlib.metadata import version; print(version('ruff'))"], cwd=root)
-    assert installed.stdout.strip() == "99.0.0"
+    assert installed.stdout.strip() == shared["ruff"]

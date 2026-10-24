@@ -1053,7 +1053,7 @@ rules:
         - "/tooling/**/*.py"
         - "/tests/semgrep/scripts/**/*.py"
       exclude:
-        - "/tooling/tests/**"
+        - "/tests/tooling/**"
         - "/tests/semgrep/scripts/tests/**"
     patterns:
       - pattern-either:
@@ -1075,7 +1075,7 @@ rules:
         - "/tooling/**/*.py"
         - "/tests/semgrep/scripts/**/*.py"
       exclude:
-        - "/tooling/tests/**"
+        - "/tests/tooling/**"
         - "/tests/semgrep/scripts/tests/**"
     pattern-either:
       - patterns:
@@ -1149,7 +1149,7 @@ rules:
         while failing on Windows when output contains Unicode symbols.
     paths:
       include:
-        - "/tooling/tests/**/*.py"
+        - "/tests/tooling/**/*.py"
         - "/tests/semgrep/scripts/tests/**/*.py"
     patterns:
       - pattern-either:
@@ -1176,6 +1176,7 @@ rules:
       include:
         - "/tooling/**/*.py"
         - "/tests/semgrep/scripts/tests/python_exceptions.py"
+        - "/tests/tooling/**/*.py"
     pattern-regex: '^\s*except\s+Exception(?:\s+as\s+\w+)?\s*:'
 
   - id: la-stack.python.no-adhoc-completedprocess-mock
@@ -1188,7 +1189,7 @@ rules:
       rationale: "Command-wrapper mocks should stay aligned with the real subprocess result shape."
     paths:
       include:
-        - "/tooling/tests/**/*.py"
+        - "/tests/tooling/**/*.py"
         - "/tests/semgrep/scripts/tests/python_exceptions.py"
     pattern-either:
       - patterns:
@@ -1269,5 +1270,5 @@ rules:
         - "/tooling/**/*.py"
         - "/tests/semgrep/scripts/tests/python_exceptions.py"
       exclude:
-        - "/tooling/tests/**/*.py"
+        - "/tests/tooling/**/*.py"
     pattern: subprocess.run(...)

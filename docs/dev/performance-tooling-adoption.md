@@ -125,7 +125,7 @@ frozen complete run.
 The retirement removes `archive_performance.py`, `performance_runs.py`,
 their adapter tests, and their obsolete measurement/plot declarations.
 Useful non-performance integration tests move from `scripts/tests/` to
-`tooling/tests/`. The root `scripts/` directory then has no production or
+`tests/tooling/`. The root `scripts/` directory then has no production or
 test owner. Semgrep fixtures under `tests/semgrep/scripts/` and historical
 security-exception paths keep their existing identities.
 
@@ -145,9 +145,12 @@ reruns or new performance claims are needed.
 
 The dependency-only environment remains Python 3.15. Python supports shared
 tools and consumer tests; deleting production scripts does not remove it.
-Semgrep 1.182.0 still requires its separately locked Python 3.14 environment
-under `tooling/semgrep/`. Retire that exception only when published scanner
-wheels support Python 3.15 and native gates pass.
+Semgrep initially used a separately locked Python 3.14 environment. Following
+[MCMC #214](https://github.com/acgetchell/markov-chain-monte-carlo/pull/214),
+Semgrep 1.182.1 now shares the root Python 3.15 environment and lockfile.
+The root manifest retains its native-wheel requirement, compatibility overrides
+and Python 3.15 Windows wheels. Local and hosted scans retain the Linux
+stack-limit workaround. Consumer tests now live under `tests/tooling/`.
 
 Native discovery listed 533 comparison and 354 exact cases while verifying
 the independent 417 required IDs. The scientific gates passed 26 exact-input

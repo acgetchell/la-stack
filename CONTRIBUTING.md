@@ -40,8 +40,13 @@ arguments and descriptions. The [command policy](docs/dev/docs.md#command-discov
 owns recipe naming and documentation placement.
 
 Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.3` package,
-locked in the `tooling` dependency group and included by `dev`. Normal setup
-and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
+locked in the `tooling` dependency group and included by `dev`. Its `python-tools`
+extra owns the pytest, Ruff and Ty versions.
+`toolchain.inherit-python-tools` checks those versions against the lock and
+selected executables. Keep repository lint policy local and omit duplicate
+version pins for these tools from `dev`.
+
+Normal setup and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
 checkout is unnecessary. To upgrade it deliberately, review the exact
 `tooling` and project runtime requirements and refresh `uv.lock` together, then run the consumer
 integration tests and `just ci`. See the [Tooling guide](tooling/README.md#changelog-and-release-tooling)
@@ -66,12 +71,12 @@ Then `just update-dependencies` upgrades Cargo requirements and refreshes Cargo'
 lock, resolves exact direct Python `dev` pins, refreshes the complete `uv.lock`,
 and explicitly synchronizes `dev` with managed Rust available for native builds.
 Included groups retain their constraints, including the exact shared-package pin.
-The shared Python updater also refreshes `tooling/semgrep/uv.lock` and syncs its
-separate environment through `deps.python-projects`. It retains the scanner's
-exact Semgrep pin, Python 3.14 selector, and dependency overrides. Declare future
-independent uv projects in the same list so they participate in `just update`.
-The hosted dependency audit checks both Python lockfiles with the shared OSV
-adapter; its existing Cargo audit retains the native Rust advisory policy.
+Semgrep shares the root Python 3.15 environment and lockfile. Preserve its exact
+pin, native-wheel requirement and compatibility overrides for MCP, PyJWT,
+OpenTelemetry and Python 3.15 Windows wheels. Scanner commands retain the Linux
+stack-limit workaround required by Semgrep on Python 3.15. The hosted dependency
+audit checks the root Python lockfile with the shared OSV adapter; its existing
+Cargo audit retains the native Rust advisory policy.
 `just update-cargo-dependencies` excludes `num-bigint` and `num-rational` from
 incompatible requirement upgrades because their public types must advance
 together; Cargo can still refresh locked versions within those requirements.
@@ -106,8 +111,7 @@ adapter and authentication regressions belong to research-repo-tools. Hosted
 CI runs a blocking finding check before a separate SARIF export; native SARIF
 output alone does not fail on findings.
 
-`just security` runs the shared OSV dependency audit for `uv.lock`,
-`tooling/semgrep/uv.lock` and `Cargo.lock`,
+`just security` runs the shared OSV dependency audit for `uv.lock` and `Cargo.lock`,
 then the Gitleaks scan of reachable Git history and current tracked/nonignored
 files. Run either gate separately with `just audit` or
 `just security-secrets`. Setup installs both declared managed binaries. OSV needs
@@ -164,9 +168,8 @@ CodeRabbit's successful status on a skipped bot review is not an approval.
 The [rollout guide](docs/dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
 owns GitHub settings and post-merge verification. The workflow never executes
 PR code; dependency eligibility remains in `.github/dependabot.yml`.
-Dependabot also monitors `tooling/semgrep/`; those scanner updates require manual
-review because the trusted uv approval allowlist covers only the root manifest
-and lockfile.
+Dependabot monitors Semgrep through the root Python manifest and lockfile,
+which are covered by the trusted uv approval allowlist.
 
 ### Rust Toolchain Policy
 

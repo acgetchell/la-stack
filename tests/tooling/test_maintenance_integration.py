@@ -1,11 +1,13 @@
 """Published maintenance CLI integration with la-stack's actual consumer policy."""
 
+import json
 import os
 import re
 import shlex
 import shutil
 import sys
 import tomllib
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -162,17 +164,19 @@ def test_semgrep_adapter_uses_real_consumer_rules_and_fixtures() -> None:
     assert "research-repo-tools semgrep check-fixtures" in result.stderr
 
 
-def test_semgrep_preserves_its_pin_and_security_overrides_in_python_314() -> None:
-    """The isolated scanner excludes vulnerable dependencies and aligns telemetry."""
+def test_semgrep_runs_in_the_root_python_315_environment_with_compatible_dependencies() -> None:
+    """The unified scanner starts with its native engine and patched dependencies."""
     root = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    scanner = tomllib.loads((REPO_ROOT / "tooling/semgrep/pyproject.toml").read_text(encoding="utf-8"))
-    assert not any(isinstance(item, str) and item.startswith("semgrep") for item in root["dependency-groups"]["dev"])
-    assert scanner["project"]["dependencies"] == ["semgrep==1.182.0"]
-    assert scanner["project"]["requires-python"] == ">=3.14,<3.15"
-    overrides = {requirement.name: requirement.specifier for requirement in map(Requirement, scanner["tool"]["uv"]["override-dependencies"])}
-    lock = tomllib.loads((REPO_ROOT / "tooling/semgrep/uv.lock").read_text(encoding="utf-8"))
+    requirement = next(Requirement(item) for item in root["dependency-groups"]["dev"] if isinstance(item, str) and item.startswith("semgrep"))
+    assert root["project"]["requires-python"] == ">=3.15"
+    assert root["tool"]["uv"]["no-build-package"] == ["semgrep"]
+    assert not (REPO_ROOT / "tooling/semgrep/pyproject.toml").exists()
+    overrides = {requirement.name: requirement.specifier for requirement in map(Requirement, root["tool"]["uv"]["override-dependencies"])}
+    lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
     versions = {package["name"]: Version(package["version"]) for package in lock["package"]}
-    for name, vulnerable, patched in (("mcp", "1.29.0", "1.30.0"), ("opentelemetry-api", "1.45.0", "1.45.1")):
+    assert versions["semgrep"] in requirement.specifier
+    assert versions["pywin32"] == Version("312")
+    for name, vulnerable, patched in (("mcp", "1.29.0", "1.30.0"), ("opentelemetry-api", "1.45.0", "1.45.1"), ("pyjwt", "2.15.0", "2.15.1")):
         assert Version(vulnerable) not in overrides[name]
         assert Version(patched) in overrides[name]
         assert versions[name] in overrides[name]
@@ -184,17 +188,68 @@ def test_semgrep_preserves_its_pin_and_security_overrides_in_python_314() -> Non
         == versions["opentelemetry-instrumentation-requests"]
         == versions["opentelemetry-instrumentation-threading"]
     )
-    result = run_command("uv", ["run", "--locked", "--project", "tooling/semgrep", "semgrep", "--disable-version-check", "--version"], cwd=REPO_ROOT)
-    assert result.stdout.strip() == "1.182.0"
+    scanner = next(package for package in lock["package"] if package["name"] == "semgrep")
+    assert any("none-win_amd64" in wheel["url"] for wheel in scanner["wheels"])
+    windows = next(package for package in lock["package"] if package["name"] == "pywin32")
+    assert any("cp315-cp315-win_amd64" in wheel["url"] for wheel in windows["wheels"])
+    result = run_command("uv", ["run", "--locked", "--group", "dev", "semgrep", "--disable-version-check", "--version"], cwd=REPO_ROOT)
+    assert result.stdout.strip() == str(versions["semgrep"])
 
 
-def test_python_update_includes_the_isolated_semgrep_project() -> None:
-    """The shared updater owns both locks while each project owns its constraints."""
+def test_python_update_uses_the_unified_environment() -> None:
+    """The shared updater refreshes the root lock containing all development tools."""
     root = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert root["tool"]["research-repo-tools"]["deps"]["python-projects"] == ["tooling/semgrep"]
+    assert not root["tool"]["research-repo-tools"].get("deps", {}).get("python-projects", [])
     result = dry_run(REPO_ROOT, "update-python-dependencies")
     assert "research-repo-tools deps update-python --all-projects" in result.stderr
     assert "uv lock --upgrade" not in result.stderr
+
+
+def test_semgrep_enforces_python_test_policies_at_the_relocated_path(tmp_path: Path) -> None:
+    """Real production path filters still detect violations and allow compliant cases."""
+    shutil.copyfile(REPO_ROOT / ".semgrepignore", tmp_path / ".semgrepignore")
+    shutil.copyfile(REPO_ROOT / "semgrep.yaml", tmp_path / "semgrep.yaml")
+    target = tmp_path / "tests/tooling/test_policy.py"
+    target.parent.mkdir(parents=True)
+    shutil.copyfile(REPO_ROOT / "tests/semgrep/scripts/tests/python_exceptions.py", target)
+    command = [
+        "uv",
+        "run",
+        "--locked",
+        "--project",
+        str(REPO_ROOT),
+        "semgrep",
+        "--metrics",
+        "off",
+        "--disable-version-check",
+        "--error",
+        "--strict",
+        "--config",
+        "semgrep.yaml",
+        "--json",
+        ".",
+    ]
+    if sys.platform == "linux":
+        # Cap both stack limits in the scanner child, including direct pytest runs.
+        command = [
+            "bash",
+            "-euc",
+            'if [[ "$(ulimit -Hs)" == unlimited ]]; then ulimit -s 1048576; fi; exec "$@"',
+            "semgrep",
+            *command,
+        ]
+    result = run_command(command[0], command[1:], cwd=tmp_path, check=False)
+    assert result.returncode == 1, result.stderr
+    report = json.loads(result.stdout)
+    assert report["errors"] == []
+    findings = report["results"]
+    assert {Path(finding["path"]).as_posix() for finding in findings} == {"tests/tooling/test_policy.py"}
+    expected = {
+        "la-stack.python.explicit-path-text-encoding-in-tests": 2,
+        "la-stack.python.no-adhoc-completedprocess-mock": 4,
+        "la-stack.python.no-broad-exception": 2,
+    }
+    assert Counter(finding["check_id"] for finding in findings) == expected
 
 
 @pytest.mark.parametrize("output_args", [pytest.param((), id="local"), pytest.param(("--sarif",), id="sarif")])
@@ -204,7 +259,7 @@ def test_semgrep_production_targets_include_tests_and_exclude_rule_fixtures(tmp_
     included = {
         "tests/proptest_exact.rs",
         "benches/comparison/tests/vs_linalg_inputs.rs",
-        "tooling/tests/test_release_baseline.py",
+        "tests/tooling/test_release_baseline.py",
         ".github/workflows/semgrep-sarif.yml",
         "test/control.rs",
         "testsuite/control.py",
@@ -247,7 +302,7 @@ def test_semgrep_production_targets_include_tests_and_exclude_rule_fixtures(tmp_
             "run",
             "--locked",
             "--project",
-            str(REPO_ROOT / "tooling/semgrep"),
+            str(REPO_ROOT),
             "semgrep",
             "scan",
             "--metrics",

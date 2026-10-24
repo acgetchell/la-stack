@@ -93,7 +93,7 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
   workspace packages.
 - `tests/semgrep/` contains deliberate static-analysis fixtures, not ordinary
   runnable API examples.
-- Python tests live under `tooling/tests/` and run with pytest through
+- Python tests live under `tests/tooling/` and run with pytest through
   `just test-python` or the aggregate validation workflows.
 - `examples/` contains complete runnable workflows. README mirrors and public
   guide doctests live in `src/lib.rs`.
@@ -105,6 +105,10 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
 
 Use [Testing guidance](dev/testing.md) for dimension coverage and test design,
 and [Documentation guidance](dev/docs.md) for executable-example ownership.
+Standalone integration and support-tool tests belong under the owning package's
+`tests/` directory; inline Rust unit tests and doctests stay with their code.
+`tests/__init__.py` keeps the `tests.tooling` package distinct from the
+production `tooling` adapters during pytest collection.
 
 ## Benchmarks and support tooling
 
@@ -134,12 +138,12 @@ owns changelog generation, normalization, minor-series archiving, note lookup,
 and tag preparation through its CLI. Consumer identity and dependency-body policy
 stay in `[tool.research-repo-tools.changelog]` in `pyproject.toml`, with
 formatting in `changelog-rumdl.toml`; no common template is copied locally.
-Focused integration checks live in `tooling/tests/test_changelog_integration.py`.
+Focused integration checks live in `tests/tooling/test_changelog_integration.py`.
 `tooling/release_changelog.py` temporarily resolves omitted prospective release
 dates from the prepared citation metadata before delegating generation and
 preview to the installed CLI. It does not update citation metadata or use a clock.
 The same dependency owns CodeRabbit review orchestration through thin Just
-wrappers. `tooling/tests/test_review_integration.py` owns consumer wiring checks
+wrappers. `tests/tooling/test_review_integration.py` owns consumer wiring checks
 with local stubs; the [contributor review workflow](../CONTRIBUTING.md#coderabbit-review)
 owns prerequisites and invocation policy.
 The [justfile](../justfile) owns executable development workflows.
@@ -154,7 +158,7 @@ and review policy belong in [Security Checks](../SECURITY.md#security-checks).
 
 The shared package also owns managed tool installation, verification, and update
 implementation. `.python-version`, `rust-toolchain.toml`, and `pyproject.toml`
-own consumer declarations; `tooling/tests/test_toolchain_integration.py` checks
+own consumer declarations; `tests/tooling/test_toolchain_integration.py` checks
 the exact published pin, registry lock, installed version and distribution hashes,
 alongside actual recipe sequencing and native managed execution. The
 `.github/actions/setup-tools/action.yml` composite synchronizes the locked PyPI
@@ -167,9 +171,9 @@ live GitHub settings separately; consult the
 
 Release metadata, version checks, Markdown line checks, and Semgrep fixture
 validation also belong to the shared CLI. Consumer policy stays in
-`pyproject.toml`; `tooling/tests/test_maintenance_integration.py` verifies the
+`pyproject.toml`; `tests/tooling/test_maintenance_integration.py` verifies the
 actual release selectors and preservation of scientific evidence.
-`tooling/tests/test_cargo_update_integration.py` exercises native dependency
+`tests/tooling/test_cargo_update_integration.py` exercises native dependency
 upgrades and coupled exclusions against a disposable local registry.
 
 The shared package also owns process discovery, captured/live execution, exact
@@ -200,7 +204,7 @@ minimum scientific report/plot coverage. `tooling/criterion-saved.toml` declares
 complete saved-sample requirements. Shared discovery and saved-sample APIs own
 inventory parsing and exact raw-file verification. The release workflow packages only datasets that pass
 that gate; its regression and archive tests live in
-`tooling/tests/test_release_baseline.py`.
+`tests/tooling/test_release_baseline.py`.
 
 `tooling/performance.just` declares native Cargo discovery, correctness gates
 and measurements. `tooling/measurements/{full,non-exact}.toml` declares the
@@ -222,7 +226,7 @@ commits during `performance-prepare` and supplies them to the separate
 The former measurement/publication implementations and root `scripts/` directory are retired.
 The installed CLI owns orchestration, validation and publication transactions.
 Working-tree measurements now include nonignored untracked regular files.
-`tooling/tests/test_performance_workflow.py` exercises actual recipes and
+`tests/tooling/test_performance_workflow.py` exercises actual recipes and
 scientific policy. Shared failure matrices remain upstream. The
 [adoption record](dev/performance-tooling-adoption.md) records replacement
 ownership and native validation gates.
@@ -231,9 +235,11 @@ Original artifacts, including the v0.5.0/v0.4.6 complete run, remain frozen
 without regeneration or invented acquisition records. New complete runs
 support offline rendering through the declared eligibility policy.
 
-`tooling/semgrep/` owns a locked Python 3.14 environment for Semgrep 1.182.0
-while its wheels exclude Python 3.15. Local scans, shared fixture validation
-and hosted SARIF use it; ordinary support scripts use Python 3.15.
+The root Python 3.15 environment owns Semgrep alongside the other development
+tools. Its exact pin, native-wheel requirement and compatibility overrides live
+in `pyproject.toml` and `uv.lock`. Local scans, shared fixture validation and
+hosted SARIF use that lock and retain the Linux stack-limit workaround for
+[Semgrep #11979](https://github.com/semgrep/semgrep/issues/11979).
 The root `.semgrepignore` keeps ordinary Rust and Python tests in those scans
 while excluding deliberate `tests/semgrep/` fixtures, which `just semgrep-test`
 validates separately. Git-ignored dependencies, environments, caches, and build
@@ -245,12 +251,12 @@ input validation, and inventory under the release workflow's shared setup timeou
 `.github/workflows/ci.yml` owns native checks, default/exact Cargo dry-runs and
 signed main-push validation evidence. `tooling/release_evidence.py` supplies the
 Cargo-specific policy around shared run/job validation and artifact retrieval;
-`tooling/tests/test_release_evidence.py` owns its provider-boundary regressions.
+`tests/tooling/test_release_evidence.py` owns its provider-boundary regressions.
 `.github/workflows/publish-crates.yml` owns the reviewed-release event, reuse of
 that exact CI attempt and artifact, deployment approval and OIDC upload. The publishing declaration
 in `pyproject.toml` selects `la-stack`, native checks and the Criterion asset;
 shared release gates own generic identity, ancestry and registry checks.
-`tooling/tests/test_release_publishing.py` owns installed-package consumer checks
+`tests/tooling/test_release_publishing.py` owns installed-package consumer checks
 and upload-barrier tests. The [release guide](RELEASING.md) owns account setup,
 manual publication, registry verification and recovery.
 
