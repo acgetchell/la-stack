@@ -401,9 +401,14 @@ python-sync: _ensure-uv
 python-typecheck: python-sync
     uv run --locked research-repo-tools python typecheck
 
-# Verify signed default/exact packaging and native CI for HEAD; optionally pin the evidence identity.
-release-evidence identity="":
-    uv run --locked --no-sync python -m tooling.release_evidence verify --identity {{ quote(identity) }}
+# Verify signed Cargo/native CI evidence; accept --identity JSON and --github-output PATH.
+[positional-arguments]
+[script("uv", "run", "--locked", "--no-sync", "python")]
+release-evidence *args:
+    import runpy
+    import sys
+    sys.argv[1:1] = ["verify"]
+    runpy.run_path("tooling/release_evidence.py", run_name="__main__")
 
 # Require the release event, reviewed commit, native checks, assets, and notes.
 release-gate tag:

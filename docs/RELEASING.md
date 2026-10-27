@@ -54,9 +54,24 @@ package identities. Pending matching runs receive a bounded wait; missing,
 failed, ambiguous or expired evidence stops publication. PR, manual dispatch,
 fork, local and partial-rerun results cannot replace it.
 
-The publishing workflow reuses these completed checks, captures the run/attempt
-and artifact ID/digest, and revalidates that same identity after deployment
-approval. It also retains the independent release metadata, exact-commit SARIF,
+Local verification prints the validated identity as deterministic single-line
+JSON. In Actions, `just release-evidence --github-output "$GITHUB_OUTPUT"`
+uses the installed `research_repo_tools.ci.export_environment` helper to append
+the `identity` output only after verification succeeds. The destination must
+already exist; export errors fail the command. Existing output records survive,
+and normal or quiet Just execution transports the same JSON without capturing
+stdout. Non-finite JSON values are rejected. The shared helper owns command-file
+transport; this adapter retains the Cargo-specific evidence policy.
+The Just recipe launches uv and Python directly so JSON arguments never pass
+through the native Windows-to-MSYS shell boundary. Omitting `--identity` selects
+fresh evidence; supplying an empty identity is an error.
+
+The publishing workflow reuses these completed checks and passes the run/attempt
+and artifact ID/digest through `steps.evidence.outputs.identity` and
+`needs.verify.outputs.ci-evidence` to `CI_EVIDENCE`. After deployment approval,
+it requires a nonempty value and revalidates that exact identity with
+`just release-evidence --identity "$CI_EVIDENCE"` before token acquisition.
+It also retains the independent release metadata, exact-commit SARIF,
 durable Criterion asset, immutable GitHub release and registry-absence gates.
 Release benchmarks remain a separate scientific measurement workflow; CI
 evidence does not replace their full sampling or durable archive.

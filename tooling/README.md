@@ -22,6 +22,25 @@ runs the installed-package integration tests. `just ci` is the final
 repository validation. Native Linux, macOS and Windows CI is required for
 adoption; local macOS results do not establish the other platforms.
 
+For subprocess fixtures, run Bash and Python source from files, and pass paths
+and payloads as arguments or environment data. Nested `-c` commands add Windows
+argument parsing boundaries that POSIX shell quoting does not protect. Supply an
+explicit child environment when testing empty values: Windows `putenv` removes
+them from the inherited native environment. Exercise Windows path data and
+quoting characters as well as native Windows execution. Negative tests must
+prove the received arguments, intended rejection and unchanged output; a nonzero
+exit alone also accepts a broken import or shell. When quiet mode hides
+diagnostics, retain the verifier's arguments, exit status and diagnostic in a
+fixture-owned result file.
+
+The `release-evidence` recipe uses Just's native uv/Python script interpreter.
+MSYS applies shell-like argument expansion when started by a native Windows
+program, which can corrupt JSON passed as Bash positional arguments; see
+[MSYS2 #522](https://github.com/msys2/MSYS2-packages/issues/522). The integration
+fixture keeps the real Just, uv and Python launch and substitutes only the
+entry point's provider responses. It checks the exact received identity and
+rejects an explicitly empty pin rather than selecting fresh evidence.
+
 Semgrep shares the root Python 3.15 environment and lockfile. Preserve its
 native-wheel requirement and compatibility overrides in `pyproject.toml`.
 Local scans, fixture checks and SARIF retain the Linux stack-limit workaround
@@ -159,6 +178,9 @@ use the shared release contract; `release-package` owns native default/exact
 Cargo dry-runs. Main CI signs those packaging and native validation identities;
 `release-evidence` verifies the original main-push attempt and immutable signed
 artifact before publication and rechecks its pinned identity after approval.
+The adapter uses the installed `ci.export_environment` helper for explicit
+`--github-output` export; the [release guide](../docs/RELEASING.md#reusable-ci-evidence)
+owns the transport and approval contract. Cargo evidence policy stays local.
 `tests/tooling/test_release_evidence.py` checks the adapter's trust boundaries, while
 `tests/tooling/test_release_publishing.py` checks consumer policy and upload barriers
 without registry credentials. The release guide owns retention, complete-rerun

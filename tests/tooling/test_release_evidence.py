@@ -24,6 +24,7 @@ ARTIFACT_ENDPOINT = "actions/artifacts/301"
 RUNS_ENDPOINT = f"actions/workflows/9/runs?event=push&branch=main&head_sha={COMMIT}&per_page=100&page=1"
 INVOCATION = f"https://github.com/{REPOSITORY}/actions/runs/101/attempts/2"
 PIN = {"run_id": 101, "run_attempt": 2, "artifact_id": 301, "artifact_digest": DIGEST}
+PIN_JSON = '{"artifact_digest":"sha256:' + "b" * 64 + '","artifact_id":301,"run_attempt":2,"run_id":101}'
 NATIVE_GATES = (
     ("build (ubuntu-latest)", "Run CI checks", 201),
     ("build (macos-latest)", "Run CI checks", 202),
@@ -440,7 +441,7 @@ def test_verified_attestation_must_name_this_push_invocation(provider: EvidenceP
 
 @pytest.mark.parametrize("source", ["pin", "manifest", "attestation"])
 def test_duplicate_keys_cannot_replace_pinned_signed_or_verified_claims(provider: EvidenceProvider, source: str) -> None:
-    identity = ""
+    identity = None
     if source == "pin":
         identity = json.dumps(PIN).replace('"run_id": 101', '"run_id": 101, "run_id": 101', 1)
     elif source == "manifest":
@@ -505,5 +506,87 @@ def test_cli_success_emits_only_the_pinned_json_identity(
     monkeypatch.setattr(sys, "argv", ["release_evidence", "verify"])
     assert provider.adapter.main() == 0
     captured = capsys.readouterr()
-    assert json.loads(captured.out) == PIN
+    assert captured.out == PIN_JSON + "\n"
     assert captured.err == ""
+
+
+@pytest.mark.parametrize("pinned", [False, True])
+def test_cli_exports_verified_identity_with_installed_helper_and_preserves_records(
+    provider: EvidenceProvider, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], pinned: bool
+) -> None:
+    output = provider.root / "github output"
+    original = b"prior=value\r\n"
+    output.write_bytes(original)
+    args = ["release_evidence", "verify", "--github-output", str(output)]
+    if pinned:
+        args.extend(["--identity", PIN_JSON])
+    monkeypatch.setattr(sys, "argv", args)
+    assert provider.adapter.main() == 0
+    assert output.read_bytes() == original + f"identity={PIN_JSON}\n".encode()
+    assert provider.gh_calls
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize("failure", ["invalid-pin", "changed-pin", "failed-job", "signature", "late-artifact-change"])
+def test_cli_verification_failure_never_exports_identity(
+    provider: EvidenceProvider, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], failure: str
+) -> None:
+    output = provider.root / "github output"
+    original = b"prior=value\n"
+    output.write_bytes(original)
+    args = ["release_evidence", "verify", "--github-output", str(output)]
+    if failure == "invalid-pin":
+        args.extend(["--identity", "{}"])
+    elif failure == "changed-pin":
+        args.extend(["--identity", json.dumps({**PIN, "artifact_digest": "sha256:" + "c" * 64})])
+    elif failure == "failed-job":
+        provider.jobs[3]["steps"][0]["conclusion"] = "failure"
+    elif failure == "signature":
+        provider.signature[0]["verificationResult"]["signature"]["certificate"]["buildTrigger"] = "workflow_dispatch"
+    else:
+        provider.responses[ARTIFACT_ENDPOINT] = {**provider.artifact, "digest": "sha256:" + "c" * 64}
+    monkeypatch.setattr(sys, "argv", args)
+    assert provider.adapter.main() == 1
+    assert output.read_bytes() == original
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Release evidence rejected:" in captured.err
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_cli_rejects_nonfinite_serialization_before_export(
+    provider: EvidenceProvider, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], value: float
+) -> None:
+    output = provider.root / "github output"
+    output.write_bytes(b"prior=value\n")
+    # Guard the transport even if a future verifier returns a non-finite value.
+    monkeypatch.setattr(provider.adapter, "verify", lambda _identity: {**PIN, "run_id": value})
+    monkeypatch.setattr(sys, "argv", ["release_evidence", "verify", "--github-output", str(output)])
+    assert provider.adapter.main() == 1
+    assert output.read_bytes() == b"prior=value\n"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Out of range float values" in captured.err
+
+
+def test_cli_export_permission_failure_is_not_reported_as_success(
+    provider: EvidenceProvider, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output = provider.root / "github output"
+    output.write_bytes(b"prior=value\n")
+    original_open = Path.open
+
+    def open_file(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+        if path == output and mode == "ab":
+            raise PermissionError(13, "Permission denied", str(path))
+        return original_open(path, mode, *args, **kwargs)
+
+    # Model the OS failure portably; execute the actual installed exporter.
+    monkeypatch.setattr(Path, "open", open_file)
+    monkeypatch.setattr(sys, "argv", ["release_evidence", "verify", "--github-output", str(output)])
+    assert provider.adapter.main() == 1
+    assert output.read_bytes() == b"prior=value\n"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Permission denied" in captured.err
+    assert repr(str(output)) in captured.err
