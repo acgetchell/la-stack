@@ -1,11 +1,13 @@
 """Exercise la-stack's published release contract without credentials or uploads."""
 
+import io
 import json
 import os
 import shlex
 import subprocess
 import sys
 import tomllib
+from contextlib import redirect_stderr
 from pathlib import Path
 from typing import Any
 
@@ -219,15 +221,25 @@ def run_evidence_fixture() -> int:
     provider = EvidenceProvider(release_evidence, root)
     if os.environ.get("FIXTURE_FAILURE") == "failed-job":
         provider.jobs[3]["steps"][0]["conclusion"] = "failure"
-    print("fixture stdout diagnostic")
+    newline = os.environ.get("FIXTURE_DIAGNOSTIC_NEWLINE", os.linesep)
+    sys.stdout.buffer.write(("fixture stdout diagnostic" + newline).encode("utf-8"))
+    sys.stdout.flush()
     print("fixture stderr diagnostic", file=sys.stderr)
+    diagnostic = io.StringIO()
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(release_evidence, "ROOT", root)
         patch.setattr(release_evidence, "api", provider.api)
         patch.setattr(release_evidence, "gh", provider.gh)
         patch.setattr(release_evidence, "download_artifact", provider.download)
         patch.setattr(release_evidence, "run_git_command", provider.git)
-        return release_evidence.main()
+        with redirect_stderr(diagnostic):
+            status = release_evidence.main()
+    print(diagnostic.getvalue(), end="", file=sys.stderr)
+    # Just's quiet mode hides stderr. Record the actual verifier outcome so an
+    # import/shell failure cannot masquerade as the rejection under test.
+    result = {"status": status, "diagnostic": diagnostic.getvalue(), "import_root": sys.path[0]}
+    (root / "verifier-result.json").write_text(json.dumps(result), encoding="utf-8")
+    return status
 
 
 @pytest.fixture
@@ -235,11 +247,14 @@ def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     """Keep the real shell, Just, parser, verifier and installed output writer."""
     (tmp_path / "justfile").write_text(f"import '{(REPO_ROOT / 'justfile').as_posix()}'\n", encoding="utf-8")
     (tmp_path / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.5.42"\n', encoding="utf-8")
-    for name in ("BASH_ENV", "SHELLOPTS", "BASHOPTS", "JUST_QUIET", "JUST_DRY_RUN", "FIXTURE_FAILURE"):
+    for name in ("BASH_ENV", "SHELLOPTS", "BASHOPTS", "JUST_QUIET", "JUST_DRY_RUN", "FIXTURE_FAILURE", "FIXTURE_DIAGNOSTIC_NEWLINE", "PYTHONPATH"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("FIXTURE_ROOT", str(tmp_path))
+    monkeypatch.setenv("FIXTURE_REPO_ROOT", str(REPO_ROOT))
+    # A Windows path inside Python source crosses both Bash and native Windows
+    # argv parsing. Keep it as environment data, outside either source parser.
     bootstrap = (
-        f"import sys; sys.path.insert(0, {str(REPO_ROOT)!r}); "
+        'import os, sys; sys.path.insert(0, os.environ["FIXTURE_REPO_ROOT"]); '
         "from tests.tooling.test_release_publishing import run_evidence_fixture; sys.exit(run_evidence_fixture())"
     )
     return (
@@ -277,12 +292,26 @@ def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capt
         cwd=tmp_path,
         check=False,
     )
-    assert (result.returncode == 0) == (outcome == "valid"), result.stderr
+    assert result.returncode == (0 if outcome == "valid" else 1), result.stderr
     assert marker.exists() == (outcome == "valid")
+    report = tmp_path / "verifier-result.json"
+    if outcome == "unset-output":
+        assert not report.exists()
+        assert "GITHUB_OUTPUT: unbound variable" in result.stderr
+    else:
+        observed = json.loads(report.read_text(encoding="utf-8"))
+        assert observed["status"] == (0 if outcome == "valid" else 1)
+        rejection = (
+            "did not validate required step Verify default and exact Cargo packages"
+            if outcome == "failed-job"
+            else "GitHub Actions output destination must be an existing regular file"
+        )
+        assert observed["diagnostic"] == "" if outcome == "valid" else rejection in observed["diagnostic"]
     if outcome == "valid":
         assert output.read_bytes() == original + f"identity={PIN_JSON}\n".encode()
         if not quiet:
-            assert result.stdout == "fixture stdout diagnostic\n"
+            # Diagnostics are text; the command-file bytes above must stay LF.
+            assert result.stdout.splitlines() == ["fixture stdout diagnostic"]
             assert "fixture stderr diagnostic" in result.stderr
     elif outcome == "directory":
         assert output.is_dir()
@@ -291,6 +320,30 @@ def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capt
         assert not output.exists()
     else:
         assert output.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("import_root", "newline"), [(r"C:\agent\test dir\native", "\n"), (r"D:\build's root\new\repo", "\r\n")], ids=["backslashes-lf", "apostrophe-crlf"]
+)
+def test_evidence_bootstrap_keeps_windows_import_paths_as_environment_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evidence_runner: str, import_root: str, newline: str
+) -> None:
+    # Exercise literal Windows path data on every host. PYTHONPATH supplies the
+    # real module after the intentionally nonexistent path inserted by bootstrap.
+    monkeypatch.setenv("FIXTURE_REPO_ROOT", import_root)
+    monkeypatch.setenv("PYTHONPATH", str(REPO_ROOT))
+    monkeypatch.setenv("FIXTURE_DIAGNOSTIC_NEWLINE", newline)
+    output = tmp_path / "github output"
+    output.touch()
+    monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
+    workflow = yaml.safe_load(WORKFLOW.read_bytes())
+    script = workflow["jobs"]["verify"]["steps"][-1]["run"]
+    result = run_command("bash", ["--noprofile", "--norc", "-euc", evidence_runner + script], cwd=tmp_path, check=False)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "fixture stdout diagnostic" + newline
+    observed = json.loads((tmp_path / "verifier-result.json").read_text(encoding="utf-8"))
+    assert observed == {"status": 0, "diagnostic": "", "import_root": import_root}
+    assert output.read_bytes() == f"identity={PIN_JSON}\n".encode()
 
 
 @pytest.mark.parametrize("quiet", [False, True], ids=["normal", "quiet"])
@@ -307,6 +360,9 @@ def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token
         "bash", ["--noprofile", "--norc", "-euc", evidence_runner + workflow["jobs"]["verify"]["steps"][-1]["run"]], cwd=tmp_path, check=False
     )
     assert exported.returncode == 0, exported.stderr
+    report = tmp_path / "verifier-result.json"
+    assert json.loads(report.read_text(encoding="utf-8"))["status"] == 0
+    report.unlink()
     record = output.read_text(encoding="utf-8")
     assert record == f"identity={PIN_JSON}\n"
     identity = record.removeprefix("identity=").removesuffix("\n")
@@ -324,9 +380,16 @@ def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token
     runner += 'just() { if [[ "$1" == release-gate ]]; then return 0; fi; command just "$@"; }\n'
     script = workflow["jobs"]["publish"]["steps"][2]["run"]
     result = run_command("bash", ["--noprofile", "--norc", "-euc", runner + script + f"\ntouch {shlex.quote(token.as_posix())}"], cwd=tmp_path, check=False)
-    assert (result.returncode == 0) == (pin == "valid"), result.stderr
+    assert result.returncode == (0 if pin == "valid" else 1), result.stderr
     assert registry.exists() == (pin == "valid")
     assert token.exists() == (pin == "valid")
+    if pin == "empty":
+        assert not report.exists()
+    else:
+        observed = json.loads(report.read_text(encoding="utf-8"))
+        assert observed["status"] == (0 if pin == "valid" else 1)
+        rejection = "Expecting property name" if pin == "invalid" else "selected CI attempt is stale"
+        assert observed["diagnostic"] == "" if pin == "valid" else rejection in observed["diagnostic"]
 
 
 @pytest.mark.parametrize(("failure", "expected_exit"), [("none", 0), ("evidence", 1), ("ci-evidence", 1), ("empty-pin", 1), ("present", 1), ("unavailable", 2)])
