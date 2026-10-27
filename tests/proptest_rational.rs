@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Independent property checks for exact rational-input matrices through D=8.
+//! Independent property checks for exact rational matrices and vectors through D=8.
 
 #![cfg(feature = "exact")]
 
@@ -128,6 +128,23 @@ macro_rules! gen_rational_properties {
         paste! {
             proptest! {
                 #![proptest_config(with_default_cases(12))]
+
+                #[test]
+                fn [<rational_dot_linearity_and_symmetry_ $d d>](
+                    entries in collection::vec((-50_i16..=50, 1_u8..=23), $d),
+                    other in collection::vec(-50_i16..=50, $d),
+                    shift in -50_i16..=50,
+                ) {
+                    let left = RationalVector::<$d>::try_from_fn(|i| {
+                        rational(entries[i].0, entries[i].1)
+                    }).unwrap();
+                    let right = RationalVector::<$d>::try_from_fn(|i| rational(other[i], 1)).unwrap();
+                    let shifted = RationalVector::<$d>::try_from_fn(|i| rational(other[i] + shift, 1)).unwrap();
+                    let expected_delta: BigRational = left.as_array().iter().map(|x| x * rational(shift, 1)).sum();
+                    prop_assert_eq!(left.dot(&shifted) - left.dot(&right), expected_delta);
+                    prop_assert_eq!(left.dot(&right), right.dot(&left));
+                    prop_assert_eq!(rational_dot(left.as_array(), right.as_array()).unwrap(), left.dot(&right));
+                }
 
                 #[test]
                 fn [<rational_det_sign_value_and_solve_agree_with_reference_ $d d>](

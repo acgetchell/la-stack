@@ -106,6 +106,16 @@ name = "gram"
 harness = false
 required-features = [ "bench" ]
 
+[[bench]]
+name = "column_basis"
+harness = false
+required-features = [ "bench" ]
+
+[[bench]]
+name = "rational_dot"
+harness = false
+required-features = [ "bench", "exact" ]
+
 [profile.release]
 lto = "fat"
 codegen-units = 1

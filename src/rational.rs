@@ -22,7 +22,7 @@ use num_rational::BigRational;
 use num_traits::{One, Zero};
 
 use crate::exact::{det_big_int, solve_big_int};
-use crate::{DeterminantSign, LaError};
+use crate::{DeterminantSign, LaError, NonFiniteLocation, NonFiniteOrigin, VectorOperand};
 
 /// Exact rational square matrix with compile-time dimension `D`.
 ///
@@ -474,6 +474,40 @@ impl<const D: usize> RationalVector<D> {
         &self.data
     }
 
+    /// Return the exact dot product `Σ self[i] × rhs[i]`.
+    ///
+    /// Requires the `exact` feature. Both operands are borrowed, with equal
+    /// dimensions guaranteed by the type. No operand vector is cloned and no
+    /// binary64 intermediate is used. Arbitrary-precision multiplication and
+    /// addition allocate as needed; the result is in lowest terms with a positive
+    /// denominator. `D = 0` returns canonical zero. There is no dimension cap.
+    /// For runtime-length operands, use the checked [`rational_dot`] adapter.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    /// # fn main() -> Result<(), LaError> {
+    /// let left = RationalVector::try_new([
+    ///     BigRational::new(1.into(), 3.into()),
+    ///     BigRational::new((-2).into(), 5.into()),
+    /// ])?;
+    /// let right = RationalVector::try_new([
+    ///     BigRational::from_integer(6.into()),
+    ///     BigRational::from_integer(5.into()),
+    /// ])?;
+    /// assert_eq!(left.dot(&right), BigRational::from_integer(0.into()));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn dot(&self, rhs: &Self) -> BigRational {
+        self.data
+            .iter()
+            .zip(&rhs.data)
+            .map(|(left, right)| left * right)
+            .sum()
+    }
+
     /// Consume the vector and return its exact backing array.
     #[must_use]
     pub fn into_array(self) -> [BigRational; D] {
@@ -485,6 +519,62 @@ impl<const D: usize> RationalVector<D> {
     pub fn get(&self, index: usize) -> Option<&BigRational> {
         self.data.get(index)
     }
+}
+
+/// Compute an exact dot product of borrowed, runtime-length rational slices.
+///
+/// This `exact`-feature adapter has no length limit, including LP objective
+/// vectors longer than the square-matrix dispatch limit. It checks lengths
+/// before inspecting coefficients, then validates all left denominators followed
+/// by all right denominators. Raw unreduced and negative-denominator values are
+/// accepted as mathematical quotients. Each product is canonicalized before
+/// exact accumulation; the result has a positive denominator and lowest terms.
+/// Two empty slices return canonical zero.
+///
+/// No input vector or operand is cloned, and no binary64 intermediate is used.
+/// Integer products, rational reduction, and accumulation allocate as needed.
+/// Prepared fixed-size inputs should use [`RationalVector::dot`], which reuses
+/// their canonical representation without repeating input validation.
+///
+/// # Errors
+/// Returns [`LaError::DimensionMismatch`] for unequal lengths, or
+/// [`LaError::NonFinite`] with input origin and a
+/// [`NonFiniteLocation::VectorOperandEntry`] for the first zero denominator.
+///
+/// # Examples
+/// ```
+/// use la_stack::prelude::*;
+/// # fn main() -> Result<(), LaError> {
+/// let objective = vec![BigRational::new(1.into(), 3.into()); 22];
+/// let solution = vec![BigRational::from_integer(3.into()); 22];
+/// assert_eq!(rational_dot(&objective, &solution)?, BigRational::from_integer(22.into()));
+/// # Ok(())
+/// # }
+/// ```
+pub fn rational_dot(left: &[BigRational], right: &[BigRational]) -> Result<BigRational, LaError> {
+    if left.len() != right.len() {
+        return Err(LaError::DimensionMismatch {
+            left: left.len(),
+            right: right.len(),
+        });
+    }
+    for (values, operand) in [(left, VectorOperand::Left), (right, VectorOperand::Right)] {
+        for (index, value) in values.iter().enumerate() {
+            if value.denom().is_zero() {
+                return Err(LaError::NonFinite {
+                    location: NonFiniteLocation::VectorOperandEntry { operand, index },
+                    origin: NonFiniteOrigin::Input,
+                });
+            }
+        }
+    }
+    Ok(left
+        .iter()
+        .zip(right)
+        .map(|(left, right)| {
+            BigRational::new(left.numer() * right.numer(), left.denom() * right.denom())
+        })
+        .sum())
 }
 
 /// Reduce one validated rational and make its denominator positive before

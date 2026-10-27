@@ -18,6 +18,7 @@
   - [LDLT without pivoting](#ldlt-without-pivoting)
   - [LU with partial pivoting](#lu-with-partial-pivoting)
   - [Outward-rounded interval expressions](#outward-rounded-interval-expressions)
+  - [Rectangular column selection](#rectangular-column-selection)
   - [Scaled determinant products](#scaled-determinant-products)
   - [Scaled Euclidean vector norm](#scaled-euclidean-vector-norm)
   - [Unsigned vector angles](#unsigned-vector-angles)
@@ -55,6 +56,8 @@ Reference numbers point to [REFERENCES.md](../REFERENCES.md).
 | Exact determinant sign | `det_sign_exact` | Exact for stored binary64 entries |
 | Exact determinant value or solve | `det_exact`, `solve_exact` | Exact for represented inputs |
 | Exact operations over preassembled rationals | `RationalMatrix::det_sign`, `det`, `solve` | No intermediate binary64 reconstruction |
+| Exact rational dot products | `RationalVector::dot`, `rational_dot` | Exact canonical result; checked slices have no dimension cap |
+| Rectangular column selection | `column_basis` | Explicit absolute tolerance; provisional numerical rank, requiring independent certification |
 | Binary64 output from an exact result | Strict or rounded conversions | Strict conversion forbids rounding |
 | Unsigned vector angle in radians | `VectorAngle::angle`, `Vector::angle` | Finite nonzero vectors; rounded, without a certified bound |
 
@@ -71,11 +74,13 @@ The borrowed-slice angle API also supports runtime ambient coordinate lengths
 without changing the const-generic storage model. Spherical callers retain
 radius validation and angle-to-arc-length conversion.
 
-The deliberate anti-goals are dynamically sized or rectangular matrices,
+The deliberate anti-goals are general dynamically sized matrix storage,
 sparse storage, broad decomposition coverage, alternate floating scalar
 families, and GPU-, parallel-, BLAS-, or LAPACK-scale throughput. Those problems
 need different storage models and numerical policies rather than extensions to
 this small fixed-dimension design.
+The rectangular column selector operates on borrowed const-generic arrays;
+it does not introduce a general rectangular matrix framework.
 
 ## Represented values and arithmetic model
 
@@ -475,6 +480,22 @@ The rational types are const-generic and shape-safe after construction. The
 D=8 without unstable generic const expressions. Conversion to binary64 remains
 a separate strict or explicitly rounded `ExactF64Conversion` operation.
 
+`RationalVector<D>::dot(&rhs)` computes `Σ x_i y_i` with exact rational
+multiplication and addition. The type guarantees matching lengths and canonical
+operands; the empty sum is canonical zero. Arbitrary-precision intermediates
+allocate as needed, but the operand vectors are borrowed without cloning and
+there is no binary64 conversion. Canonical reduction changes representation,
+never the represented rational number \[12\].
+
+`rational_dot(&left, &right)` admits runtime-length slices after checking equal
+lengths and nonzero denominators. Raw unreduced or negative-denominator values
+are interpreted as mathematical quotients, and each product is canonicalized
+before accumulation. Shape errors precede coefficient errors; left operand
+validation precedes right operand validation. The adapter has no dispatch limit:
+Delaunay's basis lengths through 8 and full objective lengths 14 and 22 in 6D
+are ordinary inputs, as are larger lengths. Both APIs perform a linear number
+of rational operations; bit complexity depends on numerator/denominator growth.
+
 ### Exact-to-binary64 conversion
 
 For strict conversion, a canonical nonzero rational must have a power-of-two
@@ -648,6 +669,42 @@ construction. Robust callers instead assemble those derived coefficients with
 interval operations, use `IntervalMatrix::det_sign()` as a fast proof, and
 rebuild the expression in `RationalMatrix` or another exact representation when
 the filter is inconclusive or loses range.
+
+### Rectangular column selection
+
+For `A ∈ ℝ^(R×C)`, `column_basis(&A, tolerance)` scans columns in increasing
+order. It chooses the largest absolute residual entry in the remaining rows,
+breaking ties by the first current row, and accepts it only if `|pivot| > tol`.
+Accepted rows are swapped into position; multipliers are bounded by one by
+partial pivoting. Each trailing entry uses `fma(-factor, pivot_entry, entry)`;
+previously skipped columns are no longer used. This is Gaussian elimination
+with partial row pivoting \[11, 12\], extended to skip rejected columns.
+
+The tolerance is absolute and inputs are not normalized. Callers wanting the
+Delaunay policy can compute `tol = 1e-12 × max(1, max |A_ij|)` and validate it
+with `Tolerance::try_new`. Uniform scaling with a correspondingly scaled
+tolerance preserves the real-arithmetic decisions; binary64 rounding and
+underflow can still change them. Independent row or column scaling changes
+pivot magnitudes and can change the selection. There is no absolute error bound,
+and this algorithm is not a rank-revealing QR or SVD. Even at zero tolerance,
+neither accepted nor rejected pivots prove exact mathematical rank.
+
+The result retains both dimensions and returns unique increasing input-column
+indices. Its numerical rank is their count, at most `min(R,C)`; zero rows,
+zero columns, and all-zero matrices produce rank zero. All original cells are
+validated before selection. Overflow in elimination returns a typed computation
+error locating the row-permuted work cell. Successful partial selection never
+returns `SingularityReason::Exact`.
+
+For a shared face with `S` vertices in ambient dimension `D`, the affine
+constraint rows are `[point_coordinates, 1]`, giving shape `S × (D+1)`.
+Callers can dispatch the small supported pairs of const dimensions, convert each
+runtime row to an array with a checked `try_into`, and call `column_basis`.
+For 6D this includes `S × 7` through `S=6`; intersection LP systems also fit
+`8 × 14`. No square-matrix dispatch cap is used. A full-row-rank numerical
+selection defines a square minor which the caller can extract into
+`RationalMatrix<S>` and solve or test exactly. Geometry-specific affine
+construction, certificates, and classification remain with the consumer.
 
 ### Scaled determinant products
 

@@ -60,7 +60,7 @@ evidence being validated.
 
 ## Benchmark Suites
 
-`la-stack` has eight Criterion benchmark targets. Routine release acquisition
+`la-stack` has ten Criterion benchmark targets. Routine release acquisition
 selects public workloads from these targets; unfiltered targets remain available
 for diagnostics.
 
@@ -220,6 +220,21 @@ exact translation, with separate construction-only, prepared, and
 construction-inclusive measurements. The original D=4 plain-dot control remains.
 Fixture expectations are validated outside the timed closures.
 Release acquisition includes these public certified reduction operations.
+
+The `column_basis` and `rational_dot` targets cover the APIs added for #305/#306
+as separate diagnostic workloads. They do not modify the retained release
+catalog or imply before/after speedups for previously unavailable APIs.
+Column selection covers square, tall, wide, deficient, nearly dependent,
+severely rescaled, and shared-face affine inputs through `8 × 14` and `6 × 7`.
+Exact dot products cover lengths 2–8, 14, and 22, with non-dyadic, cancelling,
+and large-integer inputs generated with 512-bit shifts;
+prepared-vector and checked-slice costs are separate. Analytical ranks, pivot
+sets, and reciprocal-product sums are checked outside timed closures.
+
+```bash
+cargo bench --locked --features bench --bench column_basis
+cargo bench --locked --features bench,exact --bench rational_dot
+```
 
 ## Common Workflows
 

@@ -16,6 +16,7 @@
   - [LDLᵀ factorization](#ldlt-factorization)
   - [LU decomposition](#lu-decomposition-gaussian-elimination-with-partial-pivoting)
   - [Outward-rounded interval determinant sign](#outward-rounded-interval-determinant-sign)
+  - [Rectangular column selection](#rectangular-column-selection)
   - [Scaled determinant products](#scaled-determinant-products)
   - [Scaled Euclidean vector norm](#scaled-euclidean-vector-norm)
   - [Unsigned vector angles](#unsigned-vector-angles)
@@ -120,6 +121,11 @@ forward/back-substitution \[[11], [12]\]. Distinct first or last non-zero column
 prove the triangular ordering and non-zero pivots before division.
 See the [rational-input construction](docs/mathematical_basis.md#exact-arithmetic-over-rational-inputs).
 
+`RationalVector::dot` and `rational_dot` evaluate the defining inner product
+`Σ x_i y_i` over exact rationals \[[12]\], reducing products and sums to canonical
+quotients. Integer arithmetic introduces no rounding; the slice adapter validates
+shape and denominators before reduction.
+
 ### Exact-to-binary64 conversion
 
 Strict conversion accepts only dyadic rationals whose reduced significand and
@@ -213,6 +219,17 @@ overlap is explicitly inconclusive. The determinant identity is standard
 linear algebra \[[12]\]; the interval evaluation and subset-DP
 organization are implemented specifically for this crate's small
 fixed-dimension scope.
+
+### Rectangular column selection
+
+`column_basis` applies Gaussian elimination with partial row pivoting
+\[[11], [12]\], scanning columns in input order and skipping pivots at or below
+the caller's absolute tolerance. This supplies a deterministic provisional
+selection, not a rank-revealing factorization or exact independence certificate.
+Floating-point growth, conditioning, and underflow limit numerical decisions
+\[[9], [10], [11]\]. See the
+[rectangular contract](docs/mathematical_basis.md#rectangular-column-selection)
+for scaling, ordering, and exact-certification boundaries.
 
 ### Scaled determinant products
 

@@ -590,6 +590,44 @@ pub mod guide {
         //!   affine coefficients, and other rational expressions without an intermediate
         //!   `f64` conversion.
         //!
+        //! # Exact reductions and provisional column selection
+        //!
+        //! [`RationalVector::dot`](crate::RationalVector::dot) borrows validated
+        //! fixed-size operands. [`rational_dot`](crate::rational_dot) checks
+        //! runtime slice lengths and denominators, including objective vectors
+        //! longer than the eight-row rational matrix dispatch limit. Both return
+        //! canonical exact rationals; arbitrary-precision intermediates allocate.
+        //!
+        //! [`column_basis`](crate::column_basis) supplies a provisional numerical
+        //! selection with an explicit absolute tolerance. For example, six
+        //! shared vertices in 6D give six affine equations with seven columns.
+        //! This example extracts and solves the selected minor exactly to build
+        //! an affine normal with free coordinate 5 fixed at one:
+        //!
+        //! ```
+        //! use std::array::from_fn;
+        //! use la_stack::prelude::*;
+        //! # fn main() -> Result<(), LaError> {
+        //! let rows: [[f64; 7]; 6] = from_fn(|r| from_fn(|c| {
+        //!     f64::from(c == 6 || (r > 0 && c == r - 1))
+        //! }));
+        //! let basis = column_basis(&rows, Tolerance::try_new(1e-12)?)?;
+        //! assert_eq!(basis.columns(), &[0, 1, 2, 3, 4, 6]);
+        //! let selected = Matrix::<6>::try_from_rows(from_fn(|r| {
+        //!     from_fn(|c| rows[r][basis.columns()[c]])
+        //! }))?;
+        //! let rhs = Vector::try_new(rows.map(|row| -row[5]))?;
+        //! let coefficients = selected.solve_exact(rhs)?;
+        //! assert_eq!(coefficients, RationalVector::<6>::zero());
+        //! // The resulting affine form is x[5]; it vanishes on every shared vertex.
+        //! # Ok(())
+        //! # }
+        //! ```
+        //!
+        //! General callers must check `basis.rank()` before extracting a square
+        //! minor. Numerical rank rejection is inconclusive; successful selection
+        //! still requires exact certification before any geometric conclusion.
+        //!
         //! **Determinants:**
         //!
         //! - **`det_exact()`** — returns the exact determinant as a `BigRational`
@@ -904,6 +942,7 @@ pub mod guide {
     }
 }
 mod angle;
+mod column_basis;
 mod error;
 #[cfg(feature = "exact")]
 mod exact;
@@ -934,7 +973,9 @@ pub use num_rational::BigRational;
 pub use num_traits::{FromPrimitive, Signed, ToPrimitive};
 #[cfg(feature = "exact")]
 #[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
-pub use rational::{RationalMatrix, RationalVector};
+pub use rational::{RationalMatrix, RationalVector, rational_dot};
+
+pub use column_basis::{ColumnBasis, column_basis};
 
 // ---------------------------------------------------------------------------
 // Error-bound constants for `Matrix::det_direct_with_errbound()` and
@@ -1435,12 +1476,12 @@ macro_rules! try_with_rational_matrix {
 #[cfg_attr(feature = "exact", doc = "`abs`.")]
 pub mod prelude {
     pub use crate::{
-        ArithmeticOperation, DEFAULT_SINGULAR_TOL, DeterminantWithErrorBound, FactorizationKind,
-        Interval, IntervalBound, IntervalDeterminantSign, IntervalMatrix, IntervalOperand,
-        InvalidToleranceReason, LaError, Ldlt, Lu, MAX_INTERVAL_MATRIX_DIM,
+        ArithmeticOperation, ColumnBasis, DEFAULT_SINGULAR_TOL, DeterminantWithErrorBound,
+        FactorizationKind, Interval, IntervalBound, IntervalDeterminantSign, IntervalMatrix,
+        IntervalOperand, InvalidToleranceReason, LaError, Ldlt, Lu, MAX_INTERVAL_MATRIX_DIM,
         MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, NonFiniteLocation, NonFiniteOrigin,
         PositiveSemidefiniteViolation, ScalarWithErrorBound, SingularityReason, Tolerance,
-        UnrepresentableReason, Vector, VectorAngle, VectorOperand, gram_matrix,
+        UnrepresentableReason, Vector, VectorAngle, VectorOperand, column_basis, gram_matrix,
         try_with_interval_matrix, try_with_stack_matrix,
     };
 
@@ -1449,7 +1490,7 @@ pub mod prelude {
     pub use crate::{
         BigInt, BigRational, DeterminantSign, ExactF64Conversion, FromPrimitive,
         MAX_RATIONAL_MATRIX_DISPATCH_DIM, RationalMatrix, RationalVector, Signed, ToPrimitive,
-        try_with_rational_matrix,
+        rational_dot, try_with_rational_matrix,
     };
 }
 
