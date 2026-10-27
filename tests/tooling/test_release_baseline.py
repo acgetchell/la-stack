@@ -25,24 +25,17 @@ TOOLING_REQUIREMENT = SHARED_REQUIREMENT.name + str(SHARED_REQUIREMENT.specifier
 WORKFLOW = REPO_ROOT / ".github/workflows/release-benchmarks.yml"
 PREPARATION = REPO_ROOT / ".github/actions/prepare-release-benchmarks/action.yml"
 CATALOG = tomllib.loads((REPO_ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
-REQUIRED = {
-    *(f"{group}/{name}" for group, names in CATALOG["exact"].items() for name in names),
-    *(
-        f"d{dimension}/{name}"
-        for dimension in CATALOG["dimensions"]
-        for name in [*CATALOG["library-benchmarks"], *CATALOG["additional"].get(str(dimension), [])]
-    ),
-    *(f"d{dimension}/{peer}" for dimension in CATALOG["dimensions"] for peers in CATALOG["peers"].values() for peer in peers),
-}
+REQUIRED = set(CATALOG["release"]["default"] + CATALOG["release"]["exact"])
 # Retain optional diagnostic additions without letting a declaration omission
 # remove independently required scientific cases from the archive fixture.
 DECLARED = set(load_discovery(REPO_ROOT, "tooling/criterion-inventory.toml").required) | set(
     tomllib.loads((REPO_ROOT / "tooling/criterion-saved.toml").read_text(encoding="utf-8"))["required"]
 )
 IDS = {
-    "vs_linalg": sorted(name for name in REQUIRED | DECLARED if name.startswith("d")),
-    "exact": sorted(name for name in REQUIRED | DECLARED if not name.startswith("d")),
+    "public-default": sorted(set(CATALOG["release"]["default"])),
+    "public-exact": sorted(set(CATALOG["release"]["exact"]) | (DECLARED - REQUIRED)),
 }
+STORAGE = tomllib.loads((REPO_ROOT / "tooling/criterion-saved.toml").read_text(encoding="utf-8"))["storage-paths"]
 BASELINE = "v1.2.3"
 RAW_FILES = ("benchmark.json", "estimates.json", "sample.json", "tukey.json")
 
@@ -70,7 +63,7 @@ def dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
     for ids in IDS.values():
         for benchmark in ids:
             for sample in ("new", BASELINE):
-                directory = criterion / benchmark / sample
+                directory = criterion / STORAGE.get(benchmark, benchmark) / sample
                 write_json(directory / "benchmark.json", {"full_id": benchmark})
                 write_json(directory / "sample.json", {"iters": [1.0] * 100, "times": [2.0] * 100})
                 write_json(directory / "estimates.json", {"mean": estimate, "median": estimate})
@@ -134,9 +127,9 @@ def test_complete_dataset_round_trips_through_workflow_archive(dataset: tuple[Pa
             for benchmark in ids:
                 for sample in ("new", BASELINE):
                     for filename in RAW_FILES:
-                        member = archive.extractfile(f"criterion/{benchmark}/{sample}/{filename}")
+                        member = archive.extractfile(f"criterion/{STORAGE.get(benchmark, benchmark)}/{sample}/{filename}")
                         assert member is not None
-                        assert member.read() == (criterion / benchmark / sample / filename).read_bytes()
+                        assert member.read() == (criterion / STORAGE.get(benchmark, benchmark) / sample / filename).read_bytes()
         member = archive.extractfile("criterion/release-benchmark-inventory.json")
         assert member is not None
         assert json.loads(member.read())["suites"] == IDS
@@ -171,22 +164,24 @@ def assert_scientific_inventory(root: Path) -> None:
     discovery = load_discovery(root, "tooling/criterion-inventory.toml")
     missing = REQUIRED - set(discovery.required)
     assert not missing, f"discovery omitted scientific cases: {sorted(missing)}"
-    assert {suite.name for suite in discovery.suites} == {"vs_linalg", "exact"}
+    assert {suite.name for suite in discovery.suites} == {"public-default", "public-exact"}
     assert all(suite.command[-1] == "list" for suite in discovery.suites)
     saved = tomllib.loads((root / "tooling/criterion-saved.toml").read_text(encoding="utf-8"))
     missing = REQUIRED - set(saved["required"])
     assert not missing, f"saved inventory omitted scientific cases: {sorted(missing)}"
-    assert saved["storage-paths"] == {name: name for name in saved["required"]}
+    assert set(saved["storage-paths"]) == set(saved["required"])
     assert saved["raw-files"] == list(RAW_FILES)
 
 
-def test_configured_inventory_includes_release_consumers_and_peers() -> None:
+def test_configured_inventory_includes_public_workloads_without_peers() -> None:
     assert_scientific_inventory(REPO_ROOT)
+    assert len(REQUIRED) == 1254
+    assert not any("/nalgebra_" in name or "/faer_" in name for name in REQUIRED)
 
 
 @pytest.mark.parametrize("declaration", ["criterion-inventory.toml", "criterion-saved.toml", "both"])
-def test_scientific_inventory_detects_a_nonsentinel_omission(tmp_path: Path, declaration: str) -> None:
-    removed = "d3/la_stack_norm2_sq"
+@pytest.mark.parametrize("removed", ["d3/la_stack_norm2_sq", "public_d4/interval_det", "canonical_conversion_dyadic_d3/strict_array"])
+def test_scientific_inventory_detects_a_nonsentinel_omission(tmp_path: Path, declaration: str, removed: str) -> None:
     tooling = tmp_path / "tooling"
     tooling.mkdir()
     for filename in ("criterion-inventory.toml", "criterion-saved.toml"):
@@ -212,7 +207,7 @@ def test_workflow_requires_preflight_and_isolates_publication_permissions() -> N
     assert "cache: false" in preparation
     steps = [
         "Prepare release benchmarks",
-        "Save comparative Criterion baseline",
+        "Save default-feature Criterion baseline",
         "Save exact Criterion baseline",
         "Validate complete release dataset",
         "Package release Criterion baseline",
@@ -257,7 +252,7 @@ def test_setup_limits_preserve_benchmark_and_tail_budgets() -> None:
     producer = workflow.split("  release-baseline:\n", 1)[1].split("  publish-baseline:\n", 1)[0]
     job_limit = re.search(r"(?m)^    timeout-minutes: (\d+)$", producer)
     assert job_limit is not None
-    setup = producer.split("    steps:\n", 1)[1].split("      - name: Save comparative Criterion baseline", 1)[0]
+    setup = producer.split("    steps:\n", 1)[1].split("      - name: Save default-feature Criterion baseline", 1)[0]
     setup_steps = re.findall(r"(?ms)^      - .*?(?=^      - |\Z)", setup)
     assert setup_steps
     setup_limits: list[int] = []
@@ -274,14 +269,15 @@ def test_setup_limits_preserve_benchmark_and_tail_budgets() -> None:
     assert "uses: ./.github/actions/prepare-release-benchmarks" in setup
     assert "using: composite" in PREPARATION.read_text(encoding="utf-8")
     benchmark_limits = [
-        int(limit) for limit in re.findall(r"(?ms)^      - name: Save (?:comparative|exact) Criterion baseline\n.*?^        timeout-minutes: (\d+)$", producer)
+        int(limit)
+        for limit in re.findall(r"(?ms)^      - name: Save (?:default-feature|exact) Criterion baseline\n.*?^        timeout-minutes: (\d+)$", producer)
     ]
-    assert benchmark_limits == [150, 90]
+    assert benchmark_limits == [140, 130]
     assert int(job_limit[1]) - sum(setup_limits) - sum(benchmark_limits) >= 15
     assert int(job_limit[1]) <= 360
 
 
-@pytest.mark.parametrize(("suite", "step"), [("vs_linalg", "Save comparative Criterion baseline"), ("exact", "Save exact Criterion baseline")])
+@pytest.mark.parametrize(("suite", "step"), [("public-default", "Save default-feature Criterion baseline"), ("public-exact", "Save exact Criterion baseline")])
 def test_failed_suite_retains_timing_and_does_not_mark_completion(tmp_path: Path, suite: str, step: str) -> None:
     (tmp_path / "target").mkdir()
     # A shell function substitutes only the benchmark command; timestamps and
@@ -302,8 +298,8 @@ def test_failed_suite_retains_timing_and_does_not_mark_completion(tmp_path: Path
         },
     )
     assert result.returncode == 0, result.stderr
-    assert "| vs_linalg | failure |" in summary.read_text(encoding="utf-8")
-    assert "| exact | skipped |" in summary.read_text(encoding="utf-8")
+    assert "| public-default | failure |" in summary.read_text(encoding="utf-8")
+    assert "| public-exact | skipped |" in summary.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("validated_attempt", ["", "1", "2"])

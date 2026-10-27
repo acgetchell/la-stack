@@ -113,7 +113,7 @@ There is no runtime configuration generator.
 | `measurements/full.toml`, `measurements/non-exact.toml` | Release floor, required cases, sampling, original peer phases, source/harness inventories, probes and environments |
 | `performance-policy.toml` | Independent scientific catalog used by consumer acceptance tests |
 | `performance.just` | Native discovery, correctness gates and measurement commands |
-| `criterion-inventory.toml` | Release discovery and independent required scientific IDs |
+| `criterion-inventory.toml` | Hosted la-stack-only discovery and independent required scientific IDs |
 | `criterion-saved.toml` | Required IDs, canonical paths, 100 samples and exact saved raw JSON bytes |
 | `performance-report.toml` | Independent release eligibility, current report and immutable run history |
 | `performance-readme.toml` | Canonical README selection, formatter, source freshness and tagged links |
@@ -123,6 +123,16 @@ Both labels of a new measurement must be v0.5.0 or newer. The full and
 non-exact declarations require 100 samples, mean and median estimates,
 95% intervals and nanoseconds. Both native correctness gates run before
 timing. Reference libraries originate in the baseline phase.
+
+The full #301 policy measures all public la-stack workflows at both revisions,
+plus only 16 baseline-phase peer LU-factorization-and-solve cases. Hosted
+acquisition omits peers entirely. The full scratch/retained plot selections
+therefore expose only LU solve; broad peer plots remain in the explicitly
+requested non-exact diagnostic. `performance.just` prints the independent local
+case budget before measurement, and `performance-release` records the recipe
+body's elapsed seconds and failure status under ignored scratch outputs. The
+[public workflow map](../docs/BENCHMARKING.md#release-acquisition-policy) owns
+coverage decisions, feature configurations and runtime estimates.
 
 Working-tree measurements include tracked changes and nonignored untracked
 regular files. Scratch outputs belong under ignored `target/`.
@@ -141,6 +151,11 @@ release promotion and README publication require the full measurement policy.
 README publication requires archived release-eligible evidence, independently
 supplied release/commit assertions, matching current source/harness membership
 and digests, and a successful formatter before replacing any output.
+
+The completed v0.5.1/v0.5.0 run predates the #301 acquisition policy and remains
+frozen. It is not reclassified as a new-policy run or rerun by these commands.
+Current offline rendering requires a complete run acquired under the matching
+declaration.
 
 Historical CSV/JSON, plots, reports and complete runs remain frozen with their
 original bytes and links. This includes the v0.5.0/v0.4.6 comparison: it lacks

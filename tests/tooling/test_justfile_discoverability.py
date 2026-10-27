@@ -56,34 +56,20 @@ def test_exact_benchmark_package_excludes_peer_libraries() -> None:
     assert "vs_linalg" in {target["name"] for target in comparison["targets"]}
 
 
-def test_release_runs_each_suite_once_and_reuses_peer_measurements() -> None:
+def test_saved_release_baseline_selects_only_public_workloads() -> None:
     baseline = dry_run(REPO_ROOT, "bench-save-baseline", ["v0.4.5", "all"])
-    # Execute the real recipe's shell branching while replacing only Cargo.
+    # Stub the nested driver itself: a shell-local Cargo stub cannot intercept
+    # commands launched by the child Just process. Never acquire real samples.
     runner = run_just("--evaluate", "_run").stdout.strip()
-    script = 'cargo() { printf "%s\\n" "$*"; }\n' + baseline.stderr.replace(runner + " ", "")
+    script = 'just() { printf "%s\\n" "$*"; }\n' + baseline.stderr.replace(runner + " ", "")
     baseline_run = run_command("bash", ["--noprofile", "--norc", "-euc", script], cwd=REPO_ROOT)
     baseline_commands = [shlex.split(line) for line in baseline_run.stdout.splitlines()]
-    recipes = just_recipes()
-    current = recipes["bench-latest"]
-    assert not current["body"]
-    current_commands = []
-    for dependency in current["dependencies"]:
-        recipe = recipes[dependency["recipe"]]
-        assert not recipe["dependencies"]
-        commands = dry_run(REPO_ROOT, dependency["recipe"]).stderr
-        current_commands.extend(shlex.split(line.removeprefix(runner + " ")) for line in commands.splitlines())
-
-    assert len(baseline_commands) == len(current_commands) == 2
-    baseline_comparison, baseline_exact = baseline_commands
-    current_comparison, current_exact = current_commands
-    for command in (baseline_comparison, current_comparison):
-        assert command[command.index("-p") + 1] == "la-stack-comparison"
-        assert command[command.index("--bench") + 1] == "vs_linalg"
-    for command in (baseline_exact, current_exact):
-        assert "-p" not in command
-        assert command[command.index("--bench") + 1] == "exact"
-    assert baseline_comparison[baseline_comparison.index("--") + 1 :] == ["--noplot", "--save-baseline", "v0.4.5"]
-    assert current_comparison[current_comparison.index("--") + 1 :] == ["la_stack", "--noplot"]
+    assert baseline_commands == [["--justfile", "tooling/performance.just", "--working-directory", ".", "la-stack", "measure", "v0.4.5"]]
+    native = dry_run(REPO_ROOT, "la-stack", ["measure", "v0.4.5"], justfile=Path("tooling/performance.just")).stderr
+    assert native.count("cargo bench --locked") == 9
+    assert native.count("args+=(--save-baseline") == 9
+    assert "^d[0-9]+/la_stack_" in native
+    assert "(nalgebra|faer)_lu_solve$" not in native
 
 
 def test_ci_enforces_full_python_fixture_lint_policy() -> None:

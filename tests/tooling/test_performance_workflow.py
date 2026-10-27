@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
-from research_repo_tools.common_measurement import CommonHarnessPlan, DiscoveryPolicy, measure_prepared_pair, validate_run_policy
+from research_repo_tools.common_measurement import CommonHarnessPlan, DiscoveredSeries, DiscoveryPolicy, measure_prepared_pair, validate_run_policy
 from research_repo_tools.complete_runs import RunSeries
 from research_repo_tools.evidence import load_evidence, publish_evidence
 from research_repo_tools.just_inspect import dry_run
@@ -35,7 +35,7 @@ if action == "gate":
     with Path("target/gates.txt").open("a", encoding="utf-8", newline="\\n") as stream:
         stream.write("gate\\n")
     raise SystemExit(0)
-ids = [name for name in IDS[phase] if (name.startswith("d") if suite == "vs_linalg" else not name.startswith("d"))]
+ids = IDS[phase][suite]
 if action == "list":
     for name in ids:
         print(name + ": benchmark")
@@ -64,11 +64,14 @@ def declaration(root: Path, view: str = "full") -> CommonHarnessPlan:
     return plan
 
 
-def scientific_ids() -> tuple[set[str], set[str]]:
+def scientific_ids(view: str = "full") -> tuple[set[str], set[str]]:
     """Derive expectations from the independent domain catalog, not a measured run."""
     catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
+    if view == "full":
+        return set(catalog["release"]["default"] + catalog["release"]["exact"]), {
+            f"d{dimension}/{peer}_lu_solve" for dimension in catalog["dimensions"] for peer in ("nalgebra", "faer")
+        }
     library = {
-        *(f"{group}/{name}" for group, names in catalog["exact"].items() for name in names),
         *(
             f"d{dimension}/{name}"
             for dimension in catalog["dimensions"]
@@ -82,9 +85,11 @@ def scientific_ids() -> tuple[set[str], set[str]]:
 def synthetic_timings() -> dict[str, dict[str, dict[str, float]]]:
     """Distinguish every case, phase, and statistic so selection errors stay visible."""
     library, peers = scientific_ids()
+    diagnostic_library, diagnostic_peers = scientific_ids("non-exact")
     return {
         phase: {
-            name: {"median": float(offset + index * 4), "mean": float(offset + index * 4 + 1)} for index, name in enumerate(sorted(library | peers), start=1)
+            name: {"median": float(offset + index * 4), "mean": float(offset + index * 4 + 1)}
+            for index, name in enumerate(sorted(library | peers | diagnostic_library | diagnostic_peers), start=1)
         }
         for phase, offset in (("current", 0), ("baseline", 10_000))
     }
@@ -92,9 +97,7 @@ def synthetic_timings() -> dict[str, dict[str, dict[str, float]]]:
 
 @pytest.mark.parametrize("view", ["full", "non-exact"])
 def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: str) -> None:
-    library, peers = scientific_ids()
-    if view == "non-exact":
-        library = {name for name in library if name.startswith("d")}
+    library, peers = scientific_ids(view)
     plan = declaration(ROOT, view)
     catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
     assert plan.measurement.minimum_release == "v" + ".".join(str(part) for part in catalog["minimum-release"])
@@ -116,6 +119,12 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: st
         "faer": "baseline",
     }
     for item in plan.series:
+        if isinstance(item, DiscoveredSeries):
+            assert view == "full"
+            assert item.name.startswith("la-stack")
+            expected = tuple(sorted(library | (peers if item.phase == "baseline" else set())))
+            assert dict(item.resolve(expected).rows) == {name: name for name in library}
+            continue
         assert isinstance(item, RunSeries)
         if item.name.startswith("la-stack"):
             assert dict(item.rows) == {name: name for name in library}
@@ -124,6 +133,7 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: st
                 f"d{dimension}/{name}": f"d{dimension}/{peer}"
                 for dimension in catalog["dimensions"]
                 for name, peer_names in catalog["peers"].items()
+                if view == "non-exact" or name == "la_stack_lu_solve"
                 for peer in peer_names
                 if peer.startswith(f"{item.name}_")
             }
@@ -135,7 +145,7 @@ def test_named_views_keep_every_metric_statistic_axis_and_explicit_input_choice(
     catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
     for source in ("scratch", "retained", "non-exact"):
         files = sorted((ROOT / "tooling/plots" / source).glob("*.toml"))
-        assert len(files) == len(catalog["metrics"]) * 4
+        assert len(files) == (len(catalog["metrics"]) if source == "non-exact" else 1) * 4
         for path in files:
             metric, statistic, axis = path.stem.split("-")
             view = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -189,12 +199,13 @@ def test_native_recipes_preserve_scientific_gates_and_peer_reuse() -> None:
     justfile = Path("tooling/performance.just")
     baseline = dry_run(ROOT, "baseline-all", justfile=justfile).stderr
     current = dry_run(ROOT, "current-all", justfile=justfile).stderr
-    assert baseline.count("cargo bench --locked") == current.count("cargo bench --locked") == 2
-    assert "la_stack --noplot" in current
-    assert "la_stack --noplot" not in baseline
+    assert baseline.count("cargo bench --locked") == 10
+    assert current.count("cargo bench --locked") == 9
+    assert "(nalgebra|faer)_lu_solve$" in baseline
+    assert "(nalgebra|faer)_lu_solve$" not in current
     assert "--target" in baseline
     assert "--target" in current
-    assert dry_run(ROOT, "baseline-all", ["list"], justfile=justfile).stderr.count("--list") == 2
+    assert dry_run(ROOT, "baseline-all", ["list"], justfile=justfile).stderr.count("args+=(--list)") == 10
     assert "--test vs_linalg_inputs --test exact_bench_config" in dry_run(ROOT, "gate", justfile=justfile).stderr
     for name in ("performance-local", "performance-local-non-exact"):
         command = dry_run(ROOT, name).stderr
@@ -209,8 +220,18 @@ def test_native_recipes_preserve_scientific_gates_and_peer_reuse() -> None:
 
 def prepared(tmp_path: Path) -> tuple[Path, Path]:
     """Replace only native timing/gates with a bounded fixture, retaining real policy."""
-    library, peers = scientific_ids()
-    ids = {"baseline": sorted(library | peers), "current": sorted(library)}
+    _library, peers = scientific_ids()
+    catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
+    diagnostic_library, diagnostic_peers = scientific_ids("non-exact")
+    ids = {
+        side: {
+            "public-default": sorted(catalog["release"]["default"]),
+            "public-exact": sorted(catalog["release"]["exact"]),
+            "peers": sorted(peers),
+            "vs_linalg": sorted(diagnostic_library | (diagnostic_peers if side == "baseline" else set())),
+        }
+        for side in ("baseline", "current")
+    }
     for phase in ("baseline", "current"):
         root = tmp_path / phase
         root.mkdir(parents=True)
@@ -235,10 +256,12 @@ def prepared(tmp_path: Path) -> tuple[Path, Path]:
         (root / "tooling/fixture.py").write_text(f"IDS = {ids!r}\nTIMINGS = {synthetic_timings()!r}\n" + DRIVER, encoding="utf-8", newline="\n")
         driver = f"{shlex.quote(sys.executable)} -X utf8 tooling/fixture.py"
         native = 'export CRITERION_HOME := absolute_path(env("CRITERION_HOME", "target/criterion"))\n'
+        native += '\nbaseline-all mode="measure": (baseline-public-default mode) (baseline-public-exact mode) (baseline-peers mode)\n'
+        native += '\ncurrent-all mode="measure": (current-public-default mode) (current-public-exact mode)\n'
         for side in ("baseline", "current"):
-            native += f'\n{side}-all mode="measure": ({side}-vs_linalg mode) ({side}-exact mode)\n'
-            for suite in ("vs_linalg", "exact"):
+            for suite in ("public-default", "public-exact", "peers"):
                 native += f'\n{side}-{suite} mode="measure":\n    {driver} {side} {suite} {{{{mode}}}}\n'
+            native += f'\n{side}-vs_linalg mode="measure":\n    {driver} {side} vs_linalg {{{{mode}}}}\n'
         native += f"\ngate:\n    {driver} current all gate\n"
         (root / "tooling/performance.just").write_text(native, encoding="utf-8", newline="\n")
         for config in (root / "tooling/measurements").glob("*.toml"):
@@ -435,7 +458,8 @@ def test_publication_boundaries_leave_all_outputs_unchanged(complete_run: tuple[
 
 
 @pytest.mark.parametrize("phase", ["baseline", "current"])
-def test_actual_measurement_recipe_rejects_old_releases_before_git(phase: str, tmp_path: Path) -> None:
+@pytest.mark.parametrize("command", ["performance-measure", "performance-release"])
+def test_actual_measurement_recipe_rejects_old_releases_before_git(phase: str, command: str, tmp_path: Path) -> None:
     root = tmp_path / "consumer"
     root.mkdir()
     for name in ("pyproject.toml", "uv.lock", ".python-version", "Cargo.toml", "rust-toolchain.toml"):
@@ -447,11 +471,18 @@ def test_actual_measurement_recipe_rejects_old_releases_before_git(phase: str, t
             shutil.copyfile(source, destination)
     (root / "src").mkdir()
     (root / "src/lib.rs").write_text("// fixture\n", encoding="utf-8", newline="\n")
-    result = recipe(root, "performance-measure", "v0.4.6" if phase == "current" else PAIR.current, "v0.4.6" if phase == "baseline" else PAIR.baseline)
+    result = recipe(root, command, "v0.4.6" if phase == "current" else PAIR.current, "v0.4.6" if phase == "baseline" else PAIR.baseline)
     assert result.returncode != 0
     assert "requires v0.5.0 or newer" in result.stderr
     assert not (root / ".git").exists()
-    assert not (root / "target").exists()
+    if command == "performance-release":
+        runtime = (root / "target/bench-reports/full/runtime.txt").read_text(encoding="utf-8")
+        assert runtime.startswith("performance-release: ")
+        assert runtime.endswith(f" seconds; exit {result.returncode}\n")
+        assert not (root / "target/bench-reports/full/run.json").exists()
+        assert not (root / "docs/performance-runs").exists()
+    else:
+        assert not (root / "target").exists()
 
 
 def test_legacy_bytes_hashes_are_unchanged() -> None:

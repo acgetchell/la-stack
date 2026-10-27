@@ -8,6 +8,7 @@ the commands measure and where their outputs go.
 
 - [Start Here](#start-here)
 - [Benchmark Suites](#benchmark-suites)
+  - [Release acquisition policy](#release-acquisition-policy)
 - [Common Workflows](#common-workflows)
   - [Compare Current Code With The Latest Release](#compare-current-code-with-the-latest-release)
   - [Compare Current Code With A Specific Release](#compare-current-code-with-a-specific-release)
@@ -59,7 +60,75 @@ evidence being validated.
 
 ## Benchmark Suites
 
-`la-stack` has seven Criterion benchmark suites.
+`la-stack` has eight Criterion benchmark targets. Routine release acquisition
+selects public workloads from these targets; unfiltered targets remain available
+for diagnostics.
+
+### Release acquisition policy
+
+The #301 policy `public-release-and-lu-peers-v1` applies to new measurements.
+The full la-stack selection has 646 default-feature and 608 exact-feature cases.
+Local `performance-release`, `performance-local`, and full `performance-measure`
+measure these same 1,254 cases at both revisions under one captured harness.
+Only the baseline phase also measures the 16 native nalgebra/faer LU
+factorization-plus-one-solve cases at D=2, 3, 4, 5, 8, 16, 32, and 64.
+The matching eight current la-stack timings already belong to the full suite.
+Peers and la-stack originate in one local acquisition environment;
+hosted results never supply the denominator of a local peer ratio.
+
+Hosted release acquisition and the default `bench-save-baseline` measure only
+la-stack. Discovery, saved-byte verification, and local measurement declarations
+have separate completeness requirements. `tooling/performance-policy.toml`
+contains the independent required case catalog; native `--list` discovery
+retains the observed inventory and rejects missing required cases.
+The installed engine rejects duplicate semantic IDs and incomplete raw samples.
+
+| Public operation family | Measurement owner and feature configuration |
+| --- | --- |
+| Angles: vector, checked slice, construction followed by angle | `angle`, default, vetted dense/sparse/endpoint fixtures at D=3–6; excludes the control kernel |
+| Certified dot products, affine differences, certificate endpoints | `linear_form`, default, prepared and projection-batch regimes at D=2–6 |
+| Construction, storage access, mutation, symmetry and tolerances | `public_api`, default, D=2–5; accessor rows combine trivial queries; mutations reset a local copy |
+| Exact determinant/sign/solve and strict/rounded binary64 APIs | `exact`, exact, fixed/corpus/adversarial inputs at D=2–5 |
+| Exact scalar, array and canonical-vector conversions | `public_api` scalar and `exact` conversions, exact, D=2–5 where applicable, with strict rejection and range boundaries |
+| Gram construction | `gram`, default, square and embedded inputs through coordinate dimension 8; excludes hand-written controls |
+| Interval arithmetic, assembly, determinant and sign | `interval` and `public_api`, default; scalar edge regimes, storage at D=2–5, sign filters at D=3–7 |
+| LU/LDLT, factorization-inclusive and prepared solves/determinants, norms and dot products | `vs_linalg` la-stack rows, default, D=2–64, with norm scenarios and D=8 stress inputs |
+| Direct determinant, error bound and paired result access | `public_api`, default, D=2–5; `exact` retains its existing exact-feature baseline rows |
+| Rational construction, storage, mutation, determinant/sign/solve and dispatch | `public_api`, `exact`, `rational_solve`, exact; small/wide inputs and structured dyadic/non-dyadic systems through D=8 |
+
+Default implementations share their constructor's workload. Error factories,
+formatting, enum queries, indexing/dispatch macros and re-exported third-party
+traits are covered by correctness tests or their containing public workflow,
+rather than separate timing rows. Rational ownership-transfer rows include
+cloning a fresh owned input. Fixture generation and independent oracles remain
+outside timing. This map covers public API workflows, rather than every possible
+parameter combination.
+
+Broad peer operations, Gaussian and hand-written reference timings, determinant
+implementation diagnostics and exponent-spread studies remain opt-in. Use
+`bench-vs-linalg`, `bench-exact`, or the non-exact diagnostic workflow explicitly.
+Neither routine release path acquires them. The README retains its existing
+eight-dimension LU graph; no additional performance page or graph is produced.
+
+The local driver prints the case count and nominal timing budget before samples
+are acquired. The current plan has 2,524 measurements and a nominal 336.5-minute
+warmup-plus-measurement budget, before compilation, gates, and analysis.
+`performance-release` records measurement-and-promotion elapsed seconds and exit
+status in ignored `target/bench-reports/full/runtime.txt`, including failures.
+The timer starts after Just's prerequisite checks. Use `time just performance-release`
+to include those checks in an end-to-end command measurement. Keep these records and
+the terminal log with the exact command, revisions, toolchain, dependencies and
+host when comparing actual before/after runtime. The former 1,422-case run had
+a nominal 189.6-minute budget; that calculation supplies no observed elapsed
+time. Expanded public coverage means removing peers alone establishes no overall
+speedup. No new end-to-end acquisition has been timed for #301.
+
+**`public_api`** (`benches/public_api.rs`) owns construction, access, mutation,
+symmetry, direct determinant certificates, interval determinant queries, and
+exact scalar conversion workloads missing from the kernel suites. The release
+selection measures its default rows once and its `public_exact_*` rows once
+with `exact`; it never repeats default rows in the exact phase. Dimensionless
+interval and tolerance operations have one shared scalar owner.
 
 **`angle`** (`benches/angle.rs`) measures unsigned angles in ambient dimensions
 3–6 using dense, nearly parallel, nearly antipodal, mixed-scale, and subnormal
@@ -74,7 +143,7 @@ Its timings describe kernel cost only. Prepared `Vector::angle`, checked slices
 through `VectorAngle::angle`, and construction followed by the method have separate
 rows so validation and adapter costs remain visible. Every row uses `iter`
 with borrowed, preconstructed inputs; only `construct_then_angle` includes
-construction. This focused signal is outside the release-report schema.
+construction. Release acquisition includes the three public API rows.
 
 Complete-run reports use a table for each statistic, with columns for the
 selected series. Benchmark identifiers retain the suite, dimension, and input
@@ -123,15 +192,14 @@ The non-dyadic `permuted_upper` family and row-permuted Hilbert control
 reproduce #246. The dyadic dense control is a row permutation of a strictly
 diagonally dominant matrix; the sparse control is tridiagonal.
 `tests/exact_bench_config.rs` validates every family through D=8 (including
-empty and scalar cases). This focused suite stays outside the release-report
-schema.
+empty and scalar cases). Release acquisition includes construction, prepared solves and the public
+adapter; the legacy Gaussian reference remains a diagnostic.
 
 **`gram`** (`benches/gram.rs`) compares `gram_matrix` with checked hand-written
 assembly for square and embedded vector sets with coordinate dimensions 2-8.
 The orthogonal, dependent, near-dependent, and mixed-scale fixtures are checked
 against an independent integer matrix-product oracle before timing. Run it with
-`cargo bench --locked --features bench --bench gram`. This focused construction
-signal is not part of the release-to-release report schema.
+`cargo bench --locked --features bench --bench gram`. Release acquisition includes the public `gram_matrix` row.
 
 **`interval`** (`benches/interval.rs`) measures the default-feature,
 division-free interval determinant sign filter. It separates scalar addition,
@@ -140,8 +208,7 @@ evaluation. Matrices cover 3×3 through 7×7, with sparse lifted, dense conclusi
 and dense inconclusive inputs. Scalar cases include exact values, cancellation,
 zero, and underflow. Only explicitly named assembly measurements include matrix
 construction; expected-result validation stays outside timing.
-This suite is a focused kernel signal; it is not part of the
-release-to-release `vs_linalg` or `exact` report schema.
+Release acquisition includes these public interval operations.
 
 **`linear_form`** (`benches/linear_form.rs`) measures the default-feature
 certified dot-product and affine-difference filters through D=2–6. Prepared
@@ -152,8 +219,7 @@ Repeated projection batches reuse a common vertex at the origin and after an
 exact translation, with separate construction-only, prepared, and
 construction-inclusive measurements. The original D=4 plain-dot control remains.
 Fixture expectations are validated outside the timed closures.
-This focused kernel signal is not part of the
-release-to-release report schema.
+Release acquisition includes these public certified reduction operations.
 
 ## Common Workflows
 
@@ -285,16 +351,16 @@ ratio direction.
 For plot/CSV-only output, select a named view and input source:
 
 ```bash
-just plot-vs-linalg "$CURRENT_TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT" dot-mean-log retained
+just plot-vs-linalg "$CURRENT_TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT" lu_solve-mean-log retained
 just plot-vs-linalg "$CURRENT_TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT" lu_solve-median-linear scratch
 just plot-vs-linalg "$CURRENT_TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVIOUS_COMMIT" lu_solve-median-log non-exact
 ```
 
 View names combine a metric, `mean` or `median`, and `linear` or `log`.
-Metrics are `det_from_lu`, `det_via_lu`, `dot`, `inf_norm`, `lu`,
-`lu_solve`, `norm2_sq` and `solve_from_lu`. All 32 views have static
-declarations under each of `tooling/plots/non-exact/`,
-`tooling/plots/retained/` and `tooling/plots/scratch/`. Scratch views consume
+Full scratch and retained evidence support the four `lu_solve` views.
+The optional non-exact diagnostic supports 32 views: `det_from_lu`,
+`det_via_lu`, `dot`, `inf_norm`, `lu`, `lu_solve`, `norm2_sq` and
+`solve_from_lu`, declared under `tooling/plots/non-exact/`. Scratch views consume
 the full scratch pair; retained views work after scratch cleanup. Non-exact
 views consume the non-exact scratch pair and use separate
 `vs_linalg_non_exact_*` output paths. The old separate metric/statistic,
@@ -344,6 +410,12 @@ just performance-doc
 
 Those commands deliberately select different inputs. A partial scratch pair
 fails `performance-promote`; it never triggers a retained-history fallback.
+
+The completed v0.5.1/v0.5.0 run used the former broad-peer declaration. It stays
+frozen under that identity and needs no rerun. Current renderers reject it as
+input to the new acquisition policy; they become available for new matching
+complete runs after acquisition and promotion. Removing scratch evidence never
+selects or relabels a historical run automatically.
 
 Historical reports, plots, CSV/JSON, indexes and immutable complete runs keep
 their original bytes and links during this migration. The existing
@@ -552,7 +624,7 @@ random-corpus groups, and adversarial-input groups:
   calls using row-denominator clearing plus integer Bareiss elimination with
   straightforward cubic `BigRational` Gaussian determinant and solve
   references on identical matrices and right-hand sides \[7, 11-12\].
-- `rational_input_wide{256,1024}_d{2..8}` — diagnostic rational groups with
+- `rational_input_wide{256,1024}_d{2..8}` — wide-component rational groups with
   large positive rational row factors. These retain exact solutions and strict
   diagonal dominance while exercising heap-backed numerator and denominator
   storage. See the [row-clearing study](archive/performance/studies/rational-row-clearing.md)
@@ -566,7 +638,8 @@ used `iter_batched` and excluded input cloning; do not compare those timings
 directly with the current complete-operation measurements. Remeasure both
 revisions using the same current harness.
 
-Two additional local diagnostic families are excluded from the release signal:
+Canonical conversion is a public release workload; determinant implementation
+diagnostics remain optional:
 
 - `canonical_conversion_*_d{2..5}` isolates strict and rounded conversion of
   already-canonical vectors. The dyadic, non-dyadic, and wide-component inputs
@@ -633,10 +706,9 @@ and first failing component. These checks run outside timed Criterion closures.
 Any disagreement or unexpected error fails setup instead of becoming an
 artificially fast measurement.
 
-The original `rational_input_d{2..8}` groups are part of the canonical exact
-release signal. The wide-component
-diagnostics remain local Criterion evidence and are not included in the release
-report's group registry.
+The `rational_input_d{2..8}` groups and their wide-component counterparts
+are part of the canonical exact release signal for la-stack's public rational
+APIs. Their Gaussian reference timings remain optional diagnostics.
 New exact comparisons require these groups, with Criterion point estimates and
 confidence intervals, in both baseline and current phases. Frozen historical
 reports may retain current-only rows with a coverage note and no cross-release
@@ -665,7 +737,7 @@ or `det_exact_f64_result (vs det_exact_f64)`. Those used the historical lossy
 `*_exact_f64` baseline. New comparisons require matching benchmark identifiers;
 the pre-v0.4.3 name substitutions have been removed.
 
-The default `release-signal` scope includes the canonical exact-arithmetic
+The default `public-release-and-lu-peers-v1` scope includes canonical exact-arithmetic
 groups because their inputs and execution order are fixed across revisions. Historical
 baselines created before the `exact_random_corpus_d*` names were introduced do
 not have comparable full-corpus rows, so those rows appear once both sides of a
@@ -704,59 +776,44 @@ benchmarking. Publication makes the attached evidence immutable.
 
 ### Hosted Release Runtime Budget
 
-The producer runs full `vs_linalg` and `exact` suites sequentially on one
-`ubuntu-latest` runner. Separate steps allow 150 and 90 minutes respectively;
-the outer job allows 350 minutes. Checkout has a 2-minute timeout, followed
-by a composite preparation step with one shared 90-minute timeout covering
-all tool installation, input validation, and inventory. Preparation reserves
-35 minutes for uncached tools, the two declared 25-minute discovery deadlines,
-and 5 minutes for input validation. Exceeding either setup deadline fails the
-producer before benchmarking or publication. The remaining 18 minutes provide headroom for
-dataset validation, packaging, upload, diagnostics, and runner overhead.
-Discovery compiles both suites before measurement and shares the preparation
-deadline with the preceding work. Dependency caches remain disabled.
+The producer runs default and exact public workloads sequentially on one
+`ubuntu-latest` runner. The steps allow 140 and 130 minutes, within a 350-minute
+job. Checkout allows 2 minutes; preparation allows 60 minutes for uncached tools,
+two 10-minute discovery deadlines and independent input validation. Preparation
+reserves 35 minutes for tools and 5 for the input gate. The remaining 18 minutes
+cover dataset validation, packaging, upload, diagnostics and runner overhead.
+Discovery compiles all selected targets before timing. Dependency caches remain
+disabled; these deadlines remain capacity estimates until the new hosted policy
+has completed on a runner.
 
-The [first v0.5.0 run](https://github.com/acgetchell/la-stack/actions/runs/38998792985)
-spent about 27 minutes installing uncached tools, then exhausted its old
-28-minute preparation limit during inventory compilation. Neither measurement
-suite started. The expanded setup budget accommodates compilation separately
-from tool installation without reducing measurement time or sampling.
+| Selection | Cases | Nominal warmup + measurement | Planning estimate at 12 s/case | Step limit |
+| --- | --- | --- | --- | --- |
+| `public-default` | 646 | 86.1 min | 129.2 min | 140 min |
+| `public-exact` | 608 | 81.1 min | 121.6 min | 130 min |
+| Hosted total | 1,254 | 167.2 min | 250.8 min | 350 min including setup and tail |
+| Local total: both revisions and 16 peers | 2,524 | 336.5 min | 504.8 min | Separate per-phase deadlines |
 
-The [v0.4.5 run](https://github.com/acgetchell/la-stack/actions/runs/32444040827)
-measured 304 comparative benchmarks in about 55m 34s, plus 2m 9s compilation
-(57m 43s total). Its exact suite was cancelled during `exact_d2/det_exact`;
-that run provides no complete exact-suite runtime. The old 60-minute outer
-limit therefore could not accommodate even that smaller harness.
+These estimates are not measured runtimes or upper bounds. Criterion can extend
+measurement for expensive iterations. Sampling remains unchanged: 100 samples,
+100,000 resamples, 95% confidence, 3-second warmup and 5-second measurement
+target. Native filters select public workloads without reducing their sampling.
 
-The comparative inventory on 2026-09-07 contained 533 cases. The current exact
-suite contains 354 cases: 264 original cases plus 90 diagnostic cases retained
-by the [row-scaling study](archive/performance/studies/exact-row-scaling.md).
-The planning estimate uses 12 seconds per benchmark, allowing analysis/report overhead
-above the configured 3-second warmup and 5-second measurement target. This is
-a capacity estimate, not a measured runtime or a guaranteed upper bound;
-Criterion can extend measurement for expensive iterations.
-
-| Suite | Benchmarks | Nominal warmup + measurement | Planning estimate | Step limit | Headroom above estimate |
-| --- | --- | --- | --- | --- | --- |
-| `vs_linalg` | 533 | 71.1 min | 106.6 min | 150 min | 43.4 min (41%) |
-| `exact` | 354 | 47.2 min | 70.8 min | 90 min | 19.2 min (27%) |
-
-Both commands retain Criterion's release defaults: 100 samples, 100,000
-resamples, 95% confidence, 3-second warmup, and 5-second measurement target.
-There are no quick-mode flags, sampling reductions, or benchmark filters.
-Diagnostic families and all peer rows remain included. The workflow logs
-the current inventory counts and planning estimates before timing; its final
-summary records each suite's outcome, elapsed seconds, and budget even after
-a step failure. A runner-level termination can still prevent that summary.
+The workflow logs discovered counts and budgets before timing. Its final summary
+records each feature selection's outcome, elapsed seconds and budget, including
+failed steps. A runner-level termination can prevent the summary. For comparable
+before/after runtime evidence, retain command, source/harness identity, toolchain,
+dependencies, runner/host and cache state, plus setup and acquisition elapsed
+times. Do not infer a speedup from the number of removed peer rows. Historical
+completed v0.5.1/v0.5.0 evidence remains unchanged and requires no rerun.
 
 `just bench-release-inventory` requires a fresh Criterion directory and obtains
-the complete IDs from each compiled binary's `--list` output. It also checks
-that the inventory includes the report registry and every canonical README
-peer row. `just bench-release-check <tag>` then requires every discovered ID,
-valid mean/median estimates with 95% intervals, and 100 finite positive samples.
-Each named baseline's four raw JSON files must match its `new` measurement.
-Missing diagnostics, failed Criterion writes, stale baselines, and malformed
-measurements all stop publication. Only successful validation permits packaging
+IDs from each selected native binary's `--list` output. It checks the independent
+la-stack catalog; hosted completeness deliberately does not require peer rows.
+`just bench-release-check <tag>` requires every discovered ID, mean/median
+estimates with 95% intervals and 100 finite positive samples. Each named
+baseline's four raw JSON files must match its fresh `new` measurement, including
+the native sanitized storage paths. Missing public cases, failed writes, stale
+baselines and malformed measurements stop publication. Only validation permits packaging
 the single `criterion/` archive, including the inventory manifest, and uploading
 the temporary Actions artifact. The separate publisher attaches that archive
 as `la-stack-$TAG-criterion-baseline.tar.gz` to the draft, verifies its uploaded
