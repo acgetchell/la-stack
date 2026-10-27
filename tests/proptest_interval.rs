@@ -240,6 +240,21 @@ proptest! {
             ));
         }
 
+        if !right.contains(0.0) {
+            let quotient = left.try_div(&right)?;
+            let reciprocal = right.try_recip()?;
+            for denominator in [right_lower, right_upper] {
+                prop_assert!(interval_contains_exact(
+                    reciprocal, &(exact_f64(1.0) / exact_f64(denominator)),
+                ));
+                for numerator in [left_lower, left_upper] {
+                    prop_assert!(interval_contains_exact(
+                        quotient, &(exact_f64(numerator) / exact_f64(denominator)),
+                    ));
+                }
+            }
+        }
+
         let square = left.try_square()?;
         prop_assert!(interval_contains_exact(
             square,
@@ -313,7 +328,51 @@ proptest! {
             &(&exact_left * &exact_left),
             ArithmeticOperation::IntervalSquare,
         )?;
+        if right != 0.0 {
+            assert_outward_result(
+                left_interval.try_div(&right_interval),
+                &(&exact_left / &exact_right),
+                ArithmeticOperation::IntervalDivision,
+            )?;
+            assert_outward_result(
+                right_interval.try_recip(),
+                &(exact_f64(1.0) / &exact_right),
+                ArithmeticOperation::IntervalReciprocal,
+            )?;
+        }
     }
+}
+
+#[test]
+fn quotient_enclosures_cover_extreme_scales_and_rounding_boundaries() -> Result<(), TestCaseError> {
+    let values = [
+        0.0,
+        f64::from_bits(1),
+        f64::from_bits(3),
+        f64::MIN_POSITIVE.next_down(),
+        f64::MIN_POSITIVE,
+        2.0_f64.powi(-1000).next_up(),
+        0.1,
+        1.0_f64.next_down(),
+        1.0,
+        1.0_f64.next_up(),
+        3.0,
+        f64::MAX,
+    ];
+    for numerator in values {
+        for denominator in values.into_iter().filter(|value| *value != 0.0) {
+            for (ns, ds) in [(1.0, 1.0), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
+                let n = ns * numerator;
+                let d = ds * denominator;
+                assert_outward_result(
+                    Interval::point(n)?.try_div(&Interval::point(d)?),
+                    &(exact_f64(n) / exact_f64(d)),
+                    ArithmeticOperation::IntervalDivision,
+                )?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Recursive last-row Laplace expansion, independent of subset workspace

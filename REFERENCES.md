@@ -13,6 +13,7 @@
   - [Exact-to-binary64 conversion](#exact-to-binary64-conversion)
   - [f64 → integer decomposition](#f64--integer-decomposition-decompose_proven_finite_f64)
   - [Gram matrices and geometric measures](#gram-matrices-and-geometric-measures)
+  - [Interval linear solves](#interval-linear-solves)
   - [LDLᵀ factorization](#ldlt-factorization)
   - [LU decomposition](#lu-decomposition-gaussian-elimination-with-partial-pivoting)
   - [Outward-rounded interval determinant sign](#outward-rounded-interval-determinant-sign)
@@ -169,6 +170,17 @@ This applies to triangles embedded in 3D and to higher-dimensional facets.
 `gram_matrix` computes rounded binary64 entries with exact mirrored symmetry;
 it does not certify rank, positive definiteness, or volume accuracy. See \[[9], [10], [11], [12]\]
 for floating-point and conditioning background.
+
+### Interval linear solves
+
+`IntervalMatrix::solve()` applies interval Gaussian elimination and back
+substitution with a common row-pivot sequence for all admitted systems.
+Moore, Kearfott, and Cloud \[[20]\] describe interval inclusion arithmetic and
+linear systems with uncertain data. The local
+[enclosure proof](docs/mathematical_basis.md#interval-linear-solves) states the
+finite-endpoint contract, zero-free pivot condition, and conditioning limits.
+Division's exact integer comparison uses the binary64 model \[[9]\], and does
+not require a floating residual or a representable reciprocal intermediate.
 
 <a name="ldlt-factorization"></a>
 
@@ -350,6 +362,10 @@ alphabetized for navigation without renumbering citations.
     Floating-Point Computation?" January 11, 2006. §12, "Mangled Angles,"
     pp. 46–48.
     [Author's PDF](https://people.eecs.berkeley.edu/~wkahan/Mindless.pdf)
+20. <a name="ref-20"></a> Moore, Ramon E., R. Baker Kearfott, and Michael J. Cloud.
+    *Introduction to Interval Analysis*. SIAM, 2009. Chapter 7, "Interval Matrices."
+    [DOI](https://doi.org/10.1137/1.9780898717716) ·
+    [Chapter record](https://epubs.siam.org/doi/10.1137/1.9780898717716.ch7)
 
 [1]: #ref-1
 [2]: #ref-2
@@ -369,3 +385,4 @@ alphabetized for navigation without renumbering citations.
 [17]: #ref-17
 [18]: #ref-18
 [19]: #ref-19
+[20]: #ref-20

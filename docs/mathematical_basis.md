@@ -15,6 +15,7 @@
   - [Exact arithmetic over rational inputs](#exact-arithmetic-over-rational-inputs)
   - [Exact-to-binary64 conversion](#exact-to-binary64-conversion)
   - [Gram matrices and geometric measures](#gram-matrices-and-geometric-measures)
+  - [Interval linear solves](#interval-linear-solves)
   - [LDLT without pivoting](#ldlt-without-pivoting)
   - [LU with partial pivoting](#lu-with-partial-pivoting)
   - [Outward-rounded interval expressions](#outward-rounded-interval-expressions)
@@ -53,6 +54,7 @@ Reference numbers point to [REFERENCES.md](../REFERENCES.md).
 | Floating determinant, any `D` | `det` | No certified bound; zero is not exact singularity |
 | `D ≤ 4` error-bounded determinant/sign test | `det_direct_with_errbound` | Sign is certified when estimate magnitude exceeds bound; otherwise inconclusive |
 | Derived-expression determinant sign through `D ≤ 7` | `IntervalMatrix::det_sign` | Outward-rounded proof; overlap with zero is explicitly inconclusive |
+| Solution sets with uncertain coefficients or RHS | `IntervalMatrix::solve` | Every admitted exact-real solution is enclosed on success; zero-containing pivots are inconclusive |
 | Exact determinant sign | `det_sign_exact` | Exact for stored binary64 entries |
 | Exact determinant value or solve | `det_exact`, `solve_exact` | Exact for represented inputs |
 | Exact operations over preassembled rationals | `RationalMatrix::det_sign`, `det`, `solve` | No intermediate binary64 reconstruction |
@@ -556,6 +558,48 @@ Its exact-symmetry and computed-pivot checks remain in force. The
 [Gram references](../REFERENCES.md#gram-matrices-and-geometric-measures)
 provide the volume identity and numerical background.
 
+### Interval linear solves
+
+For finite interval entries `[A]` and `[b]`, `IntervalMatrix<D>::solve` returns
+`[x]` with the following contract: **for every** real matrix `A ∈ [A]` and
+vector `b ∈ [b]`, `A` is nonsingular and its unique exact-real solution lies
+componentwise in `[x]`. Entries vary independently, so correlations inherited
+from expression construction may be widened. This encloses the united solution
+set; it need not give its tightest bounding box. Interval linear systems and
+inclusion arithmetic are described by Moore, Kearfott, and Cloud \[20\].
+
+The algorithm uses Gaussian elimination with row pivoting. At column `k` it
+chooses the remaining interval with greatest minimum absolute value, keeping
+the first row on ties. The same fixed row permutation applies to every admitted
+real system. A strictly positive separation proves that every corresponding
+real pivot is nonzero. Outward division encloses each multiplier, and outward
+multiply/subtract encloses each remaining coefficient and RHS after the exact
+row operation. The eliminated entry is set to exact zero: algebraically it is
+`a - (a/p)p = 0`, even though an independent interval evaluation would widen it.
+Induction therefore preserves inclusion of every transformed real system.
+Nonzero pivots in every column prove nonsingularity; outward back substitution
+then encloses each exact solution component by reverse induction. All rounding
+and input uncertainty is propagated in the returned endpoints; no separate
+scalar forward-error estimate is promised.
+
+If every remaining candidate contains zero, the algorithm returns
+`LaError::IntervalSolveInconclusive { pivot_col }`, including at the final
+column. It never reports `LaError::Singular`: interval dependency can obscure
+a nonzero pivot even for exact point inputs. Wide data and poor conditioning
+increase enclosure width and the chance of an inconclusive result. Overflow
+of an intermediate enclosure returns `IntervalRangeExhausted` attributed to
+`IntervalSolve`; it does not imply that the true solution is unbounded.
+Neither failure supplies partial solution bounds. Invalid finite ordering and
+non-finite endpoints are rejected at construction, before solving.
+
+Matrix and RHS shapes are fixed by `D`; the empty system has the empty solution.
+Solves have no D=7 determinant-workspace limit, use O(D³) work and O(D²) inline
+scratch, and are intended for small dimensions. Delaunay-style D=1–6 equation
+assembly is covered by exact-rational regressions, but circumsphere assembly,
+radius bounds, coordinate boxes, and exhaustive fallback remain consumer policy.
+Callers needing a certified answer must retain their exact or robust fallback
+on either inconclusive pivots or range exhaustion.
+
 <!-- Preserve links to the former factorization grouping. -->
 <a name="floating-point-factorizations"></a>
 
@@ -645,6 +689,19 @@ These guarantees rely on IEEE-754 binary64
 round-to-nearest, ties-to-even, and gradual underflow \[9-11\]. IEEE 1788
 provides the broader standardized interval arithmetic model \[14\]; this crate's
 deliberately smaller, undecorated surface does not claim conformance.
+
+Reciprocal and division reject every zero-containing divisor with
+`LaError::IntervalZeroDivisor`, even when the numerator is zero. For a zero-free
+divisor, extrema of `x/y` over the input rectangle occur at endpoint pairs.
+Each endpoint quotient `q` is rounded to nearest, then the sign of its exact
+error is found by comparing `|x|` and `|q| |y|` as binary integers with exponents.
+The product needs at most 106 significand bits, fitting `u128`. Its comparison
+selects the adjacent endpoint without an underflow-prone floating residual;
+the quotient's sign reverses the magnitude comparison for negative results.
+Exact quotients retain point bounds. Underflow to zero widens toward the least
+subnormal, and an outward infinite endpoint reports finite-range exhaustion.
+Direct quotient evaluation avoids rejecting a representable ratio solely
+because `1/y` is unrepresentable. Reciprocal uses the same kernel with `x=1`.
 
 If the exact result lies outside `[-f64::MAX, f64::MAX]`, no interval with finite
 binary64 endpoints can contain it. The operation then returns

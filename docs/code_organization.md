@@ -26,7 +26,7 @@ mirrors, and the public prelude. There is no `src/main.rs`.
 | [`src/error.rs`](../src/error.rs) | `LaError` and typed singularity, non-finite, positive-semidefinite, tolerance, factorization, arithmetic-operation, and exact-conversion categories |
 | [`src/exact.rs`](../src/exact.rs) | Exact determinants and solves, determinant-sign filtering, and exact-to-`f64` conversion |
 | [`src/gram.rs`](../src/gram.rs) | Fixed-size Gram construction from vector dot products |
-| [`src/interval.rs`](../src/interval.rs) | Interval scalars, matrices, and determinant-sign certification |
+| [`src/interval.rs`](../src/interval.rs) | Interval scalars including direct division, matrices, determinant-sign certification, and linear solution enclosures |
 | [`src/ldlt.rs`](../src/ldlt.rs) | Unpivoted `Ldlt<D>` factorization for exactly symmetric positive-definite matrices, solves, and determinants |
 | [`src/lu.rs`](../src/lu.rs) | Partially pivoted `Lu<D>` factorization, solves, and determinants |
 | [`src/matrix.rs`](../src/matrix.rs) | `Matrix<D>`, finite storage, accessors, matrix operations, norms, and direct determinant APIs |
@@ -78,6 +78,10 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
 ## Tests and examples
 
 - Rust unit tests live in inline `#[cfg(test)]` modules in `src/*.rs`.
+- `tests/interval_solve.rs` owns D=1–6 solution and consumer-equation enclosures,
+  typed fallback regressions, allocation evidence, and benchmark fixture gates.
+  `tests/common/interval_solve_oracle.rs` owns its independent rational
+  Gauss-Jordan oracle; `tests/proptest_interval.rs` checks scalar rounding.
 - `tests/proptest_*.rs` covers angles, matrix, vector, factorization, exact, rational,
   interval, and Gram properties. Exact and rational suites require `exact`.
 - Other `tests/*.rs` suites cover regressions, API contracts, allocation
@@ -133,6 +137,10 @@ borrowed slices, and construction costs.
 captured Delaunay Gaussian control. `benches/rational_solve.rs` separates
 construction, prepared solves, and full runtime-dispatch adapter costs;
 `tests/exact_bench_config.rs` includes its independent fixture gates.
+`benches/common/interval_solve.rs` owns the deterministic D=1–6 solve corpora.
+`benches/interval_solve.rs` measures 32-system batches and reports certification counts
+outside timing. New division and solve rows are diagnostics pending release
+catalog adoption; existing interval release workloads retain their selection.
 `benches/column_basis.rs` and `benches/rational_dot.rs` own the new rectangular
 selection and exact reduction benchmarks, with analytical fixture checks before
 timing. These diagnostic targets are separate from the retained release catalog.

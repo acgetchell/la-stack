@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Outward-rounded intervals and fixed-size interval determinant signs.
+//! Outward-rounded intervals, fixed-size determinants, and solution enclosures.
 //!
 //! See `REFERENCES.md` \[17\] for `FastTwoSum`, \[9-11\] for the binary64 arithmetic
 //! model, and \[12\] for the Leibniz determinant identity. The column-subset
@@ -10,7 +10,7 @@
 //! [interval construction](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#outward-rounded-interval-expressions)
 //! explains outward endpoints and determinant enclosures.
 
-use crate::rounding::{compare_product_with_rounded, two_sum_error};
+use crate::rounding::{compare_product_with_rounded, compare_quotient_with_rounded, two_sum_error};
 use crate::{ArithmeticOperation, IntervalBound, IntervalOperand, LaError, Matrix};
 
 /// Largest dimension supported by [`IntervalMatrix::det`] and
@@ -30,7 +30,7 @@ pub const MAX_INTERVAL_MATRIX_DIM: usize = 7;
 /// retained.
 ///
 /// This is a deliberately small proof-bearing surface, not a general-purpose
-/// interval arithmetic package. Division is intentionally absent.
+/// interval arithmetic package. Division requires a zero-free divisor.
 ///
 /// # Examples
 /// ```
@@ -75,6 +75,9 @@ pub enum IntervalDeterminantSign {
 /// Storage is the inline array `[[Interval; D]; D]`. Determinants use a
 /// division-free Leibniz subset DP through D=7, so zero-containing pivot
 /// intervals never require a special case and no heap allocation occurs.
+/// [`solve`](Self::solve) uses interval Gaussian elimination with row pivoting
+/// and explicitly reports inconclusive pivots. It has no determinant dimension
+/// limit, uses O(D²) stack storage, and is intended for small systems.
 ///
 /// # Examples
 /// ```
@@ -190,6 +193,34 @@ const fn rounded_product_bounds(
         return Err(LaError::interval_range_exhausted(operation));
     }
 
+    Ok((canonical_zero(lower), canonical_zero(upper)))
+}
+
+/// Enclose a quotient directly, including subnormal results and results rounded
+/// to zero. Callers supply a nonzero denominator. An exact integer comparison
+/// determines which adjacent float is needed, even when an FMA residual would
+/// underflow or a reciprocal intermediate would overflow.
+#[inline]
+const fn rounded_quotient_bounds(
+    numerator: f64,
+    denominator: f64,
+    operation: ArithmeticOperation,
+) -> Result<(f64, f64), LaError> {
+    let rounded = numerator / denominator;
+    if !rounded.is_finite() {
+        return Err(LaError::interval_range_exhausted(operation));
+    }
+    let relation = compare_quotient_with_rounded(numerator, denominator, rounded);
+    let (lower, upper) = if relation < 0 {
+        (rounded.next_down(), rounded)
+    } else if relation > 0 {
+        (rounded, rounded.next_up())
+    } else {
+        (rounded, rounded)
+    };
+    if !lower.is_finite() || !upper.is_finite() {
+        return Err(LaError::interval_range_exhausted(operation));
+    }
     Ok((canonical_zero(lower), canonical_zero(upper)))
 }
 
@@ -394,6 +425,54 @@ impl Interval {
     #[inline]
     pub const fn try_mul(&self, other: &Self) -> Result<Self, LaError> {
         self.try_mul_for(other, ArithmeticOperation::IntervalMultiplication)
+    }
+
+    /// Enclose `1 / x` for every real `x` in this interval.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    /// # fn main() -> Result<(), LaError> {
+    /// assert_eq!(Interval::try_new(-4.0, -2.0)?.try_recip()?,
+    ///            Interval::try_new(-0.5, -0.25)?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::IntervalZeroDivisor`] if this interval contains zero,
+    /// or [`LaError::IntervalRangeExhausted`] if no finite enclosure exists.
+    #[inline]
+    pub const fn try_recip(&self) -> Result<Self, LaError> {
+        Self::ONE.try_div_for(self, ArithmeticOperation::IntervalReciprocal)
+    }
+
+    /// Enclose `x / y` for all independently represented `x` and `y`.
+    ///
+    /// Endpoint quotients are rounded outward directly, so a representable
+    /// quotient does not require a representable reciprocal. Subnormal results
+    /// retain their enclosure, including when ordinary division rounds to zero.
+    /// Repeated operands are treated independently: `x / x` need not be `[1, 1]`.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    /// # fn main() -> Result<(), LaError> {
+    /// let tiny = Interval::point(f64::from_bits(1))?;
+    /// assert_eq!(tiny.try_div(&tiny)?, Interval::ONE);
+    /// assert_eq!(Interval::try_new(-2.0, 6.0)?.try_div(&Interval::try_new(2.0, 4.0)?)?,
+    ///            Interval::try_new(-1.0, 3.0)?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::IntervalZeroDivisor`] if `other` contains zero
+    /// (even for a zero numerator), or [`LaError::IntervalRangeExhausted`] if
+    /// no finite enclosure exists.
+    #[inline]
+    pub const fn try_div(&self, other: &Self) -> Result<Self, LaError> {
+        self.try_div_for(other, ArithmeticOperation::IntervalDivision)
     }
 
     /// Negate an interval exactly by swapping and negating its endpoints.
@@ -657,6 +736,68 @@ impl Interval {
         Ok(Self::new_unchecked(lower, upper))
     }
 
+    /// Divide while attributing range failure to the owning public operation.
+    const fn try_div_for(
+        &self,
+        other: &Self,
+        operation: ArithmeticOperation,
+    ) -> Result<Self, LaError> {
+        if other.contains(0.0) {
+            return Err(LaError::IntervalZeroDivisor {
+                lower: other.lower,
+                upper: other.upper,
+            });
+        }
+        // On a rectangle with zero-free denominator, extrema occur at corners.
+        // Point operands avoid computing the same quotient four times.
+        let numerators = [self.lower, self.upper];
+        let denominators = [other.lower, other.upper];
+        let numerator_count = if self.is_point() { 1 } else { 2 };
+        let denominator_count = if other.is_point() { 1 } else { 2 };
+        let mut lower = f64::MAX;
+        let mut upper = -f64::MAX;
+        let mut i = 0;
+        while i < numerator_count {
+            let mut j = 0;
+            while j < denominator_count {
+                let (lo, hi) =
+                    match rounded_quotient_bounds(numerators[i], denominators[j], operation) {
+                        Ok(bounds) => bounds,
+                        Err(error) => return Err(error),
+                    };
+                if lo < lower {
+                    lower = lo;
+                }
+                if hi > upper {
+                    upper = hi;
+                }
+                j += 1;
+            }
+            i += 1;
+        }
+        Ok(Self::new_unchecked(lower, upper))
+    }
+
+    /// Enclose `self - factor * value` with the solve's error attribution.
+    const fn try_eliminate(&self, factor: &Self, value: &Self) -> Result<Self, LaError> {
+        let product = match factor.try_mul_for(value, ArithmeticOperation::IntervalSolve) {
+            Ok(product) => product,
+            Err(error) => return Err(error),
+        };
+        self.try_add_for(&product.negate(), ArithmeticOperation::IntervalSolve)
+    }
+
+    /// Lower bound on the magnitude of every represented value.
+    const fn separation_from_zero(&self) -> f64 {
+        if self.lower > 0.0 {
+            self.lower
+        } else if self.upper < 0.0 {
+            -self.upper
+        } else {
+            0.0
+        }
+    }
+
     /// Return whether this interval is exactly real zero.
     #[inline]
     const fn is_zero(&self) -> bool {
@@ -847,6 +988,120 @@ impl<const D: usize> IntervalMatrix<D> {
         }
         self.rows[row][column] = value;
         Ok(())
+    }
+
+    /// Enclose the solution of every real system `A x = b` admitted by these
+    /// coefficient intervals and `rhs`.
+    ///
+    /// On success every admitted `A` is nonsingular and the unique exact-real
+    /// solution satisfies `x[i] ∈ result[i]`. Entries vary independently; any
+    /// correlations introduced during expression assembly are safely widened.
+    /// The enclosure need not be tight. Wide intervals and ill-conditioning
+    /// can prevent certification even when every admitted matrix is invertible.
+    ///
+    /// Uses outward-rounded Gaussian elimination and back substitution, with
+    /// row pivots maximizing their minimum distance from zero (first row wins
+    /// ties). No tolerance admits a zero-containing pivot. See `REFERENCES.md`
+    /// \[20\] and the
+    /// [enclosure proof](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#interval-linear-solves).
+    ///
+    /// Both shapes are fixed by `D`. All const dimensions are supported, with
+    /// O(D³) work and O(D²) inline scratch space intended for small systems;
+    /// D=0 returns the empty solution. Inputs are unchanged on all outcomes.
+    /// This operation is available without the `exact` feature.
+    ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    /// # fn main() -> Result<(), LaError> {
+    /// let matrix = IntervalMatrix::try_from_point_rows([[0.0, 2.0], [3.0, 1.0]])?;
+    /// let rhs = [Interval::point(4.0)?, Interval::point(5.0)?];
+    /// let x = matrix.solve(&rhs)?;
+    /// assert!(x[0].contains(1.0) && x[1].contains(2.0));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`LaError::IntervalSolveInconclusive`] at the first column whose
+    /// remaining pivot intervals all contain zero, including the final column.
+    /// This never establishes singularity, even for point inputs or `[0, 0]`
+    /// pivots; this method never returns [`LaError::Singular`].
+    /// Returns [`LaError::IntervalRangeExhausted`] with
+    /// [`ArithmeticOperation::IntervalSolve`] if an intermediate or result has
+    /// no finite enclosure. Both outcomes require the caller's fallback when a
+    /// certified answer is needed. Invalid raw endpoints are rejected by the
+    /// interval constructors before this method can be called.
+    pub const fn solve(&self, rhs: &[Interval; D]) -> Result<[Interval; D], LaError> {
+        let mut rows = self.rows;
+        let mut work_rhs = *rhs;
+        let mut column = 0;
+        while column < D {
+            let mut pivot_row = column;
+            let mut separation = 0.0;
+            let mut row = column;
+            while row < D {
+                let candidate = rows[row][column].separation_from_zero();
+                if candidate > separation {
+                    separation = candidate;
+                    pivot_row = row;
+                }
+                row += 1;
+            }
+            if separation == 0.0 {
+                return Err(LaError::IntervalSolveInconclusive { pivot_col: column });
+            }
+            rows.swap(column, pivot_row);
+            work_rhs.swap(column, pivot_row);
+            row = column + 1;
+            while row < D {
+                if !rows[row][column].is_zero() {
+                    let factor = match rows[row][column]
+                        .try_div_for(&rows[column][column], ArithmeticOperation::IntervalSolve)
+                    {
+                        Ok(factor) => factor,
+                        Err(error) => return Err(error),
+                    };
+                    let mut j = column + 1;
+                    while j < D {
+                        rows[row][j] = match rows[row][j].try_eliminate(&factor, &rows[column][j]) {
+                            Ok(value) => value,
+                            Err(error) => return Err(error),
+                        };
+                        j += 1;
+                    }
+                    work_rhs[row] = match work_rhs[row].try_eliminate(&factor, &work_rhs[column]) {
+                        Ok(value) => value,
+                        Err(error) => return Err(error),
+                    };
+                    // The exact row operation cancels this entry identically
+                    // for every admitted system, despite interval dependency.
+                    rows[row][column] = Interval::ZERO;
+                }
+                row += 1;
+            }
+            column += 1;
+        }
+        let mut solution = [Interval::ZERO; D];
+        let mut row = D;
+        while row > 0 {
+            row -= 1;
+            let mut residual = work_rhs[row];
+            let mut column = row + 1;
+            while column < D {
+                residual = match residual.try_eliminate(&rows[row][column], &solution[column]) {
+                    Ok(value) => value,
+                    Err(error) => return Err(error),
+                };
+                column += 1;
+            }
+            solution[row] =
+                match residual.try_div_for(&rows[row][row], ArithmeticOperation::IntervalSolve) {
+                    Ok(value) => value,
+                    Err(error) => return Err(error),
+                };
+        }
+        Ok(solution)
     }
 
     /// Enclose the determinant with division-free subset dynamic programming.

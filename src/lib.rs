@@ -205,9 +205,9 @@ pub mod guide {
     //!
     //! [`Interval`](crate::Interval) stores two finite ordered bounds and supports
     //! point construction, outward-rounded subtraction, addition, multiplication,
-    //! negation, and square. [`IntervalMatrix`](crate::IntervalMatrix) stores
-    //! `[[Interval; D]; D]` inline and uses a dimension-sized stack workspace of
-    //! at most 128 entries. [`IntervalDeterminantSign`](crate::IntervalDeterminantSign)
+    //! division, reciprocal, negation, and square. [`IntervalMatrix`](crate::IntervalMatrix) stores
+    //! `[[Interval; D]; D]` inline, encloses linear solutions with row pivoting,
+    //! and uses at most 128 stack entries for determinants. [`IntervalDeterminantSign`](crate::IntervalDeterminantSign)
     //! distinguishes positive, negative, exact zero, and inconclusive evidence.
     //!
     //! Parse numerical thresholds through [`Tolerance::try_new`](crate::Tolerance::try_new).
@@ -223,6 +223,9 @@ pub mod guide {
     //! - [`LaError::InvertedInterval`](crate::LaError::InvertedInterval) preserves
     //!   rejected finite endpoints; [`LaError::IntervalRangeExhausted`](crate::LaError::IntervalRangeExhausted)
     //!   distinguishes finite-input interval range loss from a non-finite value.
+    //! - [`LaError::IntervalZeroDivisor`](crate::LaError::IntervalZeroDivisor) rejects
+    //!   division across zero. [`LaError::IntervalSolveInconclusive`](crate::LaError::IntervalSolveInconclusive)
+    //!   reports an uncertified pivot without claiming singularity.
     //! - [`InvalidToleranceReason`](crate::InvalidToleranceReason) distinguishes
     //!   negative and non-finite tolerances.
     //! - [`PositiveSemidefiniteViolation`](crate::PositiveSemidefiniteViolation)
@@ -335,7 +338,7 @@ pub mod guide {
     }
 
     pub mod intervals {
-        //! Outward-rounded interval expressions and determinant signs.
+        //! Outward-rounded interval expressions, determinant signs, and solutions.
         //!
         //! `Interval` encloses expression construction that has not yet been reduced to a
         //! single stored `f64`. Point intervals preserve finite binary64 values exactly;
@@ -385,6 +388,45 @@ pub mod guide {
         //! is inconclusive or reports range failure. Lifting a finished `Matrix` with
         //! [`IntervalMatrix::from_matrix`](crate::IntervalMatrix::from_matrix) encloses its stored entries, but cannot recover
         //! rounding that occurred while those entries were assembled.
+        //!
+        //! [`Interval::try_recip`](crate::Interval::try_recip) and
+        //! [`Interval::try_div`](crate::Interval::try_div) require a divisor excluding
+        //! zero. They return `LaError::IntervalZeroDivisor` otherwise. Direct division
+        //! can enclose tiny/tiny even when a reciprocal intermediate would overflow.
+        //!
+        //! [`IntervalMatrix::solve`](crate::IntervalMatrix::solve) takes a borrowed
+        //! `[Interval; D]` RHS. Every successful component encloses the corresponding
+        //! exact-real solution for **every** matrix and RHS admitted by the intervals;
+        //! success also certifies that every admitted matrix is nonsingular. The
+        //! Gaussian elimination uses outward arithmetic throughout, choosing each
+        //! pivot by its minimum distance from zero. Width and ill-conditioning can
+        //! make this test inconclusive even for invertible point matrices. All const
+        //! dimensions are supported with O(D²) stack storage; D=0 returns `[]`.
+        //!
+        //! ```rust
+        //! use la_stack::prelude::*;
+        //!
+        //! fn main() -> Result<(), LaError> {
+        //!     let matrix = IntervalMatrix::try_from_point_rows([[3.0, 1.0], [1.0, 2.0]])?;
+        //!     let rhs = [Interval::try_new(3.9, 4.1)?, Interval::point(3.0)?];
+        //!     // A consumer may map these two failures to its exhaustive fallback.
+        //!     let enclosure = match matrix.solve(&rhs) {
+        //!         Ok(bounds) => Some(bounds),
+        //!         Err(LaError::IntervalSolveInconclusive { .. }
+        //!             | LaError::IntervalRangeExhausted { .. }) => None,
+        //!         Err(error) => return Err(error),
+        //!     };
+        //!     assert!(enclosure.is_some_and(|bounds|
+        //!         bounds[0].contains(1.0) && bounds[1].contains(1.0)));
+        //!     Ok(())
+        //! }
+        //! ```
+        //!
+        //! `IntervalSolveInconclusive` never proves singularity, including a final
+        //! pivot of `[0, 0]`. Finite-range exhaustion also leaves the solve uncertified.
+        //! Invalid raw endpoints are rejected by constructors. Geometry-specific
+        //! equation assembly, radius calculations, coordinate boxes, and broad-phase
+        //! fallback policy remain the consumer's responsibility.
     }
 
     pub mod norms {

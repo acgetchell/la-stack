@@ -43,6 +43,12 @@ pub enum ArithmeticOperation {
     IntervalSubtraction,
     /// Outward-rounded interval multiplication.
     IntervalMultiplication,
+    /// Outward-rounded interval reciprocal.
+    IntervalReciprocal,
+    /// Outward-rounded interval division.
+    IntervalDivision,
+    /// Interval Gaussian elimination and back substitution.
+    IntervalSolve,
     /// Outward-rounded interval square.
     IntervalSquare,
     /// Division-free interval determinant calculation.
@@ -74,6 +80,9 @@ impl fmt::Display for ArithmeticOperation {
             Self::IntervalAddition => "interval addition",
             Self::IntervalSubtraction => "interval subtraction",
             Self::IntervalMultiplication => "interval multiplication",
+            Self::IntervalReciprocal => "interval reciprocal",
+            Self::IntervalDivision => "interval division",
+            Self::IntervalSolve => "interval solve",
             Self::IntervalSquare => "interval square",
             Self::IntervalDeterminant => "interval determinant",
             Self::VectorDotProduct => "vector dot product",
@@ -434,6 +443,22 @@ pub enum LaError {
         /// Operation whose mathematical intermediate or result exceeded the
         /// finite interval endpoint domain.
         operation: ArithmeticOperation,
+    },
+    /// A reciprocal or division received a divisor interval containing zero.
+    /// No finite connected enclosure is supplied, including for `0 / [0, 0]`.
+    #[non_exhaustive]
+    IntervalZeroDivisor {
+        /// Divisor's lower endpoint.
+        lower: f64,
+        /// Divisor's upper endpoint.
+        upper: f64,
+    },
+    /// Interval elimination could not certify a pivot separated from zero.
+    /// This is inconclusive, even for point inputs; it never proves singularity.
+    #[non_exhaustive]
+    IntervalSolveInconclusive {
+        /// First elimination column without a certified nonzero pivot.
+        pivot_col: usize,
     },
     /// An exact result cannot satisfy the requested finite-`f64` conversion.
     #[non_exhaustive]
@@ -890,6 +915,13 @@ impl fmt::Display for LaError {
             Self::IntervalRangeExhausted { operation } => write!(
                 f,
                 "exact-real intermediate or result of {operation} has no enclosure with finite binary64 endpoints"
+            ),
+            Self::IntervalZeroDivisor { lower, upper } => {
+                write!(f, "interval divisor [{lower}, {upper}] contains zero")
+            }
+            Self::IntervalSolveInconclusive { pivot_col } => write!(
+                f,
+                "interval solve is inconclusive at pivot column {pivot_col}; no pivot excludes zero"
             ),
             Self::Unrepresentable { index, reason } => write_unrepresentable(f, index, reason),
             Self::InvertedInterval { lower, upper } => write!(
