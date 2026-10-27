@@ -403,8 +403,12 @@ python-typecheck: python-sync
 
 # Verify signed Cargo/native CI evidence; accept --identity JSON and --github-output PATH.
 [positional-arguments]
+[script("uv", "run", "--locked", "--no-sync", "python")]
 release-evidence *args:
-    uv run --locked --no-sync python -m tooling.release_evidence verify "$@"
+    import runpy
+    import sys
+    sys.argv[1:1] = ["verify"]
+    runpy.run_path("tooling/release_evidence.py", run_name="__main__")
 
 # Require the release event, reviewed commit, native checks, assets, and notes.
 release-gate tag:

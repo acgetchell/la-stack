@@ -197,10 +197,10 @@ def verify_signature(directory: Path, run: dict[str, Any]) -> None:
         raise ValueError(msg)
 
 
-def verify(identity: str = "") -> dict[str, Any]:
+def verify(identity: str | None = None) -> dict[str, Any]:
     """Reuse one exact CI attempt, or recheck the same pinned identity after approval."""
     commit = checkout_commit()
-    pin = object_value(json.loads(identity, object_pairs_hook=unique_object)) if identity else None
+    pin = object_value(json.loads(identity, object_pairs_hook=unique_object)) if identity is not None else None
     if pin is not None and set(pin) != {"run_id", "run_attempt", "artifact_id", "artifact_digest"}:
         msg = "invalid pinned evidence identity"
         raise ValueError(msg)
@@ -236,7 +236,7 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("seal").add_argument("--output", type=Path, required=True)
     verification = commands.add_parser("verify")
-    verification.add_argument("--identity", default="")
+    verification.add_argument("--identity")
     verification.add_argument("--github-output", type=Path, help="append identity to an existing GitHub Actions output file instead of stdout")
     args = parser.parse_args()
     try:

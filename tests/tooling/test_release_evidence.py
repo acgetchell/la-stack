@@ -441,7 +441,7 @@ def test_verified_attestation_must_name_this_push_invocation(provider: EvidenceP
 
 @pytest.mark.parametrize("source", ["pin", "manifest", "attestation"])
 def test_duplicate_keys_cannot_replace_pinned_signed_or_verified_claims(provider: EvidenceProvider, source: str) -> None:
-    identity = ""
+    identity = None
     if source == "pin":
         identity = json.dumps(PIN).replace('"run_id": 101', '"run_id": 101, "run_id": 101', 1)
     elif source == "manifest":

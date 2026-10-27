@@ -33,6 +33,14 @@ exit alone also accepts a broken import or shell. When quiet mode hides
 diagnostics, retain the verifier's arguments, exit status and diagnostic in a
 fixture-owned result file.
 
+The `release-evidence` recipe uses Just's native uv/Python script interpreter.
+MSYS applies shell-like argument expansion when started by a native Windows
+program, which can corrupt JSON passed as Bash positional arguments; see
+[MSYS2 #522](https://github.com/msys2/MSYS2-packages/issues/522). The integration
+fixture keeps the real Just, uv and Python launch and substitutes only the
+entry point's provider responses. It checks the exact received identity and
+rejects an explicitly empty pin rather than selecting fresh evidence.
+
 Semgrep shares the root Python 3.15 environment and lockfile. Preserve its
 native-wheel requirement and compatibility overrides in `pyproject.toml`.
 Local scans, fixture checks and SARIF retain the Linux stack-limit workaround

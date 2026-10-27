@@ -247,29 +247,25 @@ def run_evidence_fixture() -> int:
 
 
 @pytest.fixture
-def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    """Keep the real shell, Just, parser, verifier and installed output writer."""
+def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep real workflow shell, Just, uv, Python, verifier and output writer."""
     (tmp_path / "justfile").write_text(f"import '{(REPO_ROOT / 'justfile').as_posix()}'\n", encoding="utf-8")
     (tmp_path / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.5.42"\n', encoding="utf-8")
     for name in ("BASH_ENV", "SHELLOPTS", "BASHOPTS", "JUST_QUIET", "JUST_DRY_RUN", "FIXTURE_FAILURE", "FIXTURE_DIAGNOSTIC_NEWLINE", "PYTHONPATH"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("FIXTURE_ROOT", str(tmp_path))
     monkeypatch.setenv("FIXTURE_REPO_ROOT", str(REPO_ROOT))
-    # Keep Python source out of Windows argv parsing, and paths out of source.
-    bootstrap = tmp_path / "evidence fixture.py"
+    monkeypatch.setenv("UV_PROJECT", str(REPO_ROOT))
+    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", sys.prefix)
+    # Just executes the entry point relative to the fixture checkout. Supply
+    # provider responses there while retaining the actual native uv/Python launch.
+    bootstrap = tmp_path / "tooling/release_evidence.py"
+    bootstrap.parent.mkdir()
     bootstrap.write_text(
         'import os, sys\nsys.path.insert(0, os.environ["FIXTURE_REPO_ROOT"])\n'
         "from tests.tooling.test_release_publishing import run_evidence_fixture\nsys.exit(run_evidence_fixture())\n",
         encoding="utf-8",
         newline="\n",
-    )
-    return (
-        "uv() {\n"
-        '  [[ "$1 $2 $3 $4 $5 $6" == "run --locked --no-sync python -m tooling.release_evidence" ]] || return 90\n'
-        "  shift 6\n"
-        f'  {shlex.quote(Path(sys.executable).as_posix())} {shlex.quote(bootstrap.as_posix())} "$@"\n'
-        "}\n"
-        "export -f uv\n"
     )
 
 
@@ -282,10 +278,11 @@ def run_evidence_shell(script: str, root: Path) -> subprocess.CompletedProcess[s
     return run_command("bash", ["--noprofile", "--norc", "-eu", source.as_posix()], cwd=root, env=dict(os.environ), check=False, timeout=60)
 
 
+@pytest.mark.usefixtures("evidence_runner")
 @pytest.mark.parametrize("quiet", [False, True], ids=["normal", "quiet"])
 @pytest.mark.parametrize("outcome", ["valid", "failed-job", "missing-file", "directory", "unset-output", "empty-output"])
 def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capture(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evidence_runner: str, quiet: bool, outcome: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quiet: bool, outcome: str
 ) -> None:
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
     script = workflow["jobs"]["verify"]["steps"][-1]["run"]
@@ -301,7 +298,7 @@ def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capt
     monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
     monkeypatch.setenv("FIXTURE_FAILURE", outcome)
     marker = tmp_path / "verification-passed"
-    result = run_evidence_shell(evidence_runner + script + f"\ntouch {shlex.quote(marker.as_posix())}", tmp_path)
+    result = run_evidence_shell(script + f"\ntouch {shlex.quote(marker.as_posix())}", tmp_path)
     assert result.returncode == (0 if outcome == "valid" else 1), result.stderr
     assert marker.exists() == (outcome == "valid")
     report = tmp_path / "verifier-result.json"
@@ -339,11 +336,12 @@ def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capt
         assert output.read_bytes() == original
 
 
+@pytest.mark.usefixtures("evidence_runner")
 @pytest.mark.parametrize(
     ("import_root", "newline"), [(r"C:\agent\test dir\native", "\n"), (r"D:\build's root\new\repo", "\r\n")], ids=["backslashes-lf", "apostrophe-crlf"]
 )
 def test_evidence_bootstrap_keeps_windows_import_paths_as_environment_data(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evidence_runner: str, import_root: str, newline: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, import_root: str, newline: str
 ) -> None:
     # Exercise literal Windows path data on every host. PYTHONPATH supplies the
     # real module after the intentionally nonexistent path inserted by bootstrap.
@@ -355,7 +353,7 @@ def test_evidence_bootstrap_keeps_windows_import_paths_as_environment_data(
     monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
     script = workflow["jobs"]["verify"]["steps"][-1]["run"]
-    result = run_evidence_shell(evidence_runner + script, tmp_path)
+    result = run_evidence_shell(script, tmp_path)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "fixture stdout diagnostic" + newline
     observed = json.loads((tmp_path / "verifier-result.json").read_text(encoding="utf-8"))
@@ -368,17 +366,18 @@ def test_evidence_bootstrap_keeps_windows_import_paths_as_environment_data(
     assert output.read_bytes() == f"identity={PIN_JSON}\n".encode()
 
 
+@pytest.mark.usefixtures("evidence_runner")
 @pytest.mark.parametrize("quiet", [False, True], ids=["normal", "quiet"])
 @pytest.mark.parametrize("pin", ["valid", "empty", "invalid", "changed"])
 def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evidence_runner: str, quiet: bool, pin: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quiet: bool, pin: str
 ) -> None:
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
     output = tmp_path / "github output"
     output.touch()
     monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
     monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
-    exported = run_evidence_shell(evidence_runner + workflow["jobs"]["verify"]["steps"][-1]["run"], tmp_path)
+    exported = run_evidence_shell(workflow["jobs"]["verify"]["steps"][-1]["run"], tmp_path)
     assert exported.returncode == 0, exported.stderr
     report = tmp_path / "verifier-result.json"
     assert json.loads(report.read_text(encoding="utf-8"))["status"] == 0
@@ -393,10 +392,7 @@ def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token
     token = tmp_path / "token-reached"
     # The other release and registry gates are independently covered below.
     # Keep evidence verification real and stop before any credentials or upload.
-    runner = evidence_runner.replace(
-        "uv() {\n",
-        f'uv() {{\n  if [[ "$4 $5 $6" == "research-repo-tools release registry" ]]; then touch {shlex.quote(registry.as_posix())}; return 0; fi\n',
-    )
+    runner = f'uv() {{\n  [[ "$4 $5 $6" == "research-repo-tools release registry" ]] || return 90\n  touch {shlex.quote(registry.as_posix())}\n}}\n'
     runner += 'just() { if [[ "$1" == release-gate ]]; then return 0; fi; command just "$@"; }\n'
     script = workflow["jobs"]["publish"]["steps"][2]["run"]
     result = run_evidence_shell(runner + script + f"\ntouch {shlex.quote(token.as_posix())}", tmp_path)
@@ -414,6 +410,22 @@ def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token
         assert observed["status"] == (0 if pin == "valid" else 1)
         rejection = "Expecting property name" if pin == "invalid" else "selected CI attempt is stale"
         assert observed["diagnostic"] == "" if pin == "valid" else rejection in observed["diagnostic"]
+
+
+@pytest.mark.usefixtures("evidence_runner")
+@pytest.mark.parametrize("quiet", [False, True], ids=["normal", "quiet"])
+def test_explicit_empty_identity_cannot_select_fresh_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quiet: bool) -> None:
+    monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
+    output = tmp_path / "github output"
+    original = b"prior=value\n"
+    output.write_bytes(original)
+    monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
+    result = run_evidence_shell('just release-evidence --identity "" --github-output "$GITHUB_OUTPUT"\n', tmp_path)
+    observed = json.loads((tmp_path / "verifier-result.json").read_text(encoding="utf-8"))
+    assert observed["arguments"][:3] == ["verify", "--identity", ""]
+    assert result.returncode == observed["status"] == 1
+    assert "Expecting value" in observed["diagnostic"]
+    assert output.read_bytes() == original
 
 
 @pytest.mark.parametrize(("failure", "expected_exit"), [("none", 0), ("evidence", 1), ("ci-evidence", 1), ("empty-pin", 1), ("present", 1), ("unavailable", 2)])

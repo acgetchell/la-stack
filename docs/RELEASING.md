@@ -62,6 +62,9 @@ already exist; export errors fail the command. Existing output records survive,
 and normal or quiet Just execution transports the same JSON without capturing
 stdout. Non-finite JSON values are rejected. The shared helper owns command-file
 transport; this adapter retains the Cargo-specific evidence policy.
+The Just recipe launches uv and Python directly so JSON arguments never pass
+through the native Windows-to-MSYS shell boundary. Omitting `--identity` selects
+fresh evidence; supplying an empty identity is an error.
 
 The publishing workflow reuses these completed checks and passes the run/attempt
 and artifact ID/digest through `steps.evidence.outputs.identity` and
