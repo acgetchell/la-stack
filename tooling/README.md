@@ -159,6 +159,9 @@ use the shared release contract; `release-package` owns native default/exact
 Cargo dry-runs. Main CI signs those packaging and native validation identities;
 `release-evidence` verifies the original main-push attempt and immutable signed
 artifact before publication and rechecks its pinned identity after approval.
+The adapter uses the installed `ci.export_environment` helper for explicit
+`--github-output` export; the [release guide](../docs/RELEASING.md#reusable-ci-evidence)
+owns the transport and approval contract. Cargo evidence policy stays local.
 `tests/tooling/test_release_evidence.py` checks the adapter's trust boundaries, while
 `tests/tooling/test_release_publishing.py` checks consumer policy and upload barriers
 without registry credentials. The release guide owns retention, complete-rerun

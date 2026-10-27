@@ -54,9 +54,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          identity=$(just release-evidence)
-          test -n "$identity"
-          printf 'identity=%s\n' "$identity" >> "$GITHUB_OUTPUT"
+          just release-evidence --github-output "$GITHUB_OUTPUT"
 
   publish:
     needs: verify
@@ -89,7 +87,7 @@ jobs:
           set -euo pipefail
           just release-gate "$RELEASE_TAG"
           test -n "$CI_EVIDENCE"
-          just release-evidence "$CI_EVIDENCE"
+          just release-evidence --identity "$CI_EVIDENCE"
           uv run --locked --no-sync research-repo-tools release registry "$RELEASE_TAG" --expect absent
 
       - name: Obtain a short-lived crates.io token

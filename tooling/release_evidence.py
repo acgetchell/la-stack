@@ -16,6 +16,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from research_repo_tools.ci import export_environment
 from research_repo_tools.process import format_exception_diagnostics, run_git_command
 from research_repo_tools.release_validation import ValidationPolicy, api, download_artifact, gh, select_main_run, validate_jobs, validate_run
 
@@ -234,13 +235,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("seal").add_argument("--output", type=Path, required=True)
-    commands.add_parser("verify").add_argument("--identity", default="")
+    verification = commands.add_parser("verify")
+    verification.add_argument("--identity", default="")
+    verification.add_argument("--github-output", type=Path, help="append identity to an existing GitHub Actions output file instead of stdout")
     args = parser.parse_args()
     try:
         if args.command == "seal":
             seal(args.output)
         else:
-            print(json.dumps(verify(args.identity), sort_keys=True))
+            identity = json.dumps(verify(args.identity), sort_keys=True, separators=(",", ":"), allow_nan=False)
+            if args.github_output is not None:
+                if not args.github_output.is_file():
+                    msg = "GitHub Actions output destination must be an existing regular file"
+                    raise ValueError(msg)
+                export_environment(args.github_output, ("identity",), environment={"identity": identity})
+            else:
+                print(identity)
     except (KeyError, OSError, TypeError, ValueError, subprocess.SubprocessError) as error:
         print(f"Release evidence rejected: {format_exception_diagnostics(error, single_line=True)}", file=sys.stderr)
         return 1

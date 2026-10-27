@@ -16,6 +16,9 @@ from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
 
+from tests.tooling.test_release_evidence import PIN_JSON, EvidenceProvider
+from tooling import release_evidence
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/publish-crates.yml"
 SHA = "a" * 40
@@ -194,7 +197,7 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     gate = steps[2]["run"]
     assert 'just release-gate "$RELEASE_TAG"' in gate
     assert 'test -n "$CI_EVIDENCE"' in gate
-    assert 'just release-evidence "$CI_EVIDENCE"' in gate
+    assert 'just release-evidence --identity "$CI_EVIDENCE"' in gate
     assert steps[2]["env"]["CI_EVIDENCE"] == "${{ needs.verify.outputs.ci-evidence }}"
     assert 'release registry "$RELEASE_TAG" --expect absent' in gate
     assert steps[3]["id"] == "auth"
@@ -210,45 +213,120 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert "--no-verify" not in commands
 
 
-@pytest.mark.parametrize(("outcome", "expected_exit"), [("valid", 0), ("empty", 1), ("failed", 17)])
-def test_evidence_capture_exports_json_through_real_just_or_fails_without_output(tmp_path: Path, outcome: str, expected_exit: int) -> None:
-    workflow = yaml.safe_load(WORKFLOW.read_bytes())
-    script = workflow["jobs"]["verify"]["steps"][-1]["run"]
-    root = tmp_path / "consumer with spaces"
-    root.mkdir()
-    (root / "justfile").write_text(f"import '{(REPO_ROOT / 'justfile').as_posix()}'\n", encoding="utf-8")
-    output = root / "github output"
-    identity = {"run_id": 101, "run_attempt": 2, "artifact_id": 301, "artifact_digest": "sha256:" + "a" * 64}
-    # Substitute only the evidence producer. The actual workflow shell, Just,
-    # and imported release-evidence recipe own stdout capture and propagation.
-    producer = (
+def run_evidence_fixture() -> int:
+    """Run the real verifier in a child process with simulated provider responses."""
+    root = Path(os.environ["FIXTURE_ROOT"])
+    provider = EvidenceProvider(release_evidence, root)
+    if os.environ.get("FIXTURE_FAILURE") == "failed-job":
+        provider.jobs[3]["steps"][0]["conclusion"] = "failure"
+    print("fixture stdout diagnostic")
+    print("fixture stderr diagnostic", file=sys.stderr)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(release_evidence, "ROOT", root)
+        patch.setattr(release_evidence, "api", provider.api)
+        patch.setattr(release_evidence, "gh", provider.gh)
+        patch.setattr(release_evidence, "download_artifact", provider.download)
+        patch.setattr(release_evidence, "run_git_command", provider.git)
+        return release_evidence.main()
+
+
+@pytest.fixture
+def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Keep the real shell, Just, parser, verifier and installed output writer."""
+    (tmp_path / "justfile").write_text(f"import '{(REPO_ROOT / 'justfile').as_posix()}'\n", encoding="utf-8")
+    (tmp_path / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.5.42"\n', encoding="utf-8")
+    for name in ("BASH_ENV", "SHELLOPTS", "BASHOPTS", "JUST_QUIET", "JUST_DRY_RUN", "FIXTURE_FAILURE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("FIXTURE_ROOT", str(tmp_path))
+    bootstrap = (
+        f"import sys; sys.path.insert(0, {str(REPO_ROOT)!r}); "
+        "from tests.tooling.test_release_publishing import run_evidence_fixture; sys.exit(run_evidence_fixture())"
+    )
+    return (
         "uv() {\n"
-        '  [[ "$*" == "run --locked --no-sync python -m tooling.release_evidence verify --identity " ]] || return 90\n'
-        "  printf '%s\\n' 'fixture evidence diagnostic' >&2\n"
-        "  printf '%s\\n' \"$FIXTURE_EVIDENCE\"\n"
-        '  return "$FIXTURE_EXIT"\n'
+        '  [[ "$1 $2 $3 $4 $5 $6" == "run --locked --no-sync python -m tooling.release_evidence" ]] || return 90\n'
+        "  shift 6\n"
+        f'  {shlex.quote(sys.executable)} -c {shlex.quote(bootstrap)} "$@"\n'
         "}\n"
         "export -f uv\n"
     )
+
+
+@pytest.mark.parametrize("quiet", [False, True], ids=["normal", "quiet"])
+@pytest.mark.parametrize("outcome", ["valid", "failed-job", "missing-file", "directory", "unset-output", "empty-output"])
+def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evidence_runner: str, quiet: bool, outcome: str
+) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_bytes())
+    script = workflow["jobs"]["verify"]["steps"][-1]["run"]
+    output = tmp_path / "github output"
+    original = b"prior=value\r\n"
+    if outcome == "directory":
+        output.mkdir()
+    elif outcome != "missing-file":
+        output.write_bytes(original)
+    monkeypatch.setenv("GITHUB_OUTPUT", "" if outcome == "empty-output" else output.as_posix())
+    if outcome == "unset-output":
+        monkeypatch.delenv("GITHUB_OUTPUT")
+    monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
+    monkeypatch.setenv("FIXTURE_FAILURE", outcome)
+    marker = tmp_path / "verification-passed"
     result = run_command(
         "bash",
-        ["--noprofile", "--norc", "-euc", producer + script],
-        cwd=root,
-        env={
-            **{key: value for key, value in os.environ.items() if key not in {"BASH_ENV", "SHELLOPTS", "BASHOPTS", "JUST_QUIET", "JUST_DRY_RUN"}},
-            "GITHUB_OUTPUT": output.as_posix(),
-            "FIXTURE_EVIDENCE": "" if outcome == "empty" else json.dumps(identity, sort_keys=True),
-            "FIXTURE_EXIT": "17" if outcome == "failed" else "0",
-        },
+        ["--noprofile", "--norc", "-euc", evidence_runner + script + f"\ntouch {shlex.quote(marker.as_posix())}"],
+        cwd=tmp_path,
         check=False,
     )
-    assert result.returncode == expected_exit, result.stderr
-    assert result.stdout == ""
+    assert (result.returncode == 0) == (outcome == "valid"), result.stderr
+    assert marker.exists() == (outcome == "valid")
     if outcome == "valid":
-        assert output.read_text(encoding="utf-8").splitlines() == ["identity=" + json.dumps(identity, sort_keys=True)]
-        assert "fixture evidence diagnostic" in result.stderr
-    else:
+        assert output.read_bytes() == original + f"identity={PIN_JSON}\n".encode()
+        if not quiet:
+            assert result.stdout == "fixture stdout diagnostic\n"
+            assert "fixture stderr diagnostic" in result.stderr
+    elif outcome == "directory":
+        assert output.is_dir()
+        assert list(output.iterdir()) == []
+    elif outcome == "missing-file":
         assert not output.exists()
+    else:
+        assert output.read_bytes() == original
+
+
+@pytest.mark.parametrize("quiet", [False, True], ids=["normal", "quiet"])
+@pytest.mark.parametrize("pin", ["valid", "empty", "invalid", "changed"])
+def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evidence_runner: str, quiet: bool, pin: str
+) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_bytes())
+    output = tmp_path / "github output"
+    output.touch()
+    monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
+    monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
+    exported = run_command(
+        "bash", ["--noprofile", "--norc", "-euc", evidence_runner + workflow["jobs"]["verify"]["steps"][-1]["run"]], cwd=tmp_path, check=False
+    )
+    assert exported.returncode == 0, exported.stderr
+    record = output.read_text(encoding="utf-8")
+    assert record == f"identity={PIN_JSON}\n"
+    identity = record.removeprefix("identity=").removesuffix("\n")
+    variants = {"valid": identity, "empty": "", "invalid": "{", "changed": identity.replace('"run_attempt":2', '"run_attempt":1')}
+    monkeypatch.setenv("CI_EVIDENCE", variants[pin])
+    monkeypatch.setenv("RELEASE_TAG", TAG)
+    registry = tmp_path / "registry-reached"
+    token = tmp_path / "token-reached"
+    # The other release and registry gates are independently covered below.
+    # Keep evidence verification real and stop before any credentials or upload.
+    runner = evidence_runner.replace(
+        "uv() {\n",
+        f'uv() {{\n  if [[ "$4 $5 $6" == "research-repo-tools release registry" ]]; then touch {shlex.quote(registry.as_posix())}; return 0; fi\n',
+    )
+    runner += 'just() { if [[ "$1" == release-gate ]]; then return 0; fi; command just "$@"; }\n'
+    script = workflow["jobs"]["publish"]["steps"][2]["run"]
+    result = run_command("bash", ["--noprofile", "--norc", "-euc", runner + script + f"\ntouch {shlex.quote(token.as_posix())}"], cwd=tmp_path, check=False)
+    assert (result.returncode == 0) == (pin == "valid"), result.stderr
+    assert registry.exists() == (pin == "valid")
+    assert token.exists() == (pin == "valid")
 
 
 @pytest.mark.parametrize(("failure", "expected_exit"), [("none", 0), ("evidence", 1), ("ci-evidence", 1), ("empty-pin", 1), ("present", 1), ("unavailable", 2)])
