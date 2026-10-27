@@ -25,6 +25,8 @@ pub enum ArithmeticOperation {
     SymmetryCheck,
     /// LU factorization.
     LuFactorization,
+    /// Rectangular numerical column-basis selection.
+    ColumnBasis,
     /// LDLT factorization.
     LdltFactorization,
     /// Forward or backward substitution with an LU factorization.
@@ -63,6 +65,7 @@ impl fmt::Display for ArithmeticOperation {
             Self::MatrixInfinityNorm => "matrix infinity norm",
             Self::SymmetryCheck => "symmetry check",
             Self::LuFactorization => "LU factorization",
+            Self::ColumnBasis => "column basis selection",
             Self::LdltFactorization => "LDLT factorization",
             Self::LuSolve => "LU solve",
             Self::LdltSolve => "LDLT solve",

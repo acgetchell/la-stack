@@ -191,6 +191,9 @@ def recipe(root: Path, name: str, *arguments: str) -> subprocess.CompletedProces
         "just",
         ["--no-deps", "--justfile", str(ROOT / "justfile"), "--working-directory", str(root), name, *arguments],
         env={**os.environ, "UV_NO_SYNC": "1", "UV_PROJECT_ENVIRONMENT": sys.prefix},
+        # Full-inventory publication exceeded the shared 300-second command
+        # budget on macOS and Windows CI; allow 3x for these workflow tests.
+        timeout=900,
         check=False,
     )
 

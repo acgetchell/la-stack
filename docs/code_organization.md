@@ -22,6 +22,7 @@ mirrors, and the public prelude. There is no `src/main.rs`.
 | Module | Owns |
 |--------|------|
 | [`src/angle.rs`](../src/angle.rs) | `VectorAngle` slice extension trait, direction scaling, and the shared unsigned-angle kernel |
+| [`src/column_basis.rs`](../src/column_basis.rs) | `column_basis` and `ColumnBasis<R, C>`, provisional rectangular column selection with explicit absolute tolerance |
 | [`src/error.rs`](../src/error.rs) | `LaError` and typed singularity, non-finite, positive-semidefinite, tolerance, factorization, arithmetic-operation, and exact-conversion categories |
 | [`src/exact.rs`](../src/exact.rs) | Exact determinants and solves, determinant-sign filtering, and exact-to-`f64` conversion |
 | [`src/gram.rs`](../src/gram.rs) | Fixed-size Gram construction from vector dot products |
@@ -30,7 +31,7 @@ mirrors, and the public prelude. There is no `src/main.rs`.
 | [`src/lu.rs`](../src/lu.rs) | Partially pivoted `Lu<D>` factorization, solves, and determinants |
 | [`src/matrix.rs`](../src/matrix.rs) | `Matrix<D>`, finite storage, accessors, matrix operations, norms, and direct determinant APIs |
 | [`src/norm.rs`](../src/norm.rs) | Exact range-boundary fallback for the approximate Euclidean norm |
-| [`src/rational.rs`](../src/rational.rs) | `RationalMatrix<D>` and `RationalVector<D>`, canonical rational inputs, and denominator clearing for exact arithmetic |
+| [`src/rational.rs`](../src/rational.rs) | `RationalMatrix<D>` and `RationalVector<D>`, exact dot products and the checked `rational_dot` slice adapter, canonical rational inputs, and denominator clearing |
 | [`src/rounding.rs`](../src/rounding.rs) | Shared binary64 rounding primitives for certified arithmetic |
 | [`src/scaled_product.rs`](../src/scaled_product.rs) | Allocation-free scaled products for floating-point factor diagonals |
 | [`src/tolerance.rs`](../src/tolerance.rs) | Validated singular-tolerance policy |
@@ -88,6 +89,11 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
 - `tests/rational_structured_solve.rs` checks triangular solves against the
   captured Gaussian reference, exact residuals, and typed singularity metadata
   through D=8, including arbitrary row permutations and wide rational inputs.
+- `tests/rational_dot.rs` checks exact dot identities, shape and denominator
+  rejection, and basis/objective vector sizes through 22 and beyond.
+- `tests/column_basis.rs` checks rectangular numerical rank, scaling, pivot
+  ordering, typed failures, and shared-face affine constraints through 6D;
+  exact-feature checks independently certify the selected square minors.
 - `benches/comparison/tests/vs_linalg_inputs.rs` checks the shared comparison
   fixtures. `just test-bench-inputs` and the full CI test pass include both
   workspace packages.
@@ -127,6 +133,9 @@ borrowed slices, and construction costs.
 captured Delaunay Gaussian control. `benches/rational_solve.rs` separates
 construction, prepared solves, and full runtime-dispatch adapter costs;
 `tests/exact_bench_config.rs` includes its independent fixture gates.
+`benches/column_basis.rs` and `benches/rational_dot.rs` own the new rectangular
+selection and exact reduction benchmarks, with analytical fixture checks before
+timing. These diagnostic targets are separate from the retained release catalog.
 
 The root package is the default workspace member. `benches/comparison/Cargo.toml`
 owns the `vs_linalg` target at `benches/vs_linalg.rs` and its input test. Select

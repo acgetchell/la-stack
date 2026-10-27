@@ -57,6 +57,8 @@ while keeping the API intentionally small and explicit.
 
 `la-stack` provides a handful of const-generic, stack-backed building blocks:
 
+- `column_basis(&[[f64; C]; R], tolerance)` for rectangular column selection
+  with explicit absolute tolerance and a provisional numerical rank
 - `gram_matrix(&[Vector<N>; M])` for allocation-free `Matrix<M>` construction
   from pairwise vector inner products, with bit-for-bit symmetry. Gram matrices
   encode lengths and angles and support simplex/facet volume calculations; see
@@ -72,7 +74,8 @@ while keeping the API intentionally small and explicit.
 - `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
 - `Matrix<const D: usize>` for fixed-size square `f64` matrices backed by `[[f64; D]; D]`
 - `RationalVector<const D: usize>` and `RationalMatrix<const D: usize>` for
-  exact rational inputs behind the optional `"exact"` feature
+  exact rational inputs behind the optional `"exact"` feature; vector `dot`
+  and the checked `rational_dot` slice adapter preserve exact products at any length
 - `ScalarWithErrorBound` for proof-bearing fixed-vector dot products and
   affine differences over finite `f64` inputs
 - `Vector<const D: usize>` for fixed-length `f64` vectors backed by `[f64; D]`
@@ -193,10 +196,12 @@ to combine operations.
 | Capability | Main entry points |
 |---|---|
 | Certified dot, affine-difference, and determinant estimates | [`ScalarWithErrorBound`][api-scalar-bound], [`DeterminantWithErrorBound`][api-det-bound] |
+| Exact rational dot products¹ | [`RationalVector::dot`][api-rational-dot], [`rational_dot`][api-rational-dot-slice] |
 | Exact signs, determinants, solves, and output conversion¹ | [Exact arithmetic examples][api-exact] |
 | Floating-point determinants and solves | [`Matrix<D>`][api-matrix], [`Lu<D>`][api-lu], [`Ldlt<D>`][api-ldlt] |
 | Gram matrix construction | [`gram_matrix`][api-gram] |
 | Interval expressions and determinant signs | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
+| Provisional rectangular column basis and numerical rank | [`column_basis`][api-column-basis] |
 | Runtime selection of a const-generic matrix dimension | [Dimension dispatch examples][api-dispatch] |
 | Unsigned vector angles in radians | [`VectorAngle::angle`][api-angle], [`Vector::angle`][api-vector-angle] |
 | Vector operations and norms | [`Vector<D>`][api-vector] |
@@ -563,6 +568,9 @@ for the repository's AI-assisted development note.
 BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/main/LICENSE).
 
 [audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg
+[api-column-basis]: https://docs.rs/la-stack/latest/la_stack/fn.column_basis.html
+[api-rational-dot]: https://docs.rs/la-stack/latest/la_stack/struct.RationalVector.html#method.dot
+[api-rational-dot-slice]: https://docs.rs/la-stack/latest/la_stack/fn.rational_dot.html
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml
 [benchmarks-badge]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml/badge.svg
 [benchmarks-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml
