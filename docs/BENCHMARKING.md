@@ -60,7 +60,7 @@ evidence being validated.
 
 ## Benchmark Suites
 
-`la-stack` has ten Criterion benchmark targets. Routine release acquisition
+`la-stack` has eleven Criterion benchmark targets. Routine release acquisition
 selects public workloads from these targets; unfiltered targets remain available
 for diagnostics.
 
@@ -209,6 +209,26 @@ and dense inconclusive inputs. Scalar cases include exact values, cancellation,
 zero, and underflow. Only explicitly named assembly measurements include matrix
 construction; expected-result validation stays outside timing.
 Release acquisition includes these public interval operations.
+
+**`interval_solve`** (`benches/interval_solve.rs`) adds positive/negative and
+subnormal quotient cases plus five deterministic 32-system corpora at D=1–6:
+dense, uncertain dense, near-singular, singular, and finite-range exhaustion.
+Each solve timing is a complete 32-system batch, including successful and
+fallback outcomes. Certification counts are checked and printed before timing;
+they describe this corpus, not a probability for arbitrary systems. Analytical
+manufactured solutions gate timing, and `tests/interval_solve.rs` independently
+checks the corpus with exact rational Gauss-Jordan elimination under `exact`.
+Run the gate before measurements:
+
+```bash
+cargo test --locked --features exact --test interval_solve
+cargo bench --locked --features bench --bench interval_solve -- \
+  --sample-size 30 --warm-up-time 1 --measurement-time 2 --noplot
+```
+
+The new rows remain diagnostics outside the retained release catalog, like the
+new rectangular and rational-reduction targets. They establish current cost and
+success rates; there is no previous la-stack solve API for a speedup comparison.
 
 **`linear_form`** (`benches/linear_form.rs`) measures the default-feature
 certified dot-product and affine-difference filters through D=2–6. Prepared

@@ -92,6 +92,11 @@ harness = false
 required-features = [ "bench" ]
 
 [[bench]]
+name = "interval_solve"
+harness = false
+required-features = [ "bench" ]
+
+[[bench]]
 name = "rational_solve"
 harness = false
 required-features = [ "bench", "exact" ]

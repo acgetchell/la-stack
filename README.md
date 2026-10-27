@@ -200,7 +200,7 @@ to combine operations.
 | Exact signs, determinants, solves, and output conversion¹ | [Exact arithmetic examples][api-exact] |
 | Floating-point determinants and solves | [`Matrix<D>`][api-matrix], [`Lu<D>`][api-lu], [`Ldlt<D>`][api-ldlt] |
 | Gram matrix construction | [`gram_matrix`][api-gram] |
-| Interval expressions and determinant signs | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
+| Interval expressions, determinant signs, and solution enclosures | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
 | Provisional rectangular column basis and numerical rank | [`column_basis`][api-column-basis] |
 | Runtime selection of a const-generic matrix dimension | [Dimension dispatch examples][api-dispatch] |
 | Unsigned vector angles in radians | [`VectorAngle::angle`][api-angle], [`Vector::angle`][api-vector-angle] |
@@ -291,8 +291,11 @@ tolerances control rejection, not solution accuracy.
 ### Outward-rounded interval determinants
 
 `Interval` preserves bounds while assembling differences, squares, and other
-expressions. `IntervalMatrix::det_sign()` certifies determinant signs through
-D=7: an enclosure separated from zero proves its sign, and `[0, 0]` proves
+expressions, including division by zero-free intervals. `IntervalMatrix::solve()`
+encloses every admitted exact-real solution, with explicit inconclusive-pivot
+and finite-range failures for caller fallback. `IntervalMatrix::det_sign()`
+certifies determinant signs through D=7: an enclosure separated from zero proves
+its sign, and `[0, 0]` proves
 exact zero. Other overlaps with zero are inconclusive and may need exact fallback.
 [Worked example: lifted coordinates, range errors, and fallback][guide-intervals].
 

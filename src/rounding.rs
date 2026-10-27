@@ -146,6 +146,30 @@ const fn compare_product_with_rounded_integer(left: f64, right: f64, rounded: f6
     }
 }
 
+/// Compare the exact quotient with a finite rounded quotient, without relying
+/// on a floating residual that could underflow. The denominator is nonzero;
+/// all three arguments are finite. A 106-bit product suffices to compare
+/// `|rounded| * |denominator|` with `|numerator|` exactly.
+#[inline]
+pub(crate) const fn compare_quotient_with_rounded(
+    numerator: f64,
+    denominator: f64,
+    rounded: f64,
+) -> i8 {
+    if numerator == 0.0 {
+        return 0;
+    }
+    let negative = numerator.is_sign_negative() != denominator.is_sign_negative();
+    if rounded == 0.0 {
+        return if negative { -1 } else { 1 };
+    }
+    let (n, ne) = decompose_magnitude(numerator);
+    let (d, de) = decompose_magnitude(denominator);
+    let (q, qe) = decompose_magnitude(rounded);
+    let relation = compare_binary_magnitudes(n, ne, q * d, qe + de);
+    if negative { -relation } else { relation }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{compare_binary_magnitudes, compare_product_with_rounded};
