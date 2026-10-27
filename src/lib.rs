@@ -598,7 +598,7 @@ pub mod guide {
         //! longer than the eight-row rational matrix dispatch limit. Both return
         //! canonical exact rationals; arbitrary-precision intermediates allocate.
         //!
-        //! [`column_basis`](crate::column_basis) supplies a provisional numerical
+        //! [`column_basis`](fn@crate::column_basis) supplies a provisional numerical
         //! selection with an explicit absolute tolerance. For example, six
         //! shared vertices in 6D give six affine equations with seven columns.
         //! This example extracts and solves the selected minor exactly to build
