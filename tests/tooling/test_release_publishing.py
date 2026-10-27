@@ -233,11 +233,15 @@ def run_evidence_fixture() -> int:
         patch.setattr(release_evidence, "download_artifact", provider.download)
         patch.setattr(release_evidence, "run_git_command", provider.git)
         with redirect_stderr(diagnostic):
-            status = release_evidence.main()
+            try:
+                status = release_evidence.main()
+            except SystemExit as error:
+                status = error.code
+    assert isinstance(status, int)
     print(diagnostic.getvalue(), end="", file=sys.stderr)
     # Just's quiet mode hides stderr. Record the actual verifier outcome so an
     # import/shell failure cannot masquerade as the rejection under test.
-    result = {"status": status, "diagnostic": diagnostic.getvalue(), "import_root": sys.path[0]}
+    result = {"status": status, "diagnostic": diagnostic.getvalue(), "import_root": sys.path[0], "arguments": sys.argv[1:]}
     (root / "verifier-result.json").write_text(json.dumps(result), encoding="utf-8")
     return status
 
@@ -251,20 +255,31 @@ def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("FIXTURE_ROOT", str(tmp_path))
     monkeypatch.setenv("FIXTURE_REPO_ROOT", str(REPO_ROOT))
-    # A Windows path inside Python source crosses both Bash and native Windows
-    # argv parsing. Keep it as environment data, outside either source parser.
-    bootstrap = (
-        'import os, sys; sys.path.insert(0, os.environ["FIXTURE_REPO_ROOT"]); '
-        "from tests.tooling.test_release_publishing import run_evidence_fixture; sys.exit(run_evidence_fixture())"
+    # Keep Python source out of Windows argv parsing, and paths out of source.
+    bootstrap = tmp_path / "evidence fixture.py"
+    bootstrap.write_text(
+        'import os, sys\nsys.path.insert(0, os.environ["FIXTURE_REPO_ROOT"])\n'
+        "from tests.tooling.test_release_publishing import run_evidence_fixture\nsys.exit(run_evidence_fixture())\n",
+        encoding="utf-8",
+        newline="\n",
     )
     return (
         "uv() {\n"
         '  [[ "$1 $2 $3 $4 $5 $6" == "run --locked --no-sync python -m tooling.release_evidence" ]] || return 90\n'
         "  shift 6\n"
-        f'  {shlex.quote(sys.executable)} -c {shlex.quote(bootstrap)} "$@"\n'
+        f'  {shlex.quote(Path(sys.executable).as_posix())} {shlex.quote(bootstrap.as_posix())} "$@"\n'
         "}\n"
         "export -f uv\n"
     )
+
+
+def run_evidence_shell(script: str, root: Path) -> subprocess.CompletedProcess[str]:
+    """Execute workflow source from a file, as Actions does, with explicit env."""
+    source = root / "workflow.sh"
+    source.write_text(script, encoding="utf-8", newline="\n")
+    # Windows putenv removes empty values from the inherited native environment.
+    # Build the child environment from the mapping to keep empty distinct from unset.
+    return run_command("bash", ["--noprofile", "--norc", "-eu", source.as_posix()], cwd=root, env=dict(os.environ), check=False, timeout=60)
 
 
 @pytest.mark.parametrize("quiet", [False, True], ids=["normal", "quiet"])
@@ -286,12 +301,7 @@ def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capt
     monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
     monkeypatch.setenv("FIXTURE_FAILURE", outcome)
     marker = tmp_path / "verification-passed"
-    result = run_command(
-        "bash",
-        ["--noprofile", "--norc", "-euc", evidence_runner + script + f"\ntouch {shlex.quote(marker.as_posix())}"],
-        cwd=tmp_path,
-        check=False,
-    )
+    result = run_evidence_shell(evidence_runner + script + f"\ntouch {shlex.quote(marker.as_posix())}", tmp_path)
     assert result.returncode == (0 if outcome == "valid" else 1), result.stderr
     assert marker.exists() == (outcome == "valid")
     report = tmp_path / "verifier-result.json"
@@ -299,7 +309,14 @@ def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capt
         assert not report.exists()
         assert "GITHUB_OUTPUT: unbound variable" in result.stderr
     else:
+        assert report.exists(), result.stderr
         observed = json.loads(report.read_text(encoding="utf-8"))
+        assert observed["arguments"][:2] == ["verify", "--github-output"]
+        assert len(observed["arguments"]) == 3
+        if outcome == "empty-output":
+            assert observed["arguments"][2] == ""
+        else:
+            assert Path(observed["arguments"][2]) == output
         assert observed["status"] == (0 if outcome == "valid" else 1)
         rejection = (
             "did not validate required step Verify default and exact Cargo packages"
@@ -338,11 +355,16 @@ def test_evidence_bootstrap_keeps_windows_import_paths_as_environment_data(
     monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
     script = workflow["jobs"]["verify"]["steps"][-1]["run"]
-    result = run_command("bash", ["--noprofile", "--norc", "-euc", evidence_runner + script], cwd=tmp_path, check=False)
+    result = run_evidence_shell(evidence_runner + script, tmp_path)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "fixture stdout diagnostic" + newline
     observed = json.loads((tmp_path / "verifier-result.json").read_text(encoding="utf-8"))
-    assert observed == {"status": 0, "diagnostic": "", "import_root": import_root}
+    assert observed["status"] == 0
+    assert observed["diagnostic"] == ""
+    assert observed["import_root"] == import_root
+    assert observed["arguments"][:2] == ["verify", "--github-output"]
+    assert len(observed["arguments"]) == 3
+    assert Path(observed["arguments"][2]) == output
     assert output.read_bytes() == f"identity={PIN_JSON}\n".encode()
 
 
@@ -356,9 +378,7 @@ def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token
     output.touch()
     monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
     monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
-    exported = run_command(
-        "bash", ["--noprofile", "--norc", "-euc", evidence_runner + workflow["jobs"]["verify"]["steps"][-1]["run"]], cwd=tmp_path, check=False
-    )
+    exported = run_evidence_shell(evidence_runner + workflow["jobs"]["verify"]["steps"][-1]["run"], tmp_path)
     assert exported.returncode == 0, exported.stderr
     report = tmp_path / "verifier-result.json"
     assert json.loads(report.read_text(encoding="utf-8"))["status"] == 0
@@ -379,7 +399,11 @@ def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token
     )
     runner += 'just() { if [[ "$1" == release-gate ]]; then return 0; fi; command just "$@"; }\n'
     script = workflow["jobs"]["publish"]["steps"][2]["run"]
-    result = run_command("bash", ["--noprofile", "--norc", "-euc", runner + script + f"\ntouch {shlex.quote(token.as_posix())}"], cwd=tmp_path, check=False)
+    result = run_evidence_shell(runner + script + f"\ntouch {shlex.quote(token.as_posix())}", tmp_path)
+    if pin != "empty":
+        assert report.exists(), result.stderr
+        observed = json.loads(report.read_text(encoding="utf-8"))
+        assert observed["arguments"] == ["verify", "--identity", variants[pin]]
     assert result.returncode == (0 if pin == "valid" else 1), result.stderr
     assert registry.exists() == (pin == "valid")
     assert token.exists() == (pin == "valid")

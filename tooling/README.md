@@ -22,13 +22,16 @@ runs the installed-package integration tests. `just ci` is the final
 repository validation. Native Linux, macOS and Windows CI is required for
 adoption; local macOS results do not establish the other platforms.
 
-For subprocess fixtures, pass paths and payloads as arguments or environment
-data, never as interpolated Python `-c` source. POSIX shell quoting does not
-protect Windows backslashes through a Bash/Just/native-Python handoff. Exercise
-Windows path data and quoting characters as well as native Windows execution. Negative tests
-must prove the intended rejection and unchanged output; a nonzero exit alone
-also accepts a broken import or shell. When quiet mode hides diagnostics, retain
-the verifier's exit status and diagnostic in a fixture-owned result file.
+For subprocess fixtures, run Bash and Python source from files, and pass paths
+and payloads as arguments or environment data. Nested `-c` commands add Windows
+argument parsing boundaries that POSIX shell quoting does not protect. Supply an
+explicit child environment when testing empty values: Windows `putenv` removes
+them from the inherited native environment. Exercise Windows path data and
+quoting characters as well as native Windows execution. Negative tests must
+prove the received arguments, intended rejection and unchanged output; a nonzero
+exit alone also accepts a broken import or shell. When quiet mode hides
+diagnostics, retain the verifier's arguments, exit status and diagnostic in a
+fixture-owned result file.
 
 Semgrep shares the root Python 3.15 environment and lockfile. Preserve its
 native-wheel requirement and compatibility overrides in `pyproject.toml`.
