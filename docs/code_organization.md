@@ -112,6 +112,9 @@ production `tooling` adapters during pytest collection.
 
 ## Benchmarks and support tooling
 
+`benches/public_api.rs` owns public construction, storage, mutation, symmetry,
+direct determinant certificates, interval determinant and exact scalar conversion
+workloads at D=2–5 where applicable. Kernel operations keep their existing owners.
 `benches/` contains Criterion suites for angles, exact arithmetic, Gram construction,
 intervals, linear forms, structured rational solves, and nalgebra/faer comparisons. Helpers under
 `benches/common/` own fixture and oracle validation. Exact benchmark helpers
@@ -199,8 +202,8 @@ Hosted Dependabot approvals use the pinned shared
 GitHub workflow; the [rollout guide](dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
 owns settings and deployment verification.
 
-`tooling/criterion-inventory.toml` declares native full-suite list commands and
-minimum scientific report/plot coverage. `tooling/criterion-saved.toml` declares
+`tooling/criterion-inventory.toml` declares hosted la-stack-only list commands and
+independent public API coverage. `tooling/criterion-saved.toml` declares
 complete saved-sample requirements. Shared discovery and saved-sample APIs own
 inventory parsing and exact raw-file verification. The release workflow packages only datasets that pass
 that gate; its regression and archive tests live in
@@ -211,14 +214,17 @@ and measurements. `tooling/measurements/{full,non-exact}.toml` declares the
 minimum release, complete sampling, independent required cases, original
 baseline-phase peers, sources, harness, probes, environment and compatibility.
 `tooling/performance-policy.toml` remains the independent scientific catalog
-used by consumer acceptance tests; runtime commands consume the shared schemas.
+used by consumer acceptance tests and the local budget display. Full acquisition
+adds only 16 peer LU-and-solve cases in the baseline phase; the non-exact
+diagnostic retains broader peers. Runtime commands consume the shared schemas.
 
 `tooling/performance-report.toml` binds release eligibility to the full
 measurement declaration and owns the current report and immutable history.
 `tooling/performance-readme.toml` declares the canonical README view, formatter,
 freshness checks and tagged evidence links. Static named configurations under
-`tooling/plots/{non-exact,retained,scratch}/` preserve eight metrics, mean/median and
-linear/log choices with explicit input ownership.
+`tooling/plots/{retained,scratch}/` preserve LU solve with mean/median and
+linear/log choices. `tooling/plots/non-exact/` retains eight diagnostic metrics.
+All views require explicit input ownership.
 
 `tooling/release_performance.py` temporarily captures independent release tags and
 commits during `performance-prepare` and supplies them to the separate

@@ -430,7 +430,8 @@ in that tag's cache scope. Dispatching from `main` or a different tag is rejecte
 
 The workflow automatically:
 
-1. Runs the full benchmark suites for the tagged commit.
+1. Runs the full public la-stack workload selection for the tagged commit;
+   local acquisition separately owns the README's 16 peer LU-and-solve cases.
 2. Uploads the archive to the draft and verifies its name, state, size, and
    SHA-256 digest.
 3. Leaves the draft and verified archive ready for maintainer review.
@@ -530,8 +531,9 @@ shared package, and exports verified paths. The short preflight job receives `co
 for draft visibility; the separate asset writer receives it to attach the archive.
 Neither privileged benchmark job checks out or executes repository code.
 
-The producer budgets 150 minutes for `vs_linalg` and 90 minutes for `exact`
-within a 350-minute job, including a 90-minute preparation budget for uncached
+The producer budgets 140 minutes for default-feature public workloads and
+130 minutes for exact-feature public workloads within a 350-minute job,
+including a 60-minute preparation budget for uncached
 tool installation, compilation, inventory and input validation.
 Both suites retain full release sampling. Inventory
 and raw-data validation must succeed before the single complete archive is

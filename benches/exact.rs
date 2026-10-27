@@ -383,6 +383,12 @@ fn bench_canonical_conversion<const D: usize>(c: &mut Criterion) {
         group.bench_function("rounded_result", |b| {
             b.iter(|| black_box(black_box(&input).to_rounded_f64()));
         });
+        group.bench_function("strict_array", |b| {
+            b.iter(|| black_box(black_box(input.as_array()).try_to_f64()));
+        });
+        group.bench_function("rounded_array", |b| {
+            b.iter(|| black_box(black_box(input.as_array()).to_rounded_f64()));
+        });
         group.finish();
     }
 }

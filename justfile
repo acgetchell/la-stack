@@ -85,6 +85,7 @@ bench-compile:
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --workspace --no-run --features bench
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench exact
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench rational_solve
+    CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench public_api
 
 # Run the exact-arithmetic benchmark suite.
 bench-exact:
@@ -124,8 +125,10 @@ bench-save-baseline tag suite="all":
     suite={{ quote(suite) }}
     case "$suite" in
         all)
-            {{ _run }} cargo bench --locked -p la-stack-comparison --features bench --bench vs_linalg -- --noplot --save-baseline {{ quote(tag) }}
-            {{ _run }} cargo bench --locked --features bench,exact --bench exact -- --noplot --save-baseline {{ quote(tag) }}
+            {{ _run }} just --justfile tooling/performance.just --working-directory . la-stack measure {{ quote(tag) }}
+            ;;
+        public-default|public-exact)
+            {{ _run }} just --justfile tooling/performance.just --working-directory . "$suite" measure {{ quote(tag) }}
             ;;
         exact)
             {{ _run }} cargo bench --locked --features bench,exact --bench exact -- --noplot --save-baseline {{ quote(tag) }}
@@ -362,6 +365,11 @@ performance-readme current_tag="" current_revision="" baseline_tag="" baseline_r
 
 # Measure, retain an immutable complete run, and promote distinct-release documentation.
 performance-release current_tag="" baseline_tag="": _ensure-gh python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p target/bench-reports/full
+    started=$(date +%s)
+    trap 'status=$?; elapsed=$(($(date +%s) - started)); printf "performance-release: %s seconds; exit %s\\n" "$elapsed" "$status" | tee target/bench-reports/full/runtime.txt' EXIT
     {{ _run }} uv run --locked research-repo-tools performance measure tooling/measurements/full.toml {{ quote(current_tag) }} {{ quote(baseline_tag) }} --repository acgetchell/la-stack --allow-git-mutations --payload target/bench-reports/full/run.json --manifest target/bench-reports/full/evidence.json --report target/bench-reports/full/report.md
     {{ _run }} uv run --locked research-repo-tools performance promote tooling/performance-report.toml --payload target/bench-reports/full/run.json --manifest target/bench-reports/full/evidence.json
 

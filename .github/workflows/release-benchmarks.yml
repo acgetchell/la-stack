@@ -62,7 +62,7 @@ jobs:
   release-baseline:
     needs: validate-release
     runs-on: ubuntu-latest
-    # 2 min checkout + 90 min shared setup + 150 min comparative + 90 min exact
+    # 2 min checkout + 60 min shared setup + 140 min default + 130 min exact
     # + 18 min for the tail and runner overhead; below the hosted 360 min limit.
     timeout-minutes: 350
     env:
@@ -82,30 +82,30 @@ jobs:
 
       - name: Prepare release benchmarks
         # One parent timeout bounds all nested installs, validation, and inventory.
-        timeout-minutes: 90
+        timeout-minutes: 60
         uses: ./.github/actions/prepare-release-benchmarks # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
         with:
           validated-attempt: ${{ needs.validate-release.outputs.validated-attempt }}
 
-      - name: Save comparative Criterion baseline
+      - name: Save default-feature Criterion baseline
         id: comparative
-        timeout-minutes: 150
+        timeout-minutes: 140
         run: |
           set -euo pipefail
-          echo "[release-baseline] vs_linalg started $(date -u +%FT%TZ); budget 150 min"
-          date +%s > target/vs_linalg-started
-          just bench-save-baseline "$RELEASE_TAG" vs_linalg
-          date +%s > target/vs_linalg-finished
+          echo "[release-baseline] public-default started $(date -u +%FT%TZ); budget 140 min"
+          date +%s > target/public-default-started
+          just bench-save-baseline "$RELEASE_TAG" public-default
+          date +%s > target/public-default-finished
 
       - name: Save exact Criterion baseline
         id: exact
-        timeout-minutes: 90
+        timeout-minutes: 130
         run: |
           set -euo pipefail
-          echo "[release-baseline] exact started $(date -u +%FT%TZ); budget 90 min"
-          date +%s > target/exact-started
-          just bench-save-baseline "$RELEASE_TAG" exact
-          date +%s > target/exact-finished
+          echo "[release-baseline] public-exact started $(date -u +%FT%TZ); budget 130 min"
+          date +%s > target/public-exact-started
+          just bench-save-baseline "$RELEASE_TAG" public-exact
+          date +%s > target/public-exact-finished
 
       - name: Validate complete release dataset
         run: just bench-release-check "$RELEASE_TAG"
@@ -141,7 +141,7 @@ jobs:
             echo ""
             echo "| Suite | Outcome | Elapsed seconds | Budget minutes |"
             echo "| --- | --- | --- | --- |"
-            for suite in vs_linalg exact; do
+            for suite in public-default public-exact; do
               elapsed="not started"
               if [[ -f "target/$suite-started" ]]; then
                 end="$(date +%s)"
@@ -151,10 +151,10 @@ jobs:
                 elapsed="$((end - $(cat "target/$suite-started")))"
               fi
               outcome="$COMPARATIVE_OUTCOME"
-              budget=150
-              if [[ "$suite" == exact ]]; then
+              budget=140
+              if [[ "$suite" == public-exact ]]; then
                 outcome="$EXACT_OUTCOME"
-                budget=90
+                budget=130
               fi
               echo "| $suite | $outcome | $elapsed | $budget |"
             done
