@@ -25,7 +25,7 @@ CHECKED = ["run", "--locked", "--no-sync", "--no-python-downloads", "research-re
 UPDATER = ["run", "--locked", "--only-group", "tooling", "--inexact", "research-repo-tools"]
 UV_UPDATE = ["run", "--no-config", "--no-sync", "--no-python-downloads", "research-repo-tools", "deps", "update-uv"]
 TOOL_UPDATE = [*UPDATER, "toolchain", "upgrade"]
-SETUP = ["run", "--locked", "--managed-python", "--only-group", "tooling", "research-repo-tools", "setup"]
+SETUP = ["run", "--locked", "--managed-python", "--only-group", "tooling", "python", "tooling/shared_tooling.py", "setup"]
 CARGO_UPDATE = [
     [*UPDATER, "toolchain", "run", "--", "cargo", "upgrade", "--incompatible", "allow", "--exclude", "num-bigint", "--exclude", "num-rational"],
     [*UPDATER, "toolchain", "run", "--", "cargo", "update"],
@@ -47,7 +47,7 @@ WORKFLOWS = {
 
 def test_published_tooling_package_matches_manifest_lock_and_installation() -> None:
     """Keep the exact published-package contract in one consumer test."""
-    expected_version = "0.2.3"
+    expected_version = "0.2.4"
     manifest = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert manifest["project"]["dependencies"] == []
     assert manifest["tool"]["uv"]["package"] is False
@@ -61,8 +61,8 @@ def test_published_tooling_package_matches_manifest_lock_and_installation() -> N
     package = next(item for item in lock["package"] if item["name"] == "research-repo-tools")
     assert package["version"] == expected_version
     assert package["source"] == {"registry": "https://pypi.org/simple"}
-    assert package["wheels"][0]["hash"] == "sha256:da5f0259027662e7706b7f2b8a38d8e1f1d8a5dce314e2c996177b2947514fc6"
-    assert package["sdist"]["hash"] == "sha256:13700b174656ffad265ecb926dd66013949853b7a39c088ab6d3852aba72df95"
+    assert package["wheels"][0]["hash"] == "sha256:00aaab2b7efd680d79324c6debb64db4d8d1ff076a460ff46e24e0ef1c24bd7d"
+    assert package["sdist"]["hash"] == "sha256:30b6d4d2f8d0cb98d5311656928dd65800088b651dd6c0c29f9a02526e9e902a"
     locked = {item["name"]: item["version"] for item in lock["package"]}
     for name, expected in shared_tool_versions().items():
         assert locked[name] == version(name) == expected

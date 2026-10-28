@@ -17,3 +17,6 @@ features = [ "exact" ]
 
 [examples.rational_input_5x5]
 features = [ "exact" ]
+
+[examples.polynomial_determinant]
+features = [ "exact" ]

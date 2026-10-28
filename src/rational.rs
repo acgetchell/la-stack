@@ -579,7 +579,7 @@ pub fn rational_dot(left: &[BigRational], right: &[BigRational]) -> Result<BigRa
 
 /// Reduce one validated rational and make its denominator positive before
 /// publishing it through the exact-input storage types.
-fn canonicalize_rational(value: BigRational) -> BigRational {
+pub(crate) fn canonicalize_rational(value: BigRational) -> BigRational {
     let (numerator, denominator) = value.into_raw();
     BigRational::new(numerator, denominator)
 }

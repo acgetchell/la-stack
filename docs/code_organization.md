@@ -31,6 +31,7 @@ mirrors, and the public prelude. There is no `src/main.rs`.
 | [`src/lu.rs`](../src/lu.rs) | Partially pivoted `Lu<D>` factorization, solves, and determinants |
 | [`src/matrix.rs`](../src/matrix.rs) | `Matrix<D>`, finite storage, accessors, matrix operations, norms, and direct determinant APIs |
 | [`src/norm.rs`](../src/norm.rs) | Exact range-boundary fallback for the approximate Euclidean norm |
+| [`src/polynomial.rs`](../src/polynomial.rs) | Canonical `SparsePolynomial` coefficients, explicit determinant budgets, and the exact column-subset kernel through order eight |
 | [`src/rational.rs`](../src/rational.rs) | `RationalMatrix<D>` and `RationalVector<D>`, exact dot products and the checked `rational_dot` slice adapter, canonical rational inputs, and denominator clearing |
 | [`src/rounding.rs`](../src/rounding.rs) | Shared binary64 rounding primitives for certified arithmetic |
 | [`src/scaled_product.rs`](../src/scaled_product.rs) | Allocation-free scaled products for floating-point factor diagonals |
@@ -46,7 +47,7 @@ belong in [Mathematical basis](mathematical_basis.md) and
 
 The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
 
-- **`exact`** gates `src/exact.rs`, `src/rational.rs`, their additional tests,
+- **`exact`** gates `src/exact.rs`, `src/polynomial.rs`, `src/rational.rs`, their additional tests,
   exact guides, and exact-arithmetic examples. It enables `det_exact()`,
   strict `det_exact_f64()`, rounded `det_exact_rounded_f64()`,
   `det_sign_exact()`, `solve_exact()`, strict `solve_exact_f64()`, and
@@ -95,6 +96,11 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
   through D=8, including arbitrary row permutations and wide rational inputs.
 - `tests/rational_dot.rs` checks exact dot identities, shape and denominator
   rejection, and basis/objective vector sizes through 22 and beyond.
+- `tests/polynomial_determinant.rs` checks canonical terms, independent dense
+  permutation expansions, cancellation, row swaps, budgets and exponent limits.
+  `tests/polynomial_bench_inputs.rs` verifies lifted coincident-point fixtures
+  and repeated rows through order eight against a sparse permutation oracle.
+  `tests/proptest_polynomial.rs` checks exact determinant row scaling.
 - `tests/column_basis.rs` checks rectangular numerical rank, scaling, pivot
   ordering, typed failures, and shared-face affine constraints through 6D;
   exact-feature checks independently certify the selected square minors.
@@ -112,6 +118,8 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
   executable numerical assertions stay in `examples/`.
 - `examples/vector_angles.rs` demonstrates fixed-vector and borrowed-slice angles,
   independent magnitude scaling, and subnormal separations.
+- `examples/polynomial_determinant.rs` demonstrates exact cancellation, borrowed
+  leading coefficients and typed work-budget exhaustion.
 
 Use [Testing guidance](dev/testing.md) for dimension coverage and test design,
 and [Documentation guidance](dev/docs.md) for executable-example ownership.
@@ -139,11 +147,15 @@ construction, prepared solves, and full runtime-dispatch adapter costs;
 `tests/exact_bench_config.rs` includes its independent fixture gates.
 `benches/common/interval_solve.rs` owns the deterministic D=1–6 solve corpora.
 `benches/interval_solve.rs` measures 32-system batches and reports certification counts
-outside timing. New division and solve rows are diagnostics pending release
-catalog adoption; existing interval release workloads retain their selection.
+outside timing. Division and solve rows belong to default-feature release
+acquisition, with `tests/interval_solve.rs` providing the independent rational gate.
 `benches/column_basis.rs` and `benches/rational_dot.rs` own the new rectangular
 selection and exact reduction benchmarks, with analytical fixture checks before
-timing. These diagnostic targets are separate from the retained release catalog.
+timing. Both targets belong to release acquisition in their respective feature selections.
+`benches/polynomial.rs` measures exact sparse determinants for coincident lifted
+points through order eight. `benches/common/polynomial.rs` owns the independently
+validated fixtures. These rows belong to exact-feature release acquisition,
+with `tests/polynomial_bench_inputs.rs` checking every coefficient independently.
 
 The root package is the default workspace member. `benches/comparison/Cargo.toml`
 owns the `vs_linalg` target at `benches/vs_linalg.rs` and its input test. Select
@@ -170,7 +182,11 @@ The [justfile](../justfile) owns executable development workflows.
 Shared complete-inventory Python and file runners own discovery and bounded
 execution; repository lint policy and archive exclusions stay in the recipes
 and native tool configuration. The [capability inventory](../tooling/README.md#shared-capability-adoption)
-records the v0.2.3 adoption boundary.
+records the v0.2.4 development and release-command dependency.
+`tooling/shared_tooling.py` temporarily selects the scanner from the standard
+Python 3.15 environment before delegating to the installed fixture checker.
+[#317](https://github.com/acgetchell/la-stack/issues/317) owns its removal after
+the shared Python baseline also governs Semgrep in v0.2.5.
 
 `osv-scanner.toml` owns temporary advisory-specific dependency exceptions, and
 `.gitleaks.toml` owns narrow secret-scan false-positive exceptions. Their rationale
@@ -222,9 +238,12 @@ owns settings and deployment verification.
 `tooling/criterion-inventory.toml` declares hosted la-stack-only list commands and
 independent public API coverage. `tooling/criterion-saved.toml` declares
 complete saved-sample requirements. Shared discovery and saved-sample APIs own
-inventory parsing and exact raw-file verification. The release workflow packages only datasets that pass
-that gate; its regression and archive tests live in
+inventory parsing and exact raw-file verification. Published v0.2.4 also owns
+suite-scoped verification, provenance, packaging and complete archive assembly.
+The release workflow retains the feature matrix, native commands, job budgets
+and artifact handoff; its regression and archive tests live in
 `tests/tooling/test_release_baseline.py`.
+There is no repository-specific suite verifier or archive merge implementation.
 
 `tooling/performance.just` declares native Cargo discovery, correctness gates
 and measurements. `tooling/measurements/{full,non-exact}.toml` declares the

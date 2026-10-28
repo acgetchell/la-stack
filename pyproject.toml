@@ -102,7 +102,7 @@ override-dependencies = [
 ]
 
 [dependency-groups]
-tooling = [ "research-repo-tools[python-tools]==0.2.3" ]
+tooling = [ "research-repo-tools[python-tools]==0.2.4" ]
 dev = [
     { include-group = "tooling" },
     "actionlint-py==1.7.12.25",
@@ -130,7 +130,7 @@ cargo-nextest = "0.9.150"
 clippy-sarif = "0.8.0"
 dprint = "0.64.3"
 git-cliff = "2.14.2"
-rumdl = "0.3.0"
+rumdl = "0.3.2"
 sarif-fmt = "0.8.0"
 taplo-cli = "0.10.0"
 typos-cli = "1.51.1"
@@ -171,7 +171,7 @@ exclude = [ "docs/archive/**", "docs/performance/**", "docs/performance-runs/**"
 path = "README.md"
 pattern = 'https://(?:github\.com/acgetchell/la-stack/(?:blob|raw|tree)/|raw\.githubusercontent\.com/acgetchell/la-stack/)(?P<value>main|v[0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{7,40})/[^\s)\]>"?]+'
 value = "main"
-count = 41
+count = 42
 exclude = '/docs/(?:assets/bench|performance-runs)/'
 
 [[tool.research-repo-tools.release.rules]]

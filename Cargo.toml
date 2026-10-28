@@ -71,6 +71,10 @@ required-features = [ "exact" ]
 name = "rational_input_5x5"
 required-features = [ "exact" ]
 
+[[example]]
+name = "polynomial_determinant"
+required-features = [ "exact" ]
+
 [[bench]]
 name = "public_api"
 harness = false
@@ -118,6 +122,11 @@ required-features = [ "bench" ]
 
 [[bench]]
 name = "rational_dot"
+harness = false
+required-features = [ "bench", "exact" ]
+
+[[bench]]
+name = "polynomial"
 harness = false
 required-features = [ "bench", "exact" ]
 

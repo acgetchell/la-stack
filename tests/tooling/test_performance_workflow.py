@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
-from research_repo_tools.common_measurement import CommonHarnessPlan, DiscoveredSeries, DiscoveryPolicy, measure_prepared_pair, validate_run_policy
+from research_repo_tools.common_measurement import CompleteMeasurementPlan, DiscoveredSeries, DiscoveryPolicy, measure_prepared_pair, validate_run_policy
 from research_repo_tools.complete_runs import RunSeries
 from research_repo_tools.evidence import load_evidence, publish_evidence
 from research_repo_tools.just_inspect import dry_run
@@ -58,9 +58,9 @@ for name in ids:
 """
 
 
-def declaration(root: Path, view: str = "full") -> CommonHarnessPlan:
+def declaration(root: Path, view: str = "full") -> CompleteMeasurementPlan:
     plan = load_measurement(root, f"tooling/measurements/{view}.toml")
-    assert isinstance(plan, CommonHarnessPlan)
+    assert isinstance(plan, CompleteMeasurementPlan)
     return plan
 
 
@@ -108,7 +108,7 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: st
         assert phase.policy.statistics == ("mean", "median")
         assert phase.policy.confidence_level == 0.95
         assert phase.policy.unit == "ns"
-        assert phase.gate[-1] == "gate"
+        assert phase.gate[-1] == ("gate-public" if view == "full" else "gate")
         environment = dict(phase.environment)
         assert environment["RUSTFLAGS"] == environment["CARGO_ENCODED_RUSTFLAGS"] == "--cap-lints=warn"
         assert environment["RUSTUP_TOOLCHAIN"] == tomllib.loads((ROOT / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]["channel"]
@@ -139,6 +139,15 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: st
             }
     assert {"context.os", "context.architecture", "context.cpu", "harness_sha256"} <= set(plan.measurement.compatible)
     assert {"benches/**/*.rs", "tests/exact_bench_config.rs", "tooling/performance.just", "tooling/measurements/*.toml"} <= set(plan.harness)
+    if view == "full":
+        assert {
+            "tests/column_basis.rs",
+            "tests/rational_dot.rs",
+            "tests/interval_solve.rs",
+            "tests/common/interval_solve_oracle.rs",
+            "tests/common/proptest_config.rs",
+            "tests/polynomial_bench_inputs.rs",
+        } <= set(plan.harness)
 
 
 def test_named_views_keep_every_metric_statistic_axis_and_explicit_input_choice() -> None:
@@ -202,14 +211,29 @@ def test_native_recipes_preserve_scientific_gates_and_peer_reuse() -> None:
     justfile = Path("tooling/performance.just")
     baseline = dry_run(ROOT, "baseline-all", justfile=justfile).stderr
     current = dry_run(ROOT, "current-all", justfile=justfile).stderr
-    assert baseline.count("cargo bench --locked") == 10
-    assert current.count("cargo bench --locked") == 9
+    assert baseline.count("cargo bench --locked") == 14
+    assert current.count("cargo bench --locked") == 13
     assert "(nalgebra|faer)_lu_solve$" in baseline
     assert "(nalgebra|faer)_lu_solve$" not in current
     assert "--target" in baseline
     assert "--target" in current
-    assert dry_run(ROOT, "baseline-all", ["list"], justfile=justfile).stderr.count("args+=(--list)") == 10
+    assert dry_run(ROOT, "baseline-all", ["list"], justfile=justfile).stderr.count("args+=(--list)") == 14
     assert "--test vs_linalg_inputs --test exact_bench_config" in dry_run(ROOT, "gate", justfile=justfile).stderr
+    gate = dry_run(ROOT, "gate-public", justfile=justfile).stderr
+    hosted_gate = dry_run(ROOT, "test-bench-inputs").stderr
+    for target in ("vs_linalg_inputs", "exact_bench_config", "column_basis", "rational_dot", "interval_solve", "polynomial_bench_inputs"):
+        assert f"--test {target}" in gate
+        assert f"--test {target}" in hosted_gate
+    # New native targets must be considered for release coverage. Diagnostic
+    # controls are filtered within targets rather than omitting public targets.
+    targets = {
+        bench["name"]
+        for manifest in (ROOT / "Cargo.toml", ROOT / "benches/comparison/Cargo.toml")
+        for bench in tomllib.loads(manifest.read_text(encoding="utf-8"))["bench"]
+    }
+    for target in targets:
+        assert f"--bench '{target}'" in baseline
+        assert f"--bench '{target}'" in current
     for name in ("performance-local", "performance-local-non-exact"):
         command = dry_run(ROOT, name).stderr
         assert "research-repo-tools performance measure" in command
@@ -266,6 +290,7 @@ def prepared(tmp_path: Path) -> tuple[Path, Path]:
                 native += f'\n{side}-{suite} mode="measure":\n    {driver} {side} {suite} {{{{mode}}}}\n'
             native += f'\n{side}-vs_linalg mode="measure":\n    {driver} {side} vs_linalg {{{{mode}}}}\n'
         native += f"\ngate:\n    {driver} current all gate\n"
+        native += "\ngate-public: gate\n"
         (root / "tooling/performance.just").write_text(native, encoding="utf-8", newline="\n")
         for config in (root / "tooling/measurements").glob("*.toml"):
             config.write_text(

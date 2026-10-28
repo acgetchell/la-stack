@@ -23,7 +23,7 @@ exact version declared in `pyproject.toml`, and `jq`. Authenticate the GitHub CL
 the declared Python, Rust, Cargo tools, and Just through the locked PyPI package:
 
 ```bash
-uv run --locked --managed-python --only-group tooling research-repo-tools setup
+uv run --locked --managed-python --only-group tooling python tooling/shared_tooling.py setup
 ```
 
 Set up the remaining development tools and validate the checkout:
@@ -39,7 +39,7 @@ change files. Run bare `just` for the complete generated command list, including
 arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
 owns recipe naming and documentation placement.
 
-Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.3` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.4` package,
 locked in the `tooling` dependency group and included by `dev`. Its `python-tools`
 extra owns the pytest, Ruff and Ty versions.
 `toolchain.inherit-python-tools` checks those versions against the lock and
@@ -71,12 +71,14 @@ Then `just update-dependencies` upgrades Cargo requirements and refreshes Cargo'
 lock, resolves exact direct Python `dev` pins, refreshes the complete `uv.lock`,
 and explicitly synchronizes `dev` with managed Rust available for native builds.
 Included groups retain their constraints, including the exact shared-package pin.
-Semgrep shares the root Python 3.15 environment and lockfile. Preserve its exact
+Semgrep scans and fixture checks share the root Python 3.15 environment and lockfile. Preserve its exact
 pin, native-wheel requirement and compatibility overrides for MCP, PyJWT,
 OpenTelemetry and Python 3.15 Windows wheels. Scanner commands retain the Linux
 stack-limit workaround required by Semgrep on Python 3.15. The hosted dependency
 audit checks the root Python lockfile with the shared OSV adapter; its existing
-Cargo audit retains the native Rust advisory policy.
+Cargo audit retains the native Rust advisory policy. The shared fixture checker
+uses that same installed scanner; see the
+[tooling guide](tooling/README.md#setup-and-validation).
 `just update-cargo-dependencies` excludes `num-bigint` and `num-rational` from
 incompatible requirement upgrades because their public types must advance
 together; Cargo can still refresh locked versions within those requirements.

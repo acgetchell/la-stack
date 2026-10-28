@@ -10,6 +10,7 @@
   - [Exact determinant sign](#exact-determinant-sign-adaptive-precision-integer-arithmetic)
   - [Exact linear system solve](#exact-linear-system-solve-hybrid-bareiss--bigrational)
   - [Exact rational inputs](#exact-rational-inputs-and-row-denominator-clearing)
+  - [Exact sparse polynomial determinants](#exact-sparse-polynomial-determinants)
   - [Exact-to-binary64 conversion](#exact-to-binary64-conversion)
   - [f64 → integer decomposition](#f64--integer-decomposition-decompose_proven_finite_f64)
   - [Gram matrices and geometric measures](#gram-matrices-and-geometric-measures)
@@ -126,6 +127,20 @@ See the [rational-input construction](docs/mathematical_basis.md#exact-arithmeti
 `Σ x_i y_i` over exact rationals \[[12]\], reducing products and sums to canonical
 quotients. Integer arithmetic introduces no rounding; the slice adapter validates
 shape and denominators before reduction.
+
+### Exact sparse polynomial determinants
+
+`polynomial_determinant` reorganizes the Leibniz determinant identity \[[12]\]
+over the commutative ring of univariate rational polynomials. Its column-subset
+recurrence is adapted from Delaunay's
+[`polynomial_determinant_leading_sign`][delaunay-polynomial],
+with canonical inputs, caller-selected budgets, typed failures and a complete
+polynomial result. The [local recurrence proof](docs/mathematical_basis.md#exact-sparse-polynomial-determinants)
+defines the permutation sign and cancellation invariant. This is a division-free
+exact expansion, not an approximate determinant or a general symbolic algebra
+system; perturbation encoding and geometric sign interpretation remain downstream.
+
+[delaunay-polynomial]: https://github.com/acgetchell/delaunay/blob/3fa8a9907101c523574a0d17991a1f652b5419dc/src/geometry/sos.rs
 
 ### Exact-to-binary64 conversion
 

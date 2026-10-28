@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 import pytest
 from packaging.requirements import Requirement
 from research_repo_tools.criterion_inventory import CriterionInventory, load_discovery, serialize_inventory
+from research_repo_tools.host_metadata import HostMetadata, serialize_host
 from research_repo_tools.process import run_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -38,6 +39,7 @@ IDS = {
 STORAGE = tomllib.loads((REPO_ROOT / "tooling/criterion-saved.toml").read_text(encoding="utf-8"))["storage-paths"]
 BASELINE = "v1.2.3"
 RAW_FILES = ("benchmark.json", "estimates.json", "sample.json", "tukey.json")
+SUITE_ENV = {"RELEASE_TAG": BASELINE, "GITHUB_SHA": "a" * 40, "GITHUB_REPOSITORY": "owner/repo", "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}
 
 
 def write_json(path: Path, data: object) -> None:
@@ -71,11 +73,12 @@ def dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
     return criterion, manifest
 
 
-def verify_saved(root: Path) -> subprocess.CompletedProcess[str]:
+def verify_saved(root: Path, *, suite: str | None = None, criterion_dir: str = "target/criterion") -> subprocess.CompletedProcess[str]:
     """Exercise the installed verifier through the actual release-check recipe."""
+    recipe = ["bench-release-check", BASELINE, criterion_dir] if suite is None else ["bench-release-check-suite", BASELINE, suite, criterion_dir]
     return run_command(
         "just",
-        ["--no-deps", "--justfile", str(REPO_ROOT / "justfile"), "--working-directory", str(root), "bench-release-check", BASELINE],
+        ["--no-deps", "--justfile", str(REPO_ROOT / "justfile"), "--working-directory", str(root), *recipe],
         env={**os.environ, "UV_NO_SYNC": "1", "UV_PROJECT_ENVIRONMENT": sys.prefix},
         check=False,
     )
@@ -94,7 +97,7 @@ def shell_step(name: str, source: Path = WORKFLOW) -> str:
     return textwrap.dedent("\n".join(lines)).rstrip()
 
 
-def run_shell(script: str, cwd: Path, extra_env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def run_shell(script: str, cwd: Path, extra_env: dict[str, str], *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
     bash = shutil.which("bash")
     assert bash is not None
     return subprocess.run(  # noqa: S603 - run only checked-in workflow shell in an isolated fixture.
@@ -104,41 +107,141 @@ def run_shell(script: str, cwd: Path, extra_env: dict[str, str]) -> subprocess.C
         capture_output=True,
         encoding="utf-8",
         check=False,
-        timeout=30,
+        timeout=timeout,
     )
+
+
+def installed_runner() -> str:
+    """Keep workflow package assertions while using the installed locked CLI."""
+    command = f"{shlex.quote(sys.executable)} -I -X utf8 -m research_repo_tools"
+    return f'uvx() {{ [[ "$1 $2 $3 $4 $5" == "--python 3.15 --from {TOOLING_REQUIREMENT} research-repo-tools" ]] || return 90; shift 5; {command} "$@"; }}\n'
+
+
+def package_suites(root: Path, manifest: Path, criterion: Path) -> None:
+    """Execute the workflow's installed CLI with all independently required cases."""
+    destination = root / "target/release-suites"
+    destination.mkdir(parents=True)
+    for suite, ids in IDS.items():
+        shard = root / "shards" / suite
+        output = shard / "target/criterion"
+        output.mkdir(parents=True)
+        (shard / "tooling").mkdir()
+        shutil.copyfile(REPO_ROOT / "tooling/criterion-saved.toml", shard / "tooling/criterion-saved.toml")
+        shutil.copyfile(manifest, shard / "target/release-benchmark-inventory.json")
+        host = HostMetadata("fixture OS", "fixture architecture", f"CPU for {suite}", 2, 4, None)
+        (shard / "target/release-host.json").write_bytes(serialize_host(host))
+        for event, timestamp in (("started", "100"), ("finished", "200")):
+            (shard / f"target/{suite}-{event}").write_text(timestamp, encoding="utf-8", newline="\n")
+        for benchmark in ids:
+            storage = STORAGE[benchmark]
+            shutil.copytree(criterion / storage, output / storage)
+        # Substitute only native version/hash observations. The real uvx command
+        # installs the exact published suite package independently of root tooling.
+        probes = (
+            f'rustc() {{ printf "rustc fixture\\nLLVM fixture\\n"; }}\ncargo() {{ echo "cargo fixture"; }}\nsha256sum() {{ echo "{"f" * 64}  Cargo.lock"; }}\n'
+        )
+        result = run_shell(
+            probes + shell_step("Package Criterion suite"),
+            shard,
+            {**SUITE_ENV, "BENCH_SUITE": suite, "RUNNER_NAME": suite, "ImageOS": "ubuntu24", "ImageVersion": "fixture-image"},
+            timeout=180,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        shutil.move(shard / "target/release-suites" / suite, destination / suite)
 
 
 def test_complete_dataset_round_trips_through_workflow_archive(dataset: tuple[Path, Path], tmp_path: Path) -> None:
-    criterion, _manifest = dataset
-    verified = verify_saved(tmp_path)
-    assert verified.returncode == 0, verified.stdout + verified.stderr
+    criterion, manifest = dataset
+    criterion = criterion.rename(tmp_path / "original-criterion")
+    package_suites(tmp_path, manifest, criterion)
+    for suite, ids in IDS.items():
+        verified = verify_saved(tmp_path, suite=suite, criterion_dir=f"shards/{suite}/target/criterion")
+        assert verified.returncode == 0, verified.stdout + verified.stderr
+        assert f"Verified {len(ids)} complete saved Criterion benchmarks" in verified.stdout
+    # Assembly must use the downloaded inventory, not an accidentally retained
+    # fixture copy or an inventory inferred from the supplied archives.
+    manifest.unlink()
     output = tmp_path / "step outputs"
-    # Git Bash accepts forward-slash drive paths on Windows as well as POSIX paths.
-    result = run_shell(
-        shell_step("Package release Criterion baseline"),
-        tmp_path,
-        {"RELEASE_TAG": BASELINE, "GITHUB_OUTPUT": output.as_posix(), "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"},
-    )
-    assert result.returncode == 0, result.stderr
     asset = f"la-stack-{BASELINE}-criterion-baseline.tar.gz"
+    script = shell_step("Assemble release Criterion baseline")
+    env = {**SUITE_ENV, "GITHUB_WORKSPACE": tmp_path.as_posix(), "GITHUB_OUTPUT": output.as_posix()}
+    for assertion in ({"GITHUB_SHA": "b" * 40}, {"GITHUB_RUN_ATTEMPT": "3"}):
+        rejected = run_shell(script, tmp_path, {**env, **assertion}, timeout=180)
+        assert rejected.returncode != 0
+        assert "source revision or collection session differs" in rejected.stderr
+        assert not (tmp_path / asset).exists()
+        assert not output.exists()
+    # Git Bash accepts forward-slash drive paths on Windows as well as POSIX paths.
+    result = run_shell(script, tmp_path, env, timeout=180)
+    assert result.returncode == 0, result.stdout + result.stderr
     assert output.read_text(encoding="utf-8") == f"asset={asset}\nartifact-name=bench-baseline-{BASELINE}-123-2\n"
-    with tarfile.open(tmp_path / asset) as archive:
+    assert_archive_contents(tmp_path / asset, criterion)
+    # Release readers keep the standard tooling environment. Exercise its
+    # documented extraction and full-dataset verification against the new archive.
+    run_command(
+        "uv",
+        ["run", "--locked", "--no-sync", "research-repo-tools", "performance", "extract", str(tmp_path / asset), str(tmp_path / "restored-criterion")],
+        cwd=REPO_ROOT,
+    )
+    verified = verify_saved(tmp_path, criterion_dir="restored-criterion")
+    assert verified.returncode == 0, verified.stdout + verified.stderr
+    assert f"Verified {sum(map(len, IDS.values()))} complete saved Criterion benchmarks" in verified.stdout
+
+
+def assert_archive_contents(archive_path: Path, criterion: Path) -> None:
+    """Require every raw byte and original runner observation in the final asset."""
+    with tarfile.open(archive_path) as archive:
         for ids in IDS.values():
             for benchmark in ids:
                 for sample in ("new", BASELINE):
                     for filename in RAW_FILES:
-                        member = archive.extractfile(f"criterion/{STORAGE.get(benchmark, benchmark)}/{sample}/{filename}")
+                        member = archive.extractfile(f"{STORAGE.get(benchmark, benchmark)}/{sample}/{filename}")
                         assert member is not None
                         assert member.read() == (criterion / STORAGE.get(benchmark, benchmark) / sample / filename).read_bytes()
-        member = archive.extractfile("criterion/release-benchmark-inventory.json")
+        member = archive.extractfile("criterion-inventory.json")
         assert member is not None
         assert json.loads(member.read())["suites"] == IDS
+        for index, suite in enumerate(sorted(IDS)):
+            member = archive.extractfile(f"release-suites/{index}.json")
+            assert member is not None
+            retained = member.read()
+            record = json.loads(retained)
+            assert record["suite"] == suite
+            run = record["run"]
+            assert run["provenance"]["revision"] == SUITE_ENV["GITHUB_SHA"]
+            assert run["session"] == "owner/repo:123:2"
+            assert (run["started_at"], run["finished_at"]) == (100, 200)
+            assert run["host"]["cpu"] == f"CPU for {suite}"
+            context = run["provenance"]["context"]
+            assert context["command"] == f"just bench-save-baseline {BASELINE} {suite}"
+            assert context["features"] == ("bench,exact" if suite == "public-exact" else "bench")
+            assert context["runner"] == suite
+            assert context["rustc"] == "rustc fixture;LLVM fixture"
+            assert context["cargo"] == "cargo fixture"
+            assert context["cargo_lock_sha256"] == "f" * 64
+            assert (context["image"], context["image_version"]) == ("ubuntu24", "fixture-image")
+            with tarfile.open(archive_path.parent / "target/release-suites" / suite / "criterion.tar.gz") as original:
+                original_manifest = original.extractfile("suite.json")
+                assert original_manifest is not None
+                assert retained == original_manifest.read()
 
 
-def test_saved_baseline_must_match_fresh_samples(dataset: tuple[Path, Path]) -> None:
+@pytest.mark.parametrize(
+    "benchmark",
+    [
+        "d2/la_stack_dot",
+        "column_basis/8x14/near_dependent",
+        "interval_solve_d6/uncertain_dense",
+        "polynomial/coincident_lifted/order8/determinant",
+        "rational_dot/large/d22/slice",
+    ],
+)
+def test_saved_baseline_must_match_fresh_samples(dataset: tuple[Path, Path], benchmark: str) -> None:
     criterion, _manifest = dataset
-    write_json(criterion / "d2/la_stack_dot" / BASELINE / "sample.json", {"iters": [1.0] * 100, "times": [3.0] * 100})
-    assert verify_saved(criterion.parent.parent).returncode != 0
+    write_json(criterion / STORAGE[benchmark] / BASELINE / "sample.json", {"iters": [1.0] * 100, "times": [3.0] * 100})
+    result = verify_saved(criterion.parent.parent)
+    assert result.returncode != 0
+    assert "saved baseline differs from fresh measurement" in result.stderr
 
 
 @pytest.mark.parametrize("relocation", ["moved", "swapped"])
@@ -175,12 +278,25 @@ def assert_scientific_inventory(root: Path) -> None:
 
 def test_configured_inventory_includes_public_workloads_without_peers() -> None:
     assert_scientific_inventory(REPO_ROOT)
-    assert len(REQUIRED) == 1254
+    assert len(CATALOG["release"]["default"]) == 736
+    assert len(CATALOG["release"]["exact"]) == 667
+    assert len(REQUIRED) == 1403
     assert not any("/nalgebra_" in name or "/faer_" in name for name in REQUIRED)
 
 
 @pytest.mark.parametrize("declaration", ["criterion-inventory.toml", "criterion-saved.toml", "both"])
-@pytest.mark.parametrize("removed", ["d3/la_stack_norm2_sq", "public_d4/interval_det", "canonical_conversion_dyadic_d3/strict_array"])
+@pytest.mark.parametrize(
+    "removed",
+    [
+        "d3/la_stack_norm2_sq",
+        "public_d4/interval_det",
+        "canonical_conversion_dyadic_d3/strict_array",
+        "column_basis/8x14/near_dependent",
+        "interval_solve_d6/uncertain_dense",
+        "polynomial/coincident_lifted/order8/determinant",
+        "rational_dot/large/d22/slice",
+    ],
+)
 def test_scientific_inventory_detects_a_nonsentinel_omission(tmp_path: Path, declaration: str, removed: str) -> None:
     tooling = tmp_path / "tooling"
     tooling.mkdir()
@@ -207,23 +323,27 @@ def test_workflow_requires_preflight_and_isolates_publication_permissions() -> N
     assert "cache: false" in preparation
     steps = [
         "Prepare release benchmarks",
-        "Save default-feature Criterion baseline",
-        "Save exact Criterion baseline",
-        "Validate complete release dataset",
-        "Package release Criterion baseline",
+        "Capture runner host",
+        "Save Criterion suite",
+        "Package Criterion suite",
+        "Upload temporary suite artifact",
+        "Assemble release Criterion baseline",
         "Upload temporary baseline artifact",
     ]
     positions = [workflow.index(f"- name: {step}") for step in steps]
     assert positions == sorted(positions)
-    assert "\n        if:" not in workflow[positions[0] : positions[-1]]
+    for step in steps:
+        body = workflow.split(f"      - name: {step}\n", 1)[1].split("\n      - ", 1)[0]
+        assert "\n        if:" not in body
     assert "continue-on-error" not in workflow
     assert "workflow_dispatch:" in workflow
     assert "required: true" in workflow
     assert "\n  release:" not in workflow
     assert "group: release-benchmarks-${{ inputs.tag }}" in workflow
     assert "cancel-in-progress: false" in workflow
-    preflight, remainder = workflow.split("  release-baseline:\n", 1)
-    producer, publisher = remainder.split("  publish-baseline:\n", 1)
+    preflight, remainder = workflow.split("  measure-baseline:\n", 1)
+    producer, remainder = remainder.split("  release-baseline:\n", 1)
+    _assembler, publisher = remainder.split("  publish-baseline:\n", 1)
     assert "needs: validate-release" in producer
     assert "validated-attempt: ${{ github.run_attempt }}" in preflight
     assert "validated-attempt: ${{ needs.validate-release.outputs.validated-attempt }}" in producer
@@ -245,14 +365,47 @@ def test_workflow_requires_preflight_and_isolates_publication_permissions() -> N
     assert "GH_REPO: ${{ github.repository }}" in publisher
     assert "contents: write" in publisher
     assert "name: ${{ needs.release-baseline.outputs.artifact-name }}" in publisher
+    assert "performance host --output target/release-host.json" in producer
+    assert "--host target/release-host.json" in producer
+    assert "path: target/release-suites/${{ matrix.suite }}" in producer
+    assert "tar -" not in workflow
+    assert "tooling.release_benchmarks" not in (REPO_ROOT / "justfile").read_text(encoding="utf-8")
+
+
+def test_parallel_suites_require_both_current_attempts_before_assembly() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    producer, remainder = workflow.split("  measure-baseline:\n", 1)[1].split("  release-baseline:\n", 1)
+    assembler = remainder.split("  publish-baseline:\n", 1)[0]
+    assert "fail-fast: false" in producer
+    assert "suite: [public-default, public-exact]" in producer
+    assert "max-parallel: 1" not in producer
+    assert "BENCH_SUITE: ${{ matrix.suite }}" in producer
+    assert 'just bench-save-baseline "$RELEASE_TAG" "$BENCH_SUITE"' in producer
+    assert "performance pack-suite" in producer
+    assert 'tooling/criterion-saved.toml "$BENCH_SUITE" --saved-sample "$RELEASE_TAG"' in producer
+    assert "ref: ${{ github.sha }}" in assembler
+    assert "persist-credentials: false" in assembler
+    assert "contents: write" not in assembler
+    assert "needs: [validate-release, measure-baseline]" in assembler
+    assert "always()" not in assembler
+    for suite in IDS:
+        assert f"name: bench-suite-${{{{ inputs.tag }}}}-${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}-{suite}" in assembler
+        assert f"path: target/release-suites/{suite}" in assembler
+        assert f"target/release-suites/{suite}/criterion.tar.gz" in assembler
+    assert "performance assemble-suites tooling/criterion-saved.toml" in assembler
+    for job in (producer, assembler):
+        assert '--session "$GITHUB_REPOSITORY:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"' in job
+        assert '--revision "$GITHUB_SHA"' in job
+    for job in (producer, assembler):
+        assert f"--from {TOOLING_REQUIREMENT}" in job
 
 
 def test_setup_limits_preserve_benchmark_and_tail_budgets() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    producer = workflow.split("  release-baseline:\n", 1)[1].split("  publish-baseline:\n", 1)[0]
+    producer = workflow.split("  measure-baseline:\n", 1)[1].split("  release-baseline:\n", 1)[0]
     job_limit = re.search(r"(?m)^    timeout-minutes: (\d+)$", producer)
     assert job_limit is not None
-    setup = producer.split("    steps:\n", 1)[1].split("      - name: Save default-feature Criterion baseline", 1)[0]
+    setup = producer.split("    steps:\n", 1)[1].split("      - name: Save Criterion suite", 1)[0]
     setup_steps = re.findall(r"(?ms)^      - .*?(?=^      - |\Z)", setup)
     assert setup_steps
     setup_limits: list[int] = []
@@ -265,25 +418,28 @@ def test_setup_limits_preserve_benchmark_and_tail_budgets() -> None:
     discovery_minutes = sum(suite.timeout for suite in discovery.suites) / 60
     # The failed hosted run spent 27 minutes on uncached tool installation.
     # Reserve 35 for tools, each declared cold discovery deadline, and 5 for inputs.
-    assert setup_limits[-1] >= 35 + discovery_minutes + 5
+    preparation = re.search(r"(?ms)^      - name: Prepare release benchmarks\n.*?^        timeout-minutes: (\d+)$", setup)
+    assert preparation is not None
+    assert int(preparation[1]) >= 35 + discovery_minutes + 5
     assert "uses: ./.github/actions/prepare-release-benchmarks" in setup
     assert "using: composite" in PREPARATION.read_text(encoding="utf-8")
-    benchmark_limits = [
-        int(limit)
-        for limit in re.findall(r"(?ms)^      - name: Save (?:default-feature|exact) Criterion baseline\n.*?^        timeout-minutes: (\d+)$", producer)
-    ]
-    assert benchmark_limits == [140, 130]
-    assert int(job_limit[1]) - sum(setup_limits) - sum(benchmark_limits) >= 15
+    benchmark_limit = re.search(r"(?ms)^      - name: Save Criterion suite\n.*?^        timeout-minutes: (\d+)$", producer)
+    assert benchmark_limit is not None
+    assert int(benchmark_limit[1]) == 240
+    for suite in ("default", "exact"):
+        # Keep at least 50% headroom beyond the documented planning rate.
+        assert int(benchmark_limit[1]) * 60 >= len(CATALOG["release"][suite]) * 12 * 1.5
+    assert int(job_limit[1]) - sum(setup_limits) - int(benchmark_limit[1]) >= 20
     assert int(job_limit[1]) <= 360
 
 
-@pytest.mark.parametrize(("suite", "step"), [("public-default", "Save default-feature Criterion baseline"), ("public-exact", "Save exact Criterion baseline")])
-def test_failed_suite_retains_timing_and_does_not_mark_completion(tmp_path: Path, suite: str, step: str) -> None:
+@pytest.mark.parametrize("suite", ["public-default", "public-exact"])
+def test_failed_suite_retains_timing_and_does_not_mark_completion(tmp_path: Path, suite: str) -> None:
     (tmp_path / "target").mkdir()
     # A shell function substitutes only the benchmark command; timestamps and
     # failure handling execute exactly as checked into the workflow.
-    script = "just() { return 7; }\n" + shell_step(step)
-    result = run_shell(script, tmp_path, {"RELEASE_TAG": BASELINE})
+    script = "just() { return 7; }\n" + shell_step("Save Criterion suite")
+    result = run_shell(script, tmp_path, {"RELEASE_TAG": BASELINE, "BENCH_SUITE": suite})
     assert result.returncode == 7
     assert (tmp_path / f"target/{suite}-started").is_file()
     assert not (tmp_path / f"target/{suite}-finished").exists()
@@ -293,13 +449,13 @@ def test_failed_suite_retains_timing_and_does_not_mark_completion(tmp_path: Path
         tmp_path,
         {
             "GITHUB_STEP_SUMMARY": summary.as_posix(),
-            "COMPARATIVE_OUTCOME": "failure",
-            "EXACT_OUTCOME": "skipped",
+            "BENCH_SUITE": suite,
+            "SUITE_OUTCOME": "failure",
         },
     )
     assert result.returncode == 0, result.stderr
-    assert "| public-default | failure |" in summary.read_text(encoding="utf-8")
-    assert "| public-exact | skipped |" in summary.read_text(encoding="utf-8")
+    assert f"| {suite} | failure |" in summary.read_text(encoding="utf-8")
+    assert "| 240 |" in summary.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("validated_attempt", ["", "1", "2"])
@@ -388,11 +544,7 @@ def test_installed_cli_binds_trusted_target_and_leaves_draft_for_review(tmp_path
     }
     # Substitute only uvx's environment acquisition; retain its exact package
     # arguments and execute the already locked package in a real child process.
-    runner = (
-        'uvx() { [[ "$1 $2 $3 $4 $5" == "--python 3.15 --from '
-        f'{TOOLING_REQUIREMENT} research-repo-tools" ]] || return 90; '
-        f'shift 5; {shlex.quote(sys.executable)} -m research_repo_tools "$@"; }}\n'
-    )
+    runner = installed_runner()
     result = run_shell(runner + shell_step("Validate draft release target"), fixture, env)
     assert result.returncode == 0, result.stderr
     target = output.read_text(encoding="utf-8").strip().removeprefix("target=")

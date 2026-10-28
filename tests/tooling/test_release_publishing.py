@@ -95,7 +95,9 @@ def test_each_configured_native_check_is_required(release_event: dict[str, Any],
     check = next(item for item in release_event["checks"] if item["name"] == name)
     check["name"] = "unrelated check"
     assert main(["--root", str(REPO_ROOT), "release", "gate", TAG]) == 1
-    assert f"required check {name!r} lacks one unambiguous successful result on {SHA}" in capsys.readouterr().err
+    diagnostic = capsys.readouterr().err
+    assert f"Unmet release checks on exact commit {SHA}:" in diagnostic
+    assert f"required check {name!r} (app ID 15368): missing" in diagnostic
 
 
 @pytest.mark.parametrize("immutable", [True, False, None])
@@ -163,8 +165,9 @@ def test_release_notes_stdout_excludes_setup_diagnostics() -> None:
 def test_publish_recipe_passes_explicit_approval(monkeypatch: pytest.MonkeyPatch) -> None:
     requested: list[str] = []
 
-    def publish(settings: config.Config, tag: str) -> None:
+    def publish(settings: config.Config, tag: str, *, reuse_evidence: object = None) -> None:
         assert settings.root == REPO_ROOT
+        assert reuse_evidence is None
         requested.append(tag)
 
     # Exercise the installed argument parser and dispatch, replacing only the

@@ -161,7 +161,7 @@ def test_semgrep_adapter_uses_real_consumer_rules_and_fixtures() -> None:
     assert config["fixtures"] == "tests/semgrep"
     assert config["namespace"] == "la-stack."
     result = dry_run(REPO_ROOT, "semgrep-test")
-    assert "research-repo-tools semgrep check-fixtures" in result.stderr
+    assert "uv run --locked --group dev python tooling/shared_tooling.py semgrep check-fixtures" in result.stderr
 
 
 def test_semgrep_runs_in_the_root_python_315_environment_with_compatible_dependencies() -> None:
