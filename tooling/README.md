@@ -3,9 +3,8 @@
 The installed `research-repo-tools` package owns common development and
 performance tooling. The exact released pin and registry hashes live in
 `pyproject.toml` and `uv.lock`. This dependency-only environment has no local
-Python distribution or console entry points. `release_evidence.py` is the
-repository-specific Cargo evidence adapter around the installed validation
-helpers; shared tooling is not copied into this repository.
+Python distribution or console entry points. Declarative release policies select
+the native Cargo gates; shared tooling is not copied into this repository.
 
 ## Setup and validation
 
@@ -111,13 +110,10 @@ external dependencies and commit pins.
 
 The [benchmark guide](../docs/BENCHMARKING.md) owns command selection,
 interpretation and output paths. Measurement and publication use the installed
-CLI or native Cargo commands. `release_performance.py` temporarily captures the
-shared release selector's independent commit assertions during
-`performance-prepare` and reuses them during the separate `performance-readme`
-step. `performance-release` remains measurement and report promotion only.
-The adapter will be removed when the shared package publishes equivalent commands.
-That handoff is tracked in
-[research-repo-tools#129](https://github.com/acgetchell/research-repo-tools/issues/129).
+CLI or native Cargo commands. `performance-release.toml` composes the installed
+`performance prepare`, `release` and `readme` commands. Preparation retains
+independent commit assertions and declaration identity; measurement/report
+promotion and README publication remain separate retry boundaries.
 There is no runtime configuration generator.
 
 | Declaration | Responsibility |
@@ -128,6 +124,7 @@ There is no runtime configuration generator.
 | `criterion-inventory.toml` | Hosted la-stack-only discovery and independent required scientific IDs |
 | `criterion-saved.toml` | Required IDs, canonical paths, 100 samples and exact saved raw JSON bytes |
 | `performance-report.toml` | Independent release eligibility, current report and immutable run history |
+| `performance-release.toml` | Preparation storage, publication chronology and separate phase declarations |
 | `performance-readme.toml` | Canonical README selection, formatter, source freshness and tagged links |
 | `plots/{non-exact,retained,scratch}/*.toml` | Named metric/statistic/axis selections with explicit input ownership |
 
@@ -150,8 +147,9 @@ coverage decisions, feature configurations and runtime estimates.
 
 Working-tree measurements include tracked changes and nonignored untracked
 regular files. Scratch outputs belong under ignored `target/`.
-Tag preparation is explicit: `just performance-prepare` fetches tags and
-requires authorization to mutate Git. Measurement recipes create temporary
+Tag fetching is explicit: `just performance-prepare --fetch-tags --allow-git-mutations`
+requires authorization to mutate Git. Plain preparation uses local tags.
+Measurement recipes create temporary
 worktrees. Their declared environment fixes the Rust toolchain and
 code-generation flags; native recipes select the host target. Change and
 review the declarations for a different measurement environment instead of
@@ -197,13 +195,10 @@ tagging and registry publication. Declarations in `pyproject.toml` retain
 the concept DOI, active link policy, declared date policy, formatter and
 authored dependency notes.
 
-`release_changelog.py` temporarily supplies the recorded `CITATION.cff`
-`date-released` when `changelog-release` (also named `changelog-unreleased`) or
-a tagged `changelog-preview` omits the date. Explicit dates remain supported.
-The adapter never chooses a new date or updates citation metadata; the shared
-CLI still owns generation, formatting, archives and publication.
-The shared replacement is tracked in
-[research-repo-tools#130](https://github.com/acgetchell/research-repo-tools/issues/130).
+The shared changelog command uses the recorded `CITATION.cff` date when
+`changelog-release` (also named `changelog-unreleased`) or a tagged preview
+omits the date. `changelog.date-source = "citation"` owns that policy;
+explicit dates remain supported. Generation never advances citation metadata.
 
 The publishing declaration selects only `la-stack`, requires native platform
 and scientific checks on the exact commit, and requires the durable Criterion
@@ -212,10 +207,11 @@ use the shared release contract; `release-package` owns native default/exact
 Cargo dry-runs. Main CI signs those packaging and native validation identities;
 `release-evidence` verifies the original main-push attempt and immutable signed
 artifact before publication and rechecks its pinned identity after approval.
-The adapter uses the installed `ci.export_environment` helper for explicit
-`--github-output` export; the [release guide](../docs/RELEASING.md#reusable-ci-evidence)
-owns the transport and approval contract. Cargo evidence policy stays local.
-`tests/tooling/test_release_evidence.py` checks the adapter's trust boundaries, while
+`release-evidence.toml` owns the package, workflow, native job and signer policy;
+`release-assets.toml` owns the draft-target policy. Both recipes use the pinned
+installed runtime outside the observed checkout. The [release guide](../docs/RELEASING.md#reusable-ci-evidence)
+owns the transactional output and frozen approval contract.
+`tests/tooling/test_release_evidence.py` checks installed policy boundaries, while
 `tests/tooling/test_release_publishing.py` checks consumer policy and upload barriers
 without registry credentials. The release guide owns retention, complete-rerun
 recovery and the distinction between reused checks and Cargo repackaging.

@@ -90,7 +90,22 @@ jobs:
       - name: Capture successful native validation identities
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uv run --locked python -m tooling.release_evidence seal --output target/release-evidence/validation.json
+        run: |
+          uvx --python 3.15 --from research-repo-tools==0.2.4 python -I - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+          from research_repo_tools.cli import main
+          from research_repo_tools.release_metadata import read_package_info
+          root = Path.cwd()
+          sys.exit(main([
+              "release", "evidence", "create", "tooling/release-evidence.toml",
+              "--checkout", str(root), "--commit", os.environ["GITHUB_SHA"],
+              "--version", read_package_info(root).version,
+              "--run-id", os.environ["GITHUB_RUN_ID"], "--attempt", os.environ["GITHUB_RUN_ATTEMPT"],
+              "--output", "target/release-evidence/validation.json",
+          ]))
+          PY
       - name: Sign original main validation evidence
         id: validation
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2

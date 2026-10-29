@@ -57,10 +57,11 @@ or shell implementations of the shared workflow.
 | `performance-local` | `performance measure`, `measurements/full.toml`, current versus latest published release |
 | `performance-local-non-exact` | `performance measure`, `measurements/non-exact.toml`, current versus latest published release |
 | `performance-measure` | Explicit current/baseline labels and a named full/non-exact declaration |
-| `performance-release` | `performance measure`, followed by explicit `performance promote` |
+| `performance-prepare` | `performance prepare` with `performance-release.toml`; independent saved assertions |
+| `performance-release` | `performance release` with `performance-release.toml`; measure the prepared pair and promote |
 | `performance-promote` | Explicit scratch payload and envelope, checked against `performance-report.toml` |
 | `performance-doc` | Offline retained history through `performance promote` and the independent full policy |
-| `performance-readme` | `performance publish` with `performance-readme.toml`, independent identities and transactional formatting |
+| `performance-readme` | `performance readme` with `performance-release.toml`, prepared or explicit independent identities and transactional formatting |
 | `plot-vs-linalg` | `performance publish --artifacts-only` with named full scratch, retained, or non-exact scratch views |
 | `bench-release-check` | `performance verify-saved` with saved name, Criterion directory and `criterion-saved.toml` |
 | `bench-release-check-suite` | `performance verify-saved --suite` with the complete independent policy and selected feature suite |
@@ -68,6 +69,29 @@ or shell implementations of the shared workflow.
 | `bench-compare` | Existing installed saved-Criterion comparison CLI |
 
 Paths in the table are relative to `tooling/`.
+
+### Release adapter migration
+
+Published `research-repo-tools==0.2.4` now owns the former
+`release_changelog.py`, `release_evidence.py` and `release_performance.py`
+adapters. Citation dates are declarative in `pyproject.toml`; evidence, draft
+assets and performance phases have dedicated TOML policies. The native Just
+launchers observe checkout identity and forward arguments to the installed
+commands. Evidence and asset verification use an isolated runtime outside the
+checkout. Privileged benchmark jobs retain their existing installed asset
+commands and captured target without checking out or executing repository code.
+
+The upstream installed-consumer suites
+[`public_evidence_consumer.py`](https://github.com/acgetchell/research-repo-tools/blob/v0.2.4/tests/releases/public_evidence_consumer.py)
+and
+[`public_dates_consumer.py`](https://github.com/acgetchell/research-repo-tools/blob/v0.2.4/tests/changelog/public_dates_consumer.py)
+own generic output rollback, immutable handoffs, malformed metadata, signature
+and date parsing regressions. Local tests retain the actual native/Cargo policy,
+workflow approval barriers, real Just output transport, installed runtime
+identity, stale preparation rejection and scientific publication fixtures.
+The shared downloader's archive bound is 32 MiB; signed manifests remain
+bounded at 1 MiB. Recovery uses the shared selection schema; legacy preparation
+files must be replaced through a new independent preparation.
 [Benchmarking](../BENCHMARKING.md) owns arguments and examples.
 
 ## Consumer contracts

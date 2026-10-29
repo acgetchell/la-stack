@@ -35,8 +35,9 @@ including when a rerun happens after UTC midnight.
 ## Reusable CI evidence
 
 The publishing process uses the installed `research-repo-tools==0.2.4`
-validation helpers. `tooling/release_evidence.py` supplies the Cargo-specific
-policy; it does not use the shared package's wheel/sdist release commands.
+release evidence commands. `tooling/release-evidence.toml` declares the repository,
+package, workflow, native jobs/steps and signer policy. The guarantee is
+`signed-source`; it does not promise promotion of an identical Cargo archive.
 Every successful protected `main` push produces signed evidence after all three
 native `just ci` jobs and the default/exact Cargo packaging job succeed.
 The `release-evidence` job signs their exact commit, run, attempt, job IDs and
@@ -50,27 +51,32 @@ nonexpired artifact retrieved by immutable ID. The shared downloader checks its
 authoritative ZIP size and SHA-256 digest and exact file inventory. GitHub CLI
 then verifies the signed manifest's workflow, source commit, `main` ref, hosted
 runner, push event, run and attempt. The manifest must match the live job and
-package identities. Pending matching runs receive a bounded wait; missing,
+package identities. Pending,
 failed, ambiguous or expired evidence stops publication. PR, manual dispatch,
 fork, local and partial-rerun results cannot replace it.
 
-Local verification prints the validated identity as deterministic single-line
-JSON. In Actions, `just release-evidence --github-output "$GITHUB_OUTPUT"`
-uses the installed `research_repo_tools.ci.export_environment` helper to append
-the `identity` output only after verification succeeds. The destination must
+Local verification prints a success message; pass `--output <path>` to retain
+the full approval selection. In Actions,
+`just release-evidence --github-output "$GITHUB_OUTPUT"` uses the installed
+transactional output writer to append `identity` and `commit` only after
+verification succeeds. The destination must
 already exist; export errors fail the command. Existing output records survive,
 and normal or quiet Just execution transports the same JSON without capturing
-stdout. Non-finite JSON values are rejected. The shared helper owns command-file
-transport; this adapter retains the Cargo-specific evidence policy.
-The Just recipe launches uv and Python directly so JSON arguments never pass
-through the native Windows-to-MSYS shell boundary. Omitting `--identity` selects
-fresh evidence; supplying an empty identity is an error.
+stdout. The shared command owns JSON validation and command-file transport.
+The Just recipe launches the exact published package with `uvx` outside the
+observed checkout, using native Python argument transport on Windows.
+Omitting `--expected` selects fresh evidence; a supplied empty or malformed
+selection file is an error. Existing selection files can only be reused with
+identical bytes. The installed downloader bounds archives at 32 MiB and the
+signed manifest at 1 MiB; repository, digest and signature checks still apply.
 
 The publishing workflow reuses these completed checks and passes the run/attempt
 and artifact ID/digest through `steps.evidence.outputs.identity` and
 `needs.verify.outputs.ci-evidence` to `CI_EVIDENCE`. After deployment approval,
-it requires a nonempty value and revalidates that exact identity with
-`just release-evidence --identity "$CI_EVIDENCE"` before token acquisition.
+it requires a nonempty value, writes it to `RUNNER_TEMP/approved-evidence.json`,
+and revalidates it with `just release-evidence --expected <path>` before token
+acquisition. A new run, attempt, artifact, manifest or policy cannot replace
+the approved selection.
 It also retains the independent release metadata, exact-commit SARIF,
 durable Criterion asset, immutable GitHub release and registry-absence gates.
 Release benchmarks remain a separate scientific measurement workflow; CI
@@ -82,7 +88,7 @@ dry-run `.crate` archive. The shared tooling's Python distribution promotion
 process has a different artifact contract.
 
 Use a current GitHub CLI with `gh attestation verify` and the signer/source
-constraints used by the adapter. See GitHub's
+constraints used by the installed verifier. See GitHub's
 [attestation verification options](https://cli.github.com/manual/gh_attestation_verify).
 
 ## Prepare the environment
@@ -213,7 +219,7 @@ After updating the package version, fetch the tags and capture the independent
 source assertions before measurement:
 
 ```bash
-just performance-prepare
+just performance-prepare --fetch-tags --allow-git-mutations
 ```
 
 Preparation selects the release pair using GitHub's publication history,
@@ -223,6 +229,13 @@ This Git-ignored file carries the tags and commits forward to
 `just performance-readme`; it survives closing and reopening your terminal.
 Review the printed tags and commits. A failed release lookup or missing tag
 stops preparation with a diagnostic.
+
+The plain `performance-prepare` command uses local tags without changing refs.
+The shared preparation record also binds the package version and measurement
+declaration. If you have an old adapter-format `release-inputs.json`, remove
+that ignored scratch file once and prepare again. It is deliberately not
+converted from measurement evidence. Moved refs or changed package/declaration
+inputs require a new preparation before measurement or README publication.
 
 No shell variables or exports are needed. `performance-prepare` does not set
 `PREVIOUS_TAG`, `CURRENT_COMMIT`, or `PREVIOUS_COMMIT` in your shell; those
@@ -235,8 +248,8 @@ Then run the long measurement command:
 just performance-release
 ```
 
-The no-argument recipe compares the prospective package version with the
-latest stable published release. It measures and promotes the release report;
+The no-argument recipe measures the independently prepared pair and promotes
+the release report;
 README publication remains a separate, retryable step below.
 
 Review `docs/performance.md` and the complete

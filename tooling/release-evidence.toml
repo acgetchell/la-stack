@@ -1,0 +1,31 @@
+schema = 1
+repository = "acgetchell/la-stack"
+package = "la-stack"
+workflow = ".github/workflows/ci.yml"
+workflow-name = "CI"
+branch = "main"
+artifact-prefix = "release-evidence"
+guarantee = "signed-source"
+
+[[jobs]]
+name = "build (ubuntu-latest)"
+steps = [ "Run CI checks" ]
+runner-labels = [ "ubuntu-latest" ]
+
+[[jobs]]
+name = "build (macos-latest)"
+steps = [ "Run CI checks" ]
+runner-labels = [ "macos-latest" ]
+
+[[jobs]]
+name = "build (windows-latest)"
+steps = [ "Run CI checks" ]
+runner-labels = [ "windows-latest" ]
+
+[[jobs]]
+name = "release-package"
+steps = [ "Verify default and exact Cargo packages" ]
+
+[signing-job]
+name = "release-evidence"
+steps = [ "Capture successful native validation identities", "Sign original main validation evidence", "Upload signed validation evidence" ]

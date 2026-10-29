@@ -68,6 +68,36 @@ def test_published_tooling_package_matches_manifest_lock_and_installation() -> N
         assert locked[name] == version(name) == expected
 
 
+def test_isolated_release_runtime_uses_the_published_pin_outside_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise the actual trusted runtime on each native CI platform."""
+    expected = version("research-repo-tools")
+    source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
+    assert source.count(f'[script("uvx", "--python", "3.15", "--from", "research-repo-tools=={expected}", "python", "-I")]') == 2
+    (tmp_path / "research_repo_tools.py").write_text('raise RuntimeError("untrusted checkout import")\n', encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    result = run_command(
+        "uvx",
+        [
+            "--python",
+            "3.15",
+            "--from",
+            f"research-repo-tools=={expected}",
+            "python",
+            "-I",
+            "-c",
+            (
+                "import json, research_repo_tools; from importlib.metadata import version; "
+                'print(json.dumps([version("research-repo-tools"), research_repo_tools.__file__]))'
+            ),
+        ],
+        timeout=180,
+        cwd=tmp_path,
+    )
+    installed_version, location = json.loads(result.stdout)
+    assert installed_version == expected
+    assert not Path(location).resolve().is_relative_to(REPO_ROOT)
+
+
 @pytest.fixture
 def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Use the actual recipes and declarations; record updater process boundaries."""
