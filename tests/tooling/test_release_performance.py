@@ -1,28 +1,31 @@
-"""Release preparation saves assertions; README retries never repeat measurement."""
+"""Installed preparation saves independent assertions and rejects stale inputs."""
 
 import subprocess
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from research_repo_tools import performance_release
+from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_git_command
 from research_repo_tools.releases import PublishedRelease
 
-from tooling import release_performance as adapter
-
 ROOT = Path(__file__).resolve().parents[2]
+INPUTS = "target/bench-reports/release-inputs.json"
 
 
 @pytest.fixture
 def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Give preparation real local Git commits and the consumer's declared policy."""
     root = tmp_path / "consumer with spaces"
     root.mkdir()
     (root / "Cargo.toml").write_text('[package]\nname = "fixture"\nversion = "0.5.2"\n', encoding="utf-8")
-    config = root / "tooling/measurements/full.toml"
-    config.parent.mkdir(parents=True)
-    config.write_bytes((ROOT / "tooling/measurements/full.toml").read_bytes())
+    (root / ".gitignore").write_bytes(b"/target/\n")
+    for name in ("tooling/measurements/full.toml", "tooling/performance-release.toml"):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes((ROOT / name).read_bytes())
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "absent-gitconfig"))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     run_git_command(["--no-pager", "init", "--quiet"], cwd=root)
@@ -50,141 +53,120 @@ def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return root
 
 
+def settings(root: Path) -> performance_release.PerformanceRelease:
+    return performance_release.load_performance_release(root, "tooling/performance-release.toml")
+
+
 def releases(monkeypatch: pytest.MonkeyPatch, *tags: str) -> None:
-    """Keep provider discovery offline while exercising the real shared selector."""
     history = tuple(PublishedRelease(tag, datetime(2026, 10, index, tzinfo=UTC)) for index, tag in enumerate(tags, start=1))
-    monkeypatch.setattr(adapter, "published_releases", lambda _root, **_kwargs: history)
+    monkeypatch.setattr(performance_release, "published_releases", lambda _root, **_kwargs: history)
 
 
 @pytest.mark.parametrize("published", [False, True])
-def test_preparation_resolves_prospective_head_or_published_tag(
-    consumer: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    published: bool,
+def test_preparation_resolves_prospective_head_or_publication_order(
+    consumer: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], published: bool
 ) -> None:
     current = "v0.5.1" if published else "v0.5.2"
     (consumer / "Cargo.toml").write_text(f'[package]\nname = "fixture"\nversion = "{current[1:]}"\n', encoding="utf-8")
     releases(monkeypatch, *(("v0.5.0", "v0.5.1") if published else ("v0.5.1", "v0.5.0")))
-    monkeypatch.setattr(adapter, "tooling_main", lambda _argv: pytest.fail("preparation must not measure or publish"))
     before = run_git_command(["--no-pager", "show-ref"], cwd=consumer).stdout
-    assert adapter.main(["capture"]) == 0
-    output = capsys.readouterr().out
-    assert "target/bench-reports/release-inputs.json (relative to the repository root; ignored by Git)" in output
-    assert "No shell variables or exports are needed" in output
-    assert "This command does not set PREVIOUS_TAG, CURRENT_COMMIT, or PREVIOUS_COMMIT in your shell" in output
-    assert "saved file survives opening a new terminal" in output
-    assert "After measurements finish, run: just performance-readme (no arguments)" in output
-    assert "performance-readme reads the release tags and commits from this saved file" in output
-    expected = [
-        current,
-        run_git_command(["--no-pager", "rev-parse", "v0.5.1" if published else "HEAD"], cwd=consumer).stdout.strip(),
-        "v0.5.0",
-        run_git_command(["--no-pager", "rev-parse", "v0.5.0"], cwd=consumer).stdout.strip(),
-    ]
-    assert adapter.saved_assertions(consumer) == expected
+    assert main(["performance", "prepare", "tooling/performance-release.toml"]) == 0
+    assert f"Saved preparation: {INPUTS}" in capsys.readouterr().out
+    record = performance_release.load_preparation(consumer, settings(consumer))
+    assert record.identities == {
+        "current": (current, run_git_command(["--no-pager", "rev-parse", "v0.5.1" if published else "HEAD"], cwd=consumer).stdout.strip()),
+        "baseline": ("v0.5.0", run_git_command(["--no-pager", "rev-parse", "v0.5.0"], cwd=consumer).stdout.strip()),
+    }
     assert run_git_command(["--no-pager", "show-ref"], cwd=consumer).stdout == before
+    assert not (consumer / "target/bench-reports/full").exists()
 
 
-def test_explicit_pair_skips_provider_and_failed_capture_preserves_record(consumer: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(adapter, "published_releases", lambda _root, **_kwargs: pytest.fail("explicit pairs need no provider"))
-    assert adapter.main(["capture", "v0.5.1", "v0.5.0"]) == 0
-    original = (consumer / adapter.INPUTS).read_bytes()
-    assert adapter.main(["capture", "v0.5.2", "v0.5.0"]) == 1  # Missing current tag.
-    assert (consumer / adapter.INPUTS).read_bytes() == original
+def test_explicit_pair_skips_provider_and_failed_preparation_preserves_record(consumer: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(performance_release, "published_releases", lambda *_args, **_kwargs: pytest.fail("explicit pairs need no provider"))
+    plan = replace(settings(consumer), mode="explicit", current="v0.5.1", baseline="v0.5.0")
+    performance_release.prepare_performance(consumer, plan)
+    original = (consumer / INPUTS).read_bytes()
+    with pytest.raises(subprocess.CalledProcessError):
+        performance_release.prepare_performance(consumer, replace(plan, current="v0.5.2"))
+    assert (consumer / INPUTS).read_bytes() == original
 
 
-@pytest.mark.parametrize("failure", ["empty-history", "provider", "missing-tag", "partial-pair", "old-release"])
+@pytest.mark.parametrize("failure", ["empty-history", "provider", "missing-tag", "old-release"])
 def test_failed_preparation_never_writes_partial_assertions(
-    consumer: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    failure: str,
+    consumer: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], failure: str
 ) -> None:
     releases(monkeypatch, *(() if failure == "empty-history" else ("v0.4.6" if failure == "old-release" else "v0.5.1",)))
     if failure == "missing-tag":
         run_git_command(["--no-pager", "tag", "-d", "v0.5.1"], cwd=consumer)
     if failure == "provider":
 
-        def fail_provider(root: Path, repository: str) -> tuple[PublishedRelease, ...]:
+        def unavailable(*_args: object, **_kwargs: object) -> tuple[PublishedRelease, ...]:
             raise subprocess.CalledProcessError(1, ["gh", "release", "list"], stderr="provider unavailable")
 
-        monkeypatch.setattr(adapter, "published_releases", fail_provider)
-    args = ["capture", "v0.5.2"] if failure == "partial-pair" else ["capture"]
-    assert adapter.main(args) == 1
-    assert not (consumer / adapter.INPUTS).exists()
-    output = capsys.readouterr()
-    assert "Release performance rejected:" in output.err
-    assert "performance-prepare" in output.err
+        monkeypatch.setattr(performance_release, "published_releases", unavailable)
+    assert main(["performance", "prepare", "tooling/performance-release.toml"]) == 1
+    assert not (consumer / INPUTS).exists()
     expected = {
         "empty-history": "a published stable release is required",
         "provider": "provider unavailable",
         "missing-tag": "refs/tags/v0.5.1^{commit}",
-        "partial-pair": "current and baseline tags must be provided together",
         "old-release": "requires v0.5.0 or newer",
     }
-    assert expected[failure] in output.err
+    assert expected[failure] in capsys.readouterr().err
 
 
-def test_readme_retry_uses_saved_assertions_and_preserves_measurements(consumer: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    assert adapter.main(["capture", "v0.5.1", "v0.5.0"]) == 0
-    expected = adapter.saved_assertions(consumer)
-    payload = consumer / "target/bench-reports/full/run.json"
-    payload.parent.mkdir()
-    payload.write_bytes(b"retained measurements must not be touched")
-    before = payload.read_bytes()
-    calls: list[list[str]] = []
-
-    def publication(argv: list[str]) -> int:
-        calls.append(argv)
-        return 7 if len(calls) == 1 else 0
-
-    monkeypatch.setattr(adapter, "tooling_main", publication)
-    monkeypatch.setattr(adapter, "published_releases", lambda _root, **_kwargs: pytest.fail("publication must not rediscover inputs"))
-    for name in ("CURRENT_COMMIT", "PREVIOUS_TAG", "PREVIOUS_COMMIT"):
-        monkeypatch.delenv(name, raising=False)
-    assert adapter.main(["publish"]) == 7
-    assert adapter.main(["publish"]) == 0
-    assert (
-        calls
-        == [
+@pytest.mark.parametrize("changed", ["head", "baseline", "declaration", "package"])
+def test_readme_rejects_stale_preparation_before_publication(consumer: Path, monkeypatch: pytest.MonkeyPatch, changed: str) -> None:
+    releases(monkeypatch, "v0.5.1")
+    performance_release.prepare_performance(consumer, settings(consumer))
+    if changed == "head":
+        run_git_command(
             [
-                "performance",
-                "publish",
-                "tooling/performance-readme.toml",
-                "--current-release",
-                expected[0],
-                "--current-revision",
-                expected[1],
-                "--baseline-release",
-                expected[2],
-                "--baseline-revision",
-                expected[3],
-            ]
-        ]
-        * 2
-    )
-    assert payload.read_bytes() == before
+                "--no-pager",
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "--allow-empty",
+                "--quiet",
+                "-m",
+                "later",
+            ],
+            cwd=consumer,
+        )
+    elif changed == "baseline":
+        run_git_command(["--no-pager", "tag", "--force", "v0.5.1", "HEAD"], cwd=consumer)
+    elif changed == "declaration":
+        path = consumer / "tooling/measurements/full.toml"
+        path.write_bytes(path.read_bytes() + b"\n# changed\n")
+    else:
+        (consumer / "Cargo.toml").write_bytes(b'[package]\nname="fixture"\nversion="0.5.3"\n')
+    monkeypatch.setattr(performance_release, "published_releases", lambda *_args, **_kwargs: pytest.fail("README must not rediscover"))
+    with pytest.raises(ValueError, match="stale preparation"):
+        performance_release.load_readme_plan(consumer, settings(consumer))
 
 
-@pytest.mark.parametrize("record", [None, "{", '{"schema": 2, "assertions": []}', '{"schema": 1, "assertions": ["v0.5.1", "", "v0.5.0", ""]}'])
-def test_missing_or_invalid_preparation_stops_before_publication(consumer: Path, monkeypatch: pytest.MonkeyPatch, record: str | None) -> None:
+@pytest.mark.parametrize("record", [None, "{", '{"schema": 2}', '{"schema": 1, "assertions": []}'])
+def test_missing_or_legacy_preparation_stops_before_readme_and_measurement(consumer: Path, record: str | None) -> None:
     if record is not None:
-        path = consumer / adapter.INPUTS
+        path = consumer / INPUTS
         path.parent.mkdir(parents=True)
         path.write_text(record, encoding="utf-8")
-    monkeypatch.setattr(adapter, "tooling_main", lambda _argv: pytest.fail("invalid preparation cannot publish"))
-    assert adapter.main(["publish"]) == 1
-    assert adapter.main(["publish", "v0.5.1"]) == 1
+    for command in ("readme", "release"):
+        assert main(["performance", command, "tooling/performance-release.toml"]) == 1
+    assert not (consumer / "target/bench-reports/full").exists()
 
 
 def test_recipes_keep_preparation_measurement_and_publication_separate() -> None:
     preparation = dry_run(ROOT, "performance-prepare").stderr
-    assert preparation.index("git fetch origin --tags") < preparation.index("tooling.release_performance capture")
+    assert 'performance prepare tooling/performance-release.toml "$@"' in preparation
+    assert "git fetch" not in preparation
     measurement = dry_run(ROOT, "performance-release").stderr
-    assert measurement.count("performance measure") == measurement.count("performance promote") == 1
-    assert "performance publish" not in measurement
-    assert "release_performance" not in measurement
+    assert measurement.count("performance release tooling/performance-release.toml") == 1
+    assert "performance readme" not in measurement
     publication = dry_run(ROOT, "performance-readme").stderr
-    assert "tooling.release_performance publish" in publication
+    assert "performance readme tooling/performance-release.toml" in publication
     assert "performance measure" not in publication

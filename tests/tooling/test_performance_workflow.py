@@ -16,6 +16,7 @@ from research_repo_tools.complete_runs import RunSeries
 from research_repo_tools.evidence import load_evidence, publish_evidence
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.measurement import load_measurement
+from research_repo_tools.performance_release import Preparation, serialize_preparation
 from research_repo_tools.process import run_command
 from research_repo_tools.release_pairs import ReleasePair
 from research_repo_tools.worktrees import capture_snapshot
@@ -239,9 +240,10 @@ def test_native_recipes_preserve_scientific_gates_and_peer_reuse() -> None:
         assert "research-repo-tools performance measure" in command
         assert "--mode current-vs-latest" in command
         assert "--allow-git-mutations" in command
-    command = dry_run(ROOT, "performance-release", [PAIR.current, PAIR.baseline]).stderr
-    assert command.count("performance measure") == command.count("performance promote") == 1
-    assert "--payload target/bench-reports/full/run.json" in command
+    command = dry_run(ROOT, "performance-release").stderr
+    assert command.count("performance release tooling/performance-release.toml") == 1
+    plan = tomllib.loads((ROOT / "tooling/performance-release.toml").read_text(encoding="utf-8"))
+    assert plan["payload"] == "target/bench-reports/full/run.json"
     assert "scripts/" not in command
 
 
@@ -269,8 +271,6 @@ def prepared(tmp_path: Path) -> tuple[Path, Path]:
                 destination = root / source.relative_to(ROOT)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, destination)
-        for name in ("__init__.py", "release_performance.py"):
-            shutil.copyfile(ROOT / "tooling" / name, root / "tooling" / name)
         (root / "src").mkdir()
         (root / "src/lib.rs").write_text(f"// {phase}\n", encoding="utf-8", newline="\n")
         (root / ".gitignore").write_text("/target/\n", encoding="utf-8", newline="\n")
@@ -322,6 +322,9 @@ def prepared(tmp_path: Path) -> tuple[Path, Path]:
 @pytest.fixture(scope="module")
 def measured_run(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Evidence]:
     baseline, current = prepared(tmp_path_factory.mktemp("performance"))
+    # Retain the independently captured baseline commit for preparation freshness.
+    run_command("git", ["fetch", str(baseline), "HEAD"], cwd=current)
+    run_command("git", ["-c", "tag.gpgsign=false", "tag", PAIR.baseline, "FETCH_HEAD"], cwd=current)
     asserted = [
         PAIR.current,
         run_command("git", ["--no-pager", "rev-parse", "HEAD"], cwd=current).stdout.strip(),
@@ -419,7 +422,21 @@ def test_actual_retention_offline_plot_and_readme_recipes(complete_run: tuple[Pa
     if source == "retained":
         prepared_inputs = root / "target/bench-reports/release-inputs.json"
         prepared_inputs.parent.mkdir(parents=True)
-        prepared_inputs.write_text(json.dumps({"schema": 1, "assertions": identities(root)}), encoding="utf-8", newline="\n")
+        current_tag, current_revision, baseline_tag, baseline_revision = identities(root)
+        prepared_inputs.write_bytes(
+            serialize_preparation(
+                Preparation(
+                    "acgetchell/la-stack",
+                    "tooling/measurements/full.toml",
+                    hashlib.sha256((root / "tooling/measurements/full.toml").read_bytes()).hexdigest(),
+                    current_tag.removeprefix("v"),
+                    ReleasePair(current_tag, baseline_tag),
+                    current_revision,
+                    baseline_revision,
+                    working_tree=True,
+                )
+            )
+        )
     result = recipe(root, "performance-readme", *([] if source == "retained" else identities(root)))
     assert result.returncode == 0, result.stdout + result.stderr
     document = (root / "README.md").read_text(encoding="utf-8")
@@ -483,11 +500,19 @@ def test_publication_boundaries_leave_all_outputs_unchanged(complete_run: tuple[
         assert result.returncode != 0
     assert {path: path.read_bytes() for path in before} == before
     assert not (root / "docs/assets").exists()
+    if failure == "formatter":
+        # Retry publication after repairing its formatter. Archived measurements
+        # remain byte-identical; no timing or discovery command is involved.
+        retained = {path: path.read_bytes() for path in (root / "docs/performance-runs").rglob("*") if path.is_file()}
+        config = root / "tooling/performance-readme.toml"
+        config.write_bytes((ROOT / "tooling/performance-readme.toml").read_bytes())
+        result = recipe(root, "performance-readme", *identities(root))
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert {path: path.read_bytes() for path in retained} == retained
 
 
 @pytest.mark.parametrize("phase", ["baseline", "current"])
-@pytest.mark.parametrize("command", ["performance-measure", "performance-release"])
-def test_actual_measurement_recipe_rejects_old_releases_before_git(phase: str, command: str, tmp_path: Path) -> None:
+def test_actual_measurement_recipe_rejects_old_releases_before_git(phase: str, tmp_path: Path) -> None:
     root = tmp_path / "consumer"
     root.mkdir()
     for name in ("pyproject.toml", "uv.lock", ".python-version", "Cargo.toml", "rust-toolchain.toml"):
@@ -499,18 +524,11 @@ def test_actual_measurement_recipe_rejects_old_releases_before_git(phase: str, c
             shutil.copyfile(source, destination)
     (root / "src").mkdir()
     (root / "src/lib.rs").write_text("// fixture\n", encoding="utf-8", newline="\n")
-    result = recipe(root, command, "v0.4.6" if phase == "current" else PAIR.current, "v0.4.6" if phase == "baseline" else PAIR.baseline)
+    result = recipe(root, "performance-measure", "v0.4.6" if phase == "current" else PAIR.current, "v0.4.6" if phase == "baseline" else PAIR.baseline)
     assert result.returncode != 0
     assert "requires v0.5.0 or newer" in result.stderr
     assert not (root / ".git").exists()
-    if command == "performance-release":
-        runtime = (root / "target/bench-reports/full/runtime.txt").read_text(encoding="utf-8")
-        assert runtime.startswith("performance-release: ")
-        assert runtime.endswith(f" seconds; exit {result.returncode}\n")
-        assert not (root / "target/bench-reports/full/run.json").exists()
-        assert not (root / "docs/performance-runs").exists()
-    else:
-        assert not (root / "target").exists()
+    assert not (root / "target").exists()
 
 
 def test_legacy_bytes_hashes_are_unchanged() -> None:

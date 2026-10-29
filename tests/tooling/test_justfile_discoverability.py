@@ -84,7 +84,7 @@ def test_ci_enforces_full_python_fixture_lint_policy() -> None:
     assert "research-repo-tools python check" in python_body
     assert "--select" not in python_body
     inventory = set(select_files(REPO_ROOT, include=("*.py", "*.pyi")))
-    assert {"tooling/release_evidence.py", "tests/tooling/test_release_evidence.py", "tests/semgrep/scripts/python_portability.py"} <= inventory
+    assert {"tooling/shared_tooling.py", "tests/tooling/test_release_evidence.py", "tests/semgrep/scripts/python_portability.py"} <= inventory
     assert not any(".venv" in Path(name).parts for name in inventory)
 
 

@@ -171,9 +171,9 @@ and tag preparation through its CLI. Consumer identity and dependency-body polic
 stay in `[tool.research-repo-tools.changelog]` in `pyproject.toml`, with
 formatting in `changelog-rumdl.toml`; no common template is copied locally.
 Focused integration checks live in `tests/tooling/test_changelog_integration.py`.
-`tooling/release_changelog.py` temporarily resolves omitted prospective release
-dates from the prepared citation metadata before delegating generation and
-preview to the installed CLI. It does not update citation metadata or use a clock.
+The installed CLI resolves omitted prospective dates from `CITATION.cff`, as
+declared by `changelog.date-source`. Generation and preview do not update
+citation metadata or use a clock.
 The same dependency owns CodeRabbit review orchestration through thin Just
 wrappers. `tests/tooling/test_review_integration.py` owns consumer wiring checks
 with local stubs; the [contributor review workflow](../CONTRIBUTING.md#coderabbit-review)
@@ -262,9 +262,9 @@ freshness checks and tagged evidence links. Static named configurations under
 linear/log choices. `tooling/plots/non-exact/` retains eight diagnostic metrics.
 All views require explicit input ownership.
 
-`tooling/release_performance.py` temporarily captures independent release tags and
-commits during `performance-prepare` and supplies them to the separate
-`performance-readme` publication step, pending equivalent published upstream commands.
+`tooling/performance-release.toml` declares independent preparation storage and
+the measurement, report and README policies. Installed `performance prepare`,
+`release` and `readme` commands own those separately retriable phases.
 The former measurement/publication implementations and root `scripts/` directory are retired.
 The installed CLI owns orchestration, validation and publication transactions.
 Working-tree measurements now include nonignored untracked regular files.
@@ -291,9 +291,12 @@ outputs remain outside production scans.
 input validation, and inventory under the release workflow's shared setup timeout.
 
 `.github/workflows/ci.yml` owns native checks, default/exact Cargo dry-runs and
-signed main-push validation evidence. `tooling/release_evidence.py` supplies the
-Cargo-specific policy around shared run/job validation and artifact retrieval;
+signed main-push validation evidence. `tooling/release-evidence.toml` supplies
+native/Cargo and signer policy to the installed verifier;
 `tests/tooling/test_release_evidence.py` owns its provider-boundary regressions.
+`tooling/release-assets.toml` declares the draft-target identity for the installed
+`release-assets` recipe. Privileged benchmark jobs continue to use installed
+asset commands from `RUNNER_TEMP`, without executing checkout code.
 `.github/workflows/publish-crates.yml` owns the reviewed-release event, reuse of
 that exact CI attempt and artifact, deployment approval and OIDC upload. The publishing declaration
 in `pyproject.toml` selects `la-stack`, native checks and the Criterion asset;

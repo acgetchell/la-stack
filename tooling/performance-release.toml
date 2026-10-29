@@ -1,0 +1,11 @@
+# Independently retriable preparation, measurement/promotion and README publication.
+schema = 1
+repository = "acgetchell/la-stack"
+measurement = "tooling/measurements/full.toml"
+report = "tooling/performance-report.toml"
+publication = "tooling/performance-readme.toml"
+preparation = "target/bench-reports/release-inputs.json"
+payload = "target/bench-reports/full/run.json"
+manifest = "target/bench-reports/full/evidence.json"
+mode = "infer-release"
+order = "published"

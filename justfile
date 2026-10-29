@@ -215,11 +215,11 @@ changelog-check: tools-check python-sync
 changelog-preview *args: tools-check python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    {{ _run }} uv run --locked --no-sync python -m tooling.release_changelog --dry-run "$@"
+    {{ _run }} uv run --locked --no-sync research-repo-tools changelog generate --dry-run "$@"
 
 # Generate a prospective release using the citation date unless an ISO date is supplied.
 changelog-release tag date="": tools-check python-sync
-    {{ _run }} uv run --locked --no-sync python -m tooling.release_changelog --tag {{ quote(tag) }} --date {{ quote(date) }}
+    {{ _run }} uv run --locked --no-sync research-repo-tools changelog generate --tag {{ quote(tag) }} {{ if date == "" { "" } else { "--date " + quote(date) } }}
 
 alias changelog-unreleased := changelog-release
 
@@ -356,10 +356,12 @@ performance-local-non-exact: _ensure-gh python-sync
 performance-measure current_tag baseline_tag view="full": python-sync
     {{ _run }} uv run --locked research-repo-tools performance measure {{ quote("tooling/measurements/" + view + ".toml") }} {{ quote(current_tag) }} {{ quote(baseline_tag) }} --allow-git-mutations --payload {{ quote("target/bench-reports/" + view + "/run.json") }} --manifest {{ quote("target/bench-reports/" + view + "/evidence.json") }} --report {{ quote("target/bench-reports/" + view + "/report.md") }}
 
-# Fetch tags and save independent README source assertions before measurement.
-performance-prepare current_tag="" baseline_tag="": _ensure-gh python-sync
-    git fetch origin --tags
-    uv run --locked --no-sync python -m tooling.release_performance capture {{ quote(current_tag) }} {{ quote(baseline_tag) }}
+# Save independent source assertions; opt in to fetching with --fetch-tags --allow-git-mutations.
+[positional-arguments]
+performance-prepare *args: _ensure-gh python-sync
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uv run --locked --no-sync research-repo-tools performance prepare tooling/performance-release.toml "$@"
 
 # Promote the explicitly selected full scratch run; missing inputs never fall back.
 performance-promote: python-sync
@@ -367,17 +369,16 @@ performance-promote: python-sync
 
 # Publish the README using prepared source assertions, or four explicit assertions.
 performance-readme current_tag="" current_revision="" baseline_tag="" baseline_revision="": python-sync
-    {{ _run }} uv run --locked --no-sync python -m tooling.release_performance publish {{ quote(current_tag) }} {{ quote(current_revision) }} {{ quote(baseline_tag) }} {{ quote(baseline_revision) }}
+    {{ _run }} uv run --locked --no-sync research-repo-tools performance readme tooling/performance-release.toml {{ if current_tag + current_revision + baseline_tag + baseline_revision == "" { "" } else { "--current-release " + quote(current_tag) + " --current-revision " + quote(current_revision) + " --baseline-release " + quote(baseline_tag) + " --baseline-revision " + quote(baseline_revision) } }}
 
 # Measure, retain an immutable complete run, and promote distinct-release documentation.
-performance-release current_tag="" baseline_tag="": _ensure-gh python-sync
+performance-release: _ensure-gh python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p target/bench-reports/full
     started=$(date +%s)
     trap 'status=$?; elapsed=$(($(date +%s) - started)); printf "performance-release: %s seconds; exit %s\\n" "$elapsed" "$status" | tee target/bench-reports/full/runtime.txt' EXIT
-    {{ _run }} uv run --locked research-repo-tools performance measure tooling/measurements/full.toml {{ quote(current_tag) }} {{ quote(baseline_tag) }} --repository acgetchell/la-stack --allow-git-mutations --payload target/bench-reports/full/run.json --manifest target/bench-reports/full/evidence.json --report target/bench-reports/full/report.md
-    {{ _run }} uv run --locked research-repo-tools performance promote tooling/performance-report.toml --payload target/bench-reports/full/run.json --manifest target/bench-reports/full/evidence.json
+    {{ _run }} uv run --locked research-repo-tools performance release tooling/performance-release.toml --allow-git-mutations
 
 # Render a named metric/statistic/axis view from explicitly retained or scratch inputs.
 plot-vs-linalg current_tag current_revision baseline_tag baseline_revision view="lu_solve-median-linear" input="retained": python-sync
@@ -415,14 +416,32 @@ python-sync: _ensure-uv
 python-typecheck: python-sync
     uv run --locked research-repo-tools python typecheck
 
-# Verify signed Cargo/native CI evidence; accept --identity JSON and --github-output PATH.
+# Preflight, upload or verify a captured draft target with an isolated trusted runtime.
 [positional-arguments]
-[script("uv", "run", "--locked", "--no-sync", "python")]
-release-evidence *args:
-    import runpy
+[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.4", "python", "-I")]
+release-assets operation tag *args:
     import sys
-    sys.argv[1:1] = ["verify"]
-    runpy.run_path("tooling/release_evidence.py", run_name="__main__")
+    from pathlib import Path
+    from research_repo_tools.cli import main
+    from research_repo_tools.process import run_git_command
+    root = Path.cwd()
+    commit = run_git_command(["--no-pager", "rev-parse", "HEAD"], cwd=root, timeout=30).stdout.strip()
+    sys.exit(main(["release", "assets", sys.argv[1], "tooling/release-assets.toml", "--checkout", str(root), "--commit", commit, "--tag", sys.argv[2], *sys.argv[3:]]))
+
+# Verify signed native/Cargo evidence; accept --expected PATH and --github-output PATH.
+[positional-arguments]
+[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.4", "python", "-I")]
+release-evidence *args:
+    import sys
+    import tempfile
+    from pathlib import Path
+    from research_repo_tools.cli import main
+    from research_repo_tools.process import run_git_command
+    from research_repo_tools.release_metadata import read_package_info
+    root = Path.cwd()
+    commit = run_git_command(["--no-pager", "rev-parse", "HEAD"], cwd=root, timeout=30).stdout.strip()
+    with tempfile.TemporaryDirectory(prefix="la-stack-release-evidence-") as temporary:
+        sys.exit(main(["release", "evidence", "verify", "tooling/release-evidence.toml", "--checkout", str(root), "--commit", commit, "--version", read_package_info(root).version, "--output", str(Path(temporary).resolve() / "selection.json"), *sys.argv[1:]]))
 
 # Require the release event, reviewed commit, native checks, assets, and notes.
 release-gate tag:

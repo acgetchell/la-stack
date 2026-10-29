@@ -87,7 +87,8 @@ jobs:
           set -euo pipefail
           just release-gate "$RELEASE_TAG"
           test -n "$CI_EVIDENCE"
-          just release-evidence --identity "$CI_EVIDENCE"
+          printf '%s\n' "$CI_EVIDENCE" > "$RUNNER_TEMP/approved-evidence.json"
+          just release-evidence --expected "$RUNNER_TEMP/approved-evidence.json"
           uv run --locked --no-sync research-repo-tools release registry "$RELEASE_TAG" --expect absent
 
       - name: Obtain a short-lived crates.io token

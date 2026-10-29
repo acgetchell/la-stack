@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import runpy
 import shlex
 import subprocess
 import sys
@@ -13,13 +14,12 @@ from typing import Any
 
 import pytest
 import yaml
-from research_repo_tools import changelog, config, release_publishing
+from research_repo_tools import changelog, config, process, release_publishing
 from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
 
 from tests.tooling.test_release_evidence import PIN_JSON, EvidenceProvider
-from tooling import release_evidence
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/publish-crates.yml"
@@ -202,7 +202,7 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     gate = steps[2]["run"]
     assert 'just release-gate "$RELEASE_TAG"' in gate
     assert 'test -n "$CI_EVIDENCE"' in gate
-    assert 'just release-evidence --identity "$CI_EVIDENCE"' in gate
+    assert 'just release-evidence --expected "$RUNNER_TEMP/approved-evidence.json"' in gate
     assert steps[2]["env"]["CI_EVIDENCE"] == "${{ needs.verify.outputs.ci-evidence }}"
     assert 'release registry "$RELEASE_TAG" --expect absent' in gate
     assert steps[3]["id"] == "auth"
@@ -221,7 +221,7 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
 def run_evidence_fixture() -> int:
     """Run the real verifier in a child process with simulated provider responses."""
     root = Path(os.environ["FIXTURE_ROOT"])
-    provider = EvidenceProvider(release_evidence, root)
+    provider = EvidenceProvider(root)
     if os.environ.get("FIXTURE_FAILURE") == "failed-job":
         provider.jobs[3]["steps"][0]["conclusion"] = "failure"
     newline = os.environ.get("FIXTURE_DIAGNOSTIC_NEWLINE", os.linesep)
@@ -229,22 +229,22 @@ def run_evidence_fixture() -> int:
     sys.stdout.flush()
     print("fixture stderr diagnostic", file=sys.stderr)
     diagnostic = io.StringIO()
+    script, *arguments = sys.argv[1:]
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(release_evidence, "ROOT", root)
-        patch.setattr(release_evidence, "api", provider.api)
-        patch.setattr(release_evidence, "gh", provider.gh)
-        patch.setattr(release_evidence, "download_artifact", provider.download)
-        patch.setattr(release_evidence, "run_git_command", provider.git)
+        provider.install(patch)
+        patch.setattr(process, "run_git_command", provider.git)
         with redirect_stderr(diagnostic):
             try:
-                status = release_evidence.main()
+                sys.argv[:] = [script, *arguments]
+                runpy.run_path(script, run_name="__main__")
+                status = 0
             except SystemExit as error:
                 status = error.code
     assert isinstance(status, int)
     print(diagnostic.getvalue(), end="", file=sys.stderr)
     # Just's quiet mode hides stderr. Record the actual verifier outcome so an
     # import/shell failure cannot masquerade as the rejection under test.
-    result = {"status": status, "diagnostic": diagnostic.getvalue(), "import_root": sys.path[0], "arguments": sys.argv[1:]}
+    result = {"status": status, "diagnostic": diagnostic.getvalue(), "import_root": sys.path[0], "arguments": arguments}
     (root / "verifier-result.json").write_text(json.dumps(result), encoding="utf-8")
     return status
 
@@ -252,19 +252,24 @@ def run_evidence_fixture() -> int:
 @pytest.fixture
 def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep real workflow shell, Just, uv, Python, verifier and output writer."""
-    (tmp_path / "justfile").write_text(f"import '{(REPO_ROOT / 'justfile').as_posix()}'\n", encoding="utf-8")
+    source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
+    runtime = '[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.4", "python", "-I")]'
+    assert source.count(runtime) == 2
+    # Run the exact recipe body/argument transport with the locked test runtime.
+    # The separate isolated-runtime smoke and pin test own uvx installation.
+    source = source.replace(runtime, '[script("uv", "run", "--locked", "--no-sync", "python", "fixture-bootstrap.py")]')
+    (tmp_path / "justfile").write_text(source, encoding="utf-8", newline="\n")
     (tmp_path / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.5.42"\n', encoding="utf-8")
+    (tmp_path / "tooling").mkdir()
+    (tmp_path / "tooling/release-evidence.toml").write_bytes((REPO_ROOT / "tooling/release-evidence.toml").read_bytes())
     for name in ("BASH_ENV", "SHELLOPTS", "BASHOPTS", "JUST_QUIET", "JUST_DRY_RUN", "FIXTURE_FAILURE", "FIXTURE_DIAGNOSTIC_NEWLINE", "PYTHONPATH"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("FIXTURE_ROOT", str(tmp_path))
     monkeypatch.setenv("FIXTURE_REPO_ROOT", str(REPO_ROOT))
+    monkeypatch.setenv("RUNNER_TEMP", tmp_path.as_posix())
     monkeypatch.setenv("UV_PROJECT", str(REPO_ROOT))
     monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", sys.prefix)
-    # Just executes the entry point relative to the fixture checkout. Supply
-    # provider responses there while retaining the actual native uv/Python launch.
-    bootstrap = tmp_path / "tooling/release_evidence.py"
-    bootstrap.parent.mkdir()
-    bootstrap.write_text(
+    (tmp_path / "fixture-bootstrap.py").write_text(
         'import os, sys\nsys.path.insert(0, os.environ["FIXTURE_REPO_ROOT"])\n'
         "from tests.tooling.test_release_publishing import run_evidence_fixture\nsys.exit(run_evidence_fixture())\n",
         encoding="utf-8",
@@ -311,24 +316,26 @@ def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capt
     else:
         assert report.exists(), result.stderr
         observed = json.loads(report.read_text(encoding="utf-8"))
-        assert observed["arguments"][:2] == ["verify", "--github-output"]
-        assert len(observed["arguments"]) == 3
+        assert observed["arguments"][:1] == ["--github-output"]
+        assert len(observed["arguments"]) == 2
         if outcome == "empty-output":
-            assert observed["arguments"][2] == ""
+            assert observed["arguments"][1] == ""
         else:
-            assert Path(observed["arguments"][2]) == output
+            assert Path(observed["arguments"][1]) == output
         assert observed["status"] == (0 if outcome == "valid" else 1)
-        rejection = (
-            "did not validate required step Verify default and exact Cargo packages"
-            if outcome == "failed-job"
-            else "GitHub Actions output destination must be an existing regular file"
-        )
+        rejection = {
+            "failed-job": "did not validate required step Verify default and exact Cargo packages",
+            "missing-file": repr(str(output)),
+            "directory": "release handoff must be a regular file without links",
+            "empty-output": "A publication transaction cannot contain overlapping target paths",
+            "valid": "",
+        }[outcome]
         assert observed["diagnostic"] == "" if outcome == "valid" else rejection in observed["diagnostic"]
     if outcome == "valid":
-        assert output.read_bytes() == original + f"identity={PIN_JSON}\n".encode()
+        assert output.read_bytes() == original + f"identity={PIN_JSON}\ncommit={SHA}\n".encode()
         if not quiet:
             # Diagnostics are text; the command-file bytes above must stay LF.
-            assert result.stdout.splitlines() == ["fixture stdout diagnostic"]
+            assert result.stdout.splitlines() == ["fixture stdout diagnostic", "Saved verified release evidence."]
             assert "fixture stderr diagnostic" in result.stderr
     elif outcome == "directory":
         assert output.is_dir()
@@ -358,15 +365,15 @@ def test_evidence_bootstrap_keeps_windows_import_paths_as_environment_data(
     script = workflow["jobs"]["verify"]["steps"][-1]["run"]
     result = run_evidence_shell(script, tmp_path)
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "fixture stdout diagnostic" + newline
+    assert result.stdout == "fixture stdout diagnostic" + newline + "Saved verified release evidence." + os.linesep
     observed = json.loads((tmp_path / "verifier-result.json").read_text(encoding="utf-8"))
     assert observed["status"] == 0
     assert observed["diagnostic"] == ""
     assert observed["import_root"] == import_root
-    assert observed["arguments"][:2] == ["verify", "--github-output"]
-    assert len(observed["arguments"]) == 3
-    assert Path(observed["arguments"][2]) == output
-    assert output.read_bytes() == f"identity={PIN_JSON}\n".encode()
+    assert observed["arguments"][:1] == ["--github-output"]
+    assert len(observed["arguments"]) == 2
+    assert Path(observed["arguments"][1]) == output
+    assert output.read_bytes() == f"identity={PIN_JSON}\ncommit={SHA}\n".encode()
 
 
 @pytest.mark.usefixtures("evidence_runner")
@@ -386,8 +393,8 @@ def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token
     assert json.loads(report.read_text(encoding="utf-8"))["status"] == 0
     report.unlink()
     record = output.read_text(encoding="utf-8")
-    assert record == f"identity={PIN_JSON}\n"
-    identity = record.removeprefix("identity=").removesuffix("\n")
+    assert record == f"identity={PIN_JSON}\ncommit={SHA}\n"
+    identity = record.splitlines()[0].removeprefix("identity=")
     variants = {"valid": identity, "empty": "", "invalid": "{", "changed": identity.replace('"run_attempt":2', '"run_attempt":1')}
     monkeypatch.setenv("CI_EVIDENCE", variants[pin])
     monkeypatch.setenv("RELEASE_TAG", TAG)
@@ -402,7 +409,9 @@ def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token
     if pin != "empty":
         assert report.exists(), result.stderr
         observed = json.loads(report.read_text(encoding="utf-8"))
-        assert observed["arguments"] == ["verify", "--identity", variants[pin]]
+        assert observed["arguments"][:1] == ["--expected"]
+        assert Path(observed["arguments"][1]) == tmp_path / "approved-evidence.json"
+        assert (tmp_path / "approved-evidence.json").read_text(encoding="utf-8") == variants[pin] + "\n"
     assert result.returncode == (0 if pin == "valid" else 1), result.stderr
     assert registry.exists() == (pin == "valid")
     assert token.exists() == (pin == "valid")
@@ -411,7 +420,7 @@ def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token
     else:
         observed = json.loads(report.read_text(encoding="utf-8"))
         assert observed["status"] == (0 if pin == "valid" else 1)
-        rejection = "Expecting property name" if pin == "invalid" else "selected CI attempt is stale"
+        rejection = "Expecting property name" if pin == "invalid" else "selected run or attempt changed"
         assert observed["diagnostic"] == "" if pin == "valid" else rejection in observed["diagnostic"]
 
 
@@ -423,9 +432,11 @@ def test_explicit_empty_identity_cannot_select_fresh_evidence(tmp_path: Path, mo
     original = b"prior=value\n"
     output.write_bytes(original)
     monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
-    result = run_evidence_shell('just release-evidence --identity "" --github-output "$GITHUB_OUTPUT"\n', tmp_path)
+    expected = tmp_path / "empty.json"
+    expected.write_bytes(b"")
+    result = run_evidence_shell('just release-evidence --expected empty.json --github-output "$GITHUB_OUTPUT"\n', tmp_path)
     observed = json.loads((tmp_path / "verifier-result.json").read_text(encoding="utf-8"))
-    assert observed["arguments"][:3] == ["verify", "--identity", ""]
+    assert observed["arguments"][:2] == ["--expected", "empty.json"]
     assert result.returncode == observed["status"] == 1
     assert "Expecting value" in observed["diagnostic"]
     assert output.read_bytes() == original
@@ -449,6 +460,7 @@ def test_actual_preupload_shell_requires_evidence_and_proven_absence(tmp_path: P
             **{key: value for key, value in os.environ.items() if key not in {"BASH_ENV", "SHELLOPTS", "BASHOPTS"}},
             "RELEASE_TAG": TAG,
             "CI_EVIDENCE": "" if failure == "empty-pin" else '{"run_id": 11}',
+            "RUNNER_TEMP": tmp_path.as_posix(),
         },
         check=False,
     )
@@ -469,7 +481,10 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
     assert evidence["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'acgetchell/la-stack'"
     assert evidence["permissions"] == {"contents": "read", "actions": "read", "attestations": "write", "id-token": "write"}
     steps = {step["name"]: step for step in evidence["steps"] if "name" in step}
-    assert steps["Capture successful native validation identities"]["run"].endswith("seal --output target/release-evidence/validation.json")
+    capture = steps["Capture successful native validation identities"]["run"]
+    assert "uvx --python 3.15 --from research-repo-tools==0.2.4 python" in capture
+    assert '"release", "evidence", "create", "tooling/release-evidence.toml"' in capture
+    assert '"--output", "target/release-evidence/validation.json"' in capture
     assert steps["Sign original main validation evidence"]["with"]["subject-path"] == "target/release-evidence/validation.json"
     upload = steps["Upload signed validation evidence"]["with"]
     assert upload == {

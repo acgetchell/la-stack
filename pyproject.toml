@@ -141,6 +141,8 @@ owner = "acgetchell"
 repository = "la-stack"
 formatter = "changelog-rumdl.toml"
 dependency-bodies = "preserve"
+date-source = "citation"
+citation = "CITATION.cff"
 
 [tool.research-repo-tools.zizmor]
 persona = "regular"

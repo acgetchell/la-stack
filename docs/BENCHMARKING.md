@@ -24,13 +24,15 @@ the commands measure and where their outputs go.
 
 ## Start Here
 
-Run `just performance-prepare` before measurements to fetch the release tags.
-This explicit Git operation and the measurement recipes' temporary worktrees
-require authorization. Both labels of new measurements must be v0.5.0 or newer.
+Run `just performance-prepare` before measurements using reviewed local tags.
+Add `--fetch-tags --allow-git-mutations` to fetch tags explicitly. Fetching and
+measurement recipes' temporary worktrees require authorization. Both labels of
+new measurements must be v0.5.0 or newer.
 Preparation also saves independent release tags and commits for a later
 `just performance-readme` invocation in ignored
-`target/bench-reports/release-inputs.json`. For an explicit release pair, use
-`just performance-prepare "$CURRENT_TAG" "$PREVIOUS_TAG"`.
+`target/bench-reports/release-inputs.json`. For an explicit prepared pair, set
+`mode = "explicit"` and both `current` and `baseline` in
+`tooling/performance-release.toml`. The default is publication chronology.
 
 | Goal | Recipe |
 | --- | --- |
@@ -437,19 +439,21 @@ still apply. README publication additionally requires live source freshness.
 
 ### Create The Release Performance Report
 
-After updating the package version and fetching tags:
+After updating the package version and reviewing local tags:
 
 ```bash
+just performance-prepare
 just performance-release
 ```
 
-With no labels, the installed CLI infers the current package's release pair
-using publication chronology. A prospective version compares the working tree
-with the latest release; a published version compares existing tags. Explicit
-labels select existing tags:
+Preparation uses publication chronology. A prospective version compares the
+working tree with the latest release; a published version compares existing
+tags. The release command consumes that saved selection. For ad hoc measurement
+of two existing tags followed by separate promotion:
 
 ```bash
-just performance-release "$CURRENT_TAG" "$PREVIOUS_TAG"
+just performance-measure "$CURRENT_TAG" "$PREVIOUS_TAG"
+just performance-promote
 ```
 
 `performance-prepare` captures both source commits before measurement and prints
