@@ -29,7 +29,7 @@ runs:
       shell: bash
       env:
         RESEARCH_REPO_TOOLS_HOME: ${{ runner.temp }}/rrt
-      run: uv run --locked --managed-python --only-group tooling research-repo-tools setup
+      run: uv run --locked --managed-python --only-group tooling python tooling/shared_tooling.py setup
 
     - name: Export verified managed paths
       shell: bash

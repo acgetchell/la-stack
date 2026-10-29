@@ -215,6 +215,14 @@ impl fmt::Display for VectorOperand {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum NonFiniteLocation {
+    /// Raw coefficient supplied to a sparse polynomial constructor.
+    #[non_exhaustive]
+    PolynomialTerm {
+        /// Zero-based position in the supplied term iterator.
+        index: usize,
+        /// Exponent supplied alongside the invalid coefficient.
+        exponent: u128,
+    },
     /// Cell `(row, col)` in matrix-shaped storage or computation.
     #[non_exhaustive]
     MatrixCell {
@@ -257,6 +265,25 @@ pub enum NonFiniteLocation {
     },
     /// Scalar value without a meaningful matrix or vector coordinate.
     Scalar,
+}
+
+/// Work category limited by a polynomial determinant budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PolynomialWork {
+    /// Complete structural column-subset transition envelope.
+    SubsetTransitions,
+    /// Individual nonzero rational coefficient-pair products.
+    TermProducts,
+}
+
+impl fmt::Display for PolynomialWork {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::SubsetTransitions => "subset transitions",
+            Self::TermProducts => "coefficient-pair products",
+        })
+    }
 }
 
 /// Provenance of a non-finite value.
@@ -404,6 +431,30 @@ pub enum UnrepresentableReason {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum LaError {
+    /// An exact polynomial determinant exceeded a caller-selected work limit.
+    #[non_exhaustive]
+    PolynomialBudgetExceeded {
+        /// Work category that exhausted its limit.
+        work: PolynomialWork,
+        /// Caller-selected maximum for this category.
+        limit: usize,
+        /// Completed units of this category before the rejected request.
+        completed: usize,
+        /// Additional units rejected before performing their arithmetic.
+        requested: usize,
+    },
+    /// A polynomial product needs an exponent greater than `u128::MAX`.
+    #[non_exhaustive]
+    PolynomialExponentOverflow {
+        /// Row of the matrix entry being multiplied into a partial determinant.
+        row: usize,
+        /// Column of that entry.
+        col: usize,
+        /// Partial determinant term's exponent.
+        left: u128,
+        /// Matrix entry term's exponent.
+        right: u128,
+    },
     /// Two vector operands have unequal ambient lengths.
     #[non_exhaustive]
     DimensionMismatch {
@@ -815,6 +866,9 @@ fn write_non_finite_location(
     location: NonFiniteLocation,
 ) -> fmt::Result {
     match location {
+        NonFiniteLocation::PolynomialTerm { index, exponent } => {
+            write!(f, "polynomial term {index} (exponent {exponent})")
+        }
         NonFiniteLocation::MatrixCell { row, col } => {
             write!(f, "matrix cell ({row}, {col})")
         }
@@ -884,9 +938,47 @@ fn write_unrepresentable(
     Ok(())
 }
 
+fn write_singularity(
+    f: &mut fmt::Formatter<'_>,
+    pivot_col: usize,
+    reason: SingularityReason,
+) -> fmt::Result {
+    match reason {
+        SingularityReason::Exact => {
+            write!(f, "matrix is exactly singular at pivot column {pivot_col}")
+        }
+        SingularityReason::Numerical {
+            factorization,
+            pivot_magnitude,
+            tolerance,
+        } => write!(
+            f,
+            "matrix is numerically singular during {factorization} factorization at pivot column {pivot_col}: pivot magnitude {pivot_magnitude} <= tolerance {tolerance}"
+        ),
+    }
+}
+
 impl fmt::Display for LaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
+            Self::PolynomialBudgetExceeded {
+                work,
+                limit,
+                completed,
+                requested,
+            } => write!(
+                f,
+                "polynomial determinant budget exceeded for {work}: limit {limit}, completed {completed}, requested {requested} more"
+            ),
+            Self::PolynomialExponentOverflow {
+                row,
+                col,
+                left,
+                right,
+            } => write!(
+                f,
+                "polynomial exponent overflow at matrix cell ({row}, {col}): {left} + {right} exceeds u128::MAX"
+            ),
             Self::DimensionMismatch { left, right } => {
                 write!(
                     f,
@@ -895,22 +987,7 @@ impl fmt::Display for LaError {
             }
             Self::EmptyVector => f.write_str("an empty vector has no direction"),
             Self::ZeroVector { operand } => write!(f, "the {operand} zero vector has no direction"),
-            Self::Singular {
-                pivot_col,
-                reason: SingularityReason::Exact,
-            } => write!(f, "matrix is exactly singular at pivot column {pivot_col}"),
-            Self::Singular {
-                pivot_col,
-                reason:
-                    SingularityReason::Numerical {
-                        factorization,
-                        pivot_magnitude,
-                        tolerance,
-                    },
-            } => write!(
-                f,
-                "matrix is numerically singular during {factorization} factorization at pivot column {pivot_col}: pivot magnitude {pivot_magnitude} <= tolerance {tolerance}"
-            ),
+            Self::Singular { pivot_col, reason } => write_singularity(f, pivot_col, reason),
             Self::NonFinite { location, origin } => write_non_finite(f, location, origin),
             Self::IntervalRangeExhausted { operation } => write!(
                 f,
@@ -985,6 +1062,41 @@ mod tests {
 
     use super::*;
     use crate::MAX_STACK_MATRIX_DISPATCH_DIM;
+
+    #[test]
+    fn polynomial_errors_display_work_and_location_without_exact_feature() {
+        assert_eq!(
+            PolynomialWork::SubsetTransitions.to_string(),
+            "subset transitions"
+        );
+        assert_eq!(
+            PolynomialWork::TermProducts.to_string(),
+            "coefficient-pair products"
+        );
+        assert_eq!(
+            LaError::PolynomialBudgetExceeded {
+                work: PolynomialWork::TermProducts,
+                limit: 4,
+                completed: 4,
+                requested: 1,
+            }
+            .to_string(),
+            "polynomial determinant budget exceeded for coefficient-pair products: limit 4, completed 4, requested 1 more"
+        );
+        assert_eq!(
+            LaError::PolynomialExponentOverflow {
+                row: 1,
+                col: 2,
+                left: u128::MAX,
+                right: 1,
+            }
+            .to_string(),
+            format!(
+                "polynomial exponent overflow at matrix cell (1, 2): {} + 1 exceeds u128::MAX",
+                u128::MAX
+            )
+        );
+    }
 
     #[test]
     fn category_displays_are_concise() {

@@ -1,6 +1,6 @@
 # shellcheck disable=SC2148
 # Justfile for la-stack development workflow
-# Install tools: uv run --locked --managed-python --only-group tooling research-repo-tools setup
+# Install tools: uv run --locked --managed-python --only-group tooling python tooling/shared_tooling.py setup
 # Usage: just <command> or just --list
 
 # Use bash with strict error handling for all recipes
@@ -86,6 +86,7 @@ bench-compile:
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench exact
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench rational_solve
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench rational_dot
+    CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench polynomial
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench public_api
 
 # Run the exact-arithmetic benchmark suite.
@@ -110,6 +111,10 @@ bench-linear-form:
 # Check every discovered benchmark before the release workflow packages it.
 bench-release-check tag criterion_dir="target/criterion": _ensure-uv
     {{ _run }} uv run --locked research-repo-tools performance verify-saved tooling/criterion-saved.toml --saved-sample {{ quote(tag) }} --criterion-dir {{ quote(criterion_dir) }}
+
+# Verify one parallel release runner's exact feature selection before transport.
+bench-release-check-suite tag suite criterion_dir="target/criterion": _ensure-uv
+    {{ _run }} uv run --locked research-repo-tools performance verify-saved tooling/criterion-saved.toml --saved-sample {{ quote(tag) }} --suite {{ quote(suite) }} --criterion-dir {{ quote(criterion_dir) }}
 
 # Discover all release benchmarks and report their expected measurement budget.
 bench-release-inventory: _ensure-uv
@@ -467,16 +472,16 @@ semgrep: _ensure-uv
 
 # Fixture tests for repository-owned Semgrep rules.
 semgrep-test: python-sync
-    {{ semgrep_stack_limit }} uv run --locked --group dev research-repo-tools semgrep check-fixtures
+    {{ semgrep_stack_limit }} uv run --locked --group dev python tooling/shared_tooling.py semgrep check-fixtures
 
 # Install declared managed tools and explicitly synchronize dev.
 setup: _ensure-gh _ensure-jq
-    uv run --locked --managed-python --only-group tooling research-repo-tools setup
+    uv run --locked --managed-python --only-group tooling python tooling/shared_tooling.py setup
     {{ _run }} cargo build
 
 # Tool-only setup; compilation belongs to setup.
 setup-tools: _ensure-gh _ensure-jq
-    uv run --locked --managed-python --only-group tooling research-repo-tools setup
+    uv run --locked --managed-python --only-group tooling python tooling/shared_tooling.py setup
 
 # Check shell script lint and formatting.
 shell-check: _ensure-shellcheck _ensure-shfmt
@@ -508,7 +513,7 @@ test-all: test-rust test-python
 
 # Smoke-test deterministic inputs and configuration shared with benchmark suites.
 test-bench-inputs: tools-check
-    {{ _run }} cargo nextest run --workspace --profile ci --features bench,exact --test vs_linalg_inputs --test exact_bench_config --verbose
+    {{ _run }} cargo nextest run --workspace --profile ci --features bench,exact --test vs_linalg_inputs --test exact_bench_config --test column_basis --test rational_dot --test interval_solve --test polynomial_bench_inputs --verbose
 
 # Run default-feature Rust doctests.
 test-doc:
@@ -629,7 +634,7 @@ validate-json: _ensure-jq
 # Validate external workflow and composite-action dependencies against the repository allowlist.
 workflow-allowlist-check: python-sync
     uv run --locked research-repo-tools actions allowlist --policy .github/actions-allowlist.json .github/workflows
-    # The v0.2.3 parser accepts workflows only; Semgrep checks composite actions.
+    # Keep this allowlist scoped to workflows; Semgrep checks composite actions.
     {{ semgrep_stack_limit }} uv run --locked --group dev semgrep --metrics off --error --strict --timeout 30 --config semgrep.yaml .github/actions
 
 # Check YAML and CFF formatting and lint.

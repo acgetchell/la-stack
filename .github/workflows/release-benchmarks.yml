@@ -37,7 +37,7 @@ jobs:
       - name: Install trusted package runner
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          version: "0.13.1"
+          version: "0.13.6"
           enable-cache: false
           cache-python: false
 
@@ -54,20 +54,118 @@ jobs:
             echo "::error::Dispatch with --ref $RELEASE_TAG and the matching tag input"
             exit 1
           fi
-          target="$(uvx --python 3.15 --from research-repo-tools==0.2.3 research-repo-tools \
+          target="$(uvx --python 3.15 --from research-repo-tools==0.2.4 research-repo-tools \
             --root "$RUNNER_TEMP" performance release-draft "$GH_REPO" "$RELEASE_TAG" \
             --commit "$GITHUB_SHA" --expected-title "$RELEASE_TAG" | jq -c .)"
           echo "target=$target" >> "$GITHUB_OUTPUT"
 
-  release-baseline:
+  measure-baseline:
     needs: validate-release
     runs-on: ubuntu-latest
-    # 2 min checkout + 60 min shared setup + 140 min default + 130 min exact
-    # + 18 min for the tail and runner overhead; below the hosted 360 min limit.
-    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [public-default, public-exact]
+    # Per runner: 2 min checkout + 60 min preparation + 2 min host capture
+    # + 240 min measurement + 26 min packaging, upload and overhead.
+    timeout-minutes: 330
     env:
       RELEASE_TAG: ${{ inputs.tag }}
+      BENCH_SUITE: ${{ matrix.suite }}
       CRITERION_HOME: ${{ github.workspace }}/target/criterion
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+        timeout-minutes: 2
+
+      - name: Prepare release benchmarks
+        timeout-minutes: 60
+        uses: ./.github/actions/prepare-release-benchmarks # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
+        with:
+          validated-attempt: ${{ needs.validate-release.outputs.validated-attempt }}
+
+      - name: Capture runner host
+        timeout-minutes: 2
+        run: uv run --locked --no-sync research-repo-tools performance host --output target/release-host.json
+
+      - name: Save Criterion suite
+        id: measurement
+        timeout-minutes: 240
+        run: |
+          set -euo pipefail
+          echo "[release-baseline] $BENCH_SUITE started $(date -u +%FT%TZ); budget 240 min"
+          date +%s > "target/$BENCH_SUITE-started"
+          just bench-save-baseline "$RELEASE_TAG" "$BENCH_SUITE"
+          date +%s > "target/$BENCH_SUITE-finished"
+
+      - name: Package Criterion suite
+        run: |
+          set -euo pipefail
+          output="target/release-suites/$BENCH_SUITE"
+          features=bench
+          if [[ "$BENCH_SUITE" == public-exact ]]; then
+            features=bench,exact
+          fi
+          uvx --python 3.15 --from research-repo-tools==0.2.4 research-repo-tools performance pack-suite \
+            tooling/criterion-saved.toml "$BENCH_SUITE" --saved-sample "$RELEASE_TAG" \
+            --output "$output/criterion.tar.gz" --revision "$GITHUB_SHA" \
+            --session "$GITHUB_REPOSITORY:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT" \
+            --host target/release-host.json \
+            --started-at "$(cat "target/$BENCH_SUITE-started")" \
+            --finished-at "$(cat "target/$BENCH_SUITE-finished")" \
+            --context "command=just bench-save-baseline $RELEASE_TAG $BENCH_SUITE" \
+            --context "features=$features" --context "runner=$RUNNER_NAME" \
+            --context "image=$ImageOS" --context "image_version=$ImageVersion" \
+            --context "rustc=$(rustc -vV | paste -sd ';' -)" \
+            --context "cargo=$(cargo --version)" \
+            --context "cargo_lock_sha256=$(sha256sum Cargo.lock | cut -d ' ' -f 1)"
+          # Transport the native inventory separately for the assembly plan.
+          # Both archives must match it and the checked-in required case policy.
+          if [[ "$BENCH_SUITE" == public-default ]]; then
+            cp target/release-benchmark-inventory.json "$output/inventory.json"
+          fi
+
+      - name: Upload temporary suite artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-suite-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.suite }}
+          path: target/release-suites/${{ matrix.suite }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Suite timing summary
+        if: ${{ always() }}
+        env:
+          SUITE_OUTCOME: ${{ steps.measurement.outcome }}
+        run: |
+          set -euo pipefail
+          elapsed="not started"
+          if [[ -f "target/$BENCH_SUITE-started" ]]; then
+            end="$(date +%s)"
+            if [[ -f "target/$BENCH_SUITE-finished" ]]; then
+              end="$(cat "target/$BENCH_SUITE-finished")"
+            fi
+            elapsed="$((end - $(cat "target/$BENCH_SUITE-started")))"
+          fi
+          {
+            echo "### Release benchmark timing"
+            echo ""
+            echo "| Suite | Outcome | Elapsed seconds | Budget minutes |"
+            echo "| --- | --- | --- | --- |"
+            echo "| $BENCH_SUITE | $SUITE_OUTCOME | $elapsed | 240 |"
+            echo ""
+            echo "An unfinished suite reports elapsed time through this summary."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  release-baseline:
+    needs: [validate-release, measure-baseline]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
     outputs:
       release-asset: ${{ steps.package-baseline.outputs.asset }}
       artifact-name: ${{ steps.package-baseline.outputs.artifact-name }}
@@ -75,49 +173,41 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Use the workflow's own commit and tag cache scope, never a separate ref.
           ref: ${{ github.sha }}
           persist-credentials: false
-        timeout-minutes: 2
 
-      - name: Prepare release benchmarks
-        # One parent timeout bounds all nested installs, validation, and inventory.
-        timeout-minutes: 60
-        uses: ./.github/actions/prepare-release-benchmarks # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
+      - name: Install trusted package runner
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          validated-attempt: ${{ needs.validate-release.outputs.validated-attempt }}
+          version: "0.13.6"
+          enable-cache: false
+          cache-python: false
 
-      - name: Save default-feature Criterion baseline
-        id: comparative
-        timeout-minutes: 140
-        run: |
-          set -euo pipefail
-          echo "[release-baseline] public-default started $(date -u +%FT%TZ); budget 140 min"
-          date +%s > target/public-default-started
-          just bench-save-baseline "$RELEASE_TAG" public-default
-          date +%s > target/public-default-finished
+      - name: Download default suite
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bench-suite-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-public-default
+          path: target/release-suites/public-default
 
-      - name: Save exact Criterion baseline
-        id: exact
-        timeout-minutes: 130
-        run: |
-          set -euo pipefail
-          echo "[release-baseline] public-exact started $(date -u +%FT%TZ); budget 130 min"
-          date +%s > target/public-exact-started
-          just bench-save-baseline "$RELEASE_TAG" public-exact
-          date +%s > target/public-exact-finished
+      - name: Download exact suite
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bench-suite-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-public-exact
+          path: target/release-suites/public-exact
 
-      - name: Validate complete release dataset
-        run: just bench-release-check "$RELEASE_TAG"
-
-      - name: Package release Criterion baseline
+      - name: Assemble release Criterion baseline
         id: package-baseline
         run: |
           set -euo pipefail
 
           asset="la-stack-${RELEASE_TAG}-criterion-baseline.tar.gz"
-          cp target/release-benchmark-inventory.json target/criterion/release-benchmark-inventory.json
-          tar -C target -czf "$asset" criterion
+          cp target/release-suites/public-default/inventory.json target/release-benchmark-inventory.json
+          uvx --python 3.15 --from research-repo-tools==0.2.4 research-repo-tools \
+            --root "$GITHUB_WORKSPACE" performance assemble-suites tooling/criterion-saved.toml \
+            target/release-suites/public-default/criterion.tar.gz \
+            target/release-suites/public-exact/criterion.tar.gz \
+            --saved-sample "$RELEASE_TAG" --output "$asset" --revision "$GITHUB_SHA" \
+            --session "$GITHUB_REPOSITORY:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
           echo "artifact-name=bench-baseline-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
@@ -128,39 +218,6 @@ jobs:
           path: ${{ steps.package-baseline.outputs.asset }}
           retention-days: 30
           if-no-files-found: error
-
-      - name: Suite timing summary
-        if: ${{ always() }}
-        env:
-          COMPARATIVE_OUTCOME: ${{ steps.comparative.outcome }}
-          EXACT_OUTCOME: ${{ steps.exact.outcome }}
-        run: |
-          set -euo pipefail
-          {
-            echo "### Release benchmark timing"
-            echo ""
-            echo "| Suite | Outcome | Elapsed seconds | Budget minutes |"
-            echo "| --- | --- | --- | --- |"
-            for suite in public-default public-exact; do
-              elapsed="not started"
-              if [[ -f "target/$suite-started" ]]; then
-                end="$(date +%s)"
-                if [[ -f "target/$suite-finished" ]]; then
-                  end="$(cat "target/$suite-finished")"
-                fi
-                elapsed="$((end - $(cat "target/$suite-started")))"
-              fi
-              outcome="$COMPARATIVE_OUTCOME"
-              budget=140
-              if [[ "$suite" == public-exact ]]; then
-                outcome="$EXACT_OUTCOME"
-                budget=130
-              fi
-              echo "| $suite | $outcome | $elapsed | $budget |"
-            done
-            echo ""
-            echo "An unfinished suite reports elapsed time through this summary."
-          } | tee -a "$GITHUB_STEP_SUMMARY"
 
   publish-baseline:
     needs: [validate-release, release-baseline]
@@ -173,7 +230,7 @@ jobs:
       - name: Install trusted package runner
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          version: "0.13.1"
+          version: "0.13.6"
           enable-cache: false
           cache-python: false
 
@@ -194,7 +251,7 @@ jobs:
 
           [[ "$RELEASE_ASSET" == "la-stack-${RELEASE_TAG}-criterion-baseline.tar.gz" ]] || exit 1
           printf '%s\n' "$RELEASE_TARGET" > "$RUNNER_TEMP/release-target.json"
-          uvx --python 3.15 --from research-repo-tools==0.2.3 research-repo-tools \
+          uvx --python 3.15 --from research-repo-tools==0.2.4 research-repo-tools \
             --root "$RUNNER_TEMP" performance release-upload "$GH_REPO" "$RELEASE_TAG" \
             "$GITHUB_WORKSPACE/$RELEASE_ASSET" --target "$RUNNER_TEMP/release-target.json"
 

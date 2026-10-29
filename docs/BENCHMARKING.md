@@ -60,16 +60,17 @@ evidence being validated.
 
 ## Benchmark Suites
 
-`la-stack` has eleven Criterion benchmark targets. Routine release acquisition
+`la-stack` has twelve Criterion benchmark targets. Routine release acquisition
 selects public workloads from these targets; unfiltered targets remain available
 for diagnostics.
 
 ### Release acquisition policy
 
-The #301 policy `public-release-and-lu-peers-v1` applies to new measurements.
-The full la-stack selection has 646 default-feature and 608 exact-feature cases.
+The `public-release-and-lu-peers-v2` policy extends #301 with column bases,
+interval division/solves, rational dot products, and polynomial determinants.
+The full la-stack selection has 736 default-feature and 667 exact-feature cases.
 Local `performance-release`, `performance-local`, and full `performance-measure`
-measure these same 1,254 cases at both revisions under one captured harness.
+measure these same 1,403 cases at both revisions under one captured harness.
 Only the baseline phase also measures the 16 native nalgebra/faer LU
 factorization-plus-one-solve cases at D=2, 3, 4, 5, 8, 16, 32, and 64.
 The matching eight current la-stack timings already belong to the full suite.
@@ -87,14 +88,18 @@ The installed engine rejects duplicate semantic IDs and incomplete raw samples.
 | --- | --- |
 | Angles: vector, checked slice, construction followed by angle | `angle`, default, vetted dense/sparse/endpoint fixtures at D=3–6; excludes the control kernel |
 | Certified dot products, affine differences, certificate endpoints | `linear_form`, default, prepared and projection-batch regimes at D=2–6 |
+| Column bases | `column_basis`, default, 55 square/rectangular, rank-deficient, rescaled and affine cases |
 | Construction, storage access, mutation, symmetry and tolerances | `public_api`, default, D=2–5; accessor rows combine trivial queries; mutations reset a local copy |
 | Exact determinant/sign/solve and strict/rounded binary64 APIs | `exact`, exact, fixed/corpus/adversarial inputs at D=2–5 |
 | Exact scalar, array and canonical-vector conversions | `public_api` scalar and `exact` conversions, exact, D=2–5 where applicable, with strict rejection and range boundaries |
 | Gram construction | `gram`, default, square and embedded inputs through coordinate dimension 8; excludes hand-written controls |
 | Interval arithmetic, assembly, determinant and sign | `interval` and `public_api`, default; scalar edge regimes, storage at D=2–5, sign filters at D=3–7 |
+| Interval division, reciprocal and solve enclosures | `interval_solve`, default, 5 scalar cases and 30 batches at D=1–6, including typed fallback outcomes |
 | LU/LDLT, factorization-inclusive and prepared solves/determinants, norms and dot products | `vs_linalg` la-stack rows, default, D=2–64, with norm scenarios and D=8 stress inputs |
 | Direct determinant, error bound and paired result access | `public_api`, default, D=2–5; `exact` retains its existing exact-feature baseline rows |
 | Rational construction, storage, mutation, determinant/sign/solve and dispatch | `public_api`, `exact`, `rational_solve`, exact; small/wide inputs and structured dyadic/non-dyadic systems through D=8 |
+| Rational dot products | `rational_dot`, exact, 54 prepared/slice cases at lengths 2–8, 14 and 22 |
+| Sparse polynomial determinants | `polynomial`, exact, 5 coincident lifted fixtures at orders 4–8, including borrowed leading-term extraction |
 
 Default implementations share their constructor's workload. Error factories,
 formatting, enum queries, indexing/dispatch macros and re-exported third-party
@@ -111,7 +116,7 @@ Neither routine release path acquires them. The README retains its existing
 eight-dimension LU graph; no additional performance page or graph is produced.
 
 The local driver prints the case count and nominal timing budget before samples
-are acquired. The current plan has 2,524 measurements and a nominal 336.5-minute
+are acquired. The current plan has 2,822 measurements and a nominal 376.3-minute
 warmup-plus-measurement budget, before compilation, gates, and analysis.
 `performance-release` records measurement-and-promotion elapsed seconds and exit
 status in ignored `target/bench-reports/full/runtime.txt`, including failures.
@@ -121,7 +126,13 @@ the terminal log with the exact command, revisions, toolchain, dependencies and
 host when comparing actual before/after runtime. The former 1,422-case run had
 a nominal 189.6-minute budget; that calculation supplies no observed elapsed
 time. Expanded public coverage means removing peers alone establishes no overall
-speedup. No new end-to-end acquisition has been timed for #301.
+speedup. No end-to-end acquisition has been timed for the expanded policy.
+
+Full comparisons require both revisions to implement every selected API. A
+baseline predating these additions fails discovery; it cannot supply polynomial,
+rational-dot, column-basis or interval-solve ratios. Hosted tagged acquisition
+still records absolute costs. Existing retained reports remain historical and
+do not satisfy the expanded inventory; changing this plan does not rewrite them.
 
 **`public_api`** (`benches/public_api.rs`) owns construction, access, mutation,
 symmetry, direct determinant certificates, interval determinant queries, and
@@ -175,6 +186,20 @@ exponent differences within each row. Both measure exact values and signs;
 all four determinant APIs are checked against rational Gaussian elimination
 outside timing. These focused diagnostics are separate from release metrics.
 
+**`polynomial`** (`benches/polynomial.rs`) measures complete exact determinant
+polynomials and borrowed leading-term extraction for coincident lifted points
+at matrix orders 4–8 (geometric dimensions 2–6). Independent permutation
+enumeration checks every coefficient before timing. Inputs and their construction
+are outside timing; output allocation and destruction are included. The
+order-eight fixture has 241,920 output terms, so expect substantially more work
+than scalar determinant benchmarks. All five rows belong to the exact release
+selection. For a shorter standalone diagnostic run:
+
+```bash
+cargo bench --locked --features bench,exact --bench polynomial -- \
+  --sample-size 10 --warm-up-time 1 --measurement-time 3 --noplot
+```
+
 **`rational_solve`** (`benches/rational_solve.rs`) measures diagonal,
 upper/lower triangular, row-permuted triangular, general sparse, and dense
 rational systems through D=8, with both dyadic and non-dyadic coefficients.
@@ -226,9 +251,9 @@ cargo bench --locked --features bench --bench interval_solve -- \
   --sample-size 30 --warm-up-time 1 --measurement-time 2 --noplot
 ```
 
-The new rows remain diagnostics outside the retained release catalog, like the
-new rectangular and rational-reduction targets. They establish current cost and
-success rates; there is no previous la-stack solve API for a speedup comparison.
+All 35 rows belong to the default-feature release selection. They establish
+current cost and corpus certification counts; revisions predating this API
+cannot provide a speedup comparison.
 
 **`linear_form`** (`benches/linear_form.rs`) measures the default-feature
 certified dot-product and affine-difference filters through D=2–6. Prepared
@@ -241,9 +266,9 @@ construction-inclusive measurements. The original D=4 plain-dot control remains.
 Fixture expectations are validated outside the timed closures.
 Release acquisition includes these public certified reduction operations.
 
-The `column_basis` and `rational_dot` targets cover the APIs added for #305/#306
-as separate diagnostic workloads. They do not modify the retained release
-catalog or imply before/after speedups for previously unavailable APIs.
+The `column_basis` and `rational_dot` targets cover the APIs added for #305/#306.
+Their 55 default-feature and 54 exact-feature rows belong to release acquisition;
+they do not imply before/after speedups for previously unavailable APIs.
 Column selection covers square, tall, wide, deficient, nearly dependent,
 severely rescaled, and shared-face affine inputs through `8 × 14` and `6 × 7`.
 Exact dot products cover lengths 2–8, 14, and 22, with non-dyadic, cancelling,
@@ -280,7 +305,10 @@ a different measurement environment.
 
 The shared engine discovers complete native inventories on both sources, checks
 independent required scientific IDs, and runs both correctness gates before any
-timing. The gates cover `vs_linalg_inputs` and `exact_bench_config`.
+timing. The full gate covers `vs_linalg_inputs`, `exact_bench_config`,
+`column_basis`, `rational_dot`, `interval_solve` (including its rational oracle),
+and `polynomial_bench_inputs`. The non-exact diagnostic retains its original
+comparison and exact-configuration gate.
 Baseline measurements include nalgebra and faer; current measurements reuse
 those baseline-phase peers and measure la-stack and the exact suite. Diagnostic
 cases remain in the complete samples even when omitted from selected report rows.
@@ -570,7 +598,9 @@ The integration smoke test `benches/comparison/tests/vs_linalg_inputs.rs` reuses
 input helpers and verifies that la-stack, nalgebra, and faer agree on the
 determinant, solve, dot, Euclidean-norm, squared-norm, and infinity-norm results for every
 measured dimension: D=2, 3, 4, 5, 8, 16, 32, and 64. The same focused recipe
-also tests exact-benchmark range and deterministic-generator configuration:
+also tests exact-benchmark range and deterministic-generator configuration,
+column bases, rational dot products, interval solve corpora against a rational
+oracle, and polynomial coefficients against independent permutation enumeration:
 
 ```bash
 just test-bench-inputs
@@ -772,7 +802,7 @@ or `det_exact_f64_result (vs det_exact_f64)`. Those used the historical lossy
 `*_exact_f64` baseline. New comparisons require matching benchmark identifiers;
 the pre-v0.4.3 name substitutions have been removed.
 
-The default `public-release-and-lu-peers-v1` scope includes canonical exact-arithmetic
+The default `public-release-and-lu-peers-v2` scope includes canonical exact-arithmetic
 groups because their inputs and execution order are fixed across revisions. Historical
 baselines created before the `exact_random_corpus_d*` names were introduced do
 not have comparable full-corpus rows, so those rows appear once both sides of a
@@ -811,27 +841,36 @@ benchmarking. Publication makes the attached evidence immutable.
 
 ### Hosted Release Runtime Budget
 
-The producer runs default and exact public workloads sequentially on one
-`ubuntu-latest` runner. The steps allow 140 and 130 minutes, within a 350-minute
-job. Checkout allows 2 minutes; preparation allows 60 minutes for uncached tools,
-two 10-minute discovery deadlines and independent input validation. Preparation
-reserves 35 minutes for tools and 5 for the input gate. The remaining 18 minutes
-cover dataset validation, packaging, upload, diagnostics and runner overhead.
-Discovery compiles all selected targets before timing. Dependency caches remain
-disabled; these deadlines remain capacity estimates until the new hosted policy
-has completed on a runner.
+The producer runs default and exact public workloads in parallel on separate
+`ubuntu-latest` runners. Each job allows 330 minutes: 2 for checkout, 60 for
+preparation, 2 for host capture, 240 for measurement, and 26 for packaging, upload and
+overhead. Each preparation runs full discovery and independent input validation,
+reserving 35 minutes for uncached tools, two 10-minute discovery deadlines and
+5 minutes for the input gate. Both runners compile the selected targets before
+timing; neither restores dependency caches. Each measurement step has at least
+50% headroom beyond its planning estimate. These remain capacity estimates until
+the expanded hosted policy completes.
 
 | Selection | Cases | Nominal warmup + measurement | Planning estimate at 12 s/case | Step limit |
 | --- | --- | --- | --- | --- |
-| `public-default` | 646 | 86.1 min | 129.2 min | 140 min |
-| `public-exact` | 608 | 81.1 min | 121.6 min | 130 min |
-| Hosted total | 1,254 | 167.2 min | 250.8 min | 350 min including setup and tail |
-| Local total: both revisions and 16 peers | 2,524 | 336.5 min | 504.8 min | Separate per-phase deadlines |
+| `public-default` | 736 | 98.1 min | 147.2 min | 240 min; 330 min job |
+| `public-exact` | 667 | 88.9 min | 133.4 min | 240 min; 330 min job |
+| Hosted aggregate work | 1,403 | 187.1 min | 280.6 min | Concurrent jobs, then 30 min for assembly |
+| Local total: both revisions and 16 peers | 2,822 | 376.3 min | 564.4 min | Separate per-phase deadlines |
 
 These estimates are not measured runtimes or upper bounds. Criterion can extend
 measurement for expensive iterations. Sampling remains unchanged: 100 samples,
 100,000 resamples, 95% confidence, 3-second warmup and 5-second measurement
 target. Native filters select public workloads without reducing their sampling.
+
+Hosted wall time follows the slower suite plus preparation and archive assembly,
+subject to runner availability. Parallel execution increases setup work because
+each runner installs and validates its own environment. The archive records each
+suite's runner, CPU, toolchain, lockfile hash, command, source commit, workflow
+attempt and measurement timestamps under `release-suites/`. These are
+absolute timings from two hosts; do not treat cross-suite values as a common-host
+comparison. Local baseline/current and peer comparisons still use one captured
+environment.
 
 The workflow logs discovered counts and budgets before timing. Its final summary
 records each feature selection's outcome, elapsed seconds and budget, including
@@ -848,11 +887,34 @@ la-stack catalog; hosted completeness deliberately does not require peer rows.
 estimates with 95% intervals and 100 finite positive samples. Each named
 baseline's four raw JSON files must match its fresh `new` measurement, including
 the native sanitized storage paths. Missing public cases, failed writes, stale
-baselines and malformed measurements stop publication. Only validation permits packaging
-the single `criterion/` archive, including the inventory manifest, and uploading
-the temporary Actions artifact. The separate publisher attaches that archive
+baselines and malformed measurements stop publication. For one suite, use
+`just bench-release-check-suite <tag> <suite>` with the runner's output directory.
+The shared v0.2.4 `pack-suite` command already performs that validation before
+packaging, so the workflow needs no additional verification pass. It retains
+original host metadata captured before timing and digests of every raw file.
+Assembly uses `assemble-suites` with the checked-in policy and separately
+transported native inventory. It requires both suites from the same commit and
+repository/run/attempt, matching complete contracts, disjoint portable paths,
+and unchanged raw bytes. Only successful assembly emits the final archive and
+Actions artifact output. The separate publisher attaches that archive
 as `la-stack-$TAG-criterion-baseline.tar.gz` to the draft, verifies its uploaded
 state, size, and SHA-256 digest, and leaves the draft ready for review.
+
+Starting with v0.5.2, the shared archive contains raw Criterion paths directly
+at its root, `criterion-inventory.json`, and original manifests at
+`release-suites/0.json` (default) and `release-suites/1.json` (exact). It has no
+outer `criterion/` directory. Historical assets retain that wrapper and their
+original bytes. Extract a new archive into an absent directory, then verify it:
+
+```bash
+uv run --locked research-repo-tools performance extract "$ASSET" target/release-criterion
+just bench-release-check "$TAG" target/release-criterion
+```
+
+The verification command also needs the independently discovered
+`target/release-benchmark-inventory.json`; the archived inventory alone does not
+replace the checked-in required scientific coverage. Original per-suite host
+records remain authoritative when reading the archive on another machine.
 
 ### Validate The Release Workflow
 

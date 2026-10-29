@@ -177,6 +177,11 @@ encloses exact-real values during a small set of outward-rounded operations and
 feeds `IntervalMatrix<D>` determinant proofs; it does not make `Matrix` generic
 over alternate scalars or provide a general interval package.
 
+With `exact`, `SparsePolynomial` supplies rational coefficients keyed by `u128`
+exponents for bounded polynomial determinants through order eight. Its first
+nonzero term uses increasing exponent order; callers own perturbation encoding
+and work limits. This focused kernel retains cancellation exactly.
+
 This is not a generic scalar-parameterized API. Exact support intentionally
 covers the robustness-sensitive operations that require it: determinant sign,
 determinant value, and linear solve, followed by explicit strict or rounded
@@ -198,6 +203,7 @@ to combine operations.
 | Certified dot, affine-difference, and determinant estimates | [`ScalarWithErrorBound`][api-scalar-bound], [`DeterminantWithErrorBound`][api-det-bound] |
 | Exact rational dot products¹ | [`RationalVector::dot`][api-rational-dot], [`rational_dot`][api-rational-dot-slice] |
 | Exact signs, determinants, solves, and output conversion¹ | [Exact arithmetic examples][api-exact] |
+| Exact sparse polynomial determinants¹ | [`polynomial_determinant`][api-polynomial], [`SparsePolynomial`][api-sparse-polynomial] |
 | Floating-point determinants and solves | [`Matrix<D>`][api-matrix], [`Lu<D>`][api-lu], [`Ldlt<D>`][api-ldlt] |
 | Gram matrix construction | [`gram_matrix`][api-gram] |
 | Interval expressions, determinant signs, and solution enclosures | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
@@ -431,6 +437,7 @@ The `examples/` directory contains small, runnable programs:
 - **[`exact_sign_3x3`][example-exact-sign]** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
 - **[`exact_solve_3x3`][example-exact-solve]** — exact solve of a near-singular 3×3 system vs f64 LU (requires `exact` feature)
 - **[`ldlt_solve_3x3`][example-ldlt-solve]** — solve a 3×3 symmetric positive definite system via LDLT
+- **[`polynomial_determinant`][example-polynomial]** — exact cancellation, leading coefficients, and explicit work limits (requires `exact` feature)
 - **[`rational_input_5x5`][example-rational-input]** — exact rational solve of a 5×5 system that becomes singular as f64 (requires `exact` feature)
 - **[`solve_5x5`][example-solve]** — solve a 5×5 system via LU with partial pivoting
 - **[`vector_angles`][example-vector-angles]** — unsigned angles for fixed vectors and borrowed slices, including extreme magnitudes and subnormal separations
@@ -441,6 +448,7 @@ The `examples/` directory contains small, runnable programs:
 [example-exact-sign]: https://github.com/acgetchell/la-stack/blob/main/examples/exact_sign_3x3.rs
 [example-exact-solve]: https://github.com/acgetchell/la-stack/blob/main/examples/exact_solve_3x3.rs
 [example-ldlt-solve]: https://github.com/acgetchell/la-stack/blob/main/examples/ldlt_solve_3x3.rs
+[example-polynomial]: https://github.com/acgetchell/la-stack/blob/main/examples/polynomial_determinant.rs
 [example-rational-input]: https://github.com/acgetchell/la-stack/blob/main/examples/rational_input_5x5.rs
 [example-solve]: https://github.com/acgetchell/la-stack/blob/main/examples/solve_5x5.rs
 [example-vector-angles]: https://github.com/acgetchell/la-stack/blob/main/examples/vector_angles.rs
@@ -572,6 +580,8 @@ BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/
 
 [audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg
 [api-column-basis]: https://docs.rs/la-stack/latest/la_stack/fn.column_basis.html
+[api-polynomial]: https://docs.rs/la-stack/latest/la_stack/fn.polynomial_determinant.html
+[api-sparse-polynomial]: https://docs.rs/la-stack/latest/la_stack/struct.SparsePolynomial.html
 [api-rational-dot]: https://docs.rs/la-stack/latest/la_stack/struct.RationalVector.html#method.dot
 [api-rational-dot-slice]: https://docs.rs/la-stack/latest/la_stack/fn.rational_dot.html
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml

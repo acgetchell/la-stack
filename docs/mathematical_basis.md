@@ -13,6 +13,7 @@
     - [Derivation of the returned determinant bound](#derivation-of-the-returned-determinant-bound)
   - [Exact arithmetic over binary64 inputs](#exact-arithmetic-over-binary64-inputs)
   - [Exact arithmetic over rational inputs](#exact-arithmetic-over-rational-inputs)
+  - [Exact sparse polynomial determinants](#exact-sparse-polynomial-determinants)
   - [Exact-to-binary64 conversion](#exact-to-binary64-conversion)
   - [Gram matrices and geometric measures](#gram-matrices-and-geometric-measures)
   - [Interval linear solves](#interval-linear-solves)
@@ -59,6 +60,7 @@ Reference numbers point to [REFERENCES.md](../REFERENCES.md).
 | Exact determinant value or solve | `det_exact`, `solve_exact` | Exact for represented inputs |
 | Exact operations over preassembled rationals | `RationalMatrix::det_sign`, `det`, `solve` | No intermediate binary64 reconstruction |
 | Exact rational dot products | `RationalVector::dot`, `rational_dot` | Exact canonical result; checked slices have no dimension cap |
+| Exact polynomial determinant and first nonzero coefficient | `polynomial_determinant`, `SparsePolynomial::leading_term` | Orders 0–8; increasing `u128` exponents; explicit work limits |
 | Rectangular column selection | `column_basis` | Explicit absolute tolerance; provisional numerical rank, requiring independent certification |
 | Binary64 output from an exact result | Strict or rounded conversions | Strict conversion forbids rounding |
 | Unsigned vector angle in radians | `VectorAngle::angle`, `Vector::angle` | Finite nonzero vectors; rounded, without a certified bound |
@@ -77,12 +79,18 @@ without changing the const-generic storage model. Spherical callers retain
 radius validation and angle-to-arc-length conversion.
 
 The deliberate anti-goals are general dynamically sized matrix storage,
-sparse storage, broad decomposition coverage, alternate floating scalar
+sparse matrix storage, broad decomposition coverage, alternate floating scalar
 families, and GPU-, parallel-, BLAS-, or LAPACK-scale throughput. Those problems
 need different storage models and numerical policies rather than extensions to
 this small fixed-dimension design.
 The rectangular column selector operates on borrowed const-generic arrays;
 it does not introduce a general rectangular matrix framework.
+
+The polynomial determinant accepts a borrowed const-generic square array of
+canonical sparse polynomials. Its exponent encoding, monomial order and work
+budgets are explicit. Simulation of Simplicity variable assignment, base-three
+encoding proofs, geometric tie-breaking and consumer budget selection remain
+outside this library.
 
 ## Represented values and arithmetic model
 
@@ -497,6 +505,74 @@ validation precedes right operand validation. The adapter has no dispatch limit:
 Delaunay's basis lengths through 8 and full objective lengths 14 and 22 in 6D
 are ordinary inputs, as are larger lengths. Both APIs perform a linear number
 of rational operations; bit complexity depends on numerator/denominator growth.
+
+### Exact sparse polynomial determinants
+
+`SparsePolynomial` represents `Σ c_e t^e`, with `e ∈ [0, u128::MAX]` and
+canonical rational `c_e`. Construction rejects zero denominators before any
+arithmetic, reduces quotients, combines duplicate exponents, and removes exactly
+zero coefficients. Numeric increasing exponent order is fixed. The leading term
+is the least nonzero exponent, as appropriate to `t → 0+`; it is not the
+conventional highest-degree term. Arbitrary multivariate orderings are not
+supported directly. A caller encoding them into `u128` must ensure injectivity,
+order preservation and compatibility with addition throughout the calculation.
+
+For a column subset `S` with `k = |S|`, maintain the determinant `p[S]` of the
+first `k` rows restricted to the sorted columns in `S`. Initialize `p[∅] = 1`.
+For every `j ∉ S`, add
+
+```text
+p[S ∪ {j}] += (-1)^(number of columns in S greater than j) * p[S] * A[k,j].
+```
+
+Appending column `j` adds exactly that many inversions to each existing
+permutation. Each permutation has exactly one predecessor, so the recurrence
+sums the Leibniz terms once with their correct signs \[12\]. All predecessors
+have smaller numeric masks, allowing a completed partial to be consumed during
+increasing-mask traversal. No division or pivot is needed, even when many
+coefficients cancel or entire partial determinants vanish.
+
+Every product and sum uses exact rational arithmetic. No term is discarded
+based on its exponent or sign. Only after all contributions are complete can
+the first nonzero term be read. A successful empty term map proves the zero
+polynomial; `LaError::PolynomialBudgetExceeded` and
+`LaError::PolynomialExponentOverflow` provide no sign or zero classification.
+Overflowing intermediate exponents are rejected even if subsequent cancellation
+could have removed them. There is no rounding error or numerical conditioning
+restriction; combinatorial growth and integer bit complexity limit resources.
+
+The caller supplies `PolynomialDeterminantBudget`. For positive order `D`, the
+complete structural envelope `D × 2^(D-1)` is checked against
+`max_subset_transitions` before allocation, even for zero matrices. Order zero
+needs no transitions and returns one. The hard order-eight cap limits the
+state table to 256 maps and the structural envelope to 1,024 transitions.
+`max_term_products` counts each nonzero coefficient pair before exponent
+addition and multiplication. Zero entries/partials cost no products; exact
+cancellation never refunds completed work. Traversal order is documented in
+the public API, and each call starts a fresh budget.
+
+If `P` products are permitted, at most `P + 1` term insertions can occur,
+including the initial one. Consuming states releases their storage, and inputs
+are borrowed without deep cloning. Neither budget bounds integer bit lengths,
+allocation bytes, elapsed time or the construction of caller-owned polynomials.
+Allocator failure retains Rust's normal behavior. A term product may be costly
+when coefficients have large numerators or denominators.
+
+For a consumer whose column term maxima are `m_j`, the no-cancellation bound for
+a subset is `|S|! × Π_{j∈S} m_j`. Therefore a conservative product envelope is
+
+```text
+Σ over S ⊊ {0,..,D-1}: |S|! × (Π_{j∈S} m_j) × (Σ_{j∉S} m_j).
+```
+
+The Delaunay order-eight lifted shape `[2, 2, 2, 2, 2, 2, 13, 1]` gives
+55,631,284 products. This is a consumer policy example, not a library default
+or a practical memory guarantee. A fully coincident origin fixture with
+base-three coordinate perturbations has 241,920 distinct final monomials at
+order eight; even this sparse input can create a large result. The release
+benchmark and independent permutation tests exercise that shape through order
+eight. Dense small-degree tests separately verify coefficient cancellation,
+row swaps, repeated rows and non-dyadic coefficients.
 
 ### Exact-to-binary64 conversion
 

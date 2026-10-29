@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import cast
 
 from research_repo_tools.cli import main as tooling_main
-from research_repo_tools.common_measurement import CommonHarnessPlan
+from research_repo_tools.common_measurement import CompleteMeasurementPlan
 from research_repo_tools.files import replace_many
 from research_repo_tools.measurement import load_measurement
 from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics, run_git_command
@@ -40,7 +40,7 @@ def capture(root: Path, current: str, baseline: str) -> tuple[ReleasePair, str, 
         baseline=baseline or None,
     )
     configuration = load_measurement(root, "tooling/measurements/full.toml")
-    policy = configuration.measurement if isinstance(configuration, CommonHarnessPlan) else configuration
+    policy = configuration.measurement if isinstance(configuration, CompleteMeasurementPlan) else configuration
     policy.validate_release(pair.current)
     policy.validate_release(pair.baseline)
     tagged = bool(current) or any(item.tag == pair.current for item in releases)

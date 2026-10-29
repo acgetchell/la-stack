@@ -8,8 +8,14 @@ belong to research-repo-tools.
 
 ## Publication boundary
 
-The dependency-only environment pins the published `research-repo-tools==0.2.3`
-package, including the release workflow's isolated installations.
+The dependency-only environment pins the published `research-repo-tools==0.2.4`
+package. Release target capture and publication use the same exact version.
+The suite verification, packaging and assembly commands adopted for
+[#316](https://github.com/acgetchell/la-stack/issues/316), targeting v0.5.2,
+use that release as well. Its verified tool updater is adopted without local
+updater logic. A temporary scanner-selection override preserves the standard
+Python 3.15 Semgrep environment until the shared fix ships in v0.2.5;
+[#317](https://github.com/acgetchell/la-stack/issues/317) tracks its removal.
 Upstream [#123](https://github.com/acgetchell/research-repo-tools/pull/123)
 adds trusted main-validation artifact reuse for release promotion; v0.2.3
 was published from commit `4085125526e21b2855eb7c61a52ee312782ae31a`.
@@ -18,18 +24,20 @@ preserving their selectors, exact pins, overrides, and separate environments.
 The minimum-release acquisition contract introduced by v0.2.2 remains in place:
 v0.2.1 could not express the consumer's v0.5.0 measurement floor.
 
-[PyPI v0.2.3](https://pypi.org/project/research-repo-tools/0.2.3/) lists both
-distributions as unyanked. Their SHA-256 hashes match the signed
-[GitHub release assets](https://github.com/acgetchell/research-repo-tools/releases/tag/v0.2.3)
+[PyPI v0.2.4](https://pypi.org/project/research-repo-tools/0.2.4/) supplies both
+distributions. Their SHA-256 hashes match the published
+[GitHub release assets](https://github.com/acgetchell/research-repo-tools/releases/tag/v0.2.4)
 and the exact registry lock entries:
 
 | Distribution | SHA-256 |
 | --- | --- |
-| Wheel | `da5f0259027662e7706b7f2b8a38d8e1f1d8a5dce314e2c996177b2947514fc6` |
-| Source distribution | `13700b174656ffad265ecb926dd66013949853b7a39c088ab6d3852aba72df95` |
+| Wheel | `00aaab2b7efd680d79324c6debb64db4d8d1ff076a460ff46e24e0ef1c24bd7d` |
+| Source distribution | `30b6d4d2f8d0cb98d5311656928dd65800088b651dd6c0c29f9a02526e9e902a` |
 
 Runtime imports and acceptance checks use this installed package. No sibling
-checkout, private API, or release-candidate installation supplies final evidence.
+checkout or release-candidate installation supplies final evidence. The temporary
+Semgrep adapter overrides only the installed scanner-selection function; all
+benchmark execution, validation and publication use the public shared APIs.
 
 The maintainer approved freezing earlier evidence instead of extending the
 shared policy gate to accept missing acquisition declarations. This deliberately
@@ -55,6 +63,8 @@ or shell implementations of the shared workflow.
 | `performance-readme` | `performance publish` with `performance-readme.toml`, independent identities and transactional formatting |
 | `plot-vs-linalg` | `performance publish --artifacts-only` with named full scratch, retained, or non-exact scratch views |
 | `bench-release-check` | `performance verify-saved` with saved name, Criterion directory and `criterion-saved.toml` |
+| `bench-release-check-suite` | `performance verify-saved --suite` with the complete independent policy and selected feature suite |
+| Hosted suite packaging and assembly | `performance host`, `pack-suite` and `assemble-suites`; la-stack retains the native commands, matrix, artifact selection and budgets |
 | `bench-compare` | Existing installed saved-Criterion comparison CLI |
 
 Paths in the table are relative to `tooling/`.
@@ -147,15 +157,17 @@ The dependency-only environment remains Python 3.15. Python supports shared
 tools and consumer tests; deleting production scripts does not remove it.
 Semgrep initially used a separately locked Python 3.14 environment. Following
 [MCMC #214](https://github.com/acgetchell/markov-chain-monte-carlo/pull/214),
-Semgrep 1.182.1 now shares the root Python 3.15 environment and lockfile.
+Semgrep 1.182.1 scans and fixture checks share the root Python 3.15 environment and lockfile.
 The root manifest retains its native-wheel requirement, compatibility overrides
 and Python 3.15 Windows wheels. Local and hosted scans retain the Linux
 stack-limit workaround. Consumer tests now live under `tests/tooling/`.
 
-Native discovery listed 533 comparison and 354 exact cases while verifying
+Initial migration discovery listed 533 comparison and 354 exact cases while verifying
 the independent 417 required IDs. The scientific gates passed 26 exact-input
 tests and 42 comparison-input tests. These checks compiled/listed the native
 benchmarks without collecting timing measurements.
+The expanded v0.5.2 selection and its current correctness gates are documented
+in [Benchmarking](../BENCHMARKING.md#release-acquisition-policy).
 
 Final acceptance also requires focused installed-package tests, `just check`,
 `just ci`, Markdown/spelling/docs checks, and Linux/macOS/Windows CI for the

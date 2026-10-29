@@ -41,17 +41,29 @@ fixture keeps the real Just, uv and Python launch and substitutes only the
 entry point's provider responses. It checks the exact received identity and
 rejects an explicitly empty pin rather than selecting fresh evidence.
 
-Semgrep shares the root Python 3.15 environment and lockfile. Preserve its
+Semgrep scans and fixture checks share the root Python 3.15 environment and lockfile. Preserve its
 native-wheel requirement and compatibility overrides in `pyproject.toml`.
 Local scans, fixture checks and SARIF retain the Linux stack-limit workaround
 for [Semgrep #11979](https://github.com/semgrep/semgrep/issues/11979).
 Ordinary Rust and Python tests remain scan targets; deliberate `tests/semgrep/`
 fixtures are checked separately by `just semgrep-test`.
+Published v0.2.4 hard-codes Python 3.14 for those fixture checks. The temporary
+`shared_tooling.py` adapter selects the scanner installed beside the active
+interpreter and delegates all fixture validation to the shared CLI. It also puts
+that environment's scripts first on `PATH` for the native scanner launcher.
+Setup uses the same adapter so it does not provision a separate scanner runtime.
+The shared Python baseline must apply to Semgrep too; the fix is tracked in
+[research-repo-tools#165](https://github.com/acgetchell/research-repo-tools/issues/165)
+for v0.2.5. Remove the version-guarded override through
+[#317](https://github.com/acgetchell/la-stack/issues/317) after adopting that fix.
 
 ## Shared capability adoption
 
-The capability inventory below was checked against the installed v0.2.3 CLI and
-its [versioned contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.2.3/README.md#common-workflows).
+The capability inventory below uses the installed v0.2.4 CLI and
+its [versioned contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.2.4/README.md#common-workflows).
+Trusted release jobs use the same exact package pin through `uvx --python 3.15`.
+The shared updater installs and verifies candidate Cargo tools before publishing
+new pins; no local updater implementation is needed.
 Native Rust algorithms, assertions, benchmark selection and release decisions
 remain owned here.
 
@@ -61,9 +73,9 @@ remain owned here.
 | Changelog and release | Shared generation, archives, metadata rules, registry gates and verification; the Cargo adapter reuses signed native/package evidence |
 | CI environment and toolchain | Shared setup/check/run/export and verified cached installations; `tools-clean` previews obsolete managed tools separately from Cargo `clean` |
 | Coverage | Native `cargo llvm-cov` acquisition; `coverage-report` summarizes its existing Cobertura output |
-| Dependencies | Shared uv/tool upgrades and `deps update-python --all-projects`; all Python tools share the root Python 3.15 environment and lock |
+| Dependencies | Shared uv/tool upgrades and `deps update-python --all-projects`; consumer Python dependencies share the root environment and lock |
 | Documentation and files | Shared tracked/nonignored selection and bounded argument batches for formatting, lint, spelling and syntax checks; one active Markdown policy preserves archives |
-| Performance | Declarative discovery, measurement, saved-sample validation, immutable evidence, offline rendering, report/README publication and release assets |
+| Performance | Declarative discovery, measurement, suite verification/packaging/assembly, immutable evidence, offline rendering, report/README publication and release assets |
 | Python | Shared complete-inventory check/fix/typecheck with repository Ruff exceptions and strict ty diagnostics |
 | Review | Shared opt-in CodeRabbit branch and uncommitted review |
 | Security and workflow audit | Shared OSV, full-history Gitleaks and zizmor policy; consumer advisory exceptions and workflow permissions remain local |
@@ -91,8 +103,8 @@ validation and the updater. Workflows retain full commit pins. This source polic
 is separate from the historical GitHub settings payloads under `.github/settings/`,
 which also constrain the publishing action to a specific commit. Reconcile live
 settings before deploying a pin update; the local updater does not change them.
-The v0.2.3 Actions parser accepts workflow documents only. Semgrep rules
-check composite actions under `.github/actions/`, including their
+The allowlist recipe remains scoped to workflows. Semgrep rules check
+composite actions under `.github/actions/`, including their
 external dependencies and commit pins.
 
 ## Performance ownership
@@ -121,10 +133,12 @@ There is no runtime configuration generator.
 
 Both labels of a new measurement must be v0.5.0 or newer. The full and
 non-exact declarations require 100 samples, mean and median estimates,
-95% intervals and nanoseconds. Both native correctness gates run before
-timing. Reference libraries originate in the baseline phase.
+95% intervals and nanoseconds. Each phase runs its native correctness gate before
+timing. The full `gate-public` adds column bases, rational dot products, interval
+solve oracles and polynomial coefficient checks to the diagnostic `gate`.
+Reference libraries originate in the baseline phase.
 
-The full #301 policy measures all public la-stack workflows at both revisions,
+The expanded #301 policy measures all public la-stack workflows at both revisions,
 plus only 16 baseline-phase peer LU-factorization-and-solve cases. Hosted
 acquisition omits peers entirely. The full scratch/retained plot selections
 therefore expose only LU solve; broad peer plots remain in the explicitly
@@ -167,6 +181,11 @@ report and plot rendering after scratch cleanup.
 Shared implementation matrices live upstream, including
 `tests/performance/public_complete_consumer.py` and
 `public_criterion_consumer.py`, exercised from wheel and sdist installations.
+Published v0.2.4 also owns `public_suites_consumer.py`: suite selection, raw-file
+digests, archive paths, original host retention and complete assembly failures.
+The release workflow calls `performance pack-suite` and `assemble-suites`
+directly; `bench-release-check-suite` is a diagnostic wrapper around
+`performance verify-saved --suite`. No local suite verifier or merge engine remains.
 Consumer tests retain independent scientific selections, actual recipe wiring,
 saved archive round trips, publication boundaries and historical hashes.
 

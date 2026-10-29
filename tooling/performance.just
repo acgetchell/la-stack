@@ -36,6 +36,9 @@ current-vs_linalg mode="measure":
 gate:
     cargo test --locked --target {{ host_target }} --workspace --features bench,exact --test vs_linalg_inputs --test exact_bench_config
 
+gate-public: gate
+    cargo test --locked --target {{ host_target }} --features bench,exact --test column_basis --test rational_dot --test interval_solve --test polynomial_bench_inputs
+
 la-stack mode="measure" sample="": (public-default mode sample) (public-exact mode sample)
 
 # Shared native argument construction keeps discovery and measurement identical.
@@ -56,6 +59,6 @@ native suite filter features mode="measure" sample="":
 
 peers mode="measure" sample="": (native "vs_linalg" '^d(2|3|4|5|8|16|32|64)/(nalgebra|faer)_lu_solve$' "bench" mode sample)
 
-public-default mode="measure" sample="": (native "vs_linalg" '^d[0-9]+/la_stack_' "bench" mode sample) (native "angle" '/(prepared_vector|borrowed_slice|construct_then_angle)$' "bench" mode sample) (native "gram" '/la_stack$' "bench" mode sample) (native "interval" "" "bench" mode sample) (native "linear_form" "" "bench" mode sample) (native "public_api" "" "bench" mode sample)
+public-default mode="measure" sample="": (native "vs_linalg" '^d[0-9]+/la_stack_' "bench" mode sample) (native "angle" '/(prepared_vector|borrowed_slice|construct_then_angle)$' "bench" mode sample) (native "column_basis" "" "bench" mode sample) (native "gram" '/la_stack$' "bench" mode sample) (native "interval" "" "bench" mode sample) (native "interval_solve" "" "bench" mode sample) (native "linear_form" "" "bench" mode sample) (native "public_api" "" "bench" mode sample)
 
-public-exact mode="measure" sample="": (native "exact" '^(canonical_conversion_|exact_(d[2-5]|random_corpus_d[2-5]|near_singular_3x3|large_entries_3x3|hilbert_[45]x[45])/|rational_input_.*d[2-8]/(det_sign_row_cleared_bareiss|det_row_cleared_bareiss|solve_row_cleared_bareiss)$)' "bench,exact" mode sample) (native "rational_solve" '/(construct|prepared|adapter)$' "bench,exact" mode sample) (native "public_api" '^public_exact_' "bench,exact" mode sample)
+public-exact mode="measure" sample="": (native "exact" '^(canonical_conversion_|exact_(d[2-5]|random_corpus_d[2-5]|near_singular_3x3|large_entries_3x3|hilbert_[45]x[45])/|rational_input_.*d[2-8]/(det_sign_row_cleared_bareiss|det_row_cleared_bareiss|solve_row_cleared_bareiss)$)' "bench,exact" mode sample) (native "polynomial" "" "bench,exact" mode sample) (native "rational_dot" "" "bench,exact" mode sample) (native "rational_solve" '/(construct|prepared|adapter)$' "bench,exact" mode sample) (native "public_api" '^public_exact_' "bench,exact" mode sample)

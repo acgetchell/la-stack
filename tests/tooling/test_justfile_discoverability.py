@@ -66,8 +66,10 @@ def test_saved_release_baseline_selects_only_public_workloads() -> None:
     baseline_commands = [shlex.split(line) for line in baseline_run.stdout.splitlines()]
     assert baseline_commands == [["--justfile", "tooling/performance.just", "--working-directory", ".", "la-stack", "measure", "v0.4.5"]]
     native = dry_run(REPO_ROOT, "la-stack", ["measure", "v0.4.5"], justfile=Path("tooling/performance.just")).stderr
-    assert native.count("cargo bench --locked") == 9
-    assert native.count("args+=(--save-baseline") == 9
+    assert native.count("cargo bench --locked") == 13
+    assert native.count("args+=(--save-baseline") == 13
+    for target in ("column_basis", "interval_solve", "polynomial", "rational_dot"):
+        assert f"--bench '{target}'" in native
     assert "^d[0-9]+/la_stack_" in native
     assert "(nalgebra|faer)_lu_solve$" not in native
 

@@ -995,6 +995,8 @@ mod lu;
 mod matrix;
 mod norm;
 #[cfg(feature = "exact")]
+mod polynomial;
+#[cfg(feature = "exact")]
 mod rational;
 mod rounding;
 mod scaled_product;
@@ -1013,6 +1015,12 @@ pub use num_rational::BigRational;
 #[cfg(feature = "exact")]
 #[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
 pub use num_traits::{FromPrimitive, Signed, ToPrimitive};
+#[cfg(feature = "exact")]
+#[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
+pub use polynomial::{
+    MAX_POLYNOMIAL_MATRIX_DIM, PolynomialDeterminantBudget, SparsePolynomial,
+    polynomial_determinant,
+};
 #[cfg(feature = "exact")]
 #[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
 pub use rational::{RationalMatrix, RationalVector, rational_dot};
@@ -1184,8 +1192,8 @@ pub const MAX_RATIONAL_MATRIX_DISPATCH_DIM: usize = 8;
 pub use angle::VectorAngle;
 pub use error::{
     ArithmeticOperation, FactorizationKind, IntervalBound, IntervalOperand, InvalidToleranceReason,
-    LaError, NonFiniteLocation, NonFiniteOrigin, PositiveSemidefiniteViolation, SingularityReason,
-    UnrepresentableReason, VectorOperand,
+    LaError, NonFiniteLocation, NonFiniteOrigin, PolynomialWork, PositiveSemidefiniteViolation,
+    SingularityReason, UnrepresentableReason, VectorOperand,
 };
 pub use gram::gram_matrix;
 pub use interval::{Interval, IntervalDeterminantSign, IntervalMatrix, MAX_INTERVAL_MATRIX_DIM};
@@ -1516,12 +1524,17 @@ macro_rules! try_with_rational_matrix {
     doc = "`BigRational::to_f64` / `to_i64`, and [`Signed`] for `is_positive` / `is_negative` /"
 )]
 #[cfg_attr(feature = "exact", doc = "`abs`.")]
+#[cfg_attr(feature = "exact", doc = "")]
+#[cfg_attr(
+    feature = "exact",
+    doc = "[`SparsePolynomial`], [`PolynomialDeterminantBudget`], [`polynomial_determinant`] and [`MAX_POLYNOMIAL_MATRIX_DIM`] support bounded exact polynomial determinants. [`PolynomialWork`] identifies exhausted budget categories."
+)]
 pub mod prelude {
     pub use crate::{
         ArithmeticOperation, ColumnBasis, DEFAULT_SINGULAR_TOL, DeterminantWithErrorBound,
         FactorizationKind, Interval, IntervalBound, IntervalDeterminantSign, IntervalMatrix,
         IntervalOperand, InvalidToleranceReason, LaError, Ldlt, Lu, MAX_INTERVAL_MATRIX_DIM,
-        MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, NonFiniteLocation, NonFiniteOrigin,
+        MAX_STACK_MATRIX_DISPATCH_DIM, Matrix, NonFiniteLocation, NonFiniteOrigin, PolynomialWork,
         PositiveSemidefiniteViolation, ScalarWithErrorBound, SingularityReason, Tolerance,
         UnrepresentableReason, Vector, VectorAngle, VectorOperand, column_basis, gram_matrix,
         try_with_interval_matrix, try_with_stack_matrix,
@@ -1531,8 +1544,9 @@ pub mod prelude {
     #[cfg_attr(docsrs, doc(cfg(feature = "exact")))]
     pub use crate::{
         BigInt, BigRational, DeterminantSign, ExactF64Conversion, FromPrimitive,
-        MAX_RATIONAL_MATRIX_DISPATCH_DIM, RationalMatrix, RationalVector, Signed, ToPrimitive,
-        rational_dot, try_with_rational_matrix,
+        MAX_POLYNOMIAL_MATRIX_DIM, MAX_RATIONAL_MATRIX_DISPATCH_DIM, PolynomialDeterminantBudget,
+        RationalMatrix, RationalVector, Signed, SparsePolynomial, ToPrimitive,
+        polynomial_determinant, rational_dot, try_with_rational_matrix,
     };
 }
 

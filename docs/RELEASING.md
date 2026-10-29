@@ -34,7 +34,7 @@ including when a rerun happens after UTC midnight.
 
 ## Reusable CI evidence
 
-The publishing process uses the installed `research-repo-tools==0.2.3`
+The publishing process uses the installed `research-repo-tools==0.2.4`
 validation helpers. `tooling/release_evidence.py` supplies the Cargo-specific
 policy; it does not use the shared package's wheel/sdist release commands.
 Every successful protected `main` push produces signed evidence after all three
@@ -447,12 +447,23 @@ release ID and tag commit before attaching
 the archive. Do not edit the draft, move the tag,
 or publish manually while the workflow is running.
 
-The privileged jobs install the exact published `research-repo-tools==0.2.3`
+The privileged jobs install the exact published `research-repo-tools==0.2.4`
 package on Python 3.15 without repository checkout. Preflight emits versioned
 target JSON with the captured ID, commit and title assertion. Its trusted job
 output passes directly to the publisher, separately from the producer's inert
 archive. The shared writer verifies downloaded asset bytes as well as provider
 metadata. It leaves publication to the authenticated maintainer.
+
+The measurement jobs capture their own host metadata before timing and use the
+shared `pack-suite` command to verify and archive their full samples. Assembly
+uses `assemble-suites` with the checked-in policy, separately transported native
+inventory, tagged commit and repository/run/attempt identity. It emits the final
+asset only after validating both suites, raw-file digests and original provenance.
+These suite commands use the published `research-repo-tools==0.2.4` through
+`uvx --python 3.15`, matching the standard development dependency pin.
+New v0.5.2 archives use the shared layout described in
+[Benchmarking](BENCHMARKING.md#hosted-release-runtime-budget); historical assets
+keep their original layout and bytes.
 
 Runs for the same tag are serialized without cancelling an active run.
 
@@ -524,20 +535,22 @@ commit, benchmark run, publishing run, registry URL/checksum and consumer result
 in the current release's tracking issue or merged release PR. Keep any release
 tracking issue open until publication and consumer verification succeed.
 
-The benchmark producer has read-only repository permissions and restores no
-dependency caches, including tool binaries. It invokes `setup-tools` with
+The benchmark producers have read-only repository permissions and restore no
+dependency caches, including tool binaries. Each invokes `setup-tools` with
 `cache: false`, installs declared managed Rust and Cargo tools through the locked
 shared package, and exports verified paths. The short preflight job receives `contents: write`
 for draft visibility; the separate asset writer receives it to attach the archive.
 Neither privileged benchmark job checks out or executes repository code.
 
-The producer budgets 140 minutes for default-feature public workloads and
-130 minutes for exact-feature public workloads within a 350-minute job,
-including a 60-minute preparation budget for uncached
-tool installation, compilation, inventory and input validation.
-Both suites retain full release sampling. Inventory
-and raw-data validation must succeed before the single complete archive is
-packaged and uploaded; inspect the suite timing summary when a run fails.
+Default-feature and exact-feature workloads run on separate runners in parallel.
+Each job allows 330 minutes, including 60 minutes for uncached tool installation,
+compilation, inventory and input validation, and 240 minutes for measurement.
+The 1,403 cases include column bases, interval division/solves, rational dot
+products, and polynomial determinants. Both suites retain full release sampling. Inventory
+and raw-data validation must succeed for both suites. A separate 30-minute job
+checks their commit/attempt identities and disjoint files, validates the complete
+dataset, and packages one archive with provenance for each runner. Inspect the
+suite timing summaries when a run fails.
 See the [hosted runtime budget](BENCHMARKING.md#hosted-release-runtime-budget)
 for measured history, capacity estimates, and headroom, and
 [workflow validation](BENCHMARKING.md#validate-the-release-workflow) for local
@@ -555,8 +568,8 @@ or substitute manual-dispatch results. Local builds are useful diagnostics but
 cannot renew hosted attestations.
 
 The following recovery rules apply separately to `Release Benchmarks`.
-If preflight or the producer failed, rerun all jobs with `gh run rerun <run-id>`
-or dispatch again. The producer requires a preflight from the current attempt;
+If preflight, either producer, or archive assembly failed, rerun all jobs with
+`gh run rerun <run-id>` or dispatch again. Each producer requires a preflight from the current attempt;
 rerunning failed benchmark jobs alone stops before tool setup or measurement
 because the earlier draft check is stale.
 
