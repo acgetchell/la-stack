@@ -501,7 +501,9 @@ cargo run --locked --example vector_angles
 
 Run: `5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652`. Statistic: median. Unit: ns. Confidence level: 95%.
 
-- la-stack v0.5.2: current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41.
+- la-stack v0.5.2: current phase, v0.5.2 working-tree snapshot based on commit
+  `b5156e222add90fc62191db55dcccb40875a5e41`; measured source SHA-256
+  `80e684f9e40f0b89417aa4a8317b22e37e0f594aef8043b250656f2c6cb3990f`.
 - nalgebra 0.35.0: baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e.
 - faer 0.24.4: baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e.
 
