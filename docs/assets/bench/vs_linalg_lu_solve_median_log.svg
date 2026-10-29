@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="656" viewBox="0 0 960 656" role="img" aria-labelledby="title description" data-run-id="26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="656" viewBox="0 0 960 656" role="img" aria-labelledby="title description" data-run-id="5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652">
 <title id="title">LU solve (factor + solve): median time vs dimension</title>
-<desc id="description">Run 26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413. median timing (ns). Recorded marginal timing intervals; no ratio interval or significance claim. la-stack v0.5.1: current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02. nalgebra 0.35.0: baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7. faer 0.24.4: baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7.</desc>
+<desc id="description">Run 5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652. median timing (ns). Recorded marginal timing intervals; no ratio interval or significance claim. la-stack v0.5.2: current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41. nalgebra 0.35.0: baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e. faer 0.24.4: baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e.</desc>
 <rect width="960" height="656" fill="#ffffff"/>
 <g font-family="sans-serif" font-size="13" fill="#222222">
 <text x="80" y="28">LU solve (factor + solve): median time vs dimension</text>
@@ -16,94 +16,94 @@
 <text x="476.774194" y="444" text-anchor="middle">32</text>
 <text x="900.000000" y="444" text-anchor="middle">64</text>
 <path d="M 80 420.000000 H 900" stroke="#dddddd"/>
-<text x="72" y="420.000000" text-anchor="end">2.07011</text>
+<text x="72" y="420.000000" text-anchor="end">2.04953</text>
 <path d="M 80 60.000000 H 900" stroke="#dddddd"/>
-<text x="72" y="60.000000" text-anchor="end">17323.3</text>
+<text x="72" y="60.000000" text-anchor="end">17749.8</text>
 <g stroke="#267394" fill="#267394" stroke-dasharray="2 2" data-series="la-stack current">
-<path d="M 80.000000 420.000000 V 419.367136 M 76.000000 420.000000 H 84.000000 M 76.000000 419.367136 H 84.000000" stroke-dasharray="none"/>
-<circle cx="80.000000" cy="419.694523" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.1, 2, x=2.0: 2.08604 ns [2.07011, 2.10324] (0.95 confidence); current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02</title></circle>
-<path d="M 80.000000 419.694523 L 93.225806 356.723595" fill="none"/>
-<path d="M 93.225806 356.843096 V 356.594122 M 89.225806 356.843096 H 97.225806 M 89.225806 356.594122 H 97.225806" stroke-dasharray="none"/>
-<circle cx="93.225806" cy="356.723595" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.1, 3, x=3.0: 10.1267 ns [10.0964, 10.1596] (0.95 confidence); current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02</title></circle>
-<path d="M 93.225806 356.723595 L 106.451613 325.121880" fill="none"/>
-<path d="M 106.451613 325.295073 V 324.976364 M 102.451613 325.295073 H 110.451613 M 102.451613 324.976364 H 110.451613" stroke-dasharray="none"/>
-<circle cx="106.451613" cy="325.121880" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.1, 4, x=4.0: 22.3772 ns [22.2802, 22.459] (0.95 confidence); current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02</title></circle>
-<path d="M 106.451613 325.121880 L 119.677419 294.038726" fill="none"/>
-<path d="M 119.677419 294.064378 V 294.005314 M 115.677419 294.064378 H 123.677419 M 115.677419 294.005314 H 123.677419" stroke-dasharray="none"/>
-<circle cx="119.677419" cy="294.038726" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.1, 5, x=5.0: 48.8084 ns [48.777, 48.8493] (0.95 confidence); current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02</title></circle>
-<path d="M 119.677419 294.038726 L 159.354839 253.891027" fill="none"/>
-<path d="M 159.354839 254.077103 V 253.728291 M 155.354839 254.077103 H 163.354839 M 155.354839 253.728291 H 163.354839" stroke-dasharray="none"/>
-<circle cx="159.354839" cy="253.891027" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.1, 8, x=8.0: 133.645 ns [133.022, 134.192] (0.95 confidence); current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02</title></circle>
-<path d="M 159.354839 253.891027 L 265.161290 189.983159" fill="none"/>
-<path d="M 265.161290 190.095760 V 189.782943 M 261.161290 190.095760 H 269.161290 M 261.161290 189.782943 H 269.161290" stroke-dasharray="none"/>
-<circle cx="265.161290" cy="189.983159" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.1, 16, x=16.0: 664.211 ns [662.337, 667.556] (0.95 confidence); current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02</title></circle>
-<path d="M 265.161290 189.983159 L 476.774194 132.509903" fill="none"/>
-<path d="M 476.774194 132.582319 V 132.377229 M 472.774194 132.582319 H 480.774194 M 472.774194 132.377229 H 480.774194" stroke-dasharray="none"/>
-<circle cx="476.774194" cy="132.509903" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.1, 32, x=32.0: 2808.97 ns [2803.87, 2818.34] (0.95 confidence); current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02</title></circle>
-<path d="M 476.774194 132.509903 L 900.000000 60.095108" fill="none"/>
-<path d="M 900.000000 60.170859 V 60.000000 M 896.000000 60.170859 H 904.000000 M 896.000000 60.000000 H 904.000000" stroke-dasharray="none"/>
-<circle cx="900.000000" cy="60.095108" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.1, 64, x=64.0: 17282 ns [17249.2, 17323.3] (0.95 confidence); current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02</title></circle>
+<path d="M 80.000000 420.000000 V 419.141631 M 76.000000 420.000000 H 84.000000 M 76.000000 419.141631 H 84.000000" stroke-dasharray="none"/>
+<circle cx="80.000000" cy="419.748310" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 2, x=2.0: 2.06256 ns [2.04953, 2.09431] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
+<path d="M 80.000000 419.748310 L 93.225806 357.134509" fill="none"/>
+<path d="M 93.225806 357.214079 V 357.033276 M 89.225806 357.214079 H 97.225806 M 89.225806 357.033276 H 97.225806" stroke-dasharray="none"/>
+<circle cx="93.225806" cy="357.134509" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 3, x=3.0: 9.98278 ns [9.96279, 10.0083] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
+<path d="M 93.225806 357.134509 L 106.451613 322.744203" fill="none"/>
+<path d="M 106.451613 322.819660 V 322.669774 M 102.451613 322.819660 H 110.451613 M 102.451613 322.669774 H 110.451613" stroke-dasharray="none"/>
+<circle cx="106.451613" cy="322.744203" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 4, x=4.0: 23.7355 ns [23.6905, 23.7801] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
+<path d="M 106.451613 322.744203 L 119.677419 295.589696" fill="none"/>
+<path d="M 119.677419 295.667549 V 295.390789 M 115.677419 295.667549 H 123.677419 M 115.677419 295.390789 H 123.677419" stroke-dasharray="none"/>
+<circle cx="119.677419" cy="295.589696" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 5, x=5.0: 47.0332 ns [46.9411, 47.2694] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
+<path d="M 119.677419 295.589696 L 159.354839 254.585846" fill="none"/>
+<path d="M 159.354839 254.653758 V 254.460760 M 155.354839 254.653758 H 163.354839 M 155.354839 254.460760 H 163.354839" stroke-dasharray="none"/>
+<circle cx="159.354839" cy="254.585846" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 8, x=8.0: 132.096 ns [131.87, 132.513] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
+<path d="M 159.354839 254.585846 L 265.161290 192.436998" fill="none"/>
+<path d="M 265.161290 192.633721 V 192.044349 M 261.161290 192.633721 H 269.161290 M 261.161290 192.044349 H 269.161290" stroke-dasharray="none"/>
+<circle cx="265.161290" cy="192.436998" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 16, x=16.0: 631.9 ns [628.777, 638.18] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
+<path d="M 265.161290 192.436998 L 476.774194 133.726290" fill="none"/>
+<path d="M 476.774194 133.799088 V 133.618515 M 472.774194 133.799088 H 480.774194 M 472.774194 133.618515 H 480.774194" stroke-dasharray="none"/>
+<circle cx="476.774194" cy="133.726290" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 32, x=32.0: 2772.06 ns [2766.99, 2779.6] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
+<path d="M 476.774194 133.726290 L 900.000000 60.550039" fill="none"/>
+<path d="M 900.000000 61.103184 V 60.000000 M 896.000000 61.103184 H 904.000000 M 896.000000 60.000000 H 904.000000" stroke-dasharray="none"/>
+<circle cx="900.000000" cy="60.550039" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 64, x=64.0: 17505.6 ns [17263.4, 17749.8] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
 <path d="M 55 500 H 72" fill="none"/>
-<text x="80" y="505" stroke="none">la-stack v0.5.1 — current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02</text>
+<text x="80" y="505" stroke="none">la-stack v0.5.2 — current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</text>
 <text x="80" y="522" stroke="none">8 selected; 0 unavailable rows</text>
 </g>
 <g stroke="#9c4420" fill="#9c4420" stroke-dasharray="3 2" data-series="nalgebra">
-<path d="M 80.000000 387.575164 V 387.463455 M 76.000000 387.575164 H 84.000000 M 76.000000 387.463455 H 84.000000" stroke-dasharray="none"/>
-<circle cx="80.000000" cy="387.509232" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 2, x=2.0: 4.67756 ns [4.66983, 4.68294] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 80.000000 387.509232 L 93.225806 310.052553" fill="none"/>
-<path d="M 93.225806 310.141061 V 309.910022 M 89.225806 310.141061 H 97.225806 M 89.225806 309.910022 H 97.225806" stroke-dasharray="none"/>
-<circle cx="93.225806" cy="310.052553" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 3, x=3.0: 32.6591 ns [32.5867, 32.7761] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 93.225806 310.052553 L 106.451613 290.724394" fill="none"/>
-<path d="M 106.451613 290.801133 V 290.676496 M 102.451613 290.801133 H 110.451613 M 102.451613 290.676496 H 110.451613" stroke-dasharray="none"/>
-<circle cx="106.451613" cy="290.724394" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 4, x=4.0: 53.0406 ns [52.9385, 53.1043] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 106.451613 290.724394 L 119.677419 277.960184" fill="none"/>
-<path d="M 119.677419 278.094967 V 277.506079 M 115.677419 278.094967 H 123.677419 M 115.677419 277.506079 H 123.677419" stroke-dasharray="none"/>
-<circle cx="119.677419" cy="277.960184" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 5, x=5.0: 73.0617 ns [72.815, 73.8988] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 119.677419 277.960184 L 159.354839 245.412861" fill="none"/>
-<path d="M 159.354839 245.496630 V 245.359596 M 155.354839 245.496630 H 163.354839 M 155.354839 245.359596 H 163.354839" stroke-dasharray="none"/>
-<circle cx="159.354839" cy="245.412861" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 8, x=8.0: 165.323 ns [164.976, 165.544] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 159.354839 245.412861 L 265.161290 194.528242" fill="none"/>
-<path d="M 265.161290 194.638705 V 194.411353 M 261.161290 194.638705 H 269.161290 M 261.161290 194.411353 H 269.161290" stroke-dasharray="none"/>
-<circle cx="265.161290" cy="194.528242" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 16, x=16.0: 592.628 ns [590.988, 594.368] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 265.161290 194.528242 L 476.774194 134.230190" fill="none"/>
-<path d="M 476.774194 134.526621 V 134.007090 M 472.774194 134.526621 H 480.774194 M 472.774194 134.007090 H 480.774194" stroke-dasharray="none"/>
-<circle cx="476.774194" cy="134.230190" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 32, x=32.0: 2690.31 ns [2670.38, 2705.41] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 476.774194 134.230190 L 900.000000 67.278189" fill="none"/>
-<path d="M 900.000000 67.345602 V 67.187442 M 896.000000 67.345602 H 904.000000 M 896.000000 67.187442 H 904.000000" stroke-dasharray="none"/>
-<circle cx="900.000000" cy="67.278189" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 64, x=64.0: 14432 ns [14407.6, 14464.9] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
+<path d="M 80.000000 388.617262 V 388.484769 M 76.000000 388.617262 H 84.000000 M 76.000000 388.484769 H 84.000000" stroke-dasharray="none"/>
+<circle cx="80.000000" cy="388.537720" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 2, x=2.0: 4.52663 ns [4.51758, 4.53267] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 80.000000 388.537720 L 93.225806 310.258720" fill="none"/>
+<path d="M 93.225806 310.394416 V 310.114881 M 89.225806 310.394416 H 97.225806 M 89.225806 310.114881 H 97.225806" stroke-dasharray="none"/>
+<circle cx="93.225806" cy="310.258720" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 3, x=3.0: 32.5058 ns [32.3949, 32.6237] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 93.225806 310.258720 L 106.451613 290.970232" fill="none"/>
+<path d="M 106.451613 291.062333 V 290.850032 M 102.451613 291.062333 H 110.451613 M 102.451613 290.850032 H 110.451613" stroke-dasharray="none"/>
+<circle cx="106.451613" cy="290.970232" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 4, x=4.0: 52.8361 ns [52.7137, 52.9963] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 106.451613 290.970232 L 119.677419 277.395968" fill="none"/>
+<path d="M 119.677419 277.517772 V 277.179842 M 115.677419 277.517772 H 123.677419 M 115.677419 277.179842 H 123.677419" stroke-dasharray="none"/>
+<circle cx="119.677419" cy="277.395968" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 5, x=5.0: 74.3705 ns [74.1427, 74.7764] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 119.677419 277.395968 L 159.354839 245.323499" fill="none"/>
+<path d="M 159.354839 245.395611 V 245.221333 M 155.354839 245.395611 H 163.354839 M 155.354839 245.221333 H 163.354839" stroke-dasharray="none"/>
+<circle cx="159.354839" cy="245.323499" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 8, x=8.0: 166.8 ns [166.498, 167.23] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 159.354839 245.323499 L 265.161290 195.163478" fill="none"/>
+<path d="M 265.161290 195.259879 V 195.066752 M 261.161290 195.259879 H 269.161290 M 261.161290 195.066752 H 269.161290" stroke-dasharray="none"/>
+<circle cx="265.161290" cy="195.163478" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 16, x=16.0: 589.967 ns [588.536, 591.405] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 265.161290 195.163478 L 476.774194 137.833711" fill="none"/>
+<path d="M 476.774194 137.934738 V 137.726264 M 472.774194 137.934738 H 480.774194 M 472.774194 137.726264 H 480.774194" stroke-dasharray="none"/>
+<circle cx="476.774194" cy="137.833711" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 32, x=32.0: 2499.64 ns [2493.29, 2506.42] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 476.774194 137.833711 L 900.000000 68.041606" fill="none"/>
+<path d="M 900.000000 68.081751 V 67.976600 M 896.000000 68.081751 H 904.000000 M 896.000000 67.976600 H 904.000000" stroke-dasharray="none"/>
+<circle cx="900.000000" cy="68.041606" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 64, x=64.0: 14495.6 ns [14481, 14519.4] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
 <path d="M 55 542 H 72" fill="none"/>
-<text x="80" y="547" stroke="none">nalgebra 0.35.0 — baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</text>
+<text x="80" y="547" stroke="none">nalgebra 0.35.0 — baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</text>
 <text x="80" y="564" stroke="none">8 selected; 0 unavailable rows</text>
 </g>
 <g stroke="#527a28" fill="#527a28" stroke-dasharray="4 2" data-series="faer">
-<path d="M 80.000000 253.866250 V 253.567900 M 76.000000 253.866250 H 84.000000 M 76.000000 253.567900 H 84.000000" stroke-dasharray="none"/>
-<circle cx="80.000000" cy="253.728532" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 2, x=2.0: 134.191 ns [133.728, 134.733] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 80.000000 253.728532 L 93.225806 248.020205" fill="none"/>
-<path d="M 93.225806 248.067246 V 247.919258 M 89.225806 248.067246 H 97.225806 M 89.225806 247.919258 H 97.225806" stroke-dasharray="none"/>
-<circle cx="93.225806" cy="248.020205" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 3, x=3.0: 154.854 ns [154.671, 155.247] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 93.225806 248.020205 L 106.451613 241.923994" fill="none"/>
-<path d="M 106.451613 242.033946 V 241.830492 M 102.451613 242.033946 H 110.451613 M 102.451613 241.830492 H 110.451613" stroke-dasharray="none"/>
-<circle cx="106.451613" cy="241.923994" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 4, x=4.0: 180.446 ns [179.949, 180.87] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 106.451613 241.923994 L 119.677419 227.695315" fill="none"/>
-<path d="M 119.677419 227.859625 V 227.417315 M 115.677419 227.859625 H 123.677419 M 115.677419 227.417315 H 123.677419" stroke-dasharray="none"/>
-<circle cx="119.677419" cy="227.695315" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 5, x=5.0: 257.861 ns [256.801, 259.666] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 119.677419 227.695315 L 159.354839 216.308375" fill="none"/>
-<path d="M 159.354839 216.534531 V 216.100619 M 155.354839 216.534531 H 163.354839 M 155.354839 216.100619 H 163.354839" stroke-dasharray="none"/>
-<circle cx="159.354839" cy="216.308375" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 8, x=8.0: 343.132 ns [341.19, 344.925] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 159.354839 216.308375 L 265.161290 179.156577" fill="none"/>
-<path d="M 265.161290 179.269817 V 179.055712 M 261.161290 179.269817 H 269.161290 M 261.161290 179.055712 H 269.161290" stroke-dasharray="none"/>
-<circle cx="265.161290" cy="179.156577" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 16, x=16.0: 871.515 ns [869.043, 873.723] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 265.161290 179.156577 L 476.774194 131.282909" fill="none"/>
-<path d="M 476.774194 131.359277 V 131.190182 M 472.774194 131.359277 H 480.774194 M 472.774194 131.190182 H 480.774194" stroke-dasharray="none"/>
-<circle cx="476.774194" cy="131.282909" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 32, x=32.0: 2896.79 ns [2891.24, 2903.54] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
-<path d="M 476.774194 131.282909 L 900.000000 71.474609" fill="none"/>
-<path d="M 900.000000 71.592428 V 71.319820 M 896.000000 71.592428 H 904.000000 M 896.000000 71.319820 H 904.000000" stroke-dasharray="none"/>
-<circle cx="900.000000" cy="71.474609" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 64, x=64.0: 12989.7 ns [12951.4, 13040.3] (0.95 confidence); baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</title></circle>
+<path d="M 80.000000 256.009143 V 255.667616 M 76.000000 256.009143 H 84.000000 M 76.000000 255.667616 H 84.000000" stroke-dasharray="none"/>
+<circle cx="80.000000" cy="255.797753" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 2, x=2.0: 128.125 ns [127.445, 128.545] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 80.000000 255.797753 L 93.225806 247.841481" fill="none"/>
+<path d="M 93.225806 247.931928 V 247.704190 M 89.225806 247.931928 H 97.225806 M 89.225806 247.704190 H 97.225806" stroke-dasharray="none"/>
+<circle cx="93.225806" cy="247.841481" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 3, x=3.0: 156.551 ns [156.195, 157.093] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 93.225806 247.841481 L 106.451613 241.623679" fill="none"/>
+<path d="M 106.451613 241.734416 V 241.534205 M 102.451613 241.734416 H 110.451613 M 102.451613 241.534205 H 110.451613" stroke-dasharray="none"/>
+<circle cx="106.451613" cy="241.623679" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 4, x=4.0: 183.09 ns [182.58, 183.503] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 106.451613 241.623679 L 119.677419 229.126270" fill="none"/>
+<path d="M 119.677419 229.185555 V 229.059032 M 115.677419 229.185555 H 123.677419 M 115.677419 229.059032 H 123.677419" stroke-dasharray="none"/>
+<circle cx="119.677419" cy="229.126270" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 5, x=5.0: 250.816 ns [250.442, 251.241] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 119.677419 229.126270 L 159.354839 216.758049" fill="none"/>
+<path d="M 159.354839 216.965506 V 216.608633 M 155.354839 216.965506 H 163.354839 M 155.354839 216.608633 H 163.354839" stroke-dasharray="none"/>
+<circle cx="159.354839" cy="216.758049" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 8, x=8.0: 342.479 ns [340.695, 343.771] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 159.354839 216.758049 L 265.161290 178.361371" fill="none"/>
+<path d="M 265.161290 178.526387 V 178.263412 M 261.161290 178.526387 H 269.161290 M 261.161290 178.263412 H 269.161290" stroke-dasharray="none"/>
+<circle cx="265.161290" cy="178.361371" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 16, x=16.0: 900.746 ns [897.01, 902.971] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 265.161290 178.361371 L 476.774194 130.603063" fill="none"/>
+<path d="M 476.774194 130.651435 V 130.548881 M 472.774194 130.651435 H 480.774194 M 472.774194 130.548881 H 480.774194" stroke-dasharray="none"/>
+<circle cx="476.774194" cy="130.603063" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 32, x=32.0: 2998.91 ns [2995.26, 3003.01] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<path d="M 476.774194 130.603063 L 900.000000 72.856592" fill="none"/>
+<path d="M 900.000000 72.892471 V 72.727770 M 896.000000 72.892471 H 904.000000 M 896.000000 72.727770 H 904.000000" stroke-dasharray="none"/>
+<circle cx="900.000000" cy="72.856592" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 64, x=64.0: 12840.2 ns [12828.6, 12881.9] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
 <path d="M 55 584 H 72" fill="none"/>
-<text x="80" y="589" stroke="none">faer 0.24.4 — baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7</text>
+<text x="80" y="589" stroke="none">faer 0.24.4 — baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</text>
 <text x="80" y="606" stroke="none">8 selected; 0 unavailable rows</text>
 </g>
 <text x="80" y="628">Statistic: median; recorded marginal timing intervals; no significance test.</text>
-<text x="80" y="645" font-size="11">Run: 26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413</text>
+<text x="80" y="645" font-size="11">Run: 5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652</text>
 </g>
 </svg>

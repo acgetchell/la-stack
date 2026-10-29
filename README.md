@@ -1,21 +1,20 @@
 # la-stack
 
+<!-- Keep the three compact badge rows; allow their explicit line breaks. -->
+<!-- markdownlint-disable MD033 -->
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18158926.svg)](https://doi.org/10.5281/zenodo.18158926)
 [![Crates.io](https://badgen.net/crates/v/la-stack)](https://crates.io/crates/la-stack)
 [![Downloads](https://badgen.net/crates/d/la-stack)](https://crates.io/crates/la-stack)
 [![License](https://badgen.net/github/license/acgetchell/la-stack)](https://github.com/acgetchell/la-stack/blob/main/LICENSE)
-[![Docs.rs](https://docs.rs/la-stack/badge.svg)](https://docs.rs/la-stack)
-[![CI](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/acgetchell/la-stack/actions/workflows/ci.yml)
+[![Docs.rs](https://docs.rs/la-stack/badge.svg)](https://docs.rs/la-stack)<br>
+[![CI][ci-badge]][ci-workflow]
+[![Clippy][clippy-badge]][clippy-workflow]
+[![codecov](https://codecov.io/gh/acgetchell/la-stack/graph/badge.svg?token=4eKXa5QjuZ)](https://codecov.io/gh/acgetchell/la-stack)<br>
 [![CodeQL][codeql-badge]][codeql-workflow]
-[![zizmor][zizmor-badge]][zizmor-workflow]
-[![rust-clippy analyze][clippy-badge]][clippy-workflow]
-[![Repository Rule SARIF][semgrep-badge]][semgrep-workflow]
-[![Coverage workflow][coverage-badge]][coverage-workflow]
-[![codecov](https://codecov.io/gh/acgetchell/la-stack/graph/badge.svg?token=4eKXa5QjuZ)](https://codecov.io/gh/acgetchell/la-stack)
 [![Audit dependencies][audit-badge]][audit-workflow]
-[![Benchmarks][benchmarks-badge]][benchmarks-workflow]
-[![Release Benchmarks][release-benchmarks-badge]][release-benchmarks-workflow]
-[![Dependabot approval and auto-merge][dependabot-badge]][dependabot-workflow]
+[![zizmor][zizmor-badge]][zizmor-workflow]
+[![Repository Rule SARIF][semgrep-badge]][semgrep-workflow]
+<!-- markdownlint-enable MD033 -->
 
 ![la-stack](https://raw.githubusercontent.com/acgetchell/la-stack/main/docs/assets/la-stack.jpg)
 
@@ -55,10 +54,13 @@ while keeping the API intentionally small and explicit.
 
 ## 📐 Introduction
 
-`la-stack` provides a handful of const-generic, stack-backed building blocks:
+`la-stack` provides const-generic linear algebra and focused exact-arithmetic
+kernels. Its floating-point core uses stack-backed storage; arbitrary-precision
+values and sparse polynomials use heap allocation.
 
 - `column_basis(&[[f64; C]; R], tolerance)` for rectangular column selection
-  with explicit absolute tolerance and a provisional numerical rank
+  with explicit absolute tolerance and a provisional numerical rank;
+  exact certification of the selected basis remains the caller's responsibility
 - `gram_matrix(&[Vector<N>; M])` for allocation-free `Matrix<M>` construction
   from pairwise vector inner products, with bit-for-bit symmetry. Gram matrices
   encode lengths and angles and support simplex/facet volume calculations; see
@@ -68,7 +70,9 @@ while keeping the API intentionally small and explicit.
   independence requires independent proof from the caller; successful
   floating-point factorization is not a certificate.
 - `Interval` and `IntervalMatrix<const D: usize>` for outward-rounded,
-  proof-bearing determinant filters through D=7
+  proof-bearing arithmetic, including division and reciprocals for zero-free
+  divisors, linear solution enclosures, and determinant filters through D=7.
+  Inconclusive solves and finite-range failures require caller fallback
 - `Ldlt<const D: usize>` for no-pivot factorization intended for exactly
   symmetric positive-definite matrices (solve + det; typed pivot diagnostics)
 - `Lu<const D: usize>` for LU factorization with partial pivoting (solve + det)
@@ -78,6 +82,9 @@ while keeping the API intentionally small and explicit.
   and the checked `rational_dot` slice adapter preserve exact products at any length
 - `ScalarWithErrorBound` for proof-bearing fixed-vector dot products and
   affine differences over finite `f64` inputs
+- `SparsePolynomial` and `polynomial_determinant` for exact sparse rational
+  polynomial determinants through order eight behind `"exact"`, with explicit
+  work budgets and caller-owned perturbation encodings
 - `Vector<const D: usize>` for fixed-length `f64` vectors backed by `[f64; D]`
 - `VectorAngle::angle` on coordinate slices and `Vector::angle` for allocation-free,
   unsigned vector angles with arbitrary finite nonzero magnitudes
@@ -92,6 +99,14 @@ while keeping the API intentionally small and explicit.
   from rounded binary64 operations
 - You need exact determinants, exact determinant signs, or exact linear solves
   for fixed-size systems
+- You need exact dot products of rational vectors or borrowed slices without
+  an intermediate `f64` conversion
+- You need exact sparse polynomial determinants through order eight, with
+  explicit work budgets and caller-defined perturbation encodings
+- You need interval solution enclosures for small fixed-size linear systems,
+  with explicit inconclusive outcomes for fallback
+- You need provisional column selection for a rectangular matrix before
+  independently certifying the selected basis
 - You prefer a default build with no runtime dependencies
 - You want explicit LU / LDLT / determinant APIs rather than a broad algebra toolkit
 - Your matrices and vectors have small, fixed dimensions known at compile time
@@ -104,7 +119,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-la-stack = "0.5.1"
+la-stack = "0.5.2"
 ```
 
 ### Solve a 5×5 system
@@ -173,9 +188,10 @@ The public point-value scalar model deliberately has two input domains:
 - finite `f64` through `Matrix<D>` and `Vector<D>` for floating-point work.
 
 `Interval` is a separate bounded-value layer over finite `f64` endpoints. It
-encloses exact-real values during a small set of outward-rounded operations and
-feeds `IntervalMatrix<D>` determinant proofs; it does not make `Matrix` generic
-over alternate scalars or provide a general interval package.
+encloses exact-real values during a small set of outward-rounded operations,
+including division by intervals that exclude zero, and feeds `IntervalMatrix<D>`
+determinant proofs and linear solution enclosures. It does not make `Matrix`
+generic over alternate scalars or provide a general interval package.
 
 With `exact`, `SparsePolynomial` supplies rational coefficients keyed by `u128`
 exponents for bounded polynomial determinants through order eight. Its first
@@ -183,9 +199,9 @@ nonzero term uses increasing exponent order; callers own perturbation encoding
 and work limits. This focused kernel retains cancellation exactly.
 
 This is not a generic scalar-parameterized API. Exact support intentionally
-covers the robustness-sensitive operations that require it: determinant sign,
-determinant value, and linear solve, followed by explicit strict or rounded
-conversion when an `f64` result is required. It does not promise a
+covers determinant signs and values, linear solves, rational dot products,
+and bounded sparse polynomial determinants. Rational results support explicit
+strict or rounded conversion when an `f64` result is required. It does not promise a
 `BigRational` counterpart for every floating-point helper or factorization.
 
 Lower-precision `f32` / `f16` throughput-oriented workloads are outside the
@@ -201,12 +217,14 @@ to combine operations.
 | Capability | Main entry points |
 |---|---|
 | Certified dot, affine-difference, and determinant estimates | [`ScalarWithErrorBound`][api-scalar-bound], [`DeterminantWithErrorBound`][api-det-bound] |
-| Exact rational dot products¹ | [`RationalVector::dot`][api-rational-dot], [`rational_dot`][api-rational-dot-slice] |
+| Exact rational dot products for fixed vectors or runtime-length slices¹ | [`RationalVector::dot`][api-rational-dot], [`rational_dot`][api-rational-dot-slice] |
 | Exact signs, determinants, solves, and output conversion¹ | [Exact arithmetic examples][api-exact] |
-| Exact sparse polynomial determinants¹ | [`polynomial_determinant`][api-polynomial], [`SparsePolynomial`][api-sparse-polynomial] |
+| Exact sparse polynomial determinants through order eight¹ | [`polynomial_determinant`][api-polynomial], [`SparsePolynomial`][api-sparse-polynomial], [`PolynomialDeterminantBudget`][api-polynomial-budget] |
 | Floating-point determinants and solves | [`Matrix<D>`][api-matrix], [`Lu<D>`][api-lu], [`Ldlt<D>`][api-ldlt] |
 | Gram matrix construction | [`gram_matrix`][api-gram] |
-| Interval expressions, determinant signs, and solution enclosures | [`Interval`][api-interval], [`IntervalMatrix<D>`][api-interval-matrix] |
+| Interval arithmetic, division, and reciprocals | [`Interval`][api-interval], [`Interval::try_div`][api-interval-division], [`Interval::try_recip`][api-interval-reciprocal] |
+| Interval determinant signs | [`IntervalMatrix<D>`][api-interval-matrix] |
+| Interval linear solution enclosures | [`IntervalMatrix::solve`][api-interval-solve] |
 | Provisional rectangular column basis and numerical rank | [`column_basis`][api-column-basis] |
 | Runtime selection of a const-generic matrix dimension | [Dimension dispatch examples][api-dispatch] |
 | Unsigned vector angles in radians | [`VectorAngle::angle`][api-angle], [`Vector::angle`][api-vector-angle] |
@@ -220,6 +238,10 @@ for the full contracts.
 
 ¹ Requires `features = ["exact"]`.
 
+For tested usage examples, see [exact dot products and column selection][guide-exact-reductions],
+[interval division and solution enclosures][guide-intervals], and the runnable
+[polynomial determinant example][example-polynomial].
+
 [api-reference]: https://docs.rs/la-stack/latest/la_stack/
 [api-guide]: https://docs.rs/la-stack/latest/la_stack/guide/index.html
 [api-vector]: https://docs.rs/la-stack/latest/la_stack/struct.Vector.html
@@ -232,12 +254,16 @@ for the full contracts.
 [api-scalar-bound]: https://docs.rs/la-stack/latest/la_stack/struct.ScalarWithErrorBound.html
 [api-det-bound]: https://docs.rs/la-stack/latest/la_stack/struct.DeterminantWithErrorBound.html
 [api-interval]: https://docs.rs/la-stack/latest/la_stack/struct.Interval.html
+[api-interval-division]: https://docs.rs/la-stack/latest/la_stack/struct.Interval.html#method.try_div
+[api-interval-reciprocal]: https://docs.rs/la-stack/latest/la_stack/struct.Interval.html#method.try_recip
 [api-interval-matrix]: https://docs.rs/la-stack/latest/la_stack/struct.IntervalMatrix.html
+[api-interval-solve]: https://docs.rs/la-stack/latest/la_stack/struct.IntervalMatrix.html#method.solve
 [api-exact]: https://docs.rs/la-stack/latest/la_stack/guide/exact/index.html
 [api-dispatch]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#dimension-dispatch
 [api-tolerance]: https://docs.rs/la-stack/latest/la_stack/struct.Tolerance.html
 [api-error]: https://docs.rs/la-stack/latest/la_stack/enum.LaError.html
 [api-contracts]: https://docs.rs/la-stack/latest/la_stack/guide/index.html#storage-access-and-errors
+[guide-exact-reductions]: https://docs.rs/la-stack/latest/la_stack/guide/exact/index.html#exact-reductions-and-provisional-column-selection
 
 ## ✨ Features
 
@@ -270,7 +296,7 @@ Enable exact determinant signs, determinant values, and solves:
 
 ```toml
 [dependencies]
-la-stack = { version = "0.5.1", features = ["exact"] }
+la-stack = { version = "0.5.2", features = ["exact"] }
 ```
 
 `Matrix` / `Vector` exact methods preserve stored `f64` values;
@@ -471,39 +497,39 @@ cargo run --locked --example vector_angles
 
 <!-- BENCHMARKS:BEGIN -->
 
-![LU solve (factor + solve): median time vs dimension](https://raw.githubusercontent.com/acgetchell/la-stack/v0.5.1/docs/assets/bench/vs_linalg_lu_solve_median_log.svg)
+![LU solve (factor + solve): median time vs dimension](https://raw.githubusercontent.com/acgetchell/la-stack/v0.5.2/docs/assets/bench/vs_linalg_lu_solve_median_log.svg)
 
-Run: `26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413`. Statistic: median. Unit: ns. Confidence level: 95%.
+Run: `5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652`. Statistic: median. Unit: ns. Confidence level: 95%.
 
-- la-stack v0.5.1: current phase, v0.5.1, revision eb6f071607c058527f6cb6a9bf86bb307c93ab02.
-- nalgebra 0.35.0: baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7.
-- faer 0.24.4: baseline phase, v0.5.0, revision 5d8f5b4ea1c0bd708cd748b86f426960b7597ab7.
+- la-stack v0.5.2: current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41.
+- nalgebra 0.35.0: baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e.
+- faer 0.24.4: baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e.
 
-| Dimension | la-stack v0.5.1 | nalgebra 0.35.0 | faer 0.24.4 | Speedup vs nalgebra | Speedup vs faer |
+| Dimension | la-stack v0.5.2 | nalgebra 0.35.0 | faer 0.24.4 | Speedup vs nalgebra | Speedup vs faer |
 | --- | --- | --- | --- | --- | --- |
-| 2 | 2.08604<br>[2.07011, 2.10324] | 4.67756<br>[4.66983, 4.68294] | 134.191<br>[133.728, 134.733] | 2.24232× | 64.3282× |
-| 3 | 10.1267<br>[10.0964, 10.1596] | 32.6591<br>[32.5867, 32.7761] | 154.854<br>[154.671, 155.247] | 3.22506× | 15.2917× |
-| 4 | 22.3772<br>[22.2802, 22.459] | 53.0406<br>[52.9385, 53.1043] | 180.446<br>[179.949, 180.87] | 2.37029× | 8.06384× |
-| 5 | 48.8084<br>[48.777, 48.8493] | 73.0617<br>[72.815, 73.8988] | 257.861<br>[256.801, 259.666] | 1.49691× | 5.28314× |
-| 8 | 133.645<br>[133.022, 134.192] | 165.323<br>[164.976, 165.544] | 343.132<br>[341.19, 344.925] | 1.23703× | 2.56749× |
-| 16 | 664.211<br>[662.337, 667.556] | 592.628<br>[590.988, 594.368] | 871.515<br>[869.043, 873.723] | 0.892228× | 1.31211× |
-| 32 | 2808.97<br>[2803.87, 2818.34] | 2690.31<br>[2670.38, 2705.41] | 2896.79<br>[2891.24, 2903.54] | 0.957757× | 1.03126× |
-| 64 | 17282<br>[17249.2, 17323.3] | 14432<br>[14407.6, 14464.9] | 12989.7<br>[12951.4, 13040.3] | 0.835087× | 0.751634× |
+| 2 | 2.06256<br>[2.04953, 2.09431] | 4.52663<br>[4.51758, 4.53267] | 128.125<br>[127.445, 128.545] | 2.19467× | 62.1194× |
+| 3 | 9.98278<br>[9.96279, 10.0083] | 32.5058<br>[32.3949, 32.6237] | 156.551<br>[156.195, 157.093] | 3.25619× | 15.6821× |
+| 4 | 23.7355<br>[23.6905, 23.7801] | 52.8361<br>[52.7137, 52.9963] | 183.09<br>[182.58, 183.503] | 2.22603× | 7.71373× |
+| 5 | 47.0332<br>[46.9411, 47.2694] | 74.3705<br>[74.1427, 74.7764] | 250.816<br>[250.442, 251.241] | 1.58123× | 5.33275× |
+| 8 | 132.096<br>[131.87, 132.513] | 166.8<br>[166.498, 167.23] | 342.479<br>[340.695, 343.771] | 1.26272× | 2.59266× |
+| 16 | 631.9<br>[628.777, 638.18] | 589.967<br>[588.536, 591.405] | 900.746<br>[897.01, 902.971] | 0.933639× | 1.42546× |
+| 32 | 2772.06<br>[2766.99, 2779.6] | 2499.64<br>[2493.29, 2506.42] | 2998.91<br>[2995.26, 3003.01] | 0.901726× | 1.08183× |
+| 64 | 17505.6<br>[17263.4, 17749.8] | 14495.6<br>[14481, 14519.4] | 12840.2<br>[12828.6, 12881.9] | 0.828057× | 0.733493× |
 
 Intervals are recorded marginal timing intervals; ratios are point estimates, with no ratio intervals or significance claims.
 Ratio is numerator time / denominator time; greater than one means less denominator time.
 
-- Speedup vs nalgebra: ratio; numerator = nalgebra 0.35.0; denominator = la-stack v0.5.1.
-- Speedup vs faer: ratio; numerator = faer 0.24.4; denominator = la-stack v0.5.1.
+- Speedup vs nalgebra: ratio; numerator = nalgebra 0.35.0; denominator = la-stack v0.5.2.
+- Speedup vs faer: ratio; numerator = faer 0.24.4; denominator = la-stack v0.5.2.
 
 Selection coverage:
 
-- la-stack v0.5.1: 8 selected; 0 unavailable rows; 527 phase cases omitted. Complete evidence is retained independently.
-- nalgebra 0.35.0: 8 selected; 0 unavailable rows; 879 phase cases omitted. Complete evidence is retained independently.
-- faer 0.24.4: 8 selected; 0 unavailable rows; 879 phase cases omitted. Complete evidence is retained independently.
-- [Complete run evidence](https://github.com/acgetchell/la-stack/blob/v0.5.1/docs/performance-runs/runs/26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413/run.json)
-- [Evidence envelope](https://github.com/acgetchell/la-stack/blob/v0.5.1/docs/performance-runs/runs/26cb584886988dc4a95c717e49f27147bfc68a3edf9b495e944ccf751d0cd413/evidence.json)
-- [Selected timings CSV](https://github.com/acgetchell/la-stack/blob/v0.5.1/docs/assets/bench/vs_linalg_lu_solve_median_log.csv)
+- la-stack v0.5.2: 8 selected; 0 unavailable rows; 1395 phase cases omitted. Complete evidence is retained independently.
+- nalgebra 0.35.0: 8 selected; 0 unavailable rows; 1262 phase cases omitted. Complete evidence is retained independently.
+- faer 0.24.4: 8 selected; 0 unavailable rows; 1262 phase cases omitted. Complete evidence is retained independently.
+- [Complete run evidence](https://github.com/acgetchell/la-stack/blob/v0.5.2/docs/performance-runs/runs/5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652/run.json)
+- [Evidence envelope](https://github.com/acgetchell/la-stack/blob/v0.5.2/docs/performance-runs/runs/5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652/evidence.json)
+- [Selected timings CSV](https://github.com/acgetchell/la-stack/blob/v0.5.2/docs/assets/bench/vs_linalg_lu_solve_median_log.csv)
 
 <!-- BENCHMARKS:END -->
 
@@ -578,23 +604,20 @@ for the repository's AI-assisted development note.
 
 BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/main/LICENSE).
 
-[audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg
+[audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg?branch=main
 [api-column-basis]: https://docs.rs/la-stack/latest/la_stack/fn.column_basis.html
 [api-polynomial]: https://docs.rs/la-stack/latest/la_stack/fn.polynomial_determinant.html
+[api-polynomial-budget]: https://docs.rs/la-stack/latest/la_stack/struct.PolynomialDeterminantBudget.html
 [api-sparse-polynomial]: https://docs.rs/la-stack/latest/la_stack/struct.SparsePolynomial.html
 [api-rational-dot]: https://docs.rs/la-stack/latest/la_stack/struct.RationalVector.html#method.dot
 [api-rational-dot-slice]: https://docs.rs/la-stack/latest/la_stack/fn.rational_dot.html
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml
-[benchmarks-badge]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml/badge.svg
-[benchmarks-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml
-[clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg
+[ci-badge]: https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg?branch=main
+[ci-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/ci.yml
+[clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg?branch=main
 [clippy-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml
-[codeql-badge]: https://github.com/acgetchell/la-stack/actions/workflows/codeql.yml/badge.svg
+[codeql-badge]: https://github.com/acgetchell/la-stack/actions/workflows/codeql.yml/badge.svg?branch=main
 [codeql-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/codeql.yml
-[coverage-badge]: https://github.com/acgetchell/la-stack/actions/workflows/codecov.yml/badge.svg
-[coverage-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/codecov.yml
-[dependabot-badge]: https://github.com/acgetchell/la-stack/actions/workflows/dependabot-auto-merge.yml/badge.svg
-[dependabot-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/dependabot-auto-merge.yml
 [refs-det-bound]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#absolute-error-bound-for-closed-form-determinants
 [refs-exact-sign]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-determinant-sign-adaptive-precision-integer-arithmetic
 [refs-exact-solve]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#exact-linear-system-solve-hybrid-bareiss--bigrational
@@ -603,9 +626,7 @@ BSD 3-Clause License. See [LICENSE](https://github.com/acgetchell/la-stack/blob/
 [refs-ldlt]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ldlᵀ-factorization-exactly-symmetric-positive-definite-inputs
 [refs-lu]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#lu-decomposition-gaussian-elimination-with-partial-pivoting
 [refs-reductions]: https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#certified-fixed-vector-reductions
-[release-benchmarks-badge]: https://github.com/acgetchell/la-stack/actions/workflows/release-benchmarks.yml/badge.svg
-[release-benchmarks-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/release-benchmarks.yml
-[semgrep-badge]: https://github.com/acgetchell/la-stack/actions/workflows/semgrep-sarif.yml/badge.svg
+[semgrep-badge]: https://github.com/acgetchell/la-stack/actions/workflows/semgrep-sarif.yml/badge.svg?branch=main
 [semgrep-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/semgrep-sarif.yml
-[zizmor-badge]: https://github.com/acgetchell/la-stack/actions/workflows/zizmor.yml/badge.svg
+[zizmor-badge]: https://github.com/acgetchell/la-stack/actions/workflows/zizmor.yml/badge.svg?branch=main
 [zizmor-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/zizmor.yml

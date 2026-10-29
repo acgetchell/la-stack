@@ -5,6 +5,158 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-10-29
+
+### Merged Pull Requests
+
+- Add bounded polynomial determinants and release benchmarks [#318](https://github.com/acgetchell/la-stack/pull/318)
+- Add outward-rounded interval division and solve enclosures [#315](https://github.com/acgetchell/la-stack/pull/315)
+- Add exact dot products and rectangular column selection [#314](https://github.com/acgetchell/la-stack/pull/314)
+- Export verified CI evidence through shared tooling [#312](https://github.com/acgetchell/la-stack/pull/312)
+- Bump the github-actions group with 3 updates [#310](https://github.com/acgetchell/la-stack/pull/310)
+- Unify Python tooling and move consumer tests [#309](https://github.com/acgetchell/la-stack/pull/309)
+
+### Added
+
+- Add exact dot products and rectangular column selection [#314](https://github.com/acgetchell/la-stack/pull/314)
+  [`979041e`](https://github.com/acgetchell/la-stack/commit/979041ef2769301f11b49b748d4553d9f79b2d80)
+
+#### feat: add exact dot products and rectangular column selection
+
+- Add borrowed RationalVector dot products and a shape-checked rational_dot
+  slice adapter without a runtime dimension cap or binary64 intermediates.
+- Select rectangular column bases with explicit absolute tolerances,
+  deterministic partial pivoting, and provisional numerical rank.
+- Document exact certification boundaries and Delaunay workflows through 6D,
+  with representative benchmarks and independent rational identities.
+- Validate with 1,078 Rust tests, 281 Python tests, both doctest configurations,
+  and 109 diagnostic benchmark cases; complete all CI validation stages.
+- Add outward-rounded interval division and solve enclosures [#315](https://github.com/acgetchell/la-stack/pull/315)
+  [`1328f9d`](https://github.com/acgetchell/la-stack/commit/1328f9d8f852a9ff5fe9d1cc7a790cc22a90b32b)
+
+  - Add const reciprocal and direct division bounds for zero-free intervals,
+    including subnormal quotients and typed finite-range failures.
+  - Enclose fixed-dimension linear solutions with row pivoting and explicit
+    inconclusive outcomes that preserve the caller's robust fallback.
+  - Document the all-admitted-systems contract and add diagnostic solve corpora
+    without changing the retained release benchmark catalog.
+  - Refresh rustix and the contributor uv and cargo-nextest pins.
+- Add bounded polynomial determinants and release benchmarks [#318](https://github.com/acgetchell/la-stack/pull/318)
+  [`d87b10b`](https://github.com/acgetchell/la-stack/commit/d87b10b7ebfce5fa3d499681f21b53dc72266c36)
+
+  - Add canonical sparse rational polynomials and exact determinant evaluation
+    through order eight with caller-selected work budgets and typed failures.
+  - Capture all 1,403 public benchmark cases in parallel default/exact release
+    suites, then verify and archive their raw samples and original provenance.
+  - Adopt research-repo-tools v0.2.4 for shared updater and release commands;
+    keep Semgrep setup and fixture checks in the standard Python 3.15
+    environment until the tracked v0.2.5 cleanup.
+  - Validate with the full Rust CI pass, final check gate, and 303 Python
+    consumer tests after shared-package adoption.
+
+### Changed
+
+- Export verified CI evidence through shared tooling [#312](https://github.com/acgetchell/la-stack/pull/312)
+  [`7320d6c`](https://github.com/acgetchell/la-stack/commit/7320d6ce1915239678066a0fa84452b72d4388e4)
+
+#### refactor(release): export verified CI evidence through shared tooling
+
+- Append deterministic identity JSON with research-repo-tools v0.2.3 so
+  normal and quiet Just execution preserve the same release evidence.
+- Reject missing output destinations and export failures while retaining
+  signed evidence checks and exact identity revalidation after approval.
+- Forward verifier options through Just; pinned verification now uses
+  `just release-evidence --identity JSON` instead of a positional identity.
+- Validate with `just ci` on macOS: 269 Python tests, 1,031 Rust tests,
+  doctests, examples, benchmark compilation, and repository checks pass.
+
+#### fix(tests): preserve Windows release fixture paths and diagnostics
+
+- Pass the fixture import path through the environment instead of embedding
+  Windows backslashes in Python source across Bash and native argv parsing.
+- Cover backslashes, apostrophes, and CRLF diagnostics through the real Just
+  boundary while retaining exact LF command-file assertions.
+- Require the verifier's actual result and rejection reason, including in
+  quiet mode, so bootstrap failures cannot satisfy negative test cases.
+- Document portable subprocess fixtures and validate with 271 Python tests,
+  strict types, Markdown, spelling, and documentation checks on macOS.
+- Adopt shared release orchestration [`dffae7a`](https://github.com/acgetchell/la-stack/commit/dffae7ad89e308d47719f29766f50671f7e67f76)
+
+  Replace the three release adapters with published research-repo-tools 0.2.4 commands and declarative policies. Run evidence and asset commands in isolated
+  Python outside the observed checkout, preserving frozen post-approval revalidation before OIDC.
+
+  Make performance release consume saved preparation; tag fetching is explicit and README publication remains independently retryable. Preparation positional
+  tags move to the shared declaration, and evidence --identity JSON becomes --expected PATH. Retain native policy, workflow transport and scientific publication
+  regressions.
+
+### Dependencies
+
+- Bump the github-actions group with 3 updates [#310](https://github.com/acgetchell/la-stack/pull/310)
+  [`110b7e5`](https://github.com/acgetchell/la-stack/commit/110b7e5fba4a38fb856ac4509e8b094ad19442af)
+
+  Bumps the github-actions group with 3 updates: [github/codeql-action/upload-sarif](https://github.com/github/codeql-action),
+  [github/codeql-action/init](https://github.com/github/codeql-action) and [github/codeql-action/analyze](https://github.com/github/codeql-action).
+
+  Updates `github/codeql-action/upload-sarif` from 4.38.3 to 4.39.0
+
+  - [Release notes](https://github.com/github/codeql-action/releases)
+  - [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+  - [Commits](https://github.com/github/codeql-action/compare/24c54180a607b1449ed407dd24f251e4e9147c8d...6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee)
+
+  Updates `github/codeql-action/init` from 4.38.3 to 4.39.0
+  - [Release notes](https://github.com/github/codeql-action/releases)
+  - [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+  - [Commits](https://github.com/github/codeql-action/compare/24c54180a607b1449ed407dd24f251e4e9147c8d...6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee)
+
+  Updates `github/codeql-action/analyze` from 4.38.3 to 4.39.0
+  - [Release notes](https://github.com/github/codeql-action/releases)
+  - [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+  - [Commits](https://github.com/github/codeql-action/compare/24c54180a607b1449ed407dd24f251e4e9147c8d...6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee)
+
+### Fixed
+
+- Preserve CI evidence for crates.io publishing [`2702cb7`](https://github.com/acgetchell/la-stack/commit/2702cb7a27e0d3ec72551a042274b5849b111ada)
+
+  - Capture release-evidence JSON without suppressing stdout.
+  - Reject empty evidence identities before exporting job outputs.
+  - Update ty to 0.0.91 and Semgrep's pycparser resolution to 3.12.
+- Patch Semgrep telemetry dependencies and update Ruff [`988dfc9`](https://github.com/acgetchell/la-stack/commit/988dfc92070b9f28a52a736a61198e19b0232e22)
+
+  - Resolve GHSA-xcq7-p3pf-p88h by requiring OpenTelemetry API 1.45.1.
+  - Align the telemetry SDK, OTLP exporter, and instrumentation releases.
+  - Update Ruff from 0.17.1 to 0.17.2.
+
+### Maintenance
+
+- Unify Python tooling and move consumer tests [#309](https://github.com/acgetchell/la-stack/pull/309)
+  [`8769cc4`](https://github.com/acgetchell/la-stack/commit/8769cc42831486d16175dbb7d660a8de05861133)
+
+#### build: unify Python tooling and move consumer tests
+
+- Run Semgrep in the root Python 3.15 environment with native wheels,
+  patched dependency overrides, and the Linux stack-limit workaround.
+- Inherit pytest, Ruff, and Ty versions from research-repo-tools and
+  place Python consumer tests under tests/tooling with preserved scans.
+- Align CI, audits, dependency automation, and contributor guidance;
+  refresh cc and dprint and clarify scientific regression requirements.
+
+#### fix: make Semgrep consumer scans portable
+
+- Cap stack limits in the Linux scanner child for direct pytest runs.
+- Compare native report paths consistently across Windows and Unix.
+
+### Performance
+
+- Focus release benchmark acquisition [`0d15f45`](https://github.com/acgetchell/la-stack/commit/0d15f45f7a2580626126f39843dfc8cbd7bf8126)
+
+  - Separate full public la-stack coverage from the 16 local peer LU-and-solve
+    cases, and omit peer timings from hosted release acquisition.
+  - Cover construction, storage, angles, Gram matrices, interval filters,
+    certified linear forms, and exact conversions with dedicated native cases.
+  - Keep retained LU publication retryable, preserve historical evidence, and
+    expose case budgets and elapsed runtime without reducing sampling.
+  - Validate with just ci and all 1,270 selected native smoke checks.
+
 ## [0.5.1] - 2026-10-22
 
 ### Merged Pull Requests
@@ -625,5 +777,6 @@ Older releases are archived by minor series:
 - [0.2.x](docs/archives/changelog/0.2.md)
 - [0.1.x](docs/archives/changelog/0.1.md)
 
+[0.5.2]: https://github.com/acgetchell/la-stack/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/acgetchell/la-stack/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/acgetchell/la-stack/compare/v0.4.6...v0.5.0

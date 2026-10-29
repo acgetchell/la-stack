@@ -14,6 +14,7 @@
   - [Exact-to-binary64 conversion](#exact-to-binary64-conversion)
   - [f64 → integer decomposition](#f64--integer-decomposition-decompose_proven_finite_f64)
   - [Gram matrices and geometric measures](#gram-matrices-and-geometric-measures)
+  - [Interval arithmetic, division, and reciprocals](#interval-arithmetic-division-and-reciprocals)
   - [Interval linear solves](#interval-linear-solves)
   - [LDLᵀ factorization](#ldlt-factorization)
   - [LU decomposition](#lu-decomposition-gaussian-elimination-with-partial-pivoting)
@@ -186,6 +187,35 @@ This applies to triangles embedded in 3D and to higher-dimensional facets.
 it does not certify rank, positive definiteness, or volume accuracy. See \[[9], [10], [11], [12]\]
 for floating-point and conditioning background.
 
+### Interval arithmetic, division, and reciprocals
+
+`Interval` uses IEEE-754 round-to-nearest binary64 operations plus adjacent
+representable values to enclose exact-real addition, subtraction,
+multiplication, and square results \[[9], [10], [11]\]. Addition and subtraction
+use a magnitude-ordered `FastTwoSum` residual \[[17]\]. This ordering prevents
+internal overflow when the rounded sum is finite, including opposite-sign inputs
+at the maximum finite magnitude. Multiplication uses `TwoProductFMA` \[[18]\]
+when its residual is representable, with an exact integer-significand comparison
+for the underflow-sensitive range. The
+[threshold proof](docs/mathematical_basis.md#scalar-arithmetic-and-finite-bounds)
+explains that dispatch, including gradual underflow to zero.
+Results whose exact range cannot fit
+between finite binary64 endpoints return a typed range failure rather than
+storing infinity. Moore, Kearfott, and Cloud \[[20]\], Chapters 2 and 4, describe
+interval operations and their inclusion properties. For the broader standardized
+interval arithmetic model, see \[[14]\]; this crate does not claim IEEE 1788
+conformance.
+
+`Interval::try_div()` and `Interval::try_recip()` require a zero-free divisor.
+Division encloses the endpoint quotients directly; reciprocal uses the same
+kernel with numerator one. The exact comparison of `|x|` with `|q| |y|` uses
+the binary64 representation \[[9]\] to select an outward endpoint without a
+floating residual or a representable reciprocal intermediate. This integer
+comparison is the crate's implementation of outward rounding, not an application
+of `TwoProductFMA` to division. The local
+[division and reciprocal argument](docs/mathematical_basis.md#division-and-reciprocals)
+documents endpoint selection, subnormal results, and finite-range failures.
+
 ### Interval linear solves
 
 `IntervalMatrix::solve()` applies interval Gaussian elimination and back
@@ -194,8 +224,9 @@ Moore, Kearfott, and Cloud \[[20]\] describe interval inclusion arithmetic and
 linear systems with uncertain data. The local
 [enclosure proof](docs/mathematical_basis.md#interval-linear-solves) states the
 finite-endpoint contract, zero-free pivot condition, and conditioning limits.
-Division's exact integer comparison uses the binary64 model \[[9]\], and does
-not require a floating residual or a representable reciprocal intermediate.
+Its scalar operations use the
+[interval arithmetic and division primitives](#interval-arithmetic-division-and-reciprocals)
+described above.
 
 <a name="ldlt-factorization"></a>
 
@@ -223,21 +254,6 @@ algorithmic background.
 
 ### Outward-rounded interval determinant sign
 
-`Interval` uses IEEE-754 round-to-nearest binary64 operations plus adjacent
-representable values to enclose exact-real addition, subtraction,
-multiplication, and square results \[[9], [10], [11]\]. Addition and subtraction
-use a magnitude-ordered `FastTwoSum` residual \[[17]\]. This ordering prevents
-internal overflow when the rounded sum is finite, including opposite-sign inputs
-at the maximum finite magnitude. Multiplication uses `TwoProductFMA` \[[18]\]
-when its residual is representable, with an exact integer-significand comparison
-for the underflow-sensitive range. The
-[threshold proof](docs/mathematical_basis.md#outward-rounded-interval-expressions)
-explains that dispatch, including gradual underflow to zero.
-Results whose exact range cannot fit
-between finite binary64 endpoints return a typed range failure rather than
-storing infinity. For the broader standardized interval arithmetic model, see
-\[[14]\]; this crate does not claim IEEE 1788 conformance.
-
 `IntervalMatrix::det()` evaluates the Leibniz expansion with a division-free
 column-subset dynamic program. It uses `max(2, 2^D)` inline interval states and
 `D × 2^(D-1)` coefficient products for positive D through D=7. A determinant interval strictly
@@ -246,6 +262,10 @@ overlap is explicitly inconclusive. The determinant identity is standard
 linear algebra \[[12]\]; the interval evaluation and subset-DP
 organization are implemented specifically for this crate's small
 fixed-dimension scope.
+The [scalar interval primitives](#interval-arithmetic-division-and-reciprocals)
+provide outward rounding at each step; the
+[determinant enclosure argument](docs/mathematical_basis.md#determinant-enclosures-and-sign-evidence)
+explains the workspace, inclusion, and sign-classification contracts.
 
 ### Rectangular column selection
 
@@ -378,7 +398,8 @@ alphabetized for navigation without renumbering citations.
     pp. 46–48.
     [Author's PDF](https://people.eecs.berkeley.edu/~wkahan/Mindless.pdf)
 20. <a name="ref-20"></a> Moore, Ramon E., R. Baker Kearfott, and Michael J. Cloud.
-    *Introduction to Interval Analysis*. SIAM, 2009. Chapter 7, "Interval Matrices."
+    *Introduction to Interval Analysis*. SIAM, 2009. Chapters 2, "The Interval Number System,"
+    4, "Further Properties of Interval Arithmetic," and 7, "Interval Matrices."
     [DOI](https://doi.org/10.1137/1.9780898717716) ·
     [Chapter record](https://epubs.siam.org/doi/10.1137/1.9780898717716.ch7)
 

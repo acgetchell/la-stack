@@ -722,7 +722,7 @@ dependencies = [
 
 [[package]]
 name = "la-stack"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "allocation-counter",
  "approx",
