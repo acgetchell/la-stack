@@ -221,8 +221,6 @@ changelog-preview *args: tools-check python-sync
 changelog-release tag date="": tools-check python-sync
     {{ _run }} uv run --locked --no-sync research-repo-tools changelog generate --tag {{ quote(tag) }} {{ if date == "" { "" } else { "--date " + quote(date) } }}
 
-alias changelog-unreleased := changelog-release
-
 # Check (non-mutating): run all linters/validators
 check: lint
     @echo "✅ Checks complete!"
@@ -371,13 +369,14 @@ performance-promote: python-sync
 performance-readme current_tag="" current_revision="" baseline_tag="" baseline_revision="": python-sync
     {{ _run }} uv run --locked --no-sync research-repo-tools performance readme tooling/performance-release.toml {{ if current_tag + current_revision + baseline_tag + baseline_revision == "" { "" } else { "--current-release " + quote(current_tag) + " --current-revision " + quote(current_revision) + " --baseline-release " + quote(baseline_tag) + " --baseline-revision " + quote(baseline_revision) } }}
 
-# Measure, retain an immutable complete run, and promote distinct-release documentation.
+# Fetch tags, prepare source assertions, measure, retain, and promote the release report.
 performance-release: _ensure-gh python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p target/bench-reports/full
     started=$(date +%s)
     trap 'status=$?; elapsed=$(($(date +%s) - started)); printf "performance-release: %s seconds; exit %s\\n" "$elapsed" "$status" | tee target/bench-reports/full/runtime.txt' EXIT
+    uv run --locked --no-sync research-repo-tools performance prepare tooling/performance-release.toml --fetch-tags --allow-git-mutations
     {{ _run }} uv run --locked research-repo-tools performance release tooling/performance-release.toml --allow-git-mutations
 
 # Render a named metric/statistic/axis view from explicitly retained or scratch inputs.
@@ -630,8 +629,6 @@ update-dependencies: update-cargo-dependencies update-python-dependencies
 # Advance dev pins, then refresh and sync the root Python environment.
 update-python-dependencies:
     uv run --locked --only-group tooling --inexact research-repo-tools deps update-python --all-projects
-
-alias update-python-deps := update-python-dependencies
 
 # Upgrade uv through its owner, then declared Cargo tools, then synchronize setup.
 update-tools: update-uv update-cargo-tools setup-tools

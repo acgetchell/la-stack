@@ -63,7 +63,7 @@ def test_invalid_default_metadata_never_changes_release_files(consumer: Path, co
 
 
 def test_recipe_omits_absent_date_and_delegates_to_installed_cli() -> None:
-    implicit = dry_run(ROOT, "changelog-unreleased", ["v0.5.1"]).stderr
+    implicit = dry_run(ROOT, "changelog-release", ["v0.5.1"]).stderr
     explicit = dry_run(ROOT, "changelog-release", ["v0.5.1", "2000-02-29"]).stderr
     assert "changelog generate --tag 'v0.5.1'" in implicit
     assert "--date" not in implicit

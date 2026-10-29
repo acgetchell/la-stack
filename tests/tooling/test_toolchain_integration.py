@@ -39,7 +39,6 @@ WORKFLOWS = {
     "update-dependencies": [*CARGO_UPDATE, *PYTHON_UPDATE],
     "update-cargo-dependencies": CARGO_UPDATE,
     "update-python-dependencies": PYTHON_UPDATE,
-    "update-python-deps": PYTHON_UPDATE,
     "update-cargo-tools": [TOOL_UPDATE],
     "update-uv": [UV_UPDATE],
 }

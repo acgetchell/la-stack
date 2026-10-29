@@ -20,7 +20,7 @@ later UTC date intentionally advances the declared release date. Crossing
 midnight alone requires no update: the `declared` date policy allows preparation
 and tagging on different UTC days when citation and changelog dates agree.
 Repeated `performance-release` runs can produce different measurements.
-With unchanged history and configuration, repeating `changelog-unreleased`
+With unchanged history and configuration, repeating `changelog-release`
 reuses the declared citation date and preserves the generated contents,
 including when a rerun happens after UTC midnight.
 
@@ -168,7 +168,7 @@ continuing.
 ### 3. Generate the release changelog
 
 ```bash
-just changelog-unreleased "$TAG"
+just changelog-release "$TAG"
 ```
 
 This generates `CHANGELOG.md` as though the target tag already existed, archives
@@ -185,7 +185,7 @@ The optional explicit date remains supported. For troubleshooting, populate
 
 ```bash
 RELEASE_DATE="$(date -u +%F)"
-just changelog-unreleased "$TAG" "$RELEASE_DATE"
+just changelog-release "$TAG" "$RELEASE_DATE"
 ```
 
 This override explicitly chooses today's UTC date; keep it consistent with
@@ -215,42 +215,38 @@ original command and `just changelog-check`.
 
 ### 4. Generate the release performance comparison
 
-After updating the package version, fetch the tags and capture the independent
-source assertions before measurement:
-
-```bash
-just performance-prepare --fetch-tags --allow-git-mutations
-```
-
-Preparation selects the release pair using GitHub's publication history,
-resolves the current and baseline commits, and saves all four assertions to
-`target/bench-reports/release-inputs.json`, relative to the repository root.
-This Git-ignored file carries the tags and commits forward to
-`just performance-readme`; it survives closing and reopening your terminal.
-Review the printed tags and commits. A failed release lookup or missing tag
-stops preparation with a diagnostic.
-
-The plain `performance-prepare` command uses local tags without changing refs.
-The shared preparation record also binds the package version and measurement
-declaration. If you have an old adapter-format `release-inputs.json`, remove
-that ignored scratch file once and prepare again. It is deliberately not
-converted from measurement evidence. Moved refs or changed package/declaration
-inputs require a new preparation before measurement or README publication.
-
-No shell variables or exports are needed. `performance-prepare` does not set
-`PREVIOUS_TAG`, `CURRENT_COMMIT`, or `PREVIOUS_COMMIT` in your shell; those
-variables may remain unset. Do not run the old manual `git rev-parse`
-assignments or pass those variables to the ordinary README step below.
-
-Then run the long measurement command:
+After updating the package version, run:
 
 ```bash
 just performance-release
 ```
 
-The no-argument recipe measures the independently prepared pair and promotes
-the release report;
+The recipe fetches tags, prepares the independent source assertions, then
+measures and promotes the release report. Preparation selects the release pair
+using GitHub's publication history, resolves the current and baseline commits,
+and saves all four assertions to
+`target/bench-reports/release-inputs.json`, relative to the repository root.
+This Git-ignored file carries the tags and commits forward to
+`just performance-readme`; it survives closing and reopening your terminal.
+The selected tags and commits are printed before measurement. A failed fetch,
+release lookup or preparation stops the recipe before benchmarking.
 README publication remains a separate, retryable step below.
+
+For preparation alone, `just performance-prepare` uses local tags without
+changing refs or running benchmarks. Add `--fetch-tags --allow-git-mutations`
+to refresh tags explicitly. This separate command remains useful for inspecting
+inputs or recovering a missing preparation record before retrying README publication.
+The shared preparation record also binds the package version and measurement
+declaration. If you have an old adapter-format `release-inputs.json`, remove
+that ignored scratch file once and prepare again. It is deliberately not
+converted from measurement evidence. Moved refs or changed package/declaration
+inputs require a new preparation before measurement or README publication.
+Each `performance-release` invocation prepares fresh inputs before measuring.
+
+No shell variables or exports are needed. `performance-prepare` does not set
+`PREVIOUS_TAG`, `CURRENT_COMMIT`, or `PREVIOUS_COMMIT` in your shell; those
+variables may remain unset. Do not run the old manual `git rev-parse`
+assignments or pass those variables to the ordinary README step below.
 
 Review `docs/performance.md` and the complete
 new run and index changes under `docs/performance-runs/`. Its current/baseline
@@ -258,7 +254,9 @@ tags and commits must match the selected assertions. Both labels must be v0.5.0
 or newer.
 
 Evidence retains both phases, mean and median estimates, 100 raw samples per
-case and 95% intervals. Current declarations record acquisition policy as well
+case and 95% intervals. APIs introduced in v0.5.2 retain current timings only;
+their baseline cells are unavailable because v0.5.1 cannot perform those operations.
+Shared APIs retain comparisons between both revisions. Current declarations record acquisition policy as well
 as source/harness provenance. Future runs support offline rendering after
 scratch cleanup; `just performance-doc` explicitly selects retained history.
 `just performance-promote` explicitly selects the full scratch pair.
@@ -275,7 +273,7 @@ just performance-readme
 ```
 
 With no arguments, this reads the independent tags and commits from
-`target/bench-reports/release-inputs.json`, saved by `performance-prepare`.
+`target/bench-reports/release-inputs.json`, saved during `performance-release` preparation.
 It consumes archived, release-eligible evidence without benchmarking again or
 requiring shell variables.
 It verifies the independent identities, current source/harness membership and
@@ -293,10 +291,10 @@ release tag is pushed. Until then, preview the SVG directly under
 The four explicit tag/commit arguments remain supported as described in the
 [benchmark guide](BENCHMARKING.md#update-the-readme-nalgebrafaer-table).
 If the saved inputs are missing or invalid, the command stops with preparation
-guidance. If an older invocation of `performance-release` is already running,
-let it finish; capture the reviewed inputs with `performance-prepare` or supply
-the four explicit arguments, then run `performance-readme` without repeating
-measurements. A README failure leaves the retained measurements available for
+guidance. Recover the reviewed inputs with `just performance-prepare` or supply
+the four explicit arguments, then retry `performance-readme`. Do not rerun
+`performance-release` solely to retry README publication: it repeats preparation
+and measurements. A README failure leaves the retained measurements available for
 another publication attempt.
 
 See [Benchmarking](BENCHMARKING.md) for explicit scratch versus retained plot
@@ -357,7 +355,7 @@ focused release preparation without feature work.
 ### Handling fixes found during preparation
 
 For a critical fix that must be included, make and commit the fix, rerun
-`just changelog-unreleased "$TAG"`, review and stage only the resulting changelog
+`just changelog-release "$TAG"`, review and stage only the resulting changelog
 files, and commit that generated update separately.
 
 For a non-critical fix, file an issue and defer it to a later release. Do not

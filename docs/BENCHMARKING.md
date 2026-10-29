@@ -24,10 +24,11 @@ the commands measure and where their outputs go.
 
 ## Start Here
 
-Run `just performance-prepare` before measurements using reviewed local tags.
-Add `--fetch-tags --allow-git-mutations` to fetch tags explicitly. Fetching and
-measurement recipes' temporary worktrees require authorization. Both labels of
-new measurements must be v0.5.0 or newer.
+For a release comparison, `just performance-release` fetches tags and prepares
+independent source assertions before measurement. For preparation alone,
+`just performance-prepare` uses local tags; add `--fetch-tags --allow-git-mutations`
+to fetch them. Fetching and measurement recipes' temporary worktrees require
+authorization. Both labels of new measurements must be v0.5.0 or newer.
 Preparation also saves independent release tags and commits for a later
 `just performance-readme` invocation in ignored
 `target/bench-reports/release-inputs.json`. For an explicit prepared pair, set
@@ -51,7 +52,7 @@ Preparation also saves independent release tags and commits for a later
 that scratch pair explicitly and requires a distinct release pair.
 `performance-doc` selects archived evidence explicitly. Missing or incomplete
 scratch cannot silently select history. `performance-release` composes fresh
-full measurement and promotion; a failed measurement stops before promotion.
+preparation, full measurement and promotion; a failed phase stops the recipe.
 README publication stays in the separate `performance-readme` command so it can
 be retried without repeating measurements.
 
@@ -68,11 +69,17 @@ for diagnostics.
 
 ### Release acquisition policy
 
-The `public-release-and-lu-peers-v2` policy extends #301 with column bases,
+The `public-release-and-lu-peers-v3` policy extends #301 with column bases,
 interval division/solves, rational dot products, and polynomial determinants.
 The full la-stack selection has 736 default-feature and 667 exact-feature cases.
 Local `performance-release`, `performance-local`, and full `performance-measure`
-measure these same 1,403 cases at both revisions under one captured harness.
+measure all 1,403 cases at the current revision under one captured harness.
+The baseline measures the 1,254 shared cases: 646 default-feature and 608
+exact-feature cases. Column bases, interval division/solves, rational dot products,
+and polynomial determinants were introduced in v0.5.2, so their 149 cases have
+current timings only. Reports leave their baseline cells empty; they establish
+no release-to-release speedup. The independent catalog declares this boundary
+under `[baseline]`; revisit it when the supported baseline floor includes these APIs.
 Only the baseline phase also measures the 16 native nalgebra/faer LU
 factorization-plus-one-solve cases at D=2, 3, 4, 5, 8, 16, 32, and 64.
 The matching eight current la-stack timings already belong to the full suite.
@@ -118,9 +125,9 @@ Neither routine release path acquires them. The README retains its existing
 eight-dimension LU graph; no additional performance page or graph is produced.
 
 The local driver prints the case count and nominal timing budget before samples
-are acquired. The current plan has 2,822 measurements and a nominal 376.3-minute
+are acquired. The current plan has 2,673 measurements and a nominal 356.4-minute
 warmup-plus-measurement budget, before compilation, gates, and analysis.
-`performance-release` records measurement-and-promotion elapsed seconds and exit
+`performance-release` records preparation, measurement and promotion elapsed seconds and exit
 status in ignored `target/bench-reports/full/runtime.txt`, including failures.
 The timer starts after Just's prerequisite checks. Use `time just performance-release`
 to include those checks in an end-to-end command measurement. Keep these records and
@@ -383,7 +390,7 @@ the wrong path are errors.
 ### Update The README nalgebra/faer Table
 
 After promoting a full release comparison, use the source identities saved
-independently by `performance-prepare` before measurement:
+independently during `performance-release` preparation before measurement:
 
 ```bash
 just performance-readme
@@ -439,16 +446,17 @@ still apply. README publication additionally requires live source freshness.
 
 ### Create The Release Performance Report
 
-After updating the package version and reviewing local tags:
+After updating the package version:
 
 ```bash
-just performance-prepare
 just performance-release
 ```
 
-Preparation uses publication chronology. A prospective version compares the
-working tree with the latest release; a published version compares existing
-tags. The release command consumes that saved selection. For ad hoc measurement
+The recipe fetches tags and prepares independent source assertions before
+measurement and report promotion. Preparation uses publication chronology.
+A prospective version compares the working tree with the latest release;
+a published version compares existing
+tags. Measurement consumes that saved selection. For ad hoc measurement
 of two existing tags followed by separate promotion:
 
 ```bash
@@ -456,9 +464,10 @@ just performance-measure "$CURRENT_TAG" "$PREVIOUS_TAG"
 just performance-promote
 ```
 
-`performance-prepare` captures both source commits before measurement and prints
-the selected tags and commits for review. After the report is promoted, run
-`just performance-readme` separately to use those saved assertions. No
+The release recipe prints the selected tags and commits before measurement;
+failed preparation stops the recipe before benchmarking. For preparation alone,
+`just performance-prepare` uses local tags without measuring. After the report
+is promoted, run `just performance-readme` separately to use those saved assertions. No
 parent-shell variables are required. README publication never repeats measurements.
 
 The shared release report configuration requires the full measurement policy,
@@ -806,7 +815,7 @@ or `det_exact_f64_result (vs det_exact_f64)`. Those used the historical lossy
 `*_exact_f64` baseline. New comparisons require matching benchmark identifiers;
 the pre-v0.4.3 name substitutions have been removed.
 
-The default `public-release-and-lu-peers-v2` scope includes canonical exact-arithmetic
+The default `public-release-and-lu-peers-v3` scope includes canonical exact-arithmetic
 groups because their inputs and execution order are fixed across revisions. Historical
 baselines created before the `exact_random_corpus_d*` names were introduced do
 not have comparable full-corpus rows, so those rows appear once both sides of a
@@ -860,7 +869,7 @@ the expanded hosted policy completes.
 | `public-default` | 736 | 98.1 min | 147.2 min | 240 min; 330 min job |
 | `public-exact` | 667 | 88.9 min | 133.4 min | 240 min; 330 min job |
 | Hosted aggregate work | 1,403 | 187.1 min | 280.6 min | Concurrent jobs, then 30 min for assembly |
-| Local total: both revisions and 16 peers | 2,822 | 376.3 min | 564.4 min | Separate per-phase deadlines |
+| Local total: shared baseline cases, all current cases and 16 peers | 2,673 | 356.4 min | 534.6 min | Separate per-phase deadlines |
 
 These estimates are not measured runtimes or upper bounds. Criterion can extend
 measurement for expensive iterations. Sampling remains unchanged: 100 samples,

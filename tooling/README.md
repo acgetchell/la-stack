@@ -131,12 +131,15 @@ There is no runtime configuration generator.
 Both labels of a new measurement must be v0.5.0 or newer. The full and
 non-exact declarations require 100 samples, mean and median estimates,
 95% intervals and nanoseconds. Each phase runs its native correctness gate before
-timing. The full `gate-public` adds column bases, rational dot products, interval
-solve oracles and polynomial coefficient checks to the diagnostic `gate`.
+timing. The current phase's `gate-public` adds column bases, rational dot products,
+interval solve oracles and polynomial coefficient checks to the shared `gate`.
+The baseline uses `gate` because those APIs are absent before v0.5.2.
 Reference libraries originate in the baseline phase.
 
-The expanded #301 policy measures all public la-stack workflows at both revisions,
-plus only 16 baseline-phase peer LU-factorization-and-solve cases. Hosted
+The expanded #301 policy measures all public la-stack workflows at the current
+revision and the 1,254 shared cases at the baseline, plus only 16 baseline-phase
+peer LU-factorization-and-solve cases. The 149 cases for APIs introduced in v0.5.2
+retain current timings without baseline comparisons. Hosted
 acquisition omits peers entirely. The full scratch/retained plot selections
 therefore expose only LU solve; broad peer plots remain in the explicitly
 requested non-exact diagnostic. `performance.just` prints the independent local
@@ -145,10 +148,19 @@ body's elapsed seconds and failure status under ignored scratch outputs. The
 [public workflow map](../docs/BENCHMARKING.md#release-acquisition-policy) owns
 coverage decisions, feature configurations and runtime estimates.
 
+General workload availability across API revisions is tracked in
+[research-repo-tools#166](https://github.com/acgetchell/research-repo-tools/issues/166)
+for v0.2.5, with published-package adoption in
+[la-stack#320](https://github.com/acgetchell/la-stack/issues/320) for v0.5.3.
+Keep the explicit v0.5.2 baseline boundary until that replacement is verified.
+
 Working-tree measurements include tracked changes and nonignored untracked
 regular files. Scratch outputs belong under ignored `target/`.
-Tag fetching is explicit: `just performance-prepare --fetch-tags --allow-git-mutations`
-requires authorization to mutate Git. Plain preparation uses local tags.
+`just performance-release` fetches tags and saves independent source assertions
+before measurement and report promotion. It stops if preparation fails;
+`performance-readme` remains a separate publication step.
+For preparation alone, `just performance-prepare` uses local tags;
+`--fetch-tags --allow-git-mutations` explicitly enables fetching.
 Measurement recipes create temporary
 worktrees. Their declared environment fixes the Rust toolchain and
 code-generation flags; native recipes select the host target. Change and
@@ -196,7 +208,7 @@ the concept DOI, active link policy, declared date policy, formatter and
 authored dependency notes.
 
 The shared changelog command uses the recorded `CITATION.cff` date when
-`changelog-release` (also named `changelog-unreleased`) or a tagged preview
+`changelog-release` or a tagged preview
 omits the date. `changelog.date-source = "citation"` owns that policy;
 explicit dates remain supported. Generation never advances citation metadata.
 

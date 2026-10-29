@@ -1,5 +1,20 @@
 # Contributing
 
+<!-- Group badges by validation, security, and maintainer workflows. -->
+<!-- markdownlint-disable MD033 -->
+[![CI][ci-badge]][ci-workflow]
+[![Clippy][clippy-badge]][clippy-workflow]
+[![Coverage workflow][coverage-badge]][coverage-workflow]
+[![Coverage][codecov-badge]][codecov-dashboard]<br>
+[![CodeQL][codeql-badge]][codeql-workflow]
+[![Audit dependencies][audit-badge]][audit-workflow]
+[![zizmor][zizmor-badge]][zizmor-workflow]
+[![Repository Rule SARIF][semgrep-badge]][semgrep-workflow]<br>
+[![Benchmarks][benchmarks-badge]][benchmarks-workflow]
+[![Release Benchmarks][release-benchmarks-badge]][release-benchmarks-workflow]
+[![Dependabot approval and auto-merge][dependabot-badge]][dependabot-workflow]
+<!-- markdownlint-enable MD033 -->
+
 Thanks for helping improve `la-stack`. This crate is intentionally small and
 invariant-heavy, so changes should preserve mathematical correctness, API
 clarity, and the fixed-dimension stack-allocation model.
@@ -82,7 +97,7 @@ uses that same installed scanner; see the
 `just update-cargo-dependencies` excludes `num-bigint` and `num-rational` from
 incompatible requirement upgrades because their public types must advance
 together; Cargo can still refresh locked versions within those requirements.
-`just update-python-dependencies` and its `update-python-deps` alias run the full
+`just update-python-dependencies` runs the full
 Python update and sync sequence. Dependency-only commands preserve tool pins;
 tool-only commands preserve dependency requirements and locks. A failure stops
 later steps, without rolling back earlier package-manager updates.
@@ -423,3 +438,26 @@ bug, include:
 
 Report suspected vulnerabilities privately through the process in
 [`SECURITY.md`](SECURITY.md), not in a public issue.
+
+[audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg?branch=main
+[audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml
+[benchmarks-badge]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml/badge.svg?branch=main
+[benchmarks-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml
+[ci-badge]: https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg?branch=main
+[ci-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/ci.yml
+[clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg?branch=main
+[clippy-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml
+[codecov-badge]: https://codecov.io/gh/acgetchell/la-stack/graph/badge.svg?token=4eKXa5QjuZ
+[codecov-dashboard]: https://codecov.io/gh/acgetchell/la-stack
+[codeql-badge]: https://github.com/acgetchell/la-stack/actions/workflows/codeql.yml/badge.svg?branch=main
+[codeql-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/codeql.yml
+[coverage-badge]: https://github.com/acgetchell/la-stack/actions/workflows/codecov.yml/badge.svg?branch=main
+[coverage-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/codecov.yml
+[dependabot-badge]: https://github.com/acgetchell/la-stack/actions/workflows/dependabot-auto-merge.yml/badge.svg
+[dependabot-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/dependabot-auto-merge.yml
+[release-benchmarks-badge]: https://github.com/acgetchell/la-stack/actions/workflows/release-benchmarks.yml/badge.svg
+[release-benchmarks-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/release-benchmarks.yml
+[semgrep-badge]: https://github.com/acgetchell/la-stack/actions/workflows/semgrep-sarif.yml/badge.svg?branch=main
+[semgrep-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/semgrep-sarif.yml
+[zizmor-badge]: https://github.com/acgetchell/la-stack/actions/workflows/zizmor.yml/badge.svg?branch=main
+[zizmor-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/zizmor.yml

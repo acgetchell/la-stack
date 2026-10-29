@@ -20,6 +20,9 @@
   - [LDLT without pivoting](#ldlt-without-pivoting)
   - [LU with partial pivoting](#lu-with-partial-pivoting)
   - [Outward-rounded interval expressions](#outward-rounded-interval-expressions)
+    - [Scalar arithmetic and finite bounds](#scalar-arithmetic-and-finite-bounds)
+    - [Division and reciprocals](#division-and-reciprocals)
+    - [Determinant enclosures and sign evidence](#determinant-enclosures-and-sign-evidence)
   - [Rectangular column selection](#rectangular-column-selection)
   - [Scaled determinant products](#scaled-determinant-products)
   - [Scaled Euclidean vector norm](#scaled-euclidean-vector-norm)
@@ -642,7 +645,10 @@ vector `b ∈ [b]`, `A` is nonsingular and its unique exact-real solution lies
 componentwise in `[x]`. Entries vary independently, so correlations inherited
 from expression construction may be widened. This encloses the united solution
 set; it need not give its tightest bounding box. Interval linear systems and
-inclusion arithmetic are described by Moore, Kearfott, and Cloud \[20\].
+inclusion arithmetic are described by Moore, Kearfott, and Cloud
+\[[20](../REFERENCES.md#ref-20)\]. The
+[interval solve references](../REFERENCES.md#interval-linear-solves) connect
+that background to this implementation's enclosure proof below.
 
 The algorithm uses Gaussian elimination with row pivoting. At column `k` it
 chooses the remaining interval with greatest minimum absolute value, keeping
@@ -650,7 +656,8 @@ the first row on ties. The same fixed row permutation applies to every admitted
 real system. A strictly positive separation proves that every corresponding
 real pivot is nonzero. Outward division encloses each multiplier, and outward
 multiply/subtract encloses each remaining coefficient and RHS after the exact
-row operation. The eliminated entry is set to exact zero: algebraically it is
+row operation, using the [scalar interval guarantees](#outward-rounded-interval-expressions).
+The eliminated entry is set to exact zero: algebraically it is
 `a - (a/p)p = 0`, even though an independent interval evaluation would widen it.
 Induction therefore preserves inclusion of every transformed real system.
 Nonzero pivots in every column prove nonsingularity; outward back substitution
@@ -737,12 +744,20 @@ arithmetic operation either returns another valid enclosure or a typed range
 failure. Both signed-zero inputs represent exact real zero and are canonicalized
 to `+0.0`; finite subnormal endpoints remain valid.
 
+The [interval arithmetic references](../REFERENCES.md#interval-arithmetic-division-and-reciprocals)
+identify the binary64 model, error-free transformations, and interval inclusion
+background. The arguments below explain how this crate combines them.
+
+#### Scalar arithmetic and finite bounds
+
 Point construction introduces no width. Exact-real subtraction and interval
 addition use an error-free, magnitude-ordered `FastTwoSum` residual to determine
 whether the rounded result is exact or which adjacent binary64 value is required
 for the outward endpoint. Ordering the operands prevents intermediate overflow
-whenever the rounded sum is finite \[17\]. Multiplication uses the exact residual
-`left.mul_add(right, -rounded)` of `TwoProductFMA` \[18\] when
+whenever the rounded sum is finite \[[17](../REFERENCES.md#ref-17)\].
+Multiplication uses the exact residual
+`left.mul_add(right, -rounded)` of `TwoProductFMA`
+\[[18](../REFERENCES.md#ref-18)\] when
 `|rounded| ≥ 2^-968`. To justify this threshold, let `E` be the rounded product's
 leading binary exponent. The exact product has at most 106 significant bits and
 leading exponent at least `E-1`, allowing for a rounding carry. Its least bit
@@ -766,6 +781,13 @@ round-to-nearest, ties-to-even, and gradual underflow \[9-11\]. IEEE 1788
 provides the broader standardized interval arithmetic model \[14\]; this crate's
 deliberately smaller, undecorated surface does not claim conformance.
 
+If the exact result lies outside `[-f64::MAX, f64::MAX]`, no interval with finite
+binary64 endpoints can contain it. The operation then returns
+`LaError::IntervalRangeExhausted` with the responsible interval
+`ArithmeticOperation`; it never stores infinity as an interval bound.
+
+#### Division and reciprocals
+
 Reciprocal and division reject every zero-containing divisor with
 `LaError::IntervalZeroDivisor`, even when the numerator is zero. For a zero-free
 divisor, extrema of `x/y` over the input rectangle occur at endpoint pairs.
@@ -779,13 +801,18 @@ subnormal, and an outward infinite endpoint reports finite-range exhaustion.
 Direct quotient evaluation avoids rejecting a representable ratio solely
 because `1/y` is unrepresentable. Reciprocal uses the same kernel with `x=1`.
 
-If the exact result lies outside `[-f64::MAX, f64::MAX]`, no interval with finite
-binary64 endpoints can contain it. The operation then returns
-`LaError::IntervalRangeExhausted` with the responsible interval
-`ArithmeticOperation`; it never stores infinity as an interval bound.
+The interval operations follow the inclusion model in
+\[[20](../REFERENCES.md#ref-20)\], Chapters 2 and 4. The integer comparison above
+is a local implementation argument based on the binary64 representation
+\[[9](../REFERENCES.md#ref-9)\]; it does not assume an error-free floating
+division residual or apply `TwoProductFMA` to a quotient.
 
-For D≤7, `IntervalMatrix::det()` evaluates the Leibniz determinant with subset
-dynamic programming. A state for each column subset stores the determinant
+#### Determinant enclosures and sign evidence
+
+For D≤7, `IntervalMatrix::det()` evaluates the Leibniz determinant
+\[[12](../REFERENCES.md#ref-12)\] with subset dynamic programming.
+The expansion identity is standard; the interval subset-DP organization is
+specific to this crate. A state for each column subset stores the determinant
 enclosure for the corresponding leading-row minor, requiring `max(2, 2^D)`
 inline states and `D × 2^(D-1)` interval products for positive D. The const
 dimension selects the workspace size without changing the expansion order.

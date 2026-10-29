@@ -61,7 +61,8 @@ def test_consumer_generation_preserves_an_authored_dependency_note(tmp_path: Pat
 def test_consumer_recipes_and_retained_history(capsys: pytest.CaptureFixture[str]) -> None:
     """Native recipes delegate generation and all historical notes remain readable."""
     recipes = inspect_justfile(ROOT)
-    assert recipes.aliases["changelog-unreleased"] == "changelog-release"
+    assert recipes.aliases == {}
+    assert "changelog-release" in recipes.recipes
     result = dry_run(ROOT, "changelog-preview", ["--tag", "v0.4.7", "--date", "2026-10-09"])
     assert 'research-repo-tools changelog generate --dry-run "$@"' in result.stderr
     assert main(["--root", str(ROOT), "changelog", "check"]) == 0

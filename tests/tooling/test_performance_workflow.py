@@ -1,5 +1,6 @@
 """Installed workflow acceptance with independent la-stack scientific declarations."""
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -83,6 +84,15 @@ def scientific_ids(view: str = "full") -> tuple[set[str], set[str]]:
     return library, peers
 
 
+def baseline_ids(view: str = "full") -> set[str]:
+    """Older releases cannot supply timings for APIs introduced in v0.5.2."""
+    library, _peers = scientific_ids(view)
+    if view != "full":
+        return library
+    catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
+    return {name for name in library if not any(fnmatch.fnmatchcase(name, pattern) for pattern in catalog["baseline"]["current-only"])}
+
+
 def synthetic_timings() -> dict[str, dict[str, dict[str, float]]]:
     """Distinguish every case, phase, and statistic so selection errors stay visible."""
     library, peers = scientific_ids()
@@ -102,14 +112,15 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: st
     plan = declaration(ROOT, view)
     catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
     assert plan.measurement.minimum_release == "v" + ".".join(str(part) for part in catalog["minimum-release"])
-    for phase, required in ((plan.baseline, library | peers), (plan.current, library)):
+    baseline = baseline_ids(view)
+    for phase, required in ((plan.baseline, baseline | peers), (plan.current, library)):
         assert isinstance(phase.policy, DiscoveryPolicy)
         assert set(phase.policy.discovery.required) == required
         assert phase.policy.sample_count == 100
         assert phase.policy.statistics == ("mean", "median")
         assert phase.policy.confidence_level == 0.95
         assert phase.policy.unit == "ns"
-        assert phase.gate[-1] == ("gate-public" if view == "full" else "gate")
+        assert phase.gate[-1] == ("gate-public" if view == "full" and phase is plan.current else "gate")
         environment = dict(phase.environment)
         assert environment["RUSTFLAGS"] == environment["CARGO_ENCODED_RUSTFLAGS"] == "--cap-lints=warn"
         assert environment["RUSTUP_TOOLCHAIN"] == tomllib.loads((ROOT / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]["channel"]
@@ -123,8 +134,9 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: st
         if isinstance(item, DiscoveredSeries):
             assert view == "full"
             assert item.name.startswith("la-stack")
-            expected = tuple(sorted(library | (peers if item.phase == "baseline" else set())))
-            assert dict(item.resolve(expected).rows) == {name: name for name in library}
+            measured = baseline if item.phase == "baseline" else library
+            expected = tuple(sorted(measured | (peers if item.phase == "baseline" else set())))
+            assert dict(item.resolve(expected).rows) == {name: name for name in measured}
             continue
         assert isinstance(item, RunSeries)
         if item.name.startswith("la-stack"):
@@ -142,6 +154,9 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: st
     assert {"benches/**/*.rs", "tests/exact_bench_config.rs", "tooling/performance.just", "tooling/measurements/*.toml"} <= set(plan.harness)
     if view == "full":
         assert {
+            "pyproject.toml",
+            "uv.lock",
+            ".python-version",
             "tests/column_basis.rs",
             "tests/rational_dot.rs",
             "tests/interval_solve.rs",
@@ -149,6 +164,19 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: st
             "tests/common/proptest_config.rs",
             "tests/polynomial_bench_inputs.rs",
         } <= set(plan.harness)
+
+
+@pytest.mark.parametrize(
+    ("pattern", "count"),
+    [("column_basis/*", 55), ("interval_division/*", 5), ("interval_solve_d*/*", 30), ("polynomial/*", 5), ("rational_dot/*", 54)],
+)
+def test_new_api_coverage_is_complete_without_inventing_baseline_timings(pattern: str, count: int) -> None:
+    plan = declaration(ROOT)
+    assert isinstance(plan.current.policy, DiscoveryPolicy)
+    assert isinstance(plan.baseline.policy, DiscoveryPolicy)
+    current = {name for name in plan.current.policy.discovery.required if fnmatch.fnmatchcase(name, pattern)}
+    assert len(current) == count
+    assert current.isdisjoint(plan.baseline.policy.discovery.required)
 
 
 def test_named_views_keep_every_metric_statistic_axis_and_explicit_input_choice() -> None:
@@ -212,13 +240,13 @@ def test_native_recipes_preserve_scientific_gates_and_peer_reuse() -> None:
     justfile = Path("tooling/performance.just")
     baseline = dry_run(ROOT, "baseline-all", justfile=justfile).stderr
     current = dry_run(ROOT, "current-all", justfile=justfile).stderr
-    assert baseline.count("cargo bench --locked") == 14
+    assert baseline.count("cargo bench --locked") == 10
     assert current.count("cargo bench --locked") == 13
     assert "(nalgebra|faer)_lu_solve$" in baseline
     assert "(nalgebra|faer)_lu_solve$" not in current
     assert "--target" in baseline
     assert "--target" in current
-    assert dry_run(ROOT, "baseline-all", ["list"], justfile=justfile).stderr.count("args+=(--list)") == 14
+    assert dry_run(ROOT, "baseline-all", ["list"], justfile=justfile).stderr.count("args+=(--list)") == 10
     assert "--test vs_linalg_inputs --test exact_bench_config" in dry_run(ROOT, "gate", justfile=justfile).stderr
     gate = dry_run(ROOT, "gate-public", justfile=justfile).stderr
     hosted_gate = dry_run(ROOT, "test-bench-inputs").stderr
@@ -232,8 +260,9 @@ def test_native_recipes_preserve_scientific_gates_and_peer_reuse() -> None:
         for manifest in (ROOT / "Cargo.toml", ROOT / "benches/comparison/Cargo.toml")
         for bench in tomllib.loads(manifest.read_text(encoding="utf-8"))["bench"]
     }
+    current_only = {"column_basis", "interval_solve", "polynomial", "rational_dot"}
     for target in targets:
-        assert f"--bench '{target}'" in baseline
+        assert (f"--bench '{target}'" in baseline) == (target not in current_only)
         assert f"--bench '{target}'" in current
     for name in ("performance-local", "performance-local-non-exact"):
         command = dry_run(ROOT, name).stderr
@@ -249,13 +278,13 @@ def test_native_recipes_preserve_scientific_gates_and_peer_reuse() -> None:
 
 def prepared(tmp_path: Path) -> tuple[Path, Path]:
     """Replace only native timing/gates with a bounded fixture, retaining real policy."""
-    _library, peers = scientific_ids()
+    library, peers = scientific_ids()
     catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
     diagnostic_library, diagnostic_peers = scientific_ids("non-exact")
     ids = {
         side: {
-            "public-default": sorted(catalog["release"]["default"]),
-            "public-exact": sorted(catalog["release"]["exact"]),
+            "public-default": sorted(set(catalog["release"]["default"]) & (baseline_ids() if side == "baseline" else library)),
+            "public-exact": sorted(set(catalog["release"]["exact"]) & (baseline_ids() if side == "baseline" else library)),
             "peers": sorted(peers),
             "vs_linalg": sorted(diagnostic_library | (diagnostic_peers if side == "baseline" else set())),
         }
