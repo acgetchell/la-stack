@@ -37,7 +37,7 @@ jobs:
       - name: Install trusted package runner
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.13.6"
+          version: "0.13.7"
           enable-cache: false
           cache-python: false
 
@@ -54,7 +54,7 @@ jobs:
             echo "::error::Dispatch with --ref $RELEASE_TAG and the matching tag input"
             exit 1
           fi
-          target="$(uvx --python 3.15 --from research-repo-tools==0.2.4 research-repo-tools \
+          target="$(uvx --python 3.15 --from research-repo-tools==0.2.6 research-repo-tools \
             --root "$RUNNER_TEMP" performance release-draft "$GH_REPO" "$RELEASE_TAG" \
             --commit "$GITHUB_SHA" --expected-title "$RELEASE_TAG" | jq -c .)"
           echo "target=$target" >> "$GITHUB_OUTPUT"
@@ -109,7 +109,7 @@ jobs:
           if [[ "$BENCH_SUITE" == public-exact ]]; then
             features=bench,exact
           fi
-          uvx --python 3.15 --from research-repo-tools==0.2.4 research-repo-tools performance pack-suite \
+          uvx --python 3.15 --from research-repo-tools==0.2.6 research-repo-tools performance pack-suite \
             tooling/criterion-saved.toml "$BENCH_SUITE" --saved-sample "$RELEASE_TAG" \
             --output "$output/criterion.tar.gz" --revision "$GITHUB_SHA" \
             --session "$GITHUB_REPOSITORY:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT" \
@@ -179,7 +179,7 @@ jobs:
       - name: Install trusted package runner
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.13.6"
+          version: "0.13.7"
           enable-cache: false
           cache-python: false
 
@@ -202,7 +202,7 @@ jobs:
 
           asset="la-stack-${RELEASE_TAG}-criterion-baseline.tar.gz"
           cp target/release-suites/public-default/inventory.json target/release-benchmark-inventory.json
-          uvx --python 3.15 --from research-repo-tools==0.2.4 research-repo-tools \
+          uvx --python 3.15 --from research-repo-tools==0.2.6 research-repo-tools \
             --root "$GITHUB_WORKSPACE" performance assemble-suites tooling/criterion-saved.toml \
             target/release-suites/public-default/criterion.tar.gz \
             target/release-suites/public-exact/criterion.tar.gz \
@@ -230,7 +230,7 @@ jobs:
       - name: Install trusted package runner
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.13.6"
+          version: "0.13.7"
           enable-cache: false
           cache-python: false
 
@@ -251,7 +251,7 @@ jobs:
 
           [[ "$RELEASE_ASSET" == "la-stack-${RELEASE_TAG}-criterion-baseline.tar.gz" ]] || exit 1
           printf '%s\n' "$RELEASE_TARGET" > "$RUNNER_TEMP/release-target.json"
-          uvx --python 3.15 --from research-repo-tools==0.2.4 research-repo-tools \
+          uvx --python 3.15 --from research-repo-tools==0.2.6 research-repo-tools \
             --root "$RUNNER_TEMP" performance release-upload "$GH_REPO" "$RELEASE_TAG" \
             "$GITHUB_WORKSPACE/$RELEASE_ASSET" --target "$RUNNER_TEMP/release-target.json"
 

@@ -8,14 +8,14 @@ belong to research-repo-tools.
 
 ## Publication boundary
 
-The dependency-only environment pins the published `research-repo-tools==0.2.4`
-package. Release target capture and publication use the same exact version.
-The suite verification, packaging and assembly commands adopted for
+For la-stack v0.5.2, the development and release workflows pinned the
+published `research-repo-tools==0.2.4` package. The suite verification,
+packaging and assembly commands adopted for
 [#316](https://github.com/acgetchell/la-stack/issues/316), targeting v0.5.2,
-use that release as well. Its verified tool updater is adopted without local
-updater logic. A temporary scanner-selection override preserves the standard
-Python 3.15 Semgrep environment until the shared fix ships in v0.2.5;
-[#317](https://github.com/acgetchell/la-stack/issues/317) tracks its removal.
+used that release as well. That adoption used the verified shared tool
+updater and a temporary scanner-selection override to keep Semgrep on
+Python 3.15. The [current tooling guide](../../tooling/README.md) records the
+active pin and scanner setup.
 Upstream [#123](https://github.com/acgetchell/research-repo-tools/pull/123)
 adds trusted main-validation artifact reuse for release promotion; v0.2.3
 was published from commit `4085125526e21b2855eb7c61a52ee312782ae31a`.
@@ -34,10 +34,8 @@ and the exact registry lock entries:
 | Wheel | `00aaab2b7efd680d79324c6debb64db4d8d1ff076a460ff46e24e0ef1c24bd7d` |
 | Source distribution | `30b6d4d2f8d0cb98d5311656928dd65800088b651dd6c0c29f9a02526e9e902a` |
 
-Runtime imports and acceptance checks use this installed package. No sibling
-checkout or release-candidate installation supplies final evidence. The temporary
-Semgrep adapter overrides only the installed scanner-selection function; all
-benchmark execution, validation and publication use the public shared APIs.
+Runtime imports and acceptance checks used the installed release. Benchmark
+execution, validation and publication used the public shared APIs.
 
 The maintainer approved freezing earlier evidence instead of extending the
 shared policy gate to accept missing acquisition declarations. This deliberately

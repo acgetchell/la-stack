@@ -46,20 +46,16 @@ Local scans, fixture checks and SARIF retain the Linux stack-limit workaround
 for [Semgrep #11979](https://github.com/semgrep/semgrep/issues/11979).
 Ordinary Rust and Python tests remain scan targets; deliberate `tests/semgrep/`
 fixtures are checked separately by `just semgrep-test`.
-Published v0.2.4 hard-codes Python 3.14 for those fixture checks. The temporary
-`shared_tooling.py` adapter selects the scanner installed beside the active
-interpreter and delegates all fixture validation to the shared CLI. It also puts
-that environment's scripts first on `PATH` for the native scanner launcher.
-Setup uses the same adapter so it does not provision a separate scanner runtime.
-The shared Python baseline must apply to Semgrep too; the fix is tracked in
-[research-repo-tools#165](https://github.com/acgetchell/research-repo-tools/issues/165)
-for v0.2.5. Remove the version-guarded override through
-[#317](https://github.com/acgetchell/la-stack/issues/317) after adopting that fix.
+The shared package's `semgrep` extra declares the compatible scanner range.
+Setup and `semgrep check-fixtures` verify the installed executable against
+`uv.lock` and the root Python selector.
+Intel macOS uses Semgrep 1.182.1, the last release with a wheel for that platform.
+Other platforms resolve Semgrep 1.184.0 or newer within the shared range.
 
 ## Shared capability adoption
 
-The capability inventory below uses the installed v0.2.4 CLI and
-its [versioned contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.2.4/README.md#common-workflows).
+The capability inventory below uses the installed v0.2.6 CLI and
+its [versioned contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.2.6/README.md#common-workflows).
 Trusted release jobs use the same exact package pin through `uvx --python 3.15`.
 The shared updater installs and verifies candidate Cargo tools before publishing
 new pins; no local updater implementation is needed.
@@ -191,7 +187,7 @@ report and plot rendering after scratch cleanup.
 Shared implementation matrices live upstream, including
 `tests/performance/public_complete_consumer.py` and
 `public_criterion_consumer.py`, exercised from wheel and sdist installations.
-Published v0.2.4 also owns `public_suites_consumer.py`: suite selection, raw-file
+The shared package also owns `public_suites_consumer.py`, which covers suite selection, raw-file
 digests, archive paths, original host retention and complete assembly failures.
 The release workflow calls `performance pack-suite` and `assemble-suites`
 directly; `bench-release-check-suite` is a diagnostic wrapper around

@@ -182,11 +182,8 @@ The [justfile](../justfile) owns executable development workflows.
 Shared complete-inventory Python and file runners own discovery and bounded
 execution; repository lint policy and archive exclusions stay in the recipes
 and native tool configuration. The [capability inventory](../tooling/README.md#shared-capability-adoption)
-records the v0.2.4 development and release-command dependency.
-`tooling/shared_tooling.py` temporarily selects the scanner from the standard
-Python 3.15 environment before delegating to the installed fixture checker.
-[#317](https://github.com/acgetchell/la-stack/issues/317) owns its removal after
-the shared Python baseline also governs Semgrep in v0.2.5.
+records the v0.2.6 development and release-command dependency. The installed
+CLI verifies the Semgrep scanner in the locked Python 3.15 environment.
 
 `osv-scanner.toml` owns temporary advisory-specific dependency exceptions, and
 `.gitleaks.toml` owns narrow secret-scan false-positive exceptions. Their rationale
@@ -238,7 +235,7 @@ owns settings and deployment verification.
 `tooling/criterion-inventory.toml` declares hosted la-stack-only list commands and
 independent public API coverage. `tooling/criterion-saved.toml` declares
 complete saved-sample requirements. Shared discovery and saved-sample APIs own
-inventory parsing and exact raw-file verification. Published v0.2.4 also owns
+inventory parsing and exact raw-file verification. The shared package also owns
 suite-scoped verification, provenance, packaging and complete archive assembly.
 The release workflow retains the feature matrix, native commands, job budgets
 and artifact handoff; its regression and archive tests live in
@@ -278,13 +275,14 @@ without regeneration or invented acquisition records. New complete runs
 support offline rendering through the declared eligibility policy.
 
 The root Python 3.15 environment owns Semgrep alongside the other development
-tools. Its exact pin, native-wheel requirement and compatibility overrides live
+tools. Its platform constraints, native-wheel requirement and compatibility overrides live
 in `pyproject.toml` and `uv.lock`. Local scans, shared fixture validation and
 hosted SARIF use that lock and retain the Linux stack-limit workaround for
 [Semgrep #11979](https://github.com/semgrep/semgrep/issues/11979).
 The root `.semgrepignore` keeps ordinary Rust and Python tests in those scans
 while excluding deliberate `tests/semgrep/` fixtures, which `just semgrep-test`
-validates separately. Git-ignored dependencies, environments, caches, and build
+validates separately. `tests/tooling/test_semgrep_integration.py` exercises the
+locked fixture command and its failure statuses. Git-ignored dependencies, environments, caches, and build
 outputs remain outside production scans.
 
 `.github/actions/prepare-release-benchmarks/action.yml` groups tool installation,

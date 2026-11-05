@@ -91,7 +91,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          uvx --python 3.15 --from research-repo-tools==0.2.4 python -I - <<'PY'
+          uvx --python 3.15 --from research-repo-tools==0.2.6 python -I - <<'PY'
           import os
           import sys
           from pathlib import Path

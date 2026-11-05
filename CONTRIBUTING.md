@@ -10,7 +10,6 @@
 [![Audit dependencies][audit-badge]][audit-workflow]
 [![zizmor][zizmor-badge]][zizmor-workflow]
 [![Repository Rule SARIF][semgrep-badge]][semgrep-workflow]<br>
-[![Benchmarks][benchmarks-badge]][benchmarks-workflow]
 [![Release Benchmarks][release-benchmarks-badge]][release-benchmarks-workflow]
 [![Dependabot approval and auto-merge][dependabot-badge]][dependabot-workflow]
 <!-- markdownlint-enable MD033 -->
@@ -38,7 +37,7 @@ exact version declared in `pyproject.toml`, and `jq`. Authenticate the GitHub CL
 the declared Python, Rust, Cargo tools, and Just through the locked PyPI package:
 
 ```bash
-uv run --locked --managed-python --only-group tooling python tooling/shared_tooling.py setup
+uv run --locked --managed-python --only-group tooling research-repo-tools setup
 ```
 
 Set up the remaining development tools and validate the checkout:
@@ -54,7 +53,7 @@ change files. Run bare `just` for the complete generated command list, including
 arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
 owns recipe naming and documentation placement.
 
-Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.4` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.6` package,
 locked in the `tooling` dependency group and included by `dev`. Its `python-tools`
 extra owns the pytest, Ruff and Ty versions.
 `toolchain.inherit-python-tools` checks those versions against the lock and
@@ -86,8 +85,8 @@ Then `just update-dependencies` upgrades Cargo requirements and refreshes Cargo'
 lock, resolves exact direct Python `dev` pins, refreshes the complete `uv.lock`,
 and explicitly synchronizes `dev` with managed Rust available for native builds.
 Included groups retain their constraints, including the exact shared-package pin.
-Semgrep scans and fixture checks share the root Python 3.15 environment and lockfile. Preserve its exact
-pin, native-wheel requirement and compatibility overrides for MCP, PyJWT,
+Semgrep scans and fixture checks share the root Python 3.15 environment and lockfile. Preserve its platform
+constraints, native-wheel requirement and compatibility overrides for MCP, PyJWT,
 OpenTelemetry and Python 3.15 Windows wheels. Scanner commands retain the Linux
 stack-limit workaround required by Semgrep on Python 3.15. The hosted dependency
 audit checks the root Python lockfile with the shared OSV adapter; its existing
@@ -253,6 +252,11 @@ human contributor performs and reviews commits, pushes, tags, and releases.
 
 ### Validation Workflow
 
+On PRs and pushes to `main`, native CI compiles the benchmark targets, runs
+the input tests, and exercises the exact harness in Criterion test mode.
+Timing runs are opt-in. See [Benchmarking](docs/BENCHMARKING.md#ci-validation-and-manual-timings)
+for the coverage and dispatch commands.
+
 Start with the smallest test selection that exercises the changed behavior. Use
 `cargo nextest run <test-name>` for a focused runnable test, `cargo test --doc
 <filter>` for a focused doctest, or `cargo nextest run --test <crate>` for one
@@ -267,7 +271,7 @@ For final validation of a non-core change, compose each affected surface once:
 - Rust unit tests: `just test-unit`
 - Doctests: `just test-doc` and, when relevant, `just test-doc-exact`
 - Integration tests: `just test-integration`
-- Benchmark inputs or harnesses: `just test-bench-inputs` or `just bench-compile`
+- Benchmark inputs or harnesses: `just test-bench-inputs`, `just bench-compile`, or `just test-bench-exact`
 - Examples: `just examples`
 
 For individual edited file formats, use these focused checks and formatters:
@@ -441,8 +445,6 @@ Report suspected vulnerabilities privately through the process in
 
 [audit-badge]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml/badge.svg?branch=main
 [audit-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/audit.yml
-[benchmarks-badge]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml/badge.svg?branch=main
-[benchmarks-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml
 [ci-badge]: https://github.com/acgetchell/la-stack/actions/workflows/ci.yml/badge.svg?branch=main
 [ci-workflow]: https://github.com/acgetchell/la-stack/actions/workflows/ci.yml
 [clippy-badge]: https://github.com/acgetchell/la-stack/actions/workflows/rust-clippy.yml/badge.svg?branch=main

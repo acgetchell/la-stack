@@ -2,15 +2,15 @@
 
 import hashlib
 import json
+import shlex
 import subprocess
-from argparse import Namespace
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import pytest
 from research_repo_tools import release_assets, release_evidence, release_interfaces, release_validation
-from research_repo_tools.cli import main
+from research_repo_tools.cli import main, parser
 from research_repo_tools.config import load
 from research_repo_tools.release_interfaces import load_evidence_policy
 
@@ -37,6 +37,28 @@ SIGNING_STEPS = (
     "Upload signed validation evidence",
 )
 REQUIRED_STEPS = (*((index, 0) for index in range(4)), *((4, index) for index in range(3)))
+
+
+def install_clean_checkout(patch: pytest.MonkeyPatch, checkout: Path, commit: str) -> None:
+    """Supply read-only Git responses to the installed checkout verifier."""
+    options = ("--no-pager", "--no-optional-locks", "--no-replace-objects", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false")
+
+    def git(executable: str | Path, args: list[str], *, cwd: Path, timeout: int, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        assert cwd.samefile(checkout)
+        assert timeout == 30
+        assert Path(executable).is_absolute()
+        assert tuple(args[: len(options)]) == options
+        command = tuple(args[len(options) :])
+        responses = {
+            ("rev-parse", "HEAD"): f"{commit}\n".encode("ascii"),
+            ("ls-files", "-v", "-z"): b"H Cargo.toml\0",
+            ("submodule", "foreach", "--quiet", "--recursive", shlex.join((Path(executable).as_posix(), *options, "ls-files", "-v", "-z"))): b"",
+            ("status", "--porcelain", "-z", "--untracked-files=all", "--ignore-submodules=none"): b"",
+        }
+        assert command in responses, f"unexpected read-only Git command: {command}"
+        return subprocess.CompletedProcess(args, 0, stdout=responses[command], stderr=b"")
+
+    patch.setattr(release_assets, "run_command_bytes", git)
 
 
 class EvidenceProvider:
@@ -149,11 +171,12 @@ class EvidenceProvider:
         self.gh_calls.append(args)
         return self.signature_text if self.signature_text is not None else json.dumps(self.signature)
 
-    def download(self, repository: str, artifact: dict[str, Any], directory: Path, names: tuple[str, ...]) -> None:
+    def download(self, repository: str, artifact: dict[str, Any], directory: Path, names: tuple[str, ...], **bounds: int) -> None:
         # ZIP authentication and extraction are covered by the shared package.
         # This boundary supplies only the adapter's two extracted input files.
         self.downloads.append((repository, deepcopy(artifact), directory, names))
         assert names == ("validation.json", "validation.sigstore.json")
+        assert bounds == {"max_bytes": 32 * 1024 * 1024, "max_expanded_bytes": 32 * 1024 * 1024}
         directory.mkdir()
         payload = self.document_text if self.document_text is not None else json.dumps(self.document)
         (directory / "validation.json").write_text(payload, encoding="utf-8")
@@ -173,19 +196,25 @@ class EvidenceProvider:
 
     def seal(self, output: Path) -> None:
         """Exercise the installed producer including its environment/output guards."""
-        args = Namespace(
-            action="evidence",
-            operation="create",
-            configuration="tooling/release-evidence.toml",
-            checkout=self.root,
-            commit=COMMIT,
-            version="0.5.42",
-            run_id=101,
-            attempt=2,
-            output=output,
-            github_output=None,
-            tools=None,
-            archive=None,
+        args = parser().parse_args(
+            [
+                "release",
+                "evidence",
+                "create",
+                "tooling/release-evidence.toml",
+                "--checkout",
+                str(self.root),
+                "--commit",
+                COMMIT,
+                "--version",
+                "0.5.42",
+                "--run-id",
+                "101",
+                "--attempt",
+                "2",
+                "--output",
+                str(output),
+            ]
         )
         release_interfaces.run_evidence(args, load(root=self.root))
 
@@ -194,8 +223,7 @@ class EvidenceProvider:
         patch.setattr(release_interfaces, "api", self.api)
         patch.setattr(release_validation, "gh", self.gh)
         patch.setattr(release_evidence, "download_artifact", self.download)
-        patch.setattr(release_assets, "run_git_command", self.git)
-        patch.setattr(release_assets, "run_git_bytes", lambda *args, **_kwargs: subprocess.CompletedProcess(args, 0, stdout=b"", stderr=b""))
+        install_clean_checkout(patch, self.root, COMMIT)
 
     def cli(self, *args: str) -> int:
         return main(
