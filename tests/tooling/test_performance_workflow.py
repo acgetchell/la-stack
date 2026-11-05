@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import pytest
+import yaml
 from research_repo_tools.common_measurement import CompleteMeasurementPlan, DiscoveredSeries, DiscoveryPolicy, measure_prepared_pair, validate_run_policy
 from research_repo_tools.complete_runs import RunSeries
 from research_repo_tools.evidence import load_evidence, publish_evidence
-from research_repo_tools.just_inspect import dry_run
+from research_repo_tools.just_inspect import dry_run, inspect_justfile
 from research_repo_tools.measurement import load_measurement
 from research_repo_tools.performance_release import Preparation, serialize_preparation
 from research_repo_tools.process import run_command
@@ -164,6 +165,44 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(view: st
             "tests/common/proptest_config.rs",
             "tests/polynomial_bench_inputs.rs",
         } <= set(plan.harness)
+
+
+def test_routine_ci_validates_benchmarks_without_acquiring_timings() -> None:
+    """Preserve the native CI checks and reserve sampling for explicit requests."""
+    workflows = ROOT / ".github/workflows"
+    ci = yaml.safe_load((workflows / "ci.yml").read_bytes())
+    ci_events = ci.get("on", ci.get(True))
+    assert ci_events["push"]["branches"] == ci_events["pull_request"]["branches"] == ["main"]
+    build = ci["jobs"]["build"]
+    platforms = build["strategy"]["matrix"]["os"]
+    assert set(platforms) == {"ubuntu-latest", "macos-latest", "windows-latest"}
+    assert {"name": "Run CI checks", "run": "just ci"} in build["steps"]
+    ruleset = json.loads((ROOT / ".github/settings/main-ruleset.json").read_bytes())
+    required = next(rule["parameters"]["required_status_checks"] for rule in ruleset["rules"] if rule["type"] == "required_status_checks")
+    contexts = {check["context"] for check in required}
+    assert {f"build ({platform})" for platform in platforms} <= contexts
+
+    commands = dry_run(ROOT, "ci").stderr.splitlines()
+    assert any("cargo nextest run --workspace --release --profile ci --all-features --lib --tests" in line for line in commands)
+    bench_commands = [line.split(" cargo bench ", 1)[1] for line in commands if " cargo bench " in line]
+    compile_commands = [line for line in bench_commands if "--no-run" in line.split()]
+    assert any("--workspace --no-run --features bench" in line for line in compile_commands)
+    assert any("--no-run --features bench,exact --bench exact" in line for line in compile_commands)
+    assert [line for line in bench_commands if line not in compile_commands] == ['--locked --features bench,exact --bench exact -- "$@"']
+    recipes = inspect_justfile(ROOT).recipes
+    assert {"test-bench-exact", "bench-compile", "test-rust-ci"} <= {dep["recipe"] for dep in recipes["ci"]["dependencies"]}
+    smoke = recipes["test-bench-exact"]["dependencies"]
+    assert [(dep["recipe"], dep["arguments"]) for dep in smoke] == [("bench-exact", ["--test"])]
+
+    diagnostic = yaml.safe_load((workflows / "benchmarks.yml").read_bytes())
+    assert set(diagnostic.get("on", diagnostic.get(True))) == {"workflow_dispatch"}
+    assert diagnostic["permissions"] == {"contents": "read"}
+    assert {"bench", "Benchmarks / bench"}.isdisjoint(contexts)
+    steps = diagnostic["jobs"]["bench"]["steps"]
+    assert [step["run"] for step in steps if "run" in step] == ["just test-bench-inputs", "just bench-exact --noplot"]
+    assert steps[-1]["with"]["path"] == "target/criterion/"
+    assert steps[-1]["with"]["name"].startswith("exploratory-exact-")
+    assert not any(step.get("uses", "").startswith("actions/download-artifact@") for step in steps)
 
 
 @pytest.mark.parametrize(

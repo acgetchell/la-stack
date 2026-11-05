@@ -19,7 +19,7 @@ from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
 
-from tests.tooling.test_release_evidence import PIN_JSON, EvidenceProvider
+from tests.tooling.test_release_evidence import PIN_JSON, EvidenceProvider, install_clean_checkout
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/publish-crates.yml"
@@ -71,6 +71,7 @@ def release_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
         f"commits/{SHA}/check-runs?filter=latest&per_page=100": [{"total_count": len(checks), "check_runs": checks}],
     }
     monkeypatch.setattr(release_publishing, "run_git_command", git)
+    install_clean_checkout(monkeypatch, REPO_ROOT, SHA)
     monkeypatch.setattr(release_publishing, "_api", lambda _root, _repo, endpoint, **_kwargs: responses[endpoint])
     monkeypatch.setattr(release_publishing, "_remote_commit", lambda *_args: SHA)
     release = release_publishing.GitHubRelease(
@@ -253,7 +254,7 @@ def run_evidence_fixture() -> int:
 def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep real workflow shell, Just, uv, Python, verifier and output writer."""
     source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    runtime = '[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.4", "python", "-I")]'
+    runtime = '[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.6", "python", "-I")]'
     assert source.count(runtime) == 2
     # Run the exact recipe body/argument transport with the locked test runtime.
     # The separate isolated-runtime smoke and pin test own uvx installation.
@@ -482,7 +483,7 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
     assert evidence["permissions"] == {"contents": "read", "actions": "read", "attestations": "write", "id-token": "write"}
     steps = {step["name"]: step for step in evidence["steps"] if "name" in step}
     capture = steps["Capture successful native validation identities"]["run"]
-    assert "uvx --python 3.15 --from research-repo-tools==0.2.4 python" in capture
+    assert "uvx --python 3.15 --from research-repo-tools==0.2.6 python" in capture
     assert '"release", "evidence", "create", "tooling/release-evidence.toml"' in capture
     assert '"--output", "target/release-evidence/validation.json"' in capture
     assert steps["Sign original main validation evidence"]["with"]["subject-path"] == "target/release-evidence/validation.json"

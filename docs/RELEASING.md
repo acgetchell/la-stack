@@ -34,7 +34,7 @@ including when a rerun happens after UTC midnight.
 
 ## Reusable CI evidence
 
-The publishing process uses the installed `research-repo-tools==0.2.4`
+The publishing process uses the installed `research-repo-tools==0.2.6`
 release evidence commands. `tooling/release-evidence.toml` declares the repository,
 package, workflow, native jobs/steps and signer policy. The guarantee is
 `signed-source`; it does not promise promotion of an identical Cargo archive.
@@ -458,7 +458,7 @@ release ID and tag commit before attaching
 the archive. Do not edit the draft, move the tag,
 or publish manually while the workflow is running.
 
-The privileged jobs install the exact published `research-repo-tools==0.2.4`
+The privileged jobs install the exact published `research-repo-tools==0.2.6`
 package on Python 3.15 without repository checkout. Preflight emits versioned
 target JSON with the captured ID, commit and title assertion. Its trusted job
 output passes directly to the publisher, separately from the producer's inert
@@ -470,7 +470,7 @@ shared `pack-suite` command to verify and archive their full samples. Assembly
 uses `assemble-suites` with the checked-in policy, separately transported native
 inventory, tagged commit and repository/run/attempt identity. It emits the final
 asset only after validating both suites, raw-file digests and original provenance.
-These suite commands use the published `research-repo-tools==0.2.4` through
+These suite commands use the published `research-repo-tools==0.2.6` through
 `uvx --python 3.15`, matching the standard development dependency pin.
 New v0.5.2 archives use the shared layout described in
 [Benchmarking](BENCHMARKING.md#hosted-release-runtime-budget); historical assets

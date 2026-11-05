@@ -1,6 +1,6 @@
 # shellcheck disable=SC2148
 # Justfile for la-stack development workflow
-# Install tools: uv run --locked --managed-python --only-group tooling python tooling/shared_tooling.py setup
+# Install tools: uv run --locked --managed-python --only-group tooling research-repo-tools setup
 # Usage: just <command> or just --list
 
 # Use bash with strict error handling for all recipes
@@ -90,8 +90,9 @@ bench-compile:
     CARGO_BUILD_WARNINGS=deny {{ _run }} cargo bench --locked --no-run --features bench,exact --bench public_api
 
 # Run the exact-arithmetic benchmark suite.
-bench-exact:
-    {{ _run }} cargo bench --locked --features bench,exact --bench exact
+[positional-arguments]
+bench-exact *args:
+    {{ _run }} cargo bench --locked --features bench,exact --bench exact -- "$@"
 
 # Run the outward-rounded interval determinant benchmark suite.
 bench-interval:
@@ -230,7 +231,7 @@ check-fast:
     {{ _run }} cargo check
 
 # Run the complete local CI validation, tests, examples, and benchmark compilation.
-ci: action-lint workflow-allowlist-check zizmor markdown-check spell-check docs-version-check changelog-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-check test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile examples
+ci: action-lint workflow-allowlist-check zizmor markdown-check spell-check docs-version-check changelog-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-check test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile test-bench-exact examples
     @echo "🎯 CI checks complete!"
 
 # Validate CITATION.cff against the Citation File Format schema.
@@ -417,7 +418,7 @@ python-typecheck: python-sync
 
 # Preflight, upload or verify a captured draft target with an isolated trusted runtime.
 [positional-arguments]
-[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.4", "python", "-I")]
+[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.6", "python", "-I")]
 release-assets operation tag *args:
     import sys
     from pathlib import Path
@@ -429,7 +430,7 @@ release-assets operation tag *args:
 
 # Verify signed native/Cargo evidence; accept --expected PATH and --github-output PATH.
 [positional-arguments]
-[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.4", "python", "-I")]
+[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.6", "python", "-I")]
 release-evidence *args:
     import sys
     import tempfile
@@ -490,16 +491,16 @@ semgrep: _ensure-uv
 
 # Fixture tests for repository-owned Semgrep rules.
 semgrep-test: python-sync
-    {{ semgrep_stack_limit }} uv run --locked --group dev python tooling/shared_tooling.py semgrep check-fixtures
+    {{ semgrep_stack_limit }} uv run --locked --group dev research-repo-tools semgrep check-fixtures
 
 # Install declared managed tools and explicitly synchronize dev.
 setup: _ensure-gh _ensure-jq
-    uv run --locked --managed-python --only-group tooling python tooling/shared_tooling.py setup
+    uv run --locked --managed-python --only-group tooling research-repo-tools setup
     {{ _run }} cargo build
 
 # Tool-only setup; compilation belongs to setup.
 setup-tools: _ensure-gh _ensure-jq
-    uv run --locked --managed-python --only-group tooling python tooling/shared_tooling.py setup
+    uv run --locked --managed-python --only-group tooling research-repo-tools setup
 
 # Check shell script lint and formatting.
 shell-check: _ensure-shellcheck _ensure-shfmt
@@ -528,6 +529,9 @@ test: test-unit test-doc
 # Run all Rust tests, doctests, and Python integration tests.
 test-all: test-rust test-python
     @echo "✅ All tests passed"
+
+# Exercise the full exact benchmark harness in Criterion test mode.
+test-bench-exact: (bench-exact "--test")
 
 # Smoke-test deterministic inputs and configuration shared with benchmark suites.
 test-bench-inputs: tools-check
@@ -561,7 +565,7 @@ test-python: tools-check python-sync
 test-rust: test-rust-ci test-doc test-doc-exact
     @echo "✅ Rust tests passed"
 
-# CI Rust bucket: all runnable unit/integration targets in one nextest pass.
+# Run all unit and integration targets, including benchmark input tests, in one CI pass.
 test-rust-ci: tools-check
     {{ _run }} cargo nextest run --workspace --release --profile ci --all-features --lib --tests --verbose
 

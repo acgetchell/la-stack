@@ -1,69 +1,22 @@
 name: Benchmarks
 
-# Detect performance regressions.
-# - Push to main: run benchmarks, save Criterion baseline, upload as artifact.
-# - PRs: find latest main baseline artifact, download, compare, report.
-# Regressions are warning-only — this workflow never fails on regression.
+# Exploratory timings for a maintainer-selected ref.
+on:
+  workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read
-
-on:
-  push:
-    branches:
-      - main
-    paths:
-      - "src/**"
-      - "benches/**"
-      - "tests/exact_bench_config.rs"
-      - ".config/nextest.toml"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "justfile"
-      - "rust-toolchain.toml"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".python-version"
-      - ".github/actions/setup-tools/action.yml"
-      - ".github/workflows/benchmarks.yml"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "src/**"
-      - "benches/**"
-      - "tests/exact_bench_config.rs"
-      - ".config/nextest.toml"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "justfile"
-      - "rust-toolchain.toml"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".python-version"
-      - ".github/actions/setup-tools/action.yml"
-      - ".github/workflows/benchmarks.yml"
-  workflow_dispatch:
-
-concurrency:
-  group: >
-    bench-${{ github.workflow }}-${{
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.number ||
-      github.ref
-    }}
-  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
+  CRITERION_HOME: target/criterion
   RUST_BACKTRACE: 1
 
 jobs:
   bench:
     runs-on: ubuntu-latest
-    # The full exact suite has 260+ cases: Criterion's default 3 s warm-up
-    # plus 5 s measurement already needs 35+ minutes, before build/analysis.
+    # At Criterion's default 8 s of warm-up and measurement per case,
+    # 400+ cases need more than 53 minutes before build and analysis.
     timeout-minutes: 90
 
     steps:
@@ -77,157 +30,13 @@ jobs:
       - name: Validate benchmark inputs
         run: just test-bench-inputs
 
-      # ── PR: find and download the latest main baseline ──────────────
-      - name: Find latest main baseline
-        if: github.event_name == 'pull_request'
-        id: find-baseline
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            // Find the most recent successful run of this workflow on main.
-            const runs = await github.rest.actions.listWorkflowRuns({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'benchmarks.yml',
-              branch: 'main',
-              status: 'success',
-              per_page: 5,
-            });
+      - name: Measure the full exact suite
+        run: just bench-exact --noplot
 
-            for (const run of runs.data.workflow_runs) {
-              const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                run_id: run.id,
-              });
-
-              const baseline = artifacts.data.artifacts.find(
-                a => a.name === 'bench-baseline-main' && !a.expired
-              );
-
-              if (baseline) {
-                console.log(`Found baseline from run ${run.id} (${run.created_at})`);
-                core.setOutput('found', 'true');
-                core.setOutput('run_id', run.id.toString());
-                return;
-              }
-            }
-
-            console.log('No baseline artifact found');
-            core.setOutput('found', 'false');
-
-      - name: Download baseline artifact
-        if: >
-          github.event_name == 'pull_request' &&
-          steps.find-baseline.outputs.found == 'true'
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: bench-baseline-main
-          path: target/criterion
-          run-id: ${{ steps.find-baseline.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── PR: run benchmarks and compare ──────────────────────────────
-      - name: Run benchmarks (compare against main)
-        if: github.event_name == 'pull_request'
-        id: bench-compare
-        run: |
-          set -euo pipefail
-
-          if [ -d target/criterion/exact_d2/det/main ]; then
-            echo "::notice::Baseline found — comparing against main"
-            echo "comparison_available=true" >> "$GITHUB_OUTPUT"
-            # --baseline-lenient rather than --baseline: benches added on the
-            # PR branch that don't yet exist in the main baseline run without
-            # a comparison instead of aborting the whole run.
-            # Keep normal sampling; plots/HTML are unused by the summary.
-            cargo bench --locked --features bench,exact --bench exact \
-              -- --noplot --baseline-lenient main 2>&1 | tee bench-output.txt
-          else
-            echo "::notice::No baseline found — running without comparison"
-            echo "comparison_available=false" >> "$GITHUB_OUTPUT"
-            cargo bench --locked --features bench,exact --bench exact \
-              -- --noplot 2>&1 | tee bench-output.txt
-          fi
-
-          if grep -q "Performance has regressed" bench-output.txt; then
-            echo "regression=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "regression=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # ── Main push: run benchmarks and save baseline ─────────────────
-      - name: Run benchmarks (save baseline)
-        if: >
-          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-          github.ref == 'refs/heads/main'
-        run: >
-          cargo bench --locked --features bench,exact --bench exact
-          -- --noplot --save-baseline main
-
-      - name: Run benchmarks (manual ref)
-        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
-        run: cargo bench --locked --features bench,exact --bench exact -- --noplot
-
-      - name: Upload baseline artifact
-        if: >
-          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-          github.ref == 'refs/heads/main'
+      - name: Upload exploratory timings
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: bench-baseline-main
-          path: target/criterion
-          retention-days: 90
+          name: exploratory-exact-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/criterion/
+          retention-days: 14
           if-no-files-found: error
-
-      # ── PR: report results ──────────────────────────────────────────
-      - name: Benchmark summary
-        if: github.event_name == 'pull_request' && always()
-        run: |
-          set -euo pipefail
-
-          comparison_available="${BENCH_COMPARISON_AVAILABLE:-}"
-          regression="${BENCH_REGRESSION:-}"
-
-          # Lenient comparisons silently skip missing baselines. Require a
-          # change report for every analyzed case before claiming coverage.
-          if [ -f bench-output.txt ]; then
-            analyzed="$(grep -c '^Benchmarking .*: Analyzing$' bench-output.txt || true)"
-            compared="$(grep -c '^[[:space:]]*change:' bench-output.txt || true)"
-            if [ "$analyzed" = "0" ] || [ "$analyzed" != "$compared" ]; then
-              comparison_available=false
-            fi
-          else
-            comparison_available=false
-          fi
-
-          if [ "$comparison_available" != "true" ] || [ -z "$regression" ]; then
-            {
-              echo "### ❓ Benchmark Comparison Unavailable"
-              echo ""
-              echo "No usable comparison against the main baseline was produced."
-              echo "Benchmarks may be incomplete or lack a baseline; no regression claim can be made."
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::Benchmark comparison unavailable"
-          elif [ "$regression" = "true" ]; then
-            {
-              echo "### ⚠️ Performance Regression Detected"
-              echo ""
-              echo "Exact-arithmetic benchmarks show regression vs main baseline."
-              echo "This is a **warning only** — the workflow will not fail."
-              echo ""
-              echo '```'
-              grep -B1 "Performance has regressed" bench-output.txt || true
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::Performance regression detected in exact-arithmetic benchmarks"
-          else
-            {
-              echo "### ✅ No Performance Regression"
-              echo ""
-              echo "Exact-arithmetic benchmarks are within expected range vs main."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-        env:
-          BENCH_COMPARISON_AVAILABLE: ${{ steps.bench-compare.outputs.comparison_available }}
-          BENCH_REGRESSION: ${{ steps.bench-compare.outputs.regression }}

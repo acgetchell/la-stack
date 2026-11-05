@@ -7,6 +7,7 @@ the commands measure and where their outputs go.
 ## Contents
 
 - [Start Here](#start-here)
+- [CI validation and manual timings](#ci-validation-and-manual-timings)
 - [Benchmark Suites](#benchmark-suites)
   - [Release acquisition policy](#release-acquisition-policy)
 - [Common Workflows](#common-workflows)
@@ -60,6 +61,42 @@ README and plot publication require independent current/baseline tag and full
 commit assertions. The commands are shown below. Keep those assertions from the
 reviewed source checkouts or workflow inputs, rather than reading them from the
 evidence being validated.
+
+## CI validation and manual timings
+
+The native `build` jobs run `just ci` on Linux, macOS, and Windows for PRs
+and pushes to `main`. They cover the correctness checks previously exercised
+by the automatic benchmark job.
+
+| Former automatic action | Validator or current owner |
+| --- | --- |
+| Install and verify the locked tools | The same `setup-tools` action runs in every native CI job. |
+| Run `just test-bench-inputs` on Linux | `test-rust-ci` runs the complete all-feature workspace unit and integration suite, including `vs_linalg_inputs`, `exact_bench_config`, `column_basis`, `rational_dot`, `interval_solve`, and `polynomial_bench_inputs`. |
+| Build the exact harness for timing | `bench-compile` builds the workspace benchmark targets and exact-feature targets with warnings denied. |
+| Execute the full exact harness and its fixture checks | `test-bench-exact` runs every exact case in Criterion's `--test` mode without timing samples. |
+| Save or download a main baseline, sample a PR, and report cross-runner regressions | The manual workflow collects one exploratory run. Tagged release acquisition and its input gate remain in [Releasing](RELEASING.md#6-run-benchmarks-and-review-the-draft). |
+
+The three native build status checks still cover benchmark validation.
+The optional [Benchmarks workflow](https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml)
+runs only when a maintainer selects a reviewed branch or tag:
+
+```bash
+gh workflow run benchmarks.yml --ref "$REVIEWED_REF"
+```
+
+It runs `just test-bench-inputs` followed by `just bench-exact --noplot` on one
+hosted Linux runner. This samples the entire exact target, including diagnostic
+cases. At eight seconds per case, the default warm-up and measurement for 418
+cases total about 56 minutes, before build and analysis. The job has a 90-minute
+limit. Successful runs keep
+`target/criterion/` in the `exploratory-exact-<run-id>-<attempt>` Actions artifact
+for 14 days. The Actions job log identifies the checked-out revision.
+
+Use these single-revision timings to investigate cases. Hosted runner
+variability limits comparisons across runs. For a performance decision, use
+the paired workflows below to measure both revisions under equivalent inputs,
+harness, and toolchain in a compatible measurement environment. See
+[Criterion's CI guidance](https://bheisler.github.io/criterion.rs/book/faq.html#how-should-i-run-criterionrs-benchmarks-in-a-ci-pipeline).
 
 ## Benchmark Suites
 
@@ -902,7 +939,7 @@ baseline's four raw JSON files must match its fresh `new` measurement, including
 the native sanitized storage paths. Missing public cases, failed writes, stale
 baselines and malformed measurements stop publication. For one suite, use
 `just bench-release-check-suite <tag> <suite>` with the runner's output directory.
-The shared v0.2.4 `pack-suite` command already performs that validation before
+The shared `pack-suite` command performs that validation before
 packaging, so the workflow needs no additional verification pass. It retains
 original host metadata captured before timing and digests of every raw file.
 Assembly uses `assemble-suites` with the checked-in policy and separately

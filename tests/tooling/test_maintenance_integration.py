@@ -6,6 +6,7 @@ import re
 import shlex
 import shutil
 import sys
+import sysconfig
 import tomllib
 from collections import Counter
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
+from research_repo_tools import semgrep_tool
 from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
@@ -154,27 +156,25 @@ def test_markdown_recipe_preserves_active_and_historical_selection(consumer: Pat
     assert "-- rumdl check" in checked
 
 
-def test_semgrep_adapter_uses_real_consumer_rules_and_fixtures() -> None:
+def test_semgrep_fixture_recipe_uses_the_published_cli() -> None:
     """The shared checker validates the supplied namespace, including hidden workflows."""
     config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["research-repo-tools"]["semgrep"]
     assert config["config"] == "semgrep.yaml"
     assert config["fixtures"] == "tests/semgrep"
     assert config["namespace"] == "la-stack."
     result = dry_run(REPO_ROOT, "semgrep-test")
-    assert "uv run --locked --group dev python tooling/shared_tooling.py semgrep check-fixtures" in result.stderr
+    assert "uv run --locked --group dev research-repo-tools semgrep check-fixtures" in result.stderr
 
 
 def test_semgrep_runs_in_the_root_python_315_environment_with_compatible_dependencies() -> None:
     """The unified scanner starts with its native engine and patched dependencies."""
     root = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    requirement = next(Requirement(item) for item in root["dependency-groups"]["dev"] if isinstance(item, str) and item.startswith("semgrep"))
     assert root["project"]["requires-python"] == ">=3.15"
     assert root["tool"]["uv"]["no-build-package"] == ["semgrep"]
     assert not (REPO_ROOT / "tooling/semgrep/pyproject.toml").exists()
     overrides = {requirement.name: requirement.specifier for requirement in map(Requirement, root["tool"]["uv"]["override-dependencies"])}
     lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
     versions = {package["name"]: Version(package["version"]) for package in lock["package"]}
-    assert versions["semgrep"] in requirement.specifier
     assert versions["pywin32"] == Version("312")
     for name, vulnerable, patched in (("mcp", "1.29.0", "1.30.0"), ("opentelemetry-api", "1.45.0", "1.45.1"), ("pyjwt", "2.15.0", "2.15.1")):
         assert Version(vulnerable) not in overrides[name]
@@ -188,12 +188,20 @@ def test_semgrep_runs_in_the_root_python_315_environment_with_compatible_depende
         == versions["opentelemetry-instrumentation-requests"]
         == versions["opentelemetry-instrumentation-threading"]
     )
-    scanner = next(package for package in lock["package"] if package["name"] == "semgrep")
-    assert any("none-win_amd64" in wheel["url"] for wheel in scanner["wheels"])
+    scanners = [package for package in lock["package"] if package["name"] == "semgrep"]
+    assert any("none-win_amd64" in wheel["url"] for scanner in scanners for wheel in scanner["wheels"])
+    assert any("none-macosx_10_14_x86_64" in wheel["url"] for scanner in scanners for wheel in scanner["wheels"])
     windows = next(package for package in lock["package"] if package["name"] == "pywin32")
     assert any("cp315-cp315-win_amd64" in wheel["url"] for wheel in windows["wheels"])
+    assert sys.version_info[:2] == (3, 15)
+    scripts = Path(sysconfig.get_path("scripts"))
+    production_scanner = shutil.which("semgrep", path=str(scripts))
+    assert production_scanner is not None
+    verified = semgrep_tool.verify(REPO_ROOT)
+    assert verified.path.samefile(production_scanner)
     result = run_command("uv", ["run", "--locked", "--group", "dev", "semgrep", "--disable-version-check", "--version"], cwd=REPO_ROOT)
-    assert result.stdout.strip() == str(versions["semgrep"])
+    assert result.stdout.strip() == verified.version
+    assert verified.version in {scanner["version"] for scanner in scanners}
 
 
 def test_python_update_uses_the_unified_environment() -> None:
