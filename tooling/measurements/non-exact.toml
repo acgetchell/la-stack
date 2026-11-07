@@ -1,13 +1,14 @@
 # Scientific measurement policy consumed directly by research-repo-tools.
 schema = 2
 minimum-release = "v0.5.0"
-sources = [ "src/**/*.rs", "Cargo.toml" ]
+sources = [ "src/**/*.rs", "Cargo.toml", "README.md" ]
 harness = [
     "benches/**/*.rs",
     "benches/comparison/Cargo.toml",
     "examples/**/*.rs",
     "Cargo.toml",
     "Cargo.lock",
+    "dependency-sources.toml",
     "rust-toolchain.toml",
     "tests/exact_bench_config.rs",
     "tooling/performance.just",

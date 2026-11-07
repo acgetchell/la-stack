@@ -90,7 +90,7 @@ paths; never rename a generated report without updating its source workflow.
 ## README and rustdoc guides
 
 `src/lib.rs` includes the README with
-`#![doc = include_str!("../README.md")]`, so README examples are also the
+`#![cfg_attr(doc, doc = include_str!("../README.md"))]`, so README examples are also the
 docs.rs landing-page examples.
 
 Keep the README quickstart and brief capability descriptions discoverable. Put

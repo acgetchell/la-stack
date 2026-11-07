@@ -1,8 +1,8 @@
 # Tooling
 
 The installed `research-repo-tools` package owns common development and
-performance tooling. The exact released pin and registry hashes live in
-`pyproject.toml` and `uv.lock`. This dependency-only environment has no local
+performance tooling. The exact supplier pin lives in `pyproject.toml` and
+`uv.lock`. This dependency-only environment has no local
 Python distribution or console entry points. Declarative release policies select
 the native Cargo gates; shared tooling is not copied into this repository.
 
@@ -32,7 +32,7 @@ exit alone also accepts a broken import or shell. When quiet mode hides
 diagnostics, retain the verifier's arguments, exit status and diagnostic in a
 fixture-owned result file.
 
-The `release-evidence` recipe uses Just's native uv/Python script interpreter.
+The candidate and native evidence recipes use Just's isolated uvx/Python script interpreter.
 MSYS applies shell-like argument expansion when started by a native Windows
 program, which can corrupt JSON passed as Bash positional arguments; see
 [MSYS2 #522](https://github.com/msys2/MSYS2-packages/issues/522). The integration
@@ -54,9 +54,38 @@ Other platforms resolve Semgrep 1.184.0 or newer within the shared range.
 
 ## Shared capability adoption
 
-The capability inventory below uses the installed v0.2.6 CLI and
-its [versioned contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.2.6/README.md#common-workflows).
-Trusted release jobs use the same exact package pin through `uvx --python 3.15`.
+This development branch tests upstream commit
+`055353c630604b1ae3438c1eaf534ba85e067a7e` through an exact uv Git source override.
+The package metadata still says 0.2.6; integration checks verify the manifest,
+lock and installed commit, including the isolated `uvx --python 3.15` runtimes.
+Advance the full commit deliberately after upstream changes; do not float on
+`main`. Before an actual release, replace the override and isolated runtime pins
+with the supplying published version, resolve/sync the lock and revalidate all
+affected evidence. The configured `release.published-dependencies` policy uses
+the shared implementation from
+[research-repo-tools#193](https://github.com/acgetchell/research-repo-tools/issues/193).
+`just release-dependencies` checks that transition before release work. It
+deliberately rejects this development pin; ordinary checks and bounded
+acquisition remain available. Release evidence and publication enforce the
+same policy again, including the actual isolated runtime.
+
+Normal `just update` uses the supplier's exact Git-source support from
+[research-repo-tools#201](https://github.com/acgetchell/research-repo-tools/pull/201),
+which fixes [#200](https://github.com/acgetchell/research-repo-tools/issues/200).
+The updater preserves the included tooling group, immutable source commit and
+inherited tool versions while updating unrelated dependencies. Keep the source
+mapping throughout maintenance; release operations still require publication.
+
+The root `dependency-sources.toml` declares both dependency graphs for the
+shared source-policy validation introduced by
+[research-repo-tools#198](https://github.com/acgetchell/research-repo-tools/pull/198).
+Cargo release ownership includes `la-stack` and its private comparison member;
+the Python project is the private tooling environment. Other dependencies must
+come from their registries for release. The file is retained in source exports
+and both benchmark harness declarations, so policy changes invalidate evidence.
+
+The capability inventory below uses the pinned CLI and
+its [exact-commit contracts](https://github.com/acgetchell/research-repo-tools/blob/055353c630604b1ae3438c1eaf534ba85e067a7e/README.md#common-workflows).
 The shared updater installs and verifies candidate Cargo tools before publishing
 new pins; no local updater implementation is needed.
 Native Rust algorithms, assertions, benchmark selection and release decisions
@@ -106,8 +135,9 @@ external dependencies and commit pins.
 
 The [benchmark guide](../docs/BENCHMARKING.md) owns command selection,
 interpretation and output paths. Measurement and publication use the installed
-CLI or native Cargo commands. `performance-release.toml` composes the installed
-`performance prepare`, `release` and `readme` commands. Preparation retains
+APIs or native Cargo commands. `performance-release.toml` declares preparation,
+release measurement and README publication. `release_candidate.py` supplies
+repository orchestration for independent owner records and hosted transport. Preparation retains
 independent commit assertions and declaration identity; measurement/report
 promotion and README publication remain separate retry boundaries.
 There is no runtime configuration generator.
@@ -117,44 +147,84 @@ There is no runtime configuration generator.
 | `measurements/full.toml`, `measurements/non-exact.toml` | Release floor, required cases, sampling, original peer phases, source/harness inventories, probes and environments |
 | `performance-policy.toml` | Independent scientific catalog used by consumer acceptance tests |
 | `performance.just` | Native discovery, correctness gates and measurement commands |
-| `criterion-inventory.toml` | Hosted la-stack-only discovery and independent required scientific IDs |
+| `criterion-inventory.toml` | Optional saved-baseline discovery and independent required scientific IDs |
 | `criterion-saved.toml` | Required IDs, canonical paths, 100 samples and exact saved raw JSON bytes |
 | `performance-report.toml` | Independent release eligibility, current report and immutable run history |
 | `performance-release.toml` | Preparation storage, publication chronology and separate phase declarations |
+| `release_candidate.py` | Owner-controlled capture, final acceptance and exact hosted handoffs using public shared APIs |
 | `performance-readme.toml` | Canonical README selection, formatter, source freshness and tagged links |
 | `plots/{non-exact,retained,scratch}/*.toml` | Named metric/statistic/axis selections with explicit input ownership |
 
 Both labels of a new measurement must be v0.5.0 or newer. The full and
 non-exact declarations require 100 samples, mean and median estimates,
 95% intervals and nanoseconds. Each phase runs its native correctness gate before
-timing. The current phase's `gate-public` adds column bases, rational dot products,
-interval solve oracles and polynomial coefficient checks to the shared `gate`.
-The baseline uses `gate` because those APIs are absent before v0.5.2.
-Reference libraries originate in the baseline phase.
+timing. Schema-6 availability resolves each suite before compilation, inside one
+sequential trial. README and LU plots select trial 1. New-API
+suites run their column-basis, rational-dot, interval-solve or polynomial gate
+on every supported revision. The non-exact diagnostic retains its original gate
+and baseline-phase reference libraries.
 
 The expanded #301 policy measures all public la-stack workflows at the current
-revision and the 1,254 shared cases at the baseline, plus only 16 baseline-phase
-peer LU-factorization-and-solve cases. The 149 cases for APIs introduced in v0.5.2
-retain current timings without baseline comparisons. Hosted
-acquisition omits peers entirely. The full scratch/retained plot selections
+revision and on supported baselines. Older baselines retain 1,254 shared library
+cases; the 149 cases introduced in v0.5.2 become required automatically at that
+boundary. The paired LU suite acquires 16 peer cases on each phase alongside
+the matching library cases; README ratios use current-phase observations. Hosted
+release jobs reuse the accepted local acquisition without collecting timings. The full scratch/retained plot selections
 therefore expose only LU solve; broad peer plots remain in the explicitly
-requested non-exact diagnostic. `performance.just` prints the independent local
-case budget before measurement, and `performance-release` records the recipe
+requested non-exact diagnostic. The shared reporter prints the resolved suite
+inventory and nominal budget before measurement, and `performance-release` records the recipe
 body's elapsed seconds and failure status under ignored scratch outputs. The
 [public workflow map](../docs/BENCHMARKING.md#release-acquisition-policy) owns
 coverage decisions, feature configurations and runtime estimates.
+
+`performance-release` forwards its `progress` and `cadence` arguments directly
+to the installed reporter, defaulting to `human` and `300` seconds. JSON status
+and `none` are supported without a local progress engine. Consumer fixtures
+exercise validated totals, unknown ETA, captured logs and early failure; report
+and README recipes retain their measurement-free retry boundaries. The
+[workload review](../docs/dev/benchmark-workload-review.md) records the availability
+decision, preserved coverage and supplier's corrected gate-failure event.
 
 General workload availability across API revisions is tracked in
 [research-repo-tools#166](https://github.com/acgetchell/research-repo-tools/issues/166)
 for v0.2.5, with published-package adoption in
 [la-stack#320](https://github.com/acgetchell/la-stack/issues/320) for v0.5.3.
-Keep the explicit v0.5.2 baseline boundary until that replacement is verified.
+The full declaration now uses inclusive `since = "v0.5.2"` suite bounds.
+The normally installed 0.2.6 interface was checked against the consumer's peer
+comparison contract. Astra recommends retaining its cross-phase different-ID
+restriction and migrating to paired LU suites with current-phase peer ratios.
+The current development pin fixes the gate-status defect tracked in
+[research-repo-tools#191](https://github.com/acgetchell/research-repo-tools/issues/191);
+the preserved schema-2 and schema-5 regressions pass against it.
+No permanent baseline exclusion remains; supported missing cases or failed
+compilation remain errors.
+
+The current pin also supplies schema-6 interrupted-trial recovery and
+phase-specific sources from [PR #205](https://github.com/acgetchell/research-repo-tools/pull/205).
+Baseline sources declare historical README compiler input; current gates prove
+README is excluded from ordinary debug/release compilation. Current README is
+one of the precise generated outputs. Historical current revisions that still
+compile it are rejected by the full candidate plan.
+
+Earlier adopted fixes for
+[research-repo-tools#196](https://github.com/acgetchell/research-repo-tools/issues/196)
+and [#197](https://github.com/acgetchell/research-repo-tools/issues/197) arrived through
+[PR #199](https://github.com/acgetchell/research-repo-tools/pull/199).
+The paired-suite publisher resolves dependency-version labels from the owning suite
+observation; preparation checks each available suite's minimum release before
+saving a source pair. The preserved public-API reproducers pass without changing
+their assertions. The [workload review](../docs/dev/benchmark-workload-review.md#validation-evidence)
+records downstream validation and the remaining publication/platform boundary.
 
 Working-tree measurements include tracked changes and nonignored untracked
 regular files. Scratch outputs belong under ignored `target/`.
 `just performance-release` fetches tags and saves independent source assertions
 before measurement and report promotion. It stops if preparation fails;
-`performance-readme` remains a separate publication step.
+`performance-readme` remains a separate publication step. `performance-resume`
+reuses the same preparation and checkpoint; it preserves completed suite pairs
+inside an interrupted trial. A fresh acquisition refuses an existing checkpoint.
+The owner record lives outside the checkout and freezes original bytes/digests
+before promotion. Explicit capture retries never start measurements.
 For preparation alone, `just performance-prepare` uses local tags;
 `--fetch-tags --allow-git-mutations` explicitly enables fetching.
 Measurement recipes create temporary
@@ -189,9 +259,10 @@ Shared implementation matrices live upstream, including
 `public_criterion_consumer.py`, exercised from wheel and sdist installations.
 The shared package also owns `public_suites_consumer.py`, which covers suite selection, raw-file
 digests, archive paths, original host retention and complete assembly failures.
-The release workflow calls `performance pack-suite` and `assemble-suites`
-directly; `bench-release-check-suite` is a diagnostic wrapper around
-`performance verify-saved --suite`. No local suite verifier or merge engine remains.
+Legacy suite archive consumer fixtures retain public `pack-suite` and
+`assemble-suites` coverage; `bench-release-check-suite` remains diagnostic.
+New releases derive archives from the original candidate through shared APIs.
+There is no local suite verifier, comparison engine or archive merger.
 Consumer tests retain independent scientific selections, actual recipe wiring,
 saved archive round trips, publication boundaries and historical hashes.
 
@@ -213,22 +284,32 @@ and scientific checks on the exact commit, and requires the durable Criterion
 release asset. `release-gate`, `release-publish` and `release-verify`
 use the shared release contract; `release-package` owns native default/exact
 Cargo dry-runs. Main CI signs those packaging and native validation identities;
-`release-evidence` verifies the original main-push attempt and immutable signed
-artifact before publication and rechecks its pinned identity after approval.
+`release-evidence <owner>` binds the original acquisition, precise publisher
+receipt, final clean commit and signed native acceptance. Named review records
+are immutable; selecting a later native attempt requires an explicit new name.
 `release-evidence.toml` owns the package, workflow, native job and signer policy;
-`release-assets.toml` owns the draft-target policy. Both recipes use the pinned
+`release-assets.toml` owns the draft-target policy. Evidence recipes use the pinned
 installed runtime outside the observed checkout. The [release guide](../docs/RELEASING.md#reusable-ci-evidence)
-owns the transactional output and frozen approval contract.
+owns the independent owner selection and frozen approval contract.
+`release-stage` freezes the draft ID before upload; `release-publication` adds
+canonical archive ID/hash assertions. Two maintainer dispatches use those
+independent records. Write-scope hosted jobs execute no checkout code;
+read-only verification authenticates full acceptance with an owner-reviewed
+SHA-256 and freezes its bytes in an immutable Actions artifact across approval.
+Explicit native-evidence renewal changes that reviewed receipt while retaining
+the original immutable release archive and asset selections.
+`tests/tooling/test_candidate_transfer.py` exercises the actual handoff blocks.
 `tests/tooling/test_release_evidence.py` checks installed policy boundaries, while
 `tests/tooling/test_release_publishing.py` checks consumer policy and upload barriers
 without registry credentials. The release guide owns retention, complete-rerun
 recovery and the distinction between reused checks and Cargo repackaging.
 
 `tests/tooling/test_toolchain_integration.py` owns the package-identity check:
-manifest pin, registry lock, installed version and distribution hashes.
+manifest source, exact Git lock and installed commit for this rehearsal.
 Dependency updates and release tests derive their requirement from the
 manifest. The shared package pin advances deliberately with its lockfile;
-no sibling checkout supplies runtime code.
+no sibling checkout supplies runtime code. A published release will replace the
+temporary source override before consumer publication.
 
 Setup, managed execution, dependency updates, Markdown checks, Semgrep,
 security scans and opt-in CodeRabbit review also use shared commands.

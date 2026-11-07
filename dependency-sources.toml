@@ -1,0 +1,12 @@
+# Shared release validation owns registry and exact development-source checks.
+schema = 1
+
+[projects.python]
+ecosystem = "python"
+directory = "."
+release-owned = [ "." ]
+
+[projects.rust]
+ecosystem = "cargo"
+directory = "."
+release-owned = [ ".", "benches/comparison" ]

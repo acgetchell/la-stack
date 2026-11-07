@@ -75,10 +75,13 @@ title = "Matrix infinity norm (max abs row sum)"
 benchmarks = [ "la_stack_inf_norm", "nalgebra_inf_norm", "faer_inf_norm" ]
 
 # Independent release case catalog. Native discovery must agree with these IDs.
-# These APIs were introduced in v0.5.2 and have no v0.5.0/v0.5.1 timings.
-# Keep their complete current coverage; shared cases retain both revisions.
-[baseline]
-current-only = [ "column_basis/*", "interval_division/*", "interval_solve_d*/*", "polynomial/*", "rational_dot/*" ]
+# Independently assert introduction versions on both sides of every comparison.
+[availability]
+"column_basis/*" = "v0.5.2"
+"interval_division/*" = "v0.5.2"
+"interval_solve_d*/*" = "v0.5.2"
+"polynomial/*" = "v0.5.2"
+"rational_dot/*" = "v0.5.2"
 
 [release]
 default = [

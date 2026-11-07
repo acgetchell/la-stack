@@ -20,7 +20,7 @@ the commands measure and where their outputs go.
 - [`vs_linalg` Methodology](#vs_linalg-methodology)
 - [Exact-Arithmetic Notes](#exact-arithmetic-notes)
 - [Release Notes](#release-notes)
-  - [Hosted Release Runtime Budget](#hosted-release-runtime-budget)
+  - [Hosted Release Verification](#hosted-release-verification)
   - [Validate The Release Workflow](#validate-the-release-workflow)
 
 ## Start Here
@@ -40,12 +40,13 @@ Preparation also saves independent release tags and commits for a later
 | --- | --- |
 | Working tree versus latest release | `just performance-local` |
 | Non-exact working tree versus latest release | `just performance-local-non-exact` |
-| Two existing tags, full or non-exact | `just performance-measure "$CURRENT_TAG" "$PREVIOUS_TAG" full` |
+| Two compatible existing tags, full or non-exact | `just performance-measure "$CURRENT_TAG" "$PREVIOUS_TAG" full` |
 | Fast saved-baseline loop | `just bench-save-baseline <name> <suite>`, then `just bench-compare <name>` |
 | Native comparison suite | `just bench-vs-linalg` |
 | Interval determinant filter | `just bench-interval` |
 | Certified dot/linear-form filter | `just bench-linear-form` |
 | Measure and promote a release report | `just performance-release` |
+| Resume the original interrupted campaign | `just performance-resume` |
 | Promote an explicit full scratch run | `just performance-promote` |
 | Render the retained release report offline | `just performance-doc` |
 
@@ -55,7 +56,10 @@ that scratch pair explicitly and requires a distinct release pair.
 scratch cannot silently select history. `performance-release` composes fresh
 preparation, full measurement and promotion; a failed phase stops the recipe.
 README publication stays in the separate `performance-readme` command so it can
-be retried without repeating measurements.
+be retried without repeating measurements. Fresh acquisition refuses an existing
+checkpoint. Resume keeps the original preparation, completed suite pairs, raw
+bytes and journal; it recollects only an incomplete pair. Keep the independent
+owner directory printed by the release command outside the checkout.
 
 README and plot publication require independent current/baseline tag and full
 commit assertions. The commands are shown below. Keep those assertions from the
@@ -74,7 +78,7 @@ by the automatic benchmark job.
 | Run `just test-bench-inputs` on Linux | `test-rust-ci` runs the complete all-feature workspace unit and integration suite, including `vs_linalg_inputs`, `exact_bench_config`, `column_basis`, `rational_dot`, `interval_solve`, and `polynomial_bench_inputs`. |
 | Build the exact harness for timing | `bench-compile` builds the workspace benchmark targets and exact-feature targets with warnings denied. |
 | Execute the full exact harness and its fixture checks | `test-bench-exact` runs every exact case in Criterion's `--test` mode without timing samples. |
-| Save or download a main baseline, sample a PR, and report cross-runner regressions | The manual workflow collects one exploratory run. Tagged release acquisition and its input gate remain in [Releasing](RELEASING.md#6-run-benchmarks-and-review-the-draft). |
+| Save or download a main baseline, sample a PR, and report cross-runner regressions | The manual workflow collects one exploratory run. Accepted release evidence is attached through [Releasing](RELEASING.md#6-attach-accepted-benchmarks-and-review-the-draft). |
 
 The three native build status checks still cover benchmark validation.
 The optional [Benchmarks workflow](https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml)
@@ -106,29 +110,41 @@ for diagnostics.
 
 ### Release acquisition policy
 
-The `public-release-and-lu-peers-v3` policy extends #301 with column bases,
+The `public-release-and-paired-lu-peers-v4` policy extends #301 with column bases,
 interval division/solves, rational dot products, and polynomial determinants.
 The full la-stack selection has 736 default-feature and 667 exact-feature cases.
 Local `performance-release`, `performance-local`, and full `performance-measure`
 measure all 1,403 cases at the current revision under one captured harness.
-The baseline measures the 1,254 shared cases: 646 default-feature and 608
-exact-feature cases. Column bases, interval division/solves, rational dot products,
-and polynomial determinants were introduced in v0.5.2, so their 149 cases have
-current timings only. Reports leave their baseline cells empty; they establish
-no release-to-release speedup. The independent catalog declares this boundary
-under `[baseline]`; revisit it when the supported baseline floor includes these APIs.
-Only the baseline phase also measures the 16 native nalgebra/faer LU
-factorization-plus-one-solve cases at D=2, 3, 4, 5, 8, 16, 32, and 64.
-The matching eight current la-stack timings already belong to the full suite.
+Baselines before v0.5.2 measure 1,254 shared library cases: 646 default-feature
+and 608 exact-feature cases. Column bases, interval division/solves, rational dot
+products and polynomial determinants were introduced in v0.5.2. Their 149 cases
+are required on each supported revision and unavailable on older revisions.
+The independent catalog's `[availability]` table and the schema-6 suite bounds
+declare this boundary. Resolution uses the original source receipt before
+overlaying the current harness; a supported compile failure remains an error.
+Both phases also measure the 16 native nalgebra/faer LU factorization-plus-one-solve
+cases at D=2, 3, 4, 5, 8, 16, 32 and 64. Each phase's eight matching la-stack
+cases and 16 peers share one `lu-solve` acquisition unit. The README uses
+current-phase peer/current-library ratios; baseline peer observations remain
+attributed to their original phase.
 Peers and la-stack originate in one local acquisition environment;
 hosted results never supply the denominator of a local peer ratio.
 
-Hosted release acquisition and the default `bench-save-baseline` measure only
-la-stack. Discovery, saved-byte verification, and local measurement declarations
+Hosted release jobs reuse the original accepted local acquisition without
+measuring. The optional `bench-save-baseline` diagnostic measures only la-stack. Discovery, saved-byte verification, and local measurement declarations
 have separate completeness requirements. `tooling/performance-policy.toml`
 contains the independent required case catalog; native `--list` discovery
 retains the observed inventory and rejects missing required cases.
 The installed engine rejects duplicate semantic IDs and incomplete raw samples.
+
+The full plan uses one sequential trial; README and LU plots explicitly select
+trial 1. Baseline selectors include README because historical compilers read it.
+Current source includes README only during rustdoc; current native gates verify
+that both debug and release dependency files exclude it before timing. Full
+comparison with an older current revision that still compiles README is rejected.
+The non-exact diagnostic conservatively declares README on both phases.
+All source/harness pins and configurations must be settled before release
+acquisition; only the precise declared outputs may change afterward.
 
 | Public operation family | Measurement owner and feature configuration |
 | --- | --- |
@@ -158,12 +174,21 @@ parameter combination.
 Broad peer operations, Gaussian and hand-written reference timings, determinant
 implementation diagnostics and exponent-spread studies remain opt-in. Use
 `bench-vs-linalg`, `bench-exact`, or the non-exact diagnostic workflow explicitly.
-Neither routine release path acquires them. The README retains its existing
+Routine release acquisition excludes them. The README retains its existing
 eight-dimension LU graph; no additional performance page or graph is produced.
 
-The local driver prints the case count and nominal timing budget before samples
-are acquired. The current plan has 2,673 measurements and a nominal 356.4-minute
-warmup-plus-measurement budget, before compilation, gates, and analysis.
+The [v0.5.3 workload review](dev/benchmark-workload-review.md) maps required,
+optional and excluded measurements to caller costs, numerical regimes and
+oracles. Astra accepted its no-removal conclusion and recommended a paired LU
+suite with current-phase peer comparisons for the availability migration.
+The paired-suite migration implements that decision within the current schema-6
+schedule; historical acquisitions retain their original policy and bytes.
+
+The shared reporter prints the discovered case count and nominal timing budget
+before samples are acquired. With a pre-v0.5.2 baseline, the plan has 2,689
+measurements and a nominal 358.5-minute warmup-plus-measurement budget. A baseline
+at v0.5.2 or later requires 2,838 measurements and 378.4 nominal minutes.
+Both budgets exclude compilation, gates and analysis.
 `performance-release` records preparation, measurement and promotion elapsed seconds and exit
 status in ignored `target/bench-reports/full/runtime.txt`, including failures.
 The timer starts after Just's prerequisite checks. Use `time just performance-release`
@@ -174,11 +199,33 @@ a nominal 189.6-minute budget; that calculation supplies no observed elapsed
 time. Expanded public coverage means removing peers alone establishes no overall
 speedup. No end-to-end acquisition has been timed for the expanded policy.
 
-Full comparisons require both revisions to implement every selected API. A
-baseline predating these additions fails discovery; it cannot supply polynomial,
-rational-dot, column-basis or interval-solve ratios. Hosted tagged acquisition
-still records absolute costs. Existing retained reports remain historical and
-do not satisfy the expanded inventory; changing this plan does not rewrite them.
+`performance-release` uses the installed shared progress reporter. Its optional
+arguments select output mode and heartbeat seconds:
+
+```bash
+just performance-release human 300
+just performance-release json 60
+```
+
+These are alternative acquisition commands, not report retries. The default is
+human output with five-minute heartbeats; `none` disables shared status. Stage
+transitions are immediate. JSON records on stderr use schema
+`research-repo-tools/acquisition-progress/v1` and may be interleaved with native
+diagnostics. Captured logs need no TTY. Counts advance only after phase validation;
+partial output files do not count. ETA stays unknown for unseen work, and neither
+an estimate nor the nominal budget is a timeout. Scheduled progress reports
+trial, suite and phase state, with eight nominal seconds per case.
+The current development pin fixes the gate-failure event defect recorded in the
+review. Preserve the command's nonzero exit and runtime record when diagnosing
+failure.
+
+Retry a failed report promotion with `just performance-promote`, or README
+publication with `just performance-readme`. Neither reacquires samples.
+
+Each suite compares revisions only when both implement its API. Earlier baselines
+retain explicit unavailable cells for new APIs; supported discovery failures
+remain errors. Existing retained reports remain historical and do not satisfy
+the expanded inventory; changing this plan does not rewrite them.
 
 **`public_api`** (`benches/public_api.rs`) owns construction, access, mutation,
 symmetry, direct determinant certificates, interval determinant queries, and
@@ -355,8 +402,9 @@ timing. The full gate covers `vs_linalg_inputs`, `exact_bench_config`,
 `column_basis`, `rational_dot`, `interval_solve` (including its rational oracle),
 and `polynomial_bench_inputs`. The non-exact diagnostic retains its original
 comparison and exact-configuration gate.
-Baseline measurements include nalgebra and faer; current measurements reuse
-those baseline-phase peers and measure la-stack and the exact suite. Diagnostic
+The full plan includes nalgebra and faer in both LU-suite phases and selects
+current-phase peers for README ratios. The non-exact diagnostic retains its
+baseline-phase peer selection. Diagnostic
 cases remain in the complete samples even when omitted from selected report rows.
 
 Every case requires 100 samples, mean and median estimates, 95% confidence
@@ -409,9 +457,8 @@ rows and does not establish common-harness release eligibility. Use
 `performance-local` for that gate. Native Criterion reports remain useful for
 individual benchmarks.
 
-The hosted release workflow discovers the full inventory, measures each suite
-once, saves its requested baseline name and verifies exact saved copies before
-packaging. The installed verifier is also available directly:
+For an optional saved-baseline diagnostic, the installed verifier checks the
+full discovered inventory and exact saved copies directly:
 
 ```bash
 just bench-release-check "$CURRENT_TAG" target/criterion
@@ -440,7 +487,7 @@ just performance-readme "$CURRENT_TAG" "$CURRENT_COMMIT" "$PREVIOUS_TAG" "$PREVI
 ```
 
 If the preparation record is missing or invalid, publication stops with guidance.
-Recapture the reviewed inputs or supply all four explicit assertions; neither
+Restore the original owner-held preparation or supply all four reviewed assertions; neither
 publication path repeats measurements or promotes a different report.
 
 The canonical README view is LU solve, median, logarithmic time axis, declared
@@ -477,7 +524,8 @@ views consume the non-exact scratch pair and use separate
 There is no implicit input fallback.
 
 Plots preserve scientific coordinates, nanoseconds, the selected statistic
-and original baseline-phase peers. They render evidence without measuring or
+and each series' originating phase. Full views use current-phase peers; the
+non-exact diagnostic retains baseline-phase peers. They render evidence without measuring or
 probing the current host. Independent identity and measurement-policy checks
 still apply. README publication additionally requires live source freshness.
 
@@ -852,7 +900,7 @@ or `det_exact_f64_result (vs det_exact_f64)`. Those used the historical lossy
 `*_exact_f64` baseline. New comparisons require matching benchmark identifiers;
 the pre-v0.4.3 name substitutions have been removed.
 
-The default `public-release-and-lu-peers-v3` scope includes canonical exact-arithmetic
+The default `public-release-and-paired-lu-peers-v4` scope includes canonical exact-arithmetic
 groups because their inputs and execution order are fixed across revisions. Historical
 baselines created before the `exact_random_corpus_d*` names were introduced do
 not have comparable full-corpus rows, so those rows appear once both sides of a
@@ -872,103 +920,58 @@ just bench-save-baseline <tag>
 just bench-save-last
 ```
 
-The durable published baseline is the GitHub Release artifact created by
-`.github/workflows/release-benchmarks.yml`. That workflow runs the benchmark-input
-correctness gate before timing or packaging the artifact. The committed release
-comparison is `docs/performance.md`, created by `just performance-release`.
+The durable baseline is derived from the accepted Step 1 local acquisition.
+The committed comparison is `docs/performance.md`. Follow
+[Releasing](RELEASING.md#step-2-publish-after-the-pr-is-merged) to verify the
+final clean commit, create a draft, stage the independent records, and dispatch
+attachment and publication. Both dispatches use the exact tag and owner-generated
+selection JSON; downloaded files cannot authenticate their own assertions.
 
-Follow [Releasing](RELEASING.md#5-create-the-draft-github-release): create the
-tagged stable release as a draft, dispatch the workflow with
-`--ref "$TAG" -f tag="$TAG"`, and let the workflow upload and verify the archive.
-Review the draft, then run `just release-publish "$TAG"` as the maintainer to
-start the separate crates.io workflow. Dispatch requires a stable `vX.Y.Z` tag and exactly one
-mutable draft with that tag as its title. The producer checks out the resolved
-tag commit only when it matches the workflow's own commit. The dispatch ref
-must be that same tag, which keeps execution in the tag's cache scope; the
-publisher rechecks the commit and captured release ID.
-Missing releases, prereleases, and published releases are rejected before
-benchmarking. Publication makes the attached evidence immutable.
+### Hosted Release Verification
 
-### Hosted Release Runtime Budget
+`release-benchmarks.yml` performs retrieval, read-only candidate/native
+verification and attachment in separate jobs. Only the no-checkout retrieval and
+attachment jobs have repository write permission. The checkout verifier has
+read permission and uses an isolated pinned supplier runtime. It never repeats
+measurement, discovery, native gates or package builds.
 
-The producer runs default and exact public workloads in parallel on separate
-`ubuntu-latest` runners. Each job allows 330 minutes: 2 for checkout, 60 for
-preparation, 2 for host capture, 240 for measurement, and 26 for packaging, upload and
-overhead. Each preparation runs full discovery and independent input validation,
-reserving 35 minutes for uncached tools, two 10-minute discovery deadlines and
-5 minutes for the input gate. Both runners compile the selected targets before
-timing; neither restores dependency caches. Each measurement step has at least
-50% headroom beyond its planning estimate. These remain capacity estimates until
-the expanded hosted policy completes.
+The independent selection fixes the original draft ID, acquisition and
+publication digests, and exact transport asset IDs/hashes. The verifier checks
+the original archive and full frozen final acceptance. Its immutable artifact
+passes by exact ID/digest and current attempt to the attachment job. That job
+rechecks the original draft and input assertions and attaches identical accepted
+bytes as `la-stack-$TAG-criterion-baseline.tar.gz`.
 
-| Selection | Cases | Nominal warmup + measurement | Planning estimate at 12 s/case | Step limit |
-| --- | --- | --- | --- | --- |
-| `public-default` | 736 | 98.1 min | 147.2 min | 240 min; 330 min job |
-| `public-exact` | 667 | 88.9 min | 133.4 min | 240 min; 330 min job |
-| Hosted aggregate work | 1,403 | 187.1 min | 280.6 min | Concurrent jobs, then 30 min for assembly |
-| Local total: shared baseline cases, all current cases and 16 peers | 2,673 | 356.4 min | 534.6 min | Separate per-phase deadlines |
+Before publishing, the owner records the canonical attached archive ID/hash in
+a separate publication selection. The crates.io dispatch also requires the
+owner-reviewed full acceptance SHA-256. Verification freezes that exact receipt
+before protected deployment approval and revalidates it afterward. A newer
+complete native attempt requires an explicit new review and dispatch; the
+original immutable archive and release assets remain unchanged. Changed
+transport assets, canonical archives, tags, titles, generated notes or immutable
+release state stop publication.
 
-These estimates are not measured runtimes or upper bounds. Criterion can extend
-measurement for expensive iterations. Sampling remains unchanged: 100 samples,
-100,000 resamples, 95% confidence, 3-second warmup and 5-second measurement
-target. Native filters select public workloads without reducing their sampling.
+There is no hosted measurement budget. Local sampling remains 100 samples,
+100,000 resamples, 95% confidence, 3-second warmup and 5-second measurement.
+With v0.5.2-or-later baseline availability, 2,838 case observations imply 378.4
+minutes of nominal warmup/measurement plus setup; this is a planning estimate,
+not measured runtime or an upper bound. Resume retains completed suite pairs
+inside the single scheduled trial without discarding original provenance.
 
-Hosted wall time follows the slower suite plus preparation and archive assembly,
-subject to runner availability. Parallel execution increases setup work because
-each runner installs and validates its own environment. The archive records each
-suite's runner, CPU, toolchain, lockfile hash, command, source commit, workflow
-attempt and measurement timestamps under `release-suites/`. These are
-absolute timings from two hosts; do not treat cross-suite values as a common-host
-comparison. Local baseline/current and peer comparisons still use one captured
-environment.
+The candidate archive retains `evidence/run.json`, its evidence envelope,
+current Criterion files and `reuse.json`. Final acceptance distinguishes the
+original measured source from the final release commit. Original local host,
+session and timestamps remain authoritative.
 
-The workflow logs discovered counts and budgets before timing. Its final summary
-records each feature selection's outcome, elapsed seconds and budget, including
-failed steps. A runner-level termination can prevent the summary. For comparable
-before/after runtime evidence, retain command, source/harness identity, toolchain,
-dependencies, runner/host and cache state, plus setup and acquisition elapsed
-times. Do not infer a speedup from the number of removed peer rows. Historical
-completed v0.5.1/v0.5.0 evidence remains unchanged and requires no rerun.
-
-`just bench-release-inventory` requires a fresh Criterion directory and obtains
-IDs from each selected native binary's `--list` output. It checks the independent
-la-stack catalog; hosted completeness deliberately does not require peer rows.
-`just bench-release-check <tag>` requires every discovered ID, mean/median
-estimates with 95% intervals and 100 finite positive samples. Each named
-baseline's four raw JSON files must match its fresh `new` measurement, including
-the native sanitized storage paths. Missing public cases, failed writes, stale
-baselines and malformed measurements stop publication. For one suite, use
-`just bench-release-check-suite <tag> <suite>` with the runner's output directory.
-The shared `pack-suite` command performs that validation before
-packaging, so the workflow needs no additional verification pass. It retains
-original host metadata captured before timing and digests of every raw file.
-Assembly uses `assemble-suites` with the checked-in policy and separately
-transported native inventory. It requires both suites from the same commit and
-repository/run/attempt, matching complete contracts, disjoint portable paths,
-and unchanged raw bytes. Only successful assembly emits the final archive and
-Actions artifact output. The separate publisher attaches that archive
-as `la-stack-$TAG-criterion-baseline.tar.gz` to the draft, verifies its uploaded
-state, size, and SHA-256 digest, and leaves the draft ready for review.
-
-Starting with v0.5.2, the shared archive contains raw Criterion paths directly
-at its root, `criterion-inventory.json`, and original manifests at
-`release-suites/0.json` (default) and `release-suites/1.json` (exact). It has no
-outer `criterion/` directory. Historical assets retain that wrapper and their
-original bytes. Extract a new archive into an absent directory, then verify it:
-
-```bash
-uv run --locked research-repo-tools performance extract "$ASSET" target/release-criterion
-just bench-release-check "$TAG" target/release-criterion
-```
-
-The verification command also needs the independently discovered
-`target/release-benchmark-inventory.json`; the archived inventory alone does not
-replace the checked-in required scientific coverage. Original per-suite host
-records remain authoritative when reading the archive on another machine.
+Previously published suite archives remain readable through shared extraction
+and saved-sample verification. Their original layouts, inventories, host records
+and bytes stay unchanged. The optional `bench-release-inventory`,
+`bench-release-check` and `bench-release-check-suite` recipes remain diagnostic
+tools; they do not create or authenticate candidate acceptance.
 
 ### Validate The Release Workflow
 
-Run the applicable local gates for workflow changes:
+For workflow changes, run the applicable gates:
 
 ```bash
 just lint-config
@@ -977,25 +980,14 @@ just markdown-ci
 just doc-check
 ```
 
-The Python suite executes the workflow's shell with the pinned installed CLI
-and a simulated GitHub provider to prove captured-target handoff, commit-change
-rejection and preservation of the draft for review. Generic provider failure matrices belong
-upstream. Archive fixtures retain scientific coverage and exact raw bytes.
+Consumer fixtures exercise actual trusted workflow blocks, native Just argument
+transport, exact asset/attempt selection, capture and staging retries, full
+candidate verification and unchanged raw bytes. Synthetic samples establish
+workflow behavior, not performance. Native platform CI and a real maintainer
+dispatch remain separate operational evidence.
 
-Every hosted dispatch requires a real release draft and attaches verified
-evidence for review. Use the
-[release sequence](RELEASING.md#6-run-benchmarks-and-review-the-draft) for a
-planned release. Record the successful run URL and both elapsed suite times
-when validating a budget change. The estimates above still require this
-representative hosted run; local tests and archive fixtures do not establish
-GitHub-runner runtime or upload success.
-
-The temporary artifact is named
-`bench-baseline-$TAG-<run-id>-<producer-attempt>` and retained for 30 days.
-Retry a failed producer by rerunning all jobs or dispatching again, so the
-draft is checked in the same attempt before setup or measurement starts.
-Rerunning only failed publisher jobs reuses the successful producer's artifact.
-An existing draft asset is reused only when its bytes match; conflicting assets
-require inspection and manual removal while the release is still a draft.
-Published releases are always rejected, and `--clobber` is never used. See
-[failed-run recovery](RELEASING.md#recovering-a-failed-run) before retrying.
+Every dispatch uses a real release and authenticated owner assertions. No test
+uploads artifacts or obtains registry credentials. Follow
+[failed-run recovery](RELEASING.md#recovering-a-failed-run): rerun complete
+hosted attempts with the same selection, preserve local checkpoints and owner
+records, and never overwrite conflicting assets or silently select new evidence.
