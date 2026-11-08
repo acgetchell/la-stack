@@ -1,8 +1,20 @@
 name: Publish to crates.io
 
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable tag matching the workflow ref
+        required: true
+        type: string
+      candidate:
+        description: Independent publication-transfer.json with the canonical attached asset
+        required: true
+        type: string
+      acceptance:
+        description: SHA-256 of the full acceptance independently reviewed with just release-evidence
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,8 +32,7 @@ jobs:
   verify:
     if: >-
       github.repository == 'acgetchell/la-stack' &&
-      github.event_name == 'release' && github.event.action == 'published' &&
-      !github.event.release.draft && !github.event.release.prerelease
+      github.actor == 'acgetchell' && github.triggering_actor == 'acgetchell'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -29,7 +40,9 @@ jobs:
       checks: read
       actions: read
     outputs:
-      ci-evidence: ${{ steps.evidence.outputs.identity }}
+      artifact-id: ${{ steps.approval.outputs.artifact-id }}
+      artifact-digest: ${{ steps.approval.outputs.artifact-digest }}
+      validated-attempt: ${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,19 +55,25 @@ jobs:
         with:
           cache: "false"
 
-      - name: Require reviewed release evidence
+      - name: Verify the independently reviewed acceptance
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: just release-gate "$RELEASE_TAG"
-
-      - name: Verify original signed main CI evidence
-        id: evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          CANDIDATE_TRANSFER: ${{ inputs.candidate }}
+          CANDIDATE_ACCEPTANCE: ${{ inputs.acceptance }}
         run: |
           set -euo pipefail
-          just release-evidence --github-output "$GITHUB_OUTPUT"
+          just release-receive "$RUNNER_TEMP/accepted-candidate" --published
+          just _release-notes-check "$RELEASE_TAG"
+
+      - name: Freeze the full acceptance before approval
+        id: approval
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: publication-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/accepted-candidate/acceptance.json
+          retention-days: 30
+          if-no-files-found: error
 
   publish:
     needs: verify
@@ -78,17 +97,38 @@ jobs:
         with:
           cache: "false"
 
+      - name: Require this exact approval receipt
+        env:
+          VALIDATED_ATTEMPT: ${{ needs.verify.outputs.validated-attempt }}
+          ARTIFACT_ID: ${{ needs.verify.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ needs.verify.outputs.artifact-digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$VALIDATED_ATTEMPT" == "$GITHUB_RUN_ATTEMPT" ]] || exit 1
+          [[ "$ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] || exit 1
+          [[ "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" \
+            | jq -e --arg digest "sha256:$ARTIFACT_DIGEST" --arg run "$GITHUB_RUN_ID" \
+              '.expired == false and .digest == $digest and (.workflow_run.id | tostring) == $run' >/dev/null
+
+      - name: Download the frozen approval receipt
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.verify.outputs.artifact-id }}
+          path: ${{ runner.temp }}/approved-acceptance
+          merge-multiple: true
+
       - name: Recheck evidence and registry absence after deployment approval
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          CI_EVIDENCE: ${{ needs.verify.outputs.ci-evidence }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          CANDIDATE_TRANSFER: ${{ inputs.candidate }}
+          CANDIDATE_ACCEPTANCE: ${{ inputs.acceptance }}
         run: |
           set -euo pipefail
-          just release-gate "$RELEASE_TAG"
-          test -n "$CI_EVIDENCE"
-          printf '%s\n' "$CI_EVIDENCE" > "$RUNNER_TEMP/approved-evidence.json"
-          just release-evidence --expected "$RUNNER_TEMP/approved-evidence.json"
+          just release-receive "$RUNNER_TEMP/accepted-candidate" --published --expected "$RUNNER_TEMP/approved-acceptance/acceptance.json"
+          just _release-notes-check "$RELEASE_TAG"
           uv run --locked --no-sync research-repo-tools release registry "$RELEASE_TAG" --expect absent
 
       - name: Obtain a short-lived crates.io token
@@ -106,5 +146,5 @@ jobs:
         if: ${{ !cancelled() && steps.auth.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: just release-verify "$RELEASE_TAG"

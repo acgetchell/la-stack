@@ -88,35 +88,49 @@ jobs:
           python-version-file: .python-version
           enable-cache: false
       - name: Capture successful native validation identities
+        id: evidence
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          uvx --python 3.15 --from research-repo-tools==0.2.6 python -I - <<'PY'
+          uvx --python 3.15 \
+            --from 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e' \
+            python -I - <<'PY'
           import os
           import sys
           from pathlib import Path
+          from research_repo_tools.ci import export_environment
           from research_repo_tools.cli import main
+          from research_repo_tools.dependency_provenance import check_development_dependency
           from research_repo_tools.release_metadata import read_package_info
           root = Path.cwd()
-          sys.exit(main([
+          if check_development_dependency(root) is not None:
+              print("Verified development tooling pin; release evidence requires a published supplier.")
+              sys.exit(0)
+          status = main([
               "release", "evidence", "create", "tooling/release-evidence.toml",
               "--checkout", str(root), "--commit", os.environ["GITHUB_SHA"],
               "--version", read_package_info(root).version,
               "--run-id", os.environ["GITHUB_RUN_ID"], "--attempt", os.environ["GITHUB_RUN_ATTEMPT"],
               "--output", "target/release-evidence/validation.json",
-          ]))
+          ])
+          if status == 0:
+              export_environment(Path(os.environ["GITHUB_OUTPUT"]), ("eligible",), environment={"eligible": "true"})
+          sys.exit(status)
           PY
       - name: Sign original main validation evidence
+        if: steps.evidence.outputs.eligible == 'true'
         id: validation
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: target/release-evidence/validation.json
           create-storage-record: false
       - name: Retain the signature bundle
+        if: steps.evidence.outputs.eligible == 'true'
         env:
           VALIDATION_BUNDLE: ${{ steps.validation.outputs.bundle-path }}
         run: cp "$VALIDATION_BUNDLE" target/release-evidence/validation.sigstore.json
       - name: Upload signed validation evidence
+        if: steps.evidence.outputs.eligible == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-evidence-${{ github.run_id }}-${{ github.run_attempt }}

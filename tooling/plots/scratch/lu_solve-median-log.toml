@@ -1,5 +1,6 @@
 # Named view consumed directly by `performance publish --artifacts-only`.
 schema = 2
+trial = 1
 measurement = "tooling/measurements/full.toml"
 payload = "target/bench-reports/full/run.json"
 manifest = "target/bench-reports/full/evidence.json"
@@ -18,11 +19,11 @@ rows = [
     { key = "64", label = "64", coordinate = 64 },
 ]
 series = [
-    { name = "la-stack current", label = "la-stack", label-version = "release", rows = { "2" = "d2/la_stack_lu_solve", "3" = "d3/la_stack_lu_solve", "4" = "d4/la_stack_lu_solve", "5" = "d5/la_stack_lu_solve", "8" = "d8/la_stack_lu_solve", "16" = "d16/la_stack_lu_solve", "32" = "d32/la_stack_lu_solve", "64" = "d64/la_stack_lu_solve" } },
-    { name = "nalgebra", label = "nalgebra", label-version = "dependency.nalgebra", rows = { "2" = "d2/nalgebra_lu_solve", "3" = "d3/nalgebra_lu_solve", "4" = "d4/nalgebra_lu_solve", "5" = "d5/nalgebra_lu_solve", "8" = "d8/nalgebra_lu_solve", "16" = "d16/nalgebra_lu_solve", "32" = "d32/nalgebra_lu_solve", "64" = "d64/nalgebra_lu_solve" } },
-    { name = "faer", label = "faer", label-version = "dependency.faer", rows = { "2" = "d2/faer_lu_solve", "3" = "d3/faer_lu_solve", "4" = "d4/faer_lu_solve", "5" = "d5/faer_lu_solve", "8" = "d8/faer_lu_solve", "16" = "d16/faer_lu_solve", "32" = "d32/faer_lu_solve", "64" = "d64/faer_lu_solve" } },
+    { name = "lu-solve/la-stack current", label = "la-stack", label-version = "release", rows = { "2" = "d2/la_stack_lu_solve", "3" = "d3/la_stack_lu_solve", "4" = "d4/la_stack_lu_solve", "5" = "d5/la_stack_lu_solve", "8" = "d8/la_stack_lu_solve", "16" = "d16/la_stack_lu_solve", "32" = "d32/la_stack_lu_solve", "64" = "d64/la_stack_lu_solve" } },
+    { name = "lu-solve/nalgebra", label = "nalgebra", label-version = "dependency.nalgebra", rows = { "2" = "d2/nalgebra_lu_solve", "3" = "d3/nalgebra_lu_solve", "4" = "d4/nalgebra_lu_solve", "5" = "d5/nalgebra_lu_solve", "8" = "d8/nalgebra_lu_solve", "16" = "d16/nalgebra_lu_solve", "32" = "d32/nalgebra_lu_solve", "64" = "d64/nalgebra_lu_solve" } },
+    { name = "lu-solve/faer", label = "faer", label-version = "dependency.faer", rows = { "2" = "d2/faer_lu_solve", "3" = "d3/faer_lu_solve", "4" = "d4/faer_lu_solve", "5" = "d5/faer_lu_solve", "8" = "d8/faer_lu_solve", "16" = "d16/faer_lu_solve", "32" = "d32/faer_lu_solve", "64" = "d64/faer_lu_solve" } },
 ]
-comparisons = [ { numerator = "nalgebra", denominator = "la-stack current" }, { numerator = "faer", denominator = "la-stack current" } ]
+comparisons = [ { numerator = "lu-solve/nalgebra", denominator = "lu-solve/la-stack current" }, { numerator = "lu-solve/faer", denominator = "lu-solve/la-stack current" } ]
 
 [plot]
 path = "docs/assets/bench/vs_linalg_lu_solve_median_log.svg"

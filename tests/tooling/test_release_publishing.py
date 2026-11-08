@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 import yaml
-from research_repo_tools import changelog, config, process, release_publishing
+from research_repo_tools import changelog, config, dependency_provenance, process, release_publishing
 from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
@@ -31,6 +31,7 @@ CHECKS = ("build (ubuntu-latest)", "build (macos-latest)", "build (windows-lates
 
 
 def test_publishing_policy_requires_native_scientific_gates_and_the_criterion_asset() -> None:
+    assert POLICY.release.published_dependencies == ("research-repo-tools",)
     assert POLICY.publishing is not None
     assert (POLICY.publishing.registry, POLICY.publishing.package, POLICY.publishing.repository) == ("crates-io", "la-stack", "acgetchell/la-stack")
     assert tuple((check.name, check.app_id) for check in POLICY.publishing.required_checks) == tuple((name, 15368) for name in CHECKS)
@@ -71,6 +72,15 @@ def release_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
         f"commits/{SHA}/check-runs?filter=latest&per_page=100": [{"total_count": len(checks), "check_runs": checks}],
     }
     monkeypatch.setattr(release_publishing, "run_git_command", git)
+
+    # These fixtures model a published supplier while testing native release
+    # identities. Separate consumer tests exercise the real development-pin gate.
+    def published(root: Path, *, packages: tuple[str, ...] | None = None) -> tuple[dependency_provenance.DependencyIdentity, ...]:
+        assert root == REPO_ROOT
+        assert packages == ("research-repo-tools",)
+        return (dependency_provenance.DependencyIdentity("research-repo-tools", "0.2.6", "https://pypi.org/simple"),)
+
+    monkeypatch.setattr(dependency_provenance, "check_release_dependencies", published)
     install_clean_checkout(monkeypatch, REPO_ROOT, SHA)
     monkeypatch.setattr(release_publishing, "_api", lambda _root, _repo, endpoint, **_kwargs: responses[endpoint])
     monkeypatch.setattr(release_publishing, "_remote_commit", lambda *_args: SHA)
@@ -175,7 +185,7 @@ def test_publish_recipe_passes_explicit_approval(monkeypatch: pytest.MonkeyPatch
     # irreversible publication boundary with an in-memory request recorder.
     monkeypatch.setattr(release_publishing, "publish_reviewed_release", publish)
     # The publication command follows the separately tested notes precheck.
-    command = shlex.split(dry_run(REPO_ROOT, "release-publish", [TAG]).stderr.splitlines()[-1])
+    command = shlex.split(dry_run(REPO_ROOT, "release-publish", [TAG, "/independent-owner"]).stderr.splitlines()[-1])
     assert command[:7] == ["uv", "run", "--locked", "--no-sync", "research-repo-tools", "release", "publish"]
     assert main(["--root", str(REPO_ROOT), *command[5:]]) == 0
     assert requested == [TAG]
@@ -183,8 +193,8 @@ def test_publish_recipe_passes_explicit_approval(monkeypatch: pytest.MonkeyPatch
 
 def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
-    # PyYAML's YAML 1.1 parser reads the Actions `on` key as True.
-    assert workflow[True] == {"release": {"types": ["published"]}}
+    assert set(workflow[True]) == {"workflow_dispatch"}
+    assert set(workflow[True]["workflow_dispatch"]["inputs"]) == {"tag", "candidate", "acceptance"}
     assert workflow["concurrency"] == {"group": "publish-crates-la-stack", "cancel-in-progress": False}
     jobs = workflow["jobs"]
     assert jobs["publish"]["needs"] == "verify"
@@ -192,25 +202,28 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert jobs["verify"]["permissions"] == {"contents": "read", "checks": "read", "actions": "read"}
     assert jobs["publish"]["permissions"] == {"contents": "read", "checks": "read", "actions": "read", "id-token": "write"}
     assert "github.repository == 'acgetchell/la-stack'" in jobs["verify"]["if"]
-    assert jobs["verify"]["steps"][-1]["id"] == "evidence"
-    assert jobs["verify"]["outputs"] == {"ci-evidence": "${{ steps.evidence.outputs.identity }}"}
-    assert "CARGO_REGISTRY_TOKEN" not in yaml.safe_dump({"env": workflow["env"], "verify": jobs["verify"]})
+    assert "github.triggering_actor == 'acgetchell'" in jobs["verify"]["if"]
+    assert "CARGO_REGISTRY_TOKEN" not in yaml.safe_dump(jobs["verify"])
     for job in jobs.values():
-        checkout = job["steps"][0]
-        assert checkout["with"] == {"ref": "${{ github.sha }}", "fetch-depth": 0, "persist-credentials": False}
+        assert job["steps"][0]["with"] == {"ref": "${{ github.sha }}", "fetch-depth": 0, "persist-credentials": False}
         assert job["steps"][1]["with"]["cache"] == "false"
+        gate = next(step for step in job["steps"] if "just release-receive" in step.get("run", ""))
+        assert gate["env"]["CANDIDATE_TRANSFER"] == "${{ inputs.candidate }}"
+        assert gate["env"]["CANDIDATE_ACCEPTANCE"] == "${{ inputs.acceptance }}"
+        assert 'just release-receive "$RUNNER_TEMP/accepted-candidate" --published' in gate["run"]
+        assert 'just _release-notes-check "$RELEASE_TAG"' in gate["run"]
     steps = jobs["publish"]["steps"]
-    gate = steps[2]["run"]
-    assert 'just release-gate "$RELEASE_TAG"' in gate
-    assert 'test -n "$CI_EVIDENCE"' in gate
-    assert 'just release-evidence --expected "$RUNNER_TEMP/approved-evidence.json"' in gate
-    assert steps[2]["env"]["CI_EVIDENCE"] == "${{ needs.verify.outputs.ci-evidence }}"
-    assert 'release registry "$RELEASE_TAG" --expect absent' in gate
-    assert steps[3]["id"] == "auth"
-    assert steps[4]["run"].endswith("cargo publish --locked --package la-stack --registry crates-io --no-verify")
-    assert [index for index, step in enumerate(steps) if "CARGO_REGISTRY_TOKEN" in step.get("env", {})] == [4]
-    assert steps[5]["if"] == "${{ !cancelled() && steps.auth.outcome == 'success' }}"
-    assert steps[5]["run"] == 'just release-verify "$RELEASE_TAG"'
+    assert jobs["verify"]["steps"][3]["id"] == "approval"
+    assert jobs["verify"]["steps"][3]["with"]["path"].endswith("/acceptance.json")
+    assert steps[2]["env"]["ARTIFACT_DIGEST"] == "${{ needs.verify.outputs.artifact-digest }}"
+    assert steps[3]["with"]["artifact-ids"] == "${{ needs.verify.outputs.artifact-id }}"
+    assert '--expected "$RUNNER_TEMP/approved-acceptance/acceptance.json"' in steps[4]["run"]
+    assert 'release registry "$RELEASE_TAG" --expect absent' in steps[4]["run"]
+    assert steps[5]["id"] == "auth"
+    assert steps[6]["run"].endswith("cargo publish --locked --package la-stack --registry crates-io --no-verify")
+    assert [index for index, step in enumerate(steps) if "CARGO_REGISTRY_TOKEN" in step.get("env", {})] == [6]
+    assert steps[7]["if"] == "${{ !cancelled() && steps.auth.outcome == 'success' }}"
+    assert steps[7]["run"] == 'just release-verify "$RELEASE_TAG"'
     assert "continue-on-error" not in WORKFLOW.read_text(encoding="utf-8")
     commands = dry_run(REPO_ROOT, "release-package").stderr
     assert commands.count("--package la-stack --registry crates-io --dry-run") == 2
@@ -254,8 +267,11 @@ def run_evidence_fixture() -> int:
 def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep real workflow shell, Just, uv, Python, verifier and output writer."""
     source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    runtime = '[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.6", "python", "-I")]'
-    assert source.count(runtime) == 2
+    runtime = (
+        '[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ '
+        'git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e", "python", "-I")]'
+    )
+    assert source.count(runtime) == 3
     # Run the exact recipe body/argument transport with the locked test runtime.
     # The separate isolated-runtime smoke and pin test own uvx installation.
     source = source.replace(runtime, '[script("uv", "run", "--locked", "--no-sync", "python", "fixture-bootstrap.py")]')
@@ -293,8 +309,7 @@ def run_evidence_shell(script: str, root: Path) -> subprocess.CompletedProcess[s
 def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capture(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quiet: bool, outcome: str
 ) -> None:
-    workflow = yaml.safe_load(WORKFLOW.read_bytes())
-    script = workflow["jobs"]["verify"]["steps"][-1]["run"]
+    script = 'just release-native-evidence --github-output "$GITHUB_OUTPUT"\n'
     output = tmp_path / "github output"
     original = b"prior=value\r\n"
     if outcome == "directory":
@@ -362,8 +377,7 @@ def test_evidence_bootstrap_keeps_windows_import_paths_as_environment_data(
     output = tmp_path / "github output"
     output.touch()
     monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
-    workflow = yaml.safe_load(WORKFLOW.read_bytes())
-    script = workflow["jobs"]["verify"]["steps"][-1]["run"]
+    script = 'just release-native-evidence --github-output "$GITHUB_OUTPUT"\n'
     result = run_evidence_shell(script, tmp_path)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "fixture stdout diagnostic" + newline + "Saved verified release evidence." + os.linesep
@@ -383,12 +397,11 @@ def test_evidence_bootstrap_keeps_windows_import_paths_as_environment_data(
 def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quiet: bool, pin: str
 ) -> None:
-    workflow = yaml.safe_load(WORKFLOW.read_bytes())
     output = tmp_path / "github output"
     output.touch()
     monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
     monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
-    exported = run_evidence_shell(workflow["jobs"]["verify"]["steps"][-1]["run"], tmp_path)
+    exported = run_evidence_shell('just release-native-evidence --github-output "$GITHUB_OUTPUT"\n', tmp_path)
     assert exported.returncode == 0, exported.stderr
     report = tmp_path / "verifier-result.json"
     assert json.loads(report.read_text(encoding="utf-8"))["status"] == 0
@@ -405,7 +418,13 @@ def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token
     # Keep evidence verification real and stop before any credentials or upload.
     runner = f'uv() {{\n  [[ "$4 $5 $6" == "research-repo-tools release registry" ]] || return 90\n  touch {shlex.quote(registry.as_posix())}\n}}\n'
     runner += 'just() { if [[ "$1" == release-gate ]]; then return 0; fi; command just "$@"; }\n'
-    script = workflow["jobs"]["publish"]["steps"][2]["run"]
+    script = (
+        "set -euo pipefail\n"
+        'test -n "$CI_EVIDENCE"\n'
+        'printf "%s\\n" "$CI_EVIDENCE" > "$RUNNER_TEMP/approved-evidence.json"\n'
+        'just release-native-evidence --expected "$RUNNER_TEMP/approved-evidence.json"\n'
+        'uv run --locked --no-sync research-repo-tools release registry "$RELEASE_TAG" --expect absent\n'
+    )
     result = run_evidence_shell(runner + script + f"\ntouch {shlex.quote(token.as_posix())}", tmp_path)
     if pin != "empty":
         assert report.exists(), result.stderr
@@ -435,7 +454,7 @@ def test_explicit_empty_identity_cannot_select_fresh_evidence(tmp_path: Path, mo
     monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
     expected = tmp_path / "empty.json"
     expected.write_bytes(b"")
-    result = run_evidence_shell('just release-evidence --expected empty.json --github-output "$GITHUB_OUTPUT"\n', tmp_path)
+    result = run_evidence_shell('just release-native-evidence --expected empty.json --github-output "$GITHUB_OUTPUT"\n', tmp_path)
     observed = json.loads((tmp_path / "verifier-result.json").read_text(encoding="utf-8"))
     assert observed["arguments"][:2] == ["--expected", "empty.json"]
     assert result.returncode == observed["status"] == 1
@@ -443,14 +462,16 @@ def test_explicit_empty_identity_cannot_select_fresh_evidence(tmp_path: Path, mo
     assert output.read_bytes() == original
 
 
-@pytest.mark.parametrize(("failure", "expected_exit"), [("none", 0), ("evidence", 1), ("ci-evidence", 1), ("empty-pin", 1), ("present", 1), ("unavailable", 2)])
+@pytest.mark.parametrize(("failure", "expected_exit"), [("none", 0), ("evidence", 1), ("candidate", 1), ("present", 1), ("unavailable", 2)])
 def test_actual_preupload_shell_requires_evidence_and_proven_absence(tmp_path: Path, failure: str, expected_exit: int) -> None:
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
-    script = workflow["jobs"]["publish"]["steps"][2]["run"]
+    script = next(
+        step["run"] for step in workflow["jobs"]["publish"]["steps"] if step.get("name") == "Recheck evidence and registry absence after deployment approval"
+    )
     marker = tmp_path / "upload-reached"
     gate = "just() { return 1; }" if failure == "evidence" else "just() { return 0; }"
-    if failure == "ci-evidence":
-        gate = 'just() { [[ "$1" != release-evidence ]]; }'
+    if failure == "candidate":
+        gate = 'just() { [[ "$1" != release-receive ]]; }'
     registry_exit = expected_exit if failure in {"present", "unavailable"} else 0
     registry = f"uv() {{ return {registry_exit}; }}"
     script = f"{gate}\n{registry}\n{script}\ntouch {shlex.quote(marker.as_posix())}"
@@ -460,12 +481,43 @@ def test_actual_preupload_shell_requires_evidence_and_proven_absence(tmp_path: P
         env={
             **{key: value for key, value in os.environ.items() if key not in {"BASH_ENV", "SHELLOPTS", "BASHOPTS"}},
             "RELEASE_TAG": TAG,
-            "CI_EVIDENCE": "" if failure == "empty-pin" else '{"run_id": 11}',
+            "CANDIDATE_TRANSFER": '{"schema": 1}',
             "RUNNER_TEMP": tmp_path.as_posix(),
         },
         check=False,
     )
     assert result.returncode == expected_exit, result.stderr
+    assert marker.exists() == (failure == "none")
+
+
+@pytest.mark.parametrize("failure", ["none", "attempt", "identifier", "digest", "expired", "different-digest", "different-run"])
+def test_actual_approval_artifact_guard_rejects_drift(tmp_path: Path, failure: str) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_bytes())
+    script = next(step["run"] for step in workflow["jobs"]["publish"]["steps"] if step.get("name") == "Require this exact approval receipt")
+    metadata = {
+        "expired": failure == "expired",
+        "digest": "sha256:" + ("b" if failure == "different-digest" else "a") * 64,
+        "workflow_run": {"id": 99 if failure == "different-run" else 42},
+    }
+    supplied = tmp_path / "artifact metadata.json"
+    supplied.write_text(json.dumps(metadata), encoding="utf-8", newline="\n")
+    marker = tmp_path / "approval-reached"
+    provider = f'gh() {{ [[ "$*" == "api repos/acgetchell/la-stack/actions/artifacts/7" ]] && cat {shlex.quote(supplied.as_posix())}; }}'
+    result = run_command(
+        "bash",
+        ["--noprofile", "--norc", "-euc", f"{provider}\n{script}\ntouch {shlex.quote(marker.as_posix())}"],
+        env={
+            **{key: value for key, value in os.environ.items() if key not in {"BASH_ENV", "SHELLOPTS", "BASHOPTS"}},
+            "VALIDATED_ATTEMPT": "1" if failure == "attempt" else "2",
+            "GITHUB_RUN_ATTEMPT": "2",
+            "ARTIFACT_ID": "07" if failure == "identifier" else "7",
+            "ARTIFACT_DIGEST": "invalid" if failure == "digest" else "a" * 64,
+            "GITHUB_RUN_ID": "42",
+            "GITHUB_REPOSITORY": "acgetchell/la-stack",
+        },
+        check=False,
+    )
+    assert result.returncode == (0 if failure == "none" else 1), result.stderr
     assert marker.exists() == (failure == "none")
 
 
@@ -483,7 +535,19 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
     assert evidence["permissions"] == {"contents": "read", "actions": "read", "attestations": "write", "id-token": "write"}
     steps = {step["name"]: step for step in evidence["steps"] if "name" in step}
     capture = steps["Capture successful native validation identities"]["run"]
-    assert "uvx --python 3.15 --from research-repo-tools==0.2.6 python" in capture
+    assert steps["Capture successful native validation identities"]["id"] == "evidence"
+    for name in ("Sign original main validation evidence", "Retain the signature bundle", "Upload signed validation evidence"):
+        assert steps[name]["if"] == "steps.evidence.outputs.eligible == 'true'"
+    assert shlex.split(capture.split("<<'PY'", 1)[0].replace("\\\n", "")) == [
+        "uvx",
+        "--python",
+        "3.15",
+        "--from",
+        "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e",
+        "python",
+        "-I",
+        "-",
+    ]
     assert '"release", "evidence", "create", "tooling/release-evidence.toml"' in capture
     assert '"--output", "target/release-evidence/validation.json"' in capture
     assert steps["Sign original main validation evidence"]["with"]["subject-path"] == "target/release-evidence/validation.json"
@@ -494,6 +558,38 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
         "if-no-files-found": "error",
         "retention-days": 30,
     }
+
+
+@pytest.mark.parametrize("source", ["development", "published", "rejected"])
+def test_main_ci_creates_no_release_evidence_for_development_pins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str) -> None:
+    """Run the actual workflow adapter; only a successful release gate enables signing."""
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_bytes())
+    step = next(item for item in workflow["jobs"]["release-evidence"]["steps"] if item.get("id") == "evidence")
+    script = tmp_path / "capture.py"
+    script.write_text(step["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0], encoding="utf-8")
+    output = tmp_path / "github output"
+    original = b"prior=value\n"
+    output.write_bytes(original)
+    for key, value in {"GITHUB_OUTPUT": str(output), "GITHUB_SHA": SHA, "GITHUB_RUN_ID": "11", "GITHUB_RUN_ATTEMPT": "1"}.items():
+        monkeypatch.setenv(key, value)
+    pin = dependency_provenance.DependencyIdentity("research-repo-tools", "0.2.6", "git", "a" * 40) if source == "development" else None
+    monkeypatch.setattr(dependency_provenance, "check_development_dependency", lambda _root: pin)
+    calls: list[list[str]] = []
+
+    def create(arguments: list[str]) -> int:
+        calls.append(arguments)
+        return 1 if source == "rejected" else 0
+
+    monkeypatch.setattr("research_repo_tools.cli.main", create)
+    with pytest.raises(SystemExit) as stopped:
+        runpy.run_path(str(script), run_name="__main__")
+    assert stopped.value.code == (1 if source == "rejected" else 0)
+    assert len(calls) == (0 if source == "development" else 1)
+    if calls:
+        assert calls[0][:4] == ["release", "evidence", "create", "tooling/release-evidence.toml"]
+    data = output.read_bytes()
+    assert data.startswith(original)
+    assert (b"eligible" in data) == (source == "published")
 
 
 def test_native_packaging_failure_stops_before_further_validation(tmp_path: Path) -> None:

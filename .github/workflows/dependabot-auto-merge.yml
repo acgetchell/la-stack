@@ -32,7 +32,6 @@ jobs:
           "files": ["pyproject.toml", "uv.lock"]
         }, "github_actions": {
           "files": [
-            ".github/actions/prepare-release-benchmarks/action.yml",
             ".github/actions/setup-tools/action.yml",
             ".github/workflows/audit.yml",
             ".github/workflows/benchmarks.yml",

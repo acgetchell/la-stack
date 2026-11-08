@@ -1,5 +1,28 @@
-# Scientific measurement policy consumed directly by research-repo-tools.
-schema = 2
+# Scientific acquisition units; availability resolves before native compilation.
+schema = 6
+outputs = [
+    "README.md",
+    "docs/assets/bench/vs_linalg_lu_solve_mean_linear.csv",
+    "docs/assets/bench/vs_linalg_lu_solve_mean_linear.svg",
+    "docs/assets/bench/vs_linalg_lu_solve_mean_log.csv",
+    "docs/assets/bench/vs_linalg_lu_solve_mean_log.svg",
+    "docs/assets/bench/vs_linalg_lu_solve_median_linear.csv",
+    "docs/assets/bench/vs_linalg_lu_solve_median_linear.svg",
+    "docs/assets/bench/vs_linalg_lu_solve_median_log.csv",
+    "docs/assets/bench/vs_linalg_lu_solve_median_log.svg",
+]
+
+[schedule]
+trials = 1
+order = "sequential"
+
+[[suites]]
+name = "core-default"
+contract = "la-stack-core-default-v1"
+nominal-seconds-per-case = 8
+
+[suites.measurement]
+schema = 4
 minimum-release = "v0.5.0"
 sources = [ "src/**/*.rs", "Cargo.toml" ]
 harness = [
@@ -8,6 +31,7 @@ harness = [
     "examples/**/*.rs",
     "Cargo.toml",
     "Cargo.lock",
+    "dependency-sources.toml",
     "rust-toolchain.toml",
     "pyproject.toml",
     "uv.lock",
@@ -20,6 +44,8 @@ harness = [
     "tests/common/proptest_config.rs",
     "tests/polynomial_bench_inputs.rs",
     "tooling/performance.just",
+    "tooling/performance-*.toml",
+    "tooling/*.py",
     "tooling/criterion-inventory.toml",
     "tooling/performance-policy.toml",
     "tooling/measurements/*.toml",
@@ -41,29 +67,46 @@ compatible = [
     "context.dependency.nalgebra",
     "context.dependency.faer",
 ]
+backend = "export"
+harness-mode = "common"
+workloads = [ "benches/**/*.rs" ]
 
-[context]
+[suites.measurement.context]
 phase-driver = "just-v1"
-suite = "all"
-scope = "public-release-and-lu-peers-v3"
-baseline-api-compatibility = "pre-v0.5.2-public-api"
+suite = "core-default"
+scope = "public-release-and-paired-lu-peers-v4"
+repository = "acgetchell/la-stack"
+acquisition-owner = "local"
 
-[probes]
+[suites.measurement.probes]
 rustc = [ "rustc", "-vV" ]
 cargo = [ "cargo", "--version" ]
 just = [ "just", "--version" ]
 
-[dependencies]
+[suites.measurement.dependencies]
 criterion = "Cargo.lock"
 nalgebra = "Cargo.lock"
 faer = "Cargo.lock"
 
-[phases.baseline]
-command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-all" ]
-gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate" ]
-environment = { CARGO_TARGET_DIR = "target", CRITERION_HOME = "target/criterion", RUSTUP_TOOLCHAIN = "1.99.1", RUSTFLAGS = "--cap-lints=warn", CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn", RUSTC = "rustc", RUSTC_WRAPPER = "", RUSTC_WORKSPACE_WRAPPER = "" }
+[suites.measurement.phases]
 
-[phases.baseline.discovery]
+[suites.measurement.phases.baseline]
+sources = [ "src/**/*.rs", "Cargo.toml", "README.md" ]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "core-default" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate" ]
+
+[suites.measurement.phases.baseline.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.baseline.discovery]
 required = [
     "angle_d3/dense/borrowed_slice",
     "angle_d3/dense/construct_then_angle",
@@ -233,135 +276,6 @@ required = [
     "angle_d6/subnormal_axes/borrowed_slice",
     "angle_d6/subnormal_axes/construct_then_angle",
     "angle_d6/subnormal_axes/prepared_vector",
-    "canonical_conversion_below_overflow_d2/rounded_array",
-    "canonical_conversion_below_overflow_d2/rounded_result",
-    "canonical_conversion_below_overflow_d2/strict_array",
-    "canonical_conversion_below_overflow_d2/strict_result",
-    "canonical_conversion_below_overflow_d3/rounded_array",
-    "canonical_conversion_below_overflow_d3/rounded_result",
-    "canonical_conversion_below_overflow_d3/strict_array",
-    "canonical_conversion_below_overflow_d3/strict_result",
-    "canonical_conversion_below_overflow_d4/rounded_array",
-    "canonical_conversion_below_overflow_d4/rounded_result",
-    "canonical_conversion_below_overflow_d4/strict_array",
-    "canonical_conversion_below_overflow_d4/strict_result",
-    "canonical_conversion_below_overflow_d5/rounded_array",
-    "canonical_conversion_below_overflow_d5/rounded_result",
-    "canonical_conversion_below_overflow_d5/strict_array",
-    "canonical_conversion_below_overflow_d5/strict_result",
-    "canonical_conversion_dyadic_d2/rounded_array",
-    "canonical_conversion_dyadic_d2/rounded_result",
-    "canonical_conversion_dyadic_d2/strict_array",
-    "canonical_conversion_dyadic_d2/strict_result",
-    "canonical_conversion_dyadic_d3/rounded_array",
-    "canonical_conversion_dyadic_d3/rounded_result",
-    "canonical_conversion_dyadic_d3/strict_array",
-    "canonical_conversion_dyadic_d3/strict_result",
-    "canonical_conversion_dyadic_d4/rounded_array",
-    "canonical_conversion_dyadic_d4/rounded_result",
-    "canonical_conversion_dyadic_d4/strict_array",
-    "canonical_conversion_dyadic_d4/strict_result",
-    "canonical_conversion_dyadic_d5/rounded_array",
-    "canonical_conversion_dyadic_d5/rounded_result",
-    "canonical_conversion_dyadic_d5/strict_array",
-    "canonical_conversion_dyadic_d5/strict_result",
-    "canonical_conversion_min_subnormal_d2/rounded_array",
-    "canonical_conversion_min_subnormal_d2/rounded_result",
-    "canonical_conversion_min_subnormal_d2/strict_array",
-    "canonical_conversion_min_subnormal_d2/strict_result",
-    "canonical_conversion_min_subnormal_d3/rounded_array",
-    "canonical_conversion_min_subnormal_d3/rounded_result",
-    "canonical_conversion_min_subnormal_d3/strict_array",
-    "canonical_conversion_min_subnormal_d3/strict_result",
-    "canonical_conversion_min_subnormal_d4/rounded_array",
-    "canonical_conversion_min_subnormal_d4/rounded_result",
-    "canonical_conversion_min_subnormal_d4/strict_array",
-    "canonical_conversion_min_subnormal_d4/strict_result",
-    "canonical_conversion_min_subnormal_d5/rounded_array",
-    "canonical_conversion_min_subnormal_d5/rounded_result",
-    "canonical_conversion_min_subnormal_d5/strict_array",
-    "canonical_conversion_min_subnormal_d5/strict_result",
-    "canonical_conversion_negative_underflow_d2/rounded_array",
-    "canonical_conversion_negative_underflow_d2/rounded_result",
-    "canonical_conversion_negative_underflow_d2/strict_array",
-    "canonical_conversion_negative_underflow_d2/strict_result",
-    "canonical_conversion_negative_underflow_d3/rounded_array",
-    "canonical_conversion_negative_underflow_d3/rounded_result",
-    "canonical_conversion_negative_underflow_d3/strict_array",
-    "canonical_conversion_negative_underflow_d3/strict_result",
-    "canonical_conversion_negative_underflow_d4/rounded_array",
-    "canonical_conversion_negative_underflow_d4/rounded_result",
-    "canonical_conversion_negative_underflow_d4/strict_array",
-    "canonical_conversion_negative_underflow_d4/strict_result",
-    "canonical_conversion_negative_underflow_d5/rounded_array",
-    "canonical_conversion_negative_underflow_d5/rounded_result",
-    "canonical_conversion_negative_underflow_d5/strict_array",
-    "canonical_conversion_negative_underflow_d5/strict_result",
-    "canonical_conversion_non_dyadic_d2/rounded_array",
-    "canonical_conversion_non_dyadic_d2/rounded_result",
-    "canonical_conversion_non_dyadic_d2/strict_array",
-    "canonical_conversion_non_dyadic_d2/strict_result",
-    "canonical_conversion_non_dyadic_d3/rounded_array",
-    "canonical_conversion_non_dyadic_d3/rounded_result",
-    "canonical_conversion_non_dyadic_d3/strict_array",
-    "canonical_conversion_non_dyadic_d3/strict_result",
-    "canonical_conversion_non_dyadic_d4/rounded_array",
-    "canonical_conversion_non_dyadic_d4/rounded_result",
-    "canonical_conversion_non_dyadic_d4/strict_array",
-    "canonical_conversion_non_dyadic_d4/strict_result",
-    "canonical_conversion_non_dyadic_d5/rounded_array",
-    "canonical_conversion_non_dyadic_d5/rounded_result",
-    "canonical_conversion_non_dyadic_d5/strict_array",
-    "canonical_conversion_non_dyadic_d5/strict_result",
-    "canonical_conversion_overflow_midpoint_d2/rounded_array",
-    "canonical_conversion_overflow_midpoint_d2/rounded_result",
-    "canonical_conversion_overflow_midpoint_d2/strict_array",
-    "canonical_conversion_overflow_midpoint_d2/strict_result",
-    "canonical_conversion_overflow_midpoint_d3/rounded_array",
-    "canonical_conversion_overflow_midpoint_d3/rounded_result",
-    "canonical_conversion_overflow_midpoint_d3/strict_array",
-    "canonical_conversion_overflow_midpoint_d3/strict_result",
-    "canonical_conversion_overflow_midpoint_d4/rounded_array",
-    "canonical_conversion_overflow_midpoint_d4/rounded_result",
-    "canonical_conversion_overflow_midpoint_d4/strict_array",
-    "canonical_conversion_overflow_midpoint_d4/strict_result",
-    "canonical_conversion_overflow_midpoint_d5/rounded_array",
-    "canonical_conversion_overflow_midpoint_d5/rounded_result",
-    "canonical_conversion_overflow_midpoint_d5/strict_array",
-    "canonical_conversion_overflow_midpoint_d5/strict_result",
-    "canonical_conversion_wide1024_d2/rounded_array",
-    "canonical_conversion_wide1024_d2/rounded_result",
-    "canonical_conversion_wide1024_d2/strict_array",
-    "canonical_conversion_wide1024_d2/strict_result",
-    "canonical_conversion_wide1024_d3/rounded_array",
-    "canonical_conversion_wide1024_d3/rounded_result",
-    "canonical_conversion_wide1024_d3/strict_array",
-    "canonical_conversion_wide1024_d3/strict_result",
-    "canonical_conversion_wide1024_d4/rounded_array",
-    "canonical_conversion_wide1024_d4/rounded_result",
-    "canonical_conversion_wide1024_d4/strict_array",
-    "canonical_conversion_wide1024_d4/strict_result",
-    "canonical_conversion_wide1024_d5/rounded_array",
-    "canonical_conversion_wide1024_d5/rounded_result",
-    "canonical_conversion_wide1024_d5/strict_array",
-    "canonical_conversion_wide1024_d5/strict_result",
-    "canonical_conversion_wide256_d2/rounded_array",
-    "canonical_conversion_wide256_d2/rounded_result",
-    "canonical_conversion_wide256_d2/strict_array",
-    "canonical_conversion_wide256_d2/strict_result",
-    "canonical_conversion_wide256_d3/rounded_array",
-    "canonical_conversion_wide256_d3/rounded_result",
-    "canonical_conversion_wide256_d3/strict_array",
-    "canonical_conversion_wide256_d3/strict_result",
-    "canonical_conversion_wide256_d4/rounded_array",
-    "canonical_conversion_wide256_d4/rounded_result",
-    "canonical_conversion_wide256_d4/strict_array",
-    "canonical_conversion_wide256_d4/strict_result",
-    "canonical_conversion_wide256_d5/rounded_array",
-    "canonical_conversion_wide256_d5/rounded_result",
-    "canonical_conversion_wide256_d5/strict_array",
-    "canonical_conversion_wide256_d5/strict_result",
-    "d16/faer_lu_solve",
     "d16/la_stack_det",
     "d16/la_stack_det_from_ldlt",
     "d16/la_stack_det_from_lu",
@@ -371,7 +285,6 @@ required = [
     "d16/la_stack_ldlt",
     "d16/la_stack_ldlt_solve",
     "d16/la_stack_lu",
-    "d16/la_stack_lu_solve",
     "d16/la_stack_norm2",
     "d16/la_stack_norm2_scenario_descending",
     "d16/la_stack_norm2_scenario_repeated_scale",
@@ -380,8 +293,6 @@ required = [
     "d16/la_stack_norm2_sq",
     "d16/la_stack_solve_from_ldlt",
     "d16/la_stack_solve_from_lu",
-    "d16/nalgebra_lu_solve",
-    "d2/faer_lu_solve",
     "d2/la_stack_det",
     "d2/la_stack_det_from_ldlt",
     "d2/la_stack_det_from_lu",
@@ -391,7 +302,6 @@ required = [
     "d2/la_stack_ldlt",
     "d2/la_stack_ldlt_solve",
     "d2/la_stack_lu",
-    "d2/la_stack_lu_solve",
     "d2/la_stack_norm2",
     "d2/la_stack_norm2_scenario_descending",
     "d2/la_stack_norm2_scenario_repeated_scale",
@@ -400,8 +310,6 @@ required = [
     "d2/la_stack_norm2_sq",
     "d2/la_stack_solve_from_ldlt",
     "d2/la_stack_solve_from_lu",
-    "d2/nalgebra_lu_solve",
-    "d3/faer_lu_solve",
     "d3/la_stack_det",
     "d3/la_stack_det_from_ldlt",
     "d3/la_stack_det_from_lu",
@@ -411,7 +319,6 @@ required = [
     "d3/la_stack_ldlt",
     "d3/la_stack_ldlt_solve",
     "d3/la_stack_lu",
-    "d3/la_stack_lu_solve",
     "d3/la_stack_norm2",
     "d3/la_stack_norm2_scenario_descending",
     "d3/la_stack_norm2_scenario_repeated_scale",
@@ -420,8 +327,6 @@ required = [
     "d3/la_stack_norm2_sq",
     "d3/la_stack_solve_from_ldlt",
     "d3/la_stack_solve_from_lu",
-    "d3/nalgebra_lu_solve",
-    "d32/faer_lu_solve",
     "d32/la_stack_det",
     "d32/la_stack_det_from_ldlt",
     "d32/la_stack_det_from_lu",
@@ -431,7 +336,6 @@ required = [
     "d32/la_stack_ldlt",
     "d32/la_stack_ldlt_solve",
     "d32/la_stack_lu",
-    "d32/la_stack_lu_solve",
     "d32/la_stack_norm2",
     "d32/la_stack_norm2_scenario_descending",
     "d32/la_stack_norm2_scenario_repeated_scale",
@@ -440,8 +344,6 @@ required = [
     "d32/la_stack_norm2_sq",
     "d32/la_stack_solve_from_ldlt",
     "d32/la_stack_solve_from_lu",
-    "d32/nalgebra_lu_solve",
-    "d4/faer_lu_solve",
     "d4/la_stack_det",
     "d4/la_stack_det_from_ldlt",
     "d4/la_stack_det_from_lu",
@@ -451,7 +353,6 @@ required = [
     "d4/la_stack_ldlt",
     "d4/la_stack_ldlt_solve",
     "d4/la_stack_lu",
-    "d4/la_stack_lu_solve",
     "d4/la_stack_norm2",
     "d4/la_stack_norm2_scenario_descending",
     "d4/la_stack_norm2_scenario_repeated_scale",
@@ -460,8 +361,6 @@ required = [
     "d4/la_stack_norm2_sq",
     "d4/la_stack_solve_from_ldlt",
     "d4/la_stack_solve_from_lu",
-    "d4/nalgebra_lu_solve",
-    "d5/faer_lu_solve",
     "d5/la_stack_det",
     "d5/la_stack_det_from_ldlt",
     "d5/la_stack_det_from_lu",
@@ -471,7 +370,6 @@ required = [
     "d5/la_stack_ldlt",
     "d5/la_stack_ldlt_solve",
     "d5/la_stack_lu",
-    "d5/la_stack_lu_solve",
     "d5/la_stack_norm2",
     "d5/la_stack_norm2_scenario_descending",
     "d5/la_stack_norm2_scenario_repeated_scale",
@@ -480,8 +378,6 @@ required = [
     "d5/la_stack_norm2_sq",
     "d5/la_stack_solve_from_ldlt",
     "d5/la_stack_solve_from_lu",
-    "d5/nalgebra_lu_solve",
-    "d64/faer_lu_solve",
     "d64/la_stack_det",
     "d64/la_stack_det_from_ldlt",
     "d64/la_stack_det_from_lu",
@@ -491,7 +387,6 @@ required = [
     "d64/la_stack_ldlt",
     "d64/la_stack_ldlt_solve",
     "d64/la_stack_lu",
-    "d64/la_stack_lu_solve",
     "d64/la_stack_norm2",
     "d64/la_stack_norm2_scenario_descending",
     "d64/la_stack_norm2_scenario_repeated_scale",
@@ -500,8 +395,6 @@ required = [
     "d64/la_stack_norm2_sq",
     "d64/la_stack_solve_from_ldlt",
     "d64/la_stack_solve_from_lu",
-    "d64/nalgebra_lu_solve",
-    "d8/faer_lu_solve",
     "d8/la_stack_det",
     "d8/la_stack_det_from_ldlt",
     "d8/la_stack_det_from_ldlt_balanced_range",
@@ -516,7 +409,6 @@ required = [
     "d8/la_stack_lu",
     "d8/la_stack_lu_ill_conditioned",
     "d8/la_stack_lu_pivoting",
-    "d8/la_stack_lu_solve",
     "d8/la_stack_norm2",
     "d8/la_stack_norm2_scenario_descending",
     "d8/la_stack_norm2_scenario_repeated_scale",
@@ -525,88 +417,6 @@ required = [
     "d8/la_stack_norm2_sq",
     "d8/la_stack_solve_from_ldlt",
     "d8/la_stack_solve_from_lu",
-    "d8/nalgebra_lu_solve",
-    "exact_d2/det",
-    "exact_d2/det_direct",
-    "exact_d2/det_direct_with_errbound",
-    "exact_d2/det_errbound",
-    "exact_d2/det_exact",
-    "exact_d2/det_exact_f64_result",
-    "exact_d2/det_exact_rounded_f64",
-    "exact_d2/det_sign_exact",
-    "exact_d2/solve_exact",
-    "exact_d2/solve_exact_f64_result",
-    "exact_d2/solve_exact_rounded_f64",
-    "exact_d3/det",
-    "exact_d3/det_direct",
-    "exact_d3/det_direct_with_errbound",
-    "exact_d3/det_errbound",
-    "exact_d3/det_exact",
-    "exact_d3/det_exact_f64_result",
-    "exact_d3/det_exact_rounded_f64",
-    "exact_d3/det_sign_exact",
-    "exact_d3/solve_exact",
-    "exact_d3/solve_exact_f64_result",
-    "exact_d3/solve_exact_rounded_f64",
-    "exact_d4/det",
-    "exact_d4/det_direct",
-    "exact_d4/det_direct_with_errbound",
-    "exact_d4/det_errbound",
-    "exact_d4/det_exact",
-    "exact_d4/det_exact_f64_result",
-    "exact_d4/det_exact_rounded_f64",
-    "exact_d4/det_sign_exact",
-    "exact_d4/solve_exact",
-    "exact_d4/solve_exact_f64_result",
-    "exact_d4/solve_exact_rounded_f64",
-    "exact_d5/det",
-    "exact_d5/det_exact",
-    "exact_d5/det_exact_f64_result",
-    "exact_d5/det_exact_rounded_f64",
-    "exact_d5/det_sign_exact",
-    "exact_d5/solve_exact",
-    "exact_d5/solve_exact_f64_result",
-    "exact_d5/solve_exact_rounded_f64",
-    "exact_hilbert_4x4/det_exact",
-    "exact_hilbert_4x4/det_sign_exact",
-    "exact_hilbert_4x4/solve_exact",
-    "exact_hilbert_4x4/solve_exact_f64_result",
-    "exact_hilbert_4x4/solve_exact_rounded_f64",
-    "exact_hilbert_5x5/det_exact",
-    "exact_hilbert_5x5/det_sign_exact",
-    "exact_hilbert_5x5/solve_exact",
-    "exact_hilbert_5x5/solve_exact_f64_result",
-    "exact_hilbert_5x5/solve_exact_rounded_f64",
-    "exact_large_entries_3x3/det_exact",
-    "exact_large_entries_3x3/det_sign_exact",
-    "exact_large_entries_3x3/solve_exact",
-    "exact_large_entries_3x3/solve_exact_f64_result",
-    "exact_large_entries_3x3/solve_exact_rounded_f64",
-    "exact_near_singular_3x3/det_exact",
-    "exact_near_singular_3x3/det_sign_exact",
-    "exact_near_singular_3x3/solve_exact",
-    "exact_near_singular_3x3/solve_exact_f64_result",
-    "exact_near_singular_3x3/solve_exact_rounded_f64",
-    "exact_random_corpus_d2/det_exact",
-    "exact_random_corpus_d2/det_sign_exact",
-    "exact_random_corpus_d2/solve_exact",
-    "exact_random_corpus_d2/solve_exact_f64_result",
-    "exact_random_corpus_d2/solve_exact_rounded_f64",
-    "exact_random_corpus_d3/det_exact",
-    "exact_random_corpus_d3/det_sign_exact",
-    "exact_random_corpus_d3/solve_exact",
-    "exact_random_corpus_d3/solve_exact_f64_result",
-    "exact_random_corpus_d3/solve_exact_rounded_f64",
-    "exact_random_corpus_d4/det_exact",
-    "exact_random_corpus_d4/det_sign_exact",
-    "exact_random_corpus_d4/solve_exact",
-    "exact_random_corpus_d4/solve_exact_f64_result",
-    "exact_random_corpus_d4/solve_exact_rounded_f64",
-    "exact_random_corpus_d5/det_exact",
-    "exact_random_corpus_d5/det_sign_exact",
-    "exact_random_corpus_d5/solve_exact",
-    "exact_random_corpus_d5/solve_exact_f64_result",
-    "exact_random_corpus_d5/solve_exact_rounded_f64",
     "gram/1x2/dependent/la_stack",
     "gram/1x2/mixed_scale/la_stack",
     "gram/1x2/near_dependent/la_stack",
@@ -930,6 +740,1014 @@ required = [
     "public_d5/vector_access",
     "public_d5/vector_new",
     "public_d5/vector_zero",
+    "public_scalar/interval_access",
+    "public_scalar/interval_negate",
+    "public_scalar/interval_new",
+    "public_scalar/interval_point",
+    "public_scalar/interval_subtraction",
+    "public_scalar/tolerance",
+]
+
+[[suites.measurement.phases.baseline.discovery.suites]]
+name = "core-default"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "core-default",
+    "list",
+]
+timeout = 14400
+
+[suites.measurement.phases.current]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "core-default" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-current" ]
+
+[suites.measurement.phases.current.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.current.discovery]
+required = [
+    "angle_d3/dense/borrowed_slice",
+    "angle_d3/dense/construct_then_angle",
+    "angle_d3/dense/prepared_vector",
+    "angle_d3/dense_antipodal/borrowed_slice",
+    "angle_d3/dense_antipodal/construct_then_angle",
+    "angle_d3/dense_antipodal/prepared_vector",
+    "angle_d3/dense_identical/borrowed_slice",
+    "angle_d3/dense_identical/construct_then_angle",
+    "angle_d3/dense_identical/prepared_vector",
+    "angle_d3/dense_varied/borrowed_slice",
+    "angle_d3/dense_varied/construct_then_angle",
+    "angle_d3/dense_varied/prepared_vector",
+    "angle_d3/maximum_small_angle/borrowed_slice",
+    "angle_d3/maximum_small_angle/construct_then_angle",
+    "angle_d3/maximum_small_angle/prepared_vector",
+    "angle_d3/mixed_scale/borrowed_slice",
+    "angle_d3/mixed_scale/construct_then_angle",
+    "angle_d3/mixed_scale/prepared_vector",
+    "angle_d3/near_antipodal/borrowed_slice",
+    "angle_d3/near_antipodal/construct_then_angle",
+    "angle_d3/near_antipodal/prepared_vector",
+    "angle_d3/near_parallel/borrowed_slice",
+    "angle_d3/near_parallel/construct_then_angle",
+    "angle_d3/near_parallel/prepared_vector",
+    "angle_d3/sparse_adjacent/borrowed_slice",
+    "angle_d3/sparse_adjacent/construct_then_angle",
+    "angle_d3/sparse_adjacent/prepared_vector",
+    "angle_d3/sparse_alternating/borrowed_slice",
+    "angle_d3/sparse_alternating/construct_then_angle",
+    "angle_d3/sparse_alternating/prepared_vector",
+    "angle_d3/sparse_antipodal/borrowed_slice",
+    "angle_d3/sparse_antipodal/construct_then_angle",
+    "angle_d3/sparse_antipodal/prepared_vector",
+    "angle_d3/sparse_identical/borrowed_slice",
+    "angle_d3/sparse_identical/construct_then_angle",
+    "angle_d3/sparse_identical/prepared_vector",
+    "angle_d3/subnormal/borrowed_slice",
+    "angle_d3/subnormal/construct_then_angle",
+    "angle_d3/subnormal/prepared_vector",
+    "angle_d3/subnormal_axes/borrowed_slice",
+    "angle_d3/subnormal_axes/construct_then_angle",
+    "angle_d3/subnormal_axes/prepared_vector",
+    "angle_d4/dense/borrowed_slice",
+    "angle_d4/dense/construct_then_angle",
+    "angle_d4/dense/prepared_vector",
+    "angle_d4/dense_antipodal/borrowed_slice",
+    "angle_d4/dense_antipodal/construct_then_angle",
+    "angle_d4/dense_antipodal/prepared_vector",
+    "angle_d4/dense_identical/borrowed_slice",
+    "angle_d4/dense_identical/construct_then_angle",
+    "angle_d4/dense_identical/prepared_vector",
+    "angle_d4/dense_varied/borrowed_slice",
+    "angle_d4/dense_varied/construct_then_angle",
+    "angle_d4/dense_varied/prepared_vector",
+    "angle_d4/maximum_small_angle/borrowed_slice",
+    "angle_d4/maximum_small_angle/construct_then_angle",
+    "angle_d4/maximum_small_angle/prepared_vector",
+    "angle_d4/mixed_scale/borrowed_slice",
+    "angle_d4/mixed_scale/construct_then_angle",
+    "angle_d4/mixed_scale/prepared_vector",
+    "angle_d4/near_antipodal/borrowed_slice",
+    "angle_d4/near_antipodal/construct_then_angle",
+    "angle_d4/near_antipodal/prepared_vector",
+    "angle_d4/near_parallel/borrowed_slice",
+    "angle_d4/near_parallel/construct_then_angle",
+    "angle_d4/near_parallel/prepared_vector",
+    "angle_d4/sparse_adjacent/borrowed_slice",
+    "angle_d4/sparse_adjacent/construct_then_angle",
+    "angle_d4/sparse_adjacent/prepared_vector",
+    "angle_d4/sparse_alternating/borrowed_slice",
+    "angle_d4/sparse_alternating/construct_then_angle",
+    "angle_d4/sparse_alternating/prepared_vector",
+    "angle_d4/sparse_antipodal/borrowed_slice",
+    "angle_d4/sparse_antipodal/construct_then_angle",
+    "angle_d4/sparse_antipodal/prepared_vector",
+    "angle_d4/sparse_identical/borrowed_slice",
+    "angle_d4/sparse_identical/construct_then_angle",
+    "angle_d4/sparse_identical/prepared_vector",
+    "angle_d4/subnormal/borrowed_slice",
+    "angle_d4/subnormal/construct_then_angle",
+    "angle_d4/subnormal/prepared_vector",
+    "angle_d4/subnormal_axes/borrowed_slice",
+    "angle_d4/subnormal_axes/construct_then_angle",
+    "angle_d4/subnormal_axes/prepared_vector",
+    "angle_d5/dense/borrowed_slice",
+    "angle_d5/dense/construct_then_angle",
+    "angle_d5/dense/prepared_vector",
+    "angle_d5/dense_antipodal/borrowed_slice",
+    "angle_d5/dense_antipodal/construct_then_angle",
+    "angle_d5/dense_antipodal/prepared_vector",
+    "angle_d5/dense_identical/borrowed_slice",
+    "angle_d5/dense_identical/construct_then_angle",
+    "angle_d5/dense_identical/prepared_vector",
+    "angle_d5/dense_varied/borrowed_slice",
+    "angle_d5/dense_varied/construct_then_angle",
+    "angle_d5/dense_varied/prepared_vector",
+    "angle_d5/maximum_small_angle/borrowed_slice",
+    "angle_d5/maximum_small_angle/construct_then_angle",
+    "angle_d5/maximum_small_angle/prepared_vector",
+    "angle_d5/mixed_scale/borrowed_slice",
+    "angle_d5/mixed_scale/construct_then_angle",
+    "angle_d5/mixed_scale/prepared_vector",
+    "angle_d5/near_antipodal/borrowed_slice",
+    "angle_d5/near_antipodal/construct_then_angle",
+    "angle_d5/near_antipodal/prepared_vector",
+    "angle_d5/near_parallel/borrowed_slice",
+    "angle_d5/near_parallel/construct_then_angle",
+    "angle_d5/near_parallel/prepared_vector",
+    "angle_d5/sparse_adjacent/borrowed_slice",
+    "angle_d5/sparse_adjacent/construct_then_angle",
+    "angle_d5/sparse_adjacent/prepared_vector",
+    "angle_d5/sparse_alternating/borrowed_slice",
+    "angle_d5/sparse_alternating/construct_then_angle",
+    "angle_d5/sparse_alternating/prepared_vector",
+    "angle_d5/sparse_antipodal/borrowed_slice",
+    "angle_d5/sparse_antipodal/construct_then_angle",
+    "angle_d5/sparse_antipodal/prepared_vector",
+    "angle_d5/sparse_identical/borrowed_slice",
+    "angle_d5/sparse_identical/construct_then_angle",
+    "angle_d5/sparse_identical/prepared_vector",
+    "angle_d5/subnormal/borrowed_slice",
+    "angle_d5/subnormal/construct_then_angle",
+    "angle_d5/subnormal/prepared_vector",
+    "angle_d5/subnormal_axes/borrowed_slice",
+    "angle_d5/subnormal_axes/construct_then_angle",
+    "angle_d5/subnormal_axes/prepared_vector",
+    "angle_d6/dense/borrowed_slice",
+    "angle_d6/dense/construct_then_angle",
+    "angle_d6/dense/prepared_vector",
+    "angle_d6/dense_antipodal/borrowed_slice",
+    "angle_d6/dense_antipodal/construct_then_angle",
+    "angle_d6/dense_antipodal/prepared_vector",
+    "angle_d6/dense_identical/borrowed_slice",
+    "angle_d6/dense_identical/construct_then_angle",
+    "angle_d6/dense_identical/prepared_vector",
+    "angle_d6/dense_varied/borrowed_slice",
+    "angle_d6/dense_varied/construct_then_angle",
+    "angle_d6/dense_varied/prepared_vector",
+    "angle_d6/maximum_small_angle/borrowed_slice",
+    "angle_d6/maximum_small_angle/construct_then_angle",
+    "angle_d6/maximum_small_angle/prepared_vector",
+    "angle_d6/mixed_scale/borrowed_slice",
+    "angle_d6/mixed_scale/construct_then_angle",
+    "angle_d6/mixed_scale/prepared_vector",
+    "angle_d6/near_antipodal/borrowed_slice",
+    "angle_d6/near_antipodal/construct_then_angle",
+    "angle_d6/near_antipodal/prepared_vector",
+    "angle_d6/near_parallel/borrowed_slice",
+    "angle_d6/near_parallel/construct_then_angle",
+    "angle_d6/near_parallel/prepared_vector",
+    "angle_d6/sparse_adjacent/borrowed_slice",
+    "angle_d6/sparse_adjacent/construct_then_angle",
+    "angle_d6/sparse_adjacent/prepared_vector",
+    "angle_d6/sparse_alternating/borrowed_slice",
+    "angle_d6/sparse_alternating/construct_then_angle",
+    "angle_d6/sparse_alternating/prepared_vector",
+    "angle_d6/sparse_antipodal/borrowed_slice",
+    "angle_d6/sparse_antipodal/construct_then_angle",
+    "angle_d6/sparse_antipodal/prepared_vector",
+    "angle_d6/sparse_identical/borrowed_slice",
+    "angle_d6/sparse_identical/construct_then_angle",
+    "angle_d6/sparse_identical/prepared_vector",
+    "angle_d6/subnormal/borrowed_slice",
+    "angle_d6/subnormal/construct_then_angle",
+    "angle_d6/subnormal/prepared_vector",
+    "angle_d6/subnormal_axes/borrowed_slice",
+    "angle_d6/subnormal_axes/construct_then_angle",
+    "angle_d6/subnormal_axes/prepared_vector",
+    "d16/la_stack_det",
+    "d16/la_stack_det_from_ldlt",
+    "d16/la_stack_det_from_lu",
+    "d16/la_stack_det_via_lu",
+    "d16/la_stack_dot",
+    "d16/la_stack_inf_norm",
+    "d16/la_stack_ldlt",
+    "d16/la_stack_ldlt_solve",
+    "d16/la_stack_lu",
+    "d16/la_stack_norm2",
+    "d16/la_stack_norm2_scenario_descending",
+    "d16/la_stack_norm2_scenario_repeated_scale",
+    "d16/la_stack_norm2_scenario_sparse",
+    "d16/la_stack_norm2_scenario_wide_dynamic_range",
+    "d16/la_stack_norm2_sq",
+    "d16/la_stack_solve_from_ldlt",
+    "d16/la_stack_solve_from_lu",
+    "d2/la_stack_det",
+    "d2/la_stack_det_from_ldlt",
+    "d2/la_stack_det_from_lu",
+    "d2/la_stack_det_via_lu",
+    "d2/la_stack_dot",
+    "d2/la_stack_inf_norm",
+    "d2/la_stack_ldlt",
+    "d2/la_stack_ldlt_solve",
+    "d2/la_stack_lu",
+    "d2/la_stack_norm2",
+    "d2/la_stack_norm2_scenario_descending",
+    "d2/la_stack_norm2_scenario_repeated_scale",
+    "d2/la_stack_norm2_scenario_sparse",
+    "d2/la_stack_norm2_scenario_wide_dynamic_range",
+    "d2/la_stack_norm2_sq",
+    "d2/la_stack_solve_from_ldlt",
+    "d2/la_stack_solve_from_lu",
+    "d3/la_stack_det",
+    "d3/la_stack_det_from_ldlt",
+    "d3/la_stack_det_from_lu",
+    "d3/la_stack_det_via_lu",
+    "d3/la_stack_dot",
+    "d3/la_stack_inf_norm",
+    "d3/la_stack_ldlt",
+    "d3/la_stack_ldlt_solve",
+    "d3/la_stack_lu",
+    "d3/la_stack_norm2",
+    "d3/la_stack_norm2_scenario_descending",
+    "d3/la_stack_norm2_scenario_repeated_scale",
+    "d3/la_stack_norm2_scenario_sparse",
+    "d3/la_stack_norm2_scenario_wide_dynamic_range",
+    "d3/la_stack_norm2_sq",
+    "d3/la_stack_solve_from_ldlt",
+    "d3/la_stack_solve_from_lu",
+    "d32/la_stack_det",
+    "d32/la_stack_det_from_ldlt",
+    "d32/la_stack_det_from_lu",
+    "d32/la_stack_det_via_lu",
+    "d32/la_stack_dot",
+    "d32/la_stack_inf_norm",
+    "d32/la_stack_ldlt",
+    "d32/la_stack_ldlt_solve",
+    "d32/la_stack_lu",
+    "d32/la_stack_norm2",
+    "d32/la_stack_norm2_scenario_descending",
+    "d32/la_stack_norm2_scenario_repeated_scale",
+    "d32/la_stack_norm2_scenario_sparse",
+    "d32/la_stack_norm2_scenario_wide_dynamic_range",
+    "d32/la_stack_norm2_sq",
+    "d32/la_stack_solve_from_ldlt",
+    "d32/la_stack_solve_from_lu",
+    "d4/la_stack_det",
+    "d4/la_stack_det_from_ldlt",
+    "d4/la_stack_det_from_lu",
+    "d4/la_stack_det_via_lu",
+    "d4/la_stack_dot",
+    "d4/la_stack_inf_norm",
+    "d4/la_stack_ldlt",
+    "d4/la_stack_ldlt_solve",
+    "d4/la_stack_lu",
+    "d4/la_stack_norm2",
+    "d4/la_stack_norm2_scenario_descending",
+    "d4/la_stack_norm2_scenario_repeated_scale",
+    "d4/la_stack_norm2_scenario_sparse",
+    "d4/la_stack_norm2_scenario_wide_dynamic_range",
+    "d4/la_stack_norm2_sq",
+    "d4/la_stack_solve_from_ldlt",
+    "d4/la_stack_solve_from_lu",
+    "d5/la_stack_det",
+    "d5/la_stack_det_from_ldlt",
+    "d5/la_stack_det_from_lu",
+    "d5/la_stack_det_via_lu",
+    "d5/la_stack_dot",
+    "d5/la_stack_inf_norm",
+    "d5/la_stack_ldlt",
+    "d5/la_stack_ldlt_solve",
+    "d5/la_stack_lu",
+    "d5/la_stack_norm2",
+    "d5/la_stack_norm2_scenario_descending",
+    "d5/la_stack_norm2_scenario_repeated_scale",
+    "d5/la_stack_norm2_scenario_sparse",
+    "d5/la_stack_norm2_scenario_wide_dynamic_range",
+    "d5/la_stack_norm2_sq",
+    "d5/la_stack_solve_from_ldlt",
+    "d5/la_stack_solve_from_lu",
+    "d64/la_stack_det",
+    "d64/la_stack_det_from_ldlt",
+    "d64/la_stack_det_from_lu",
+    "d64/la_stack_det_via_lu",
+    "d64/la_stack_dot",
+    "d64/la_stack_inf_norm",
+    "d64/la_stack_ldlt",
+    "d64/la_stack_ldlt_solve",
+    "d64/la_stack_lu",
+    "d64/la_stack_norm2",
+    "d64/la_stack_norm2_scenario_descending",
+    "d64/la_stack_norm2_scenario_repeated_scale",
+    "d64/la_stack_norm2_scenario_sparse",
+    "d64/la_stack_norm2_scenario_wide_dynamic_range",
+    "d64/la_stack_norm2_sq",
+    "d64/la_stack_solve_from_ldlt",
+    "d64/la_stack_solve_from_lu",
+    "d8/la_stack_det",
+    "d8/la_stack_det_from_ldlt",
+    "d8/la_stack_det_from_ldlt_balanced_range",
+    "d8/la_stack_det_from_lu",
+    "d8/la_stack_det_from_lu_balanced_range",
+    "d8/la_stack_det_via_lu",
+    "d8/la_stack_dot",
+    "d8/la_stack_inf_norm",
+    "d8/la_stack_ldlt",
+    "d8/la_stack_ldlt_ill_conditioned",
+    "d8/la_stack_ldlt_solve",
+    "d8/la_stack_lu",
+    "d8/la_stack_lu_ill_conditioned",
+    "d8/la_stack_lu_pivoting",
+    "d8/la_stack_norm2",
+    "d8/la_stack_norm2_scenario_descending",
+    "d8/la_stack_norm2_scenario_repeated_scale",
+    "d8/la_stack_norm2_scenario_sparse",
+    "d8/la_stack_norm2_scenario_wide_dynamic_range",
+    "d8/la_stack_norm2_sq",
+    "d8/la_stack_solve_from_ldlt",
+    "d8/la_stack_solve_from_lu",
+    "gram/1x2/dependent/la_stack",
+    "gram/1x2/mixed_scale/la_stack",
+    "gram/1x2/near_dependent/la_stack",
+    "gram/1x2/orthogonal/la_stack",
+    "gram/2x2/dependent/la_stack",
+    "gram/2x2/mixed_scale/la_stack",
+    "gram/2x2/near_dependent/la_stack",
+    "gram/2x2/orthogonal/la_stack",
+    "gram/2x3/dependent/la_stack",
+    "gram/2x3/mixed_scale/la_stack",
+    "gram/2x3/near_dependent/la_stack",
+    "gram/2x3/orthogonal/la_stack",
+    "gram/3x3/dependent/la_stack",
+    "gram/3x3/mixed_scale/la_stack",
+    "gram/3x3/near_dependent/la_stack",
+    "gram/3x3/orthogonal/la_stack",
+    "gram/3x4/dependent/la_stack",
+    "gram/3x4/mixed_scale/la_stack",
+    "gram/3x4/near_dependent/la_stack",
+    "gram/3x4/orthogonal/la_stack",
+    "gram/4x4/dependent/la_stack",
+    "gram/4x4/mixed_scale/la_stack",
+    "gram/4x4/near_dependent/la_stack",
+    "gram/4x4/orthogonal/la_stack",
+    "gram/4x5/dependent/la_stack",
+    "gram/4x5/mixed_scale/la_stack",
+    "gram/4x5/near_dependent/la_stack",
+    "gram/4x5/orthogonal/la_stack",
+    "gram/5x5/dependent/la_stack",
+    "gram/5x5/mixed_scale/la_stack",
+    "gram/5x5/near_dependent/la_stack",
+    "gram/5x5/orthogonal/la_stack",
+    "gram/5x6/dependent/la_stack",
+    "gram/5x6/mixed_scale/la_stack",
+    "gram/5x6/near_dependent/la_stack",
+    "gram/5x6/orthogonal/la_stack",
+    "gram/6x6/dependent/la_stack",
+    "gram/6x6/mixed_scale/la_stack",
+    "gram/6x6/near_dependent/la_stack",
+    "gram/6x6/orthogonal/la_stack",
+    "gram/6x7/dependent/la_stack",
+    "gram/6x7/mixed_scale/la_stack",
+    "gram/6x7/near_dependent/la_stack",
+    "gram/6x7/orthogonal/la_stack",
+    "gram/7x7/dependent/la_stack",
+    "gram/7x7/mixed_scale/la_stack",
+    "gram/7x7/near_dependent/la_stack",
+    "gram/7x7/orthogonal/la_stack",
+    "gram/7x8/dependent/la_stack",
+    "gram/7x8/mixed_scale/la_stack",
+    "gram/7x8/near_dependent/la_stack",
+    "gram/7x8/orthogonal/la_stack",
+    "gram/8x8/dependent/la_stack",
+    "gram/8x8/mixed_scale/la_stack",
+    "gram/8x8/near_dependent/la_stack",
+    "gram/8x8/orthogonal/la_stack",
+    "interval_d3/dense_inconclusive",
+    "interval_d3/dense_sign",
+    "interval_d3/lifted_assembly",
+    "interval_d3/lifted_assembly_and_sign",
+    "interval_d3/sparse_sign",
+    "interval_d4/dense_inconclusive",
+    "interval_d4/dense_sign",
+    "interval_d4/lifted_assembly",
+    "interval_d4/lifted_assembly_and_sign",
+    "interval_d4/sparse_sign",
+    "interval_d5/dense_inconclusive",
+    "interval_d5/dense_sign",
+    "interval_d5/lifted_assembly",
+    "interval_d5/lifted_assembly_and_sign",
+    "interval_d5/sparse_sign",
+    "interval_d6/dense_inconclusive",
+    "interval_d6/dense_sign",
+    "interval_d6/lifted_assembly",
+    "interval_d6/lifted_assembly_and_sign",
+    "interval_d6/sparse_sign",
+    "interval_d7/dense_inconclusive",
+    "interval_d7/dense_sign",
+    "interval_d7/lifted_assembly",
+    "interval_d7/lifted_assembly_and_sign",
+    "interval_d7/sparse_sign",
+    "interval_det_sign/d4_conclusive_lifted",
+    "interval_det_sign/d4_inconclusive_lifted",
+    "interval_det_sign/d7_conclusive_lifted",
+    "interval_scalar/cancellation/add",
+    "interval_scalar/cancellation/multiply",
+    "interval_scalar/cancellation/square",
+    "interval_scalar/exact/add",
+    "interval_scalar/exact/multiply",
+    "interval_scalar/exact/square",
+    "interval_scalar/point/add",
+    "interval_scalar/point/multiply",
+    "interval_scalar/point/square",
+    "interval_scalar/subnormal/add",
+    "interval_scalar/subnormal/multiply",
+    "interval_scalar/subnormal/square",
+    "interval_scalar/zero/add",
+    "interval_scalar/zero/multiply",
+    "interval_scalar/zero/square",
+    "linear_form_d2_batch/origin/construction",
+    "linear_form_d2_batch/origin/prepared",
+    "linear_form_d2_batch/origin/with_construction",
+    "linear_form_d2_batch/translated/construction",
+    "linear_form_d2_batch/translated/prepared",
+    "linear_form_d2_batch/translated/with_construction",
+    "linear_form_d2_prepared/cancellation/difference",
+    "linear_form_d2_prepared/cancellation/difference_endpoints",
+    "linear_form_d2_prepared/cancellation/dot",
+    "linear_form_d2_prepared/cancellation/dot_endpoints",
+    "linear_form_d2_prepared/dense/difference",
+    "linear_form_d2_prepared/dense/difference_endpoints",
+    "linear_form_d2_prepared/dense/dot",
+    "linear_form_d2_prepared/dense/dot_endpoints",
+    "linear_form_d2_prepared/dense_inexact/difference",
+    "linear_form_d2_prepared/dense_inexact/difference_endpoints",
+    "linear_form_d2_prepared/dense_inexact/dot",
+    "linear_form_d2_prepared/dense_inexact/dot_endpoints",
+    "linear_form_d2_prepared/overflow/dot",
+    "linear_form_d2_prepared/sparse/difference",
+    "linear_form_d2_prepared/sparse/difference_endpoints",
+    "linear_form_d2_prepared/sparse/dot",
+    "linear_form_d2_prepared/sparse/dot_endpoints",
+    "linear_form_d2_prepared/underflow/difference",
+    "linear_form_d2_prepared/underflow/difference_endpoints",
+    "linear_form_d2_prepared/underflow/dot",
+    "linear_form_d2_prepared/underflow/dot_endpoints",
+    "linear_form_d3_batch/origin/construction",
+    "linear_form_d3_batch/origin/prepared",
+    "linear_form_d3_batch/origin/with_construction",
+    "linear_form_d3_batch/translated/construction",
+    "linear_form_d3_batch/translated/prepared",
+    "linear_form_d3_batch/translated/with_construction",
+    "linear_form_d3_prepared/cancellation/difference",
+    "linear_form_d3_prepared/cancellation/difference_endpoints",
+    "linear_form_d3_prepared/cancellation/dot",
+    "linear_form_d3_prepared/cancellation/dot_endpoints",
+    "linear_form_d3_prepared/dense/difference",
+    "linear_form_d3_prepared/dense/difference_endpoints",
+    "linear_form_d3_prepared/dense/dot",
+    "linear_form_d3_prepared/dense/dot_endpoints",
+    "linear_form_d3_prepared/dense_inexact/difference",
+    "linear_form_d3_prepared/dense_inexact/difference_endpoints",
+    "linear_form_d3_prepared/dense_inexact/dot",
+    "linear_form_d3_prepared/dense_inexact/dot_endpoints",
+    "linear_form_d3_prepared/overflow/dot",
+    "linear_form_d3_prepared/sparse/difference",
+    "linear_form_d3_prepared/sparse/difference_endpoints",
+    "linear_form_d3_prepared/sparse/dot",
+    "linear_form_d3_prepared/sparse/dot_endpoints",
+    "linear_form_d3_prepared/underflow/difference",
+    "linear_form_d3_prepared/underflow/difference_endpoints",
+    "linear_form_d3_prepared/underflow/dot",
+    "linear_form_d3_prepared/underflow/dot_endpoints",
+    "linear_form_d4/dot_bounded_inconclusive",
+    "linear_form_d4/dot_bounded_well_separated",
+    "linear_form_d4/dot_difference_bounded_inconclusive",
+    "linear_form_d4/dot_difference_bounded_well_separated",
+    "linear_form_d4/dot_plain_well_separated",
+    "linear_form_d4_batch/origin/construction",
+    "linear_form_d4_batch/origin/prepared",
+    "linear_form_d4_batch/origin/with_construction",
+    "linear_form_d4_batch/translated/construction",
+    "linear_form_d4_batch/translated/prepared",
+    "linear_form_d4_batch/translated/with_construction",
+    "linear_form_d4_prepared/cancellation/difference",
+    "linear_form_d4_prepared/cancellation/difference_endpoints",
+    "linear_form_d4_prepared/cancellation/dot",
+    "linear_form_d4_prepared/cancellation/dot_endpoints",
+    "linear_form_d4_prepared/dense/difference",
+    "linear_form_d4_prepared/dense/difference_endpoints",
+    "linear_form_d4_prepared/dense/dot",
+    "linear_form_d4_prepared/dense/dot_endpoints",
+    "linear_form_d4_prepared/dense_inexact/difference",
+    "linear_form_d4_prepared/dense_inexact/difference_endpoints",
+    "linear_form_d4_prepared/dense_inexact/dot",
+    "linear_form_d4_prepared/dense_inexact/dot_endpoints",
+    "linear_form_d4_prepared/overflow/dot",
+    "linear_form_d4_prepared/sparse/difference",
+    "linear_form_d4_prepared/sparse/difference_endpoints",
+    "linear_form_d4_prepared/sparse/dot",
+    "linear_form_d4_prepared/sparse/dot_endpoints",
+    "linear_form_d4_prepared/underflow/difference",
+    "linear_form_d4_prepared/underflow/difference_endpoints",
+    "linear_form_d4_prepared/underflow/dot",
+    "linear_form_d4_prepared/underflow/dot_endpoints",
+    "linear_form_d5_batch/origin/construction",
+    "linear_form_d5_batch/origin/prepared",
+    "linear_form_d5_batch/origin/with_construction",
+    "linear_form_d5_batch/translated/construction",
+    "linear_form_d5_batch/translated/prepared",
+    "linear_form_d5_batch/translated/with_construction",
+    "linear_form_d5_prepared/cancellation/difference",
+    "linear_form_d5_prepared/cancellation/difference_endpoints",
+    "linear_form_d5_prepared/cancellation/dot",
+    "linear_form_d5_prepared/cancellation/dot_endpoints",
+    "linear_form_d5_prepared/dense/difference",
+    "linear_form_d5_prepared/dense/difference_endpoints",
+    "linear_form_d5_prepared/dense/dot",
+    "linear_form_d5_prepared/dense/dot_endpoints",
+    "linear_form_d5_prepared/dense_inexact/difference",
+    "linear_form_d5_prepared/dense_inexact/difference_endpoints",
+    "linear_form_d5_prepared/dense_inexact/dot",
+    "linear_form_d5_prepared/dense_inexact/dot_endpoints",
+    "linear_form_d5_prepared/overflow/dot",
+    "linear_form_d5_prepared/sparse/difference",
+    "linear_form_d5_prepared/sparse/difference_endpoints",
+    "linear_form_d5_prepared/sparse/dot",
+    "linear_form_d5_prepared/sparse/dot_endpoints",
+    "linear_form_d5_prepared/underflow/difference",
+    "linear_form_d5_prepared/underflow/difference_endpoints",
+    "linear_form_d5_prepared/underflow/dot",
+    "linear_form_d5_prepared/underflow/dot_endpoints",
+    "linear_form_d6_batch/origin/construction",
+    "linear_form_d6_batch/origin/prepared",
+    "linear_form_d6_batch/origin/with_construction",
+    "linear_form_d6_batch/translated/construction",
+    "linear_form_d6_batch/translated/prepared",
+    "linear_form_d6_batch/translated/with_construction",
+    "linear_form_d6_prepared/cancellation/difference",
+    "linear_form_d6_prepared/cancellation/difference_endpoints",
+    "linear_form_d6_prepared/cancellation/dot",
+    "linear_form_d6_prepared/cancellation/dot_endpoints",
+    "linear_form_d6_prepared/dense/difference",
+    "linear_form_d6_prepared/dense/difference_endpoints",
+    "linear_form_d6_prepared/dense/dot",
+    "linear_form_d6_prepared/dense/dot_endpoints",
+    "linear_form_d6_prepared/dense_inexact/difference",
+    "linear_form_d6_prepared/dense_inexact/difference_endpoints",
+    "linear_form_d6_prepared/dense_inexact/dot",
+    "linear_form_d6_prepared/dense_inexact/dot_endpoints",
+    "linear_form_d6_prepared/overflow/dot",
+    "linear_form_d6_prepared/sparse/difference",
+    "linear_form_d6_prepared/sparse/difference_endpoints",
+    "linear_form_d6_prepared/sparse/dot",
+    "linear_form_d6_prepared/sparse/dot_endpoints",
+    "linear_form_d6_prepared/underflow/difference",
+    "linear_form_d6_prepared/underflow/difference_endpoints",
+    "linear_form_d6_prepared/underflow/dot",
+    "linear_form_d6_prepared/underflow/dot_endpoints",
+    "public_d2/det_bound",
+    "public_d2/det_direct",
+    "public_d2/det_with_bound",
+    "public_d2/first_asymmetry",
+    "public_d2/interval_det",
+    "public_d2/interval_matrix_access",
+    "public_d2/interval_matrix_from_matrix",
+    "public_d2/interval_matrix_from_points",
+    "public_d2/interval_matrix_from_rows",
+    "public_d2/interval_matrix_identity",
+    "public_d2/interval_matrix_set",
+    "public_d2/interval_matrix_zero",
+    "public_d2/is_symmetric",
+    "public_d2/matrix_access",
+    "public_d2/matrix_from_rows",
+    "public_d2/matrix_identity",
+    "public_d2/matrix_set",
+    "public_d2/matrix_zero",
+    "public_d2/vector_access",
+    "public_d2/vector_new",
+    "public_d2/vector_zero",
+    "public_d3/det_bound",
+    "public_d3/det_direct",
+    "public_d3/det_with_bound",
+    "public_d3/first_asymmetry",
+    "public_d3/interval_det",
+    "public_d3/interval_matrix_access",
+    "public_d3/interval_matrix_from_matrix",
+    "public_d3/interval_matrix_from_points",
+    "public_d3/interval_matrix_from_rows",
+    "public_d3/interval_matrix_identity",
+    "public_d3/interval_matrix_set",
+    "public_d3/interval_matrix_zero",
+    "public_d3/is_symmetric",
+    "public_d3/matrix_access",
+    "public_d3/matrix_from_rows",
+    "public_d3/matrix_identity",
+    "public_d3/matrix_set",
+    "public_d3/matrix_zero",
+    "public_d3/vector_access",
+    "public_d3/vector_new",
+    "public_d3/vector_zero",
+    "public_d4/det_bound",
+    "public_d4/det_direct",
+    "public_d4/det_with_bound",
+    "public_d4/first_asymmetry",
+    "public_d4/interval_det",
+    "public_d4/interval_matrix_access",
+    "public_d4/interval_matrix_from_matrix",
+    "public_d4/interval_matrix_from_points",
+    "public_d4/interval_matrix_from_rows",
+    "public_d4/interval_matrix_identity",
+    "public_d4/interval_matrix_set",
+    "public_d4/interval_matrix_zero",
+    "public_d4/is_symmetric",
+    "public_d4/matrix_access",
+    "public_d4/matrix_from_rows",
+    "public_d4/matrix_identity",
+    "public_d4/matrix_set",
+    "public_d4/matrix_zero",
+    "public_d4/vector_access",
+    "public_d4/vector_new",
+    "public_d4/vector_zero",
+    "public_d5/det_bound",
+    "public_d5/det_direct",
+    "public_d5/det_with_bound",
+    "public_d5/first_asymmetry",
+    "public_d5/interval_det",
+    "public_d5/interval_matrix_access",
+    "public_d5/interval_matrix_from_matrix",
+    "public_d5/interval_matrix_from_points",
+    "public_d5/interval_matrix_from_rows",
+    "public_d5/interval_matrix_identity",
+    "public_d5/interval_matrix_set",
+    "public_d5/interval_matrix_zero",
+    "public_d5/is_symmetric",
+    "public_d5/matrix_access",
+    "public_d5/matrix_from_rows",
+    "public_d5/matrix_identity",
+    "public_d5/matrix_set",
+    "public_d5/matrix_zero",
+    "public_d5/vector_access",
+    "public_d5/vector_new",
+    "public_d5/vector_zero",
+    "public_scalar/interval_access",
+    "public_scalar/interval_negate",
+    "public_scalar/interval_new",
+    "public_scalar/interval_point",
+    "public_scalar/interval_subtraction",
+    "public_scalar/tolerance",
+]
+
+[[suites.measurement.phases.current.discovery.suites]]
+name = "core-default"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "core-default",
+    "list",
+]
+timeout = 14400
+
+[[suites.measurement.series]]
+name = "la-stack baseline"
+phase = "baseline"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites.measurement.series]]
+name = "la-stack current"
+phase = "current"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites]]
+name = "core-exact"
+contract = "la-stack-core-exact-v1"
+nominal-seconds-per-case = 8
+
+[suites.measurement]
+schema = 4
+minimum-release = "v0.5.0"
+sources = [ "src/**/*.rs", "Cargo.toml" ]
+harness = [
+    "benches/**/*.rs",
+    "benches/comparison/Cargo.toml",
+    "examples/**/*.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "dependency-sources.toml",
+    "rust-toolchain.toml",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "tests/exact_bench_config.rs",
+    "tests/column_basis.rs",
+    "tests/rational_dot.rs",
+    "tests/interval_solve.rs",
+    "tests/common/interval_solve_oracle.rs",
+    "tests/common/proptest_config.rs",
+    "tests/polynomial_bench_inputs.rs",
+    "tooling/performance.just",
+    "tooling/performance-*.toml",
+    "tooling/*.py",
+    "tooling/criterion-inventory.toml",
+    "tooling/performance-policy.toml",
+    "tooling/measurements/*.toml",
+]
+sample-count = 100
+statistics = [ "mean", "median" ]
+confidence-level = 0.95
+unit = "ns"
+timeout = 21600
+compatible = [
+    "harness_sha256",
+    "context.os",
+    "context.architecture",
+    "context.cpu",
+    "context.tool.rustc",
+    "context.tool.cargo",
+    "context.tool.just",
+    "context.dependency.criterion",
+    "context.dependency.nalgebra",
+    "context.dependency.faer",
+]
+backend = "export"
+harness-mode = "common"
+workloads = [ "benches/**/*.rs" ]
+
+[suites.measurement.context]
+phase-driver = "just-v1"
+suite = "core-exact"
+scope = "public-release-and-paired-lu-peers-v4"
+repository = "acgetchell/la-stack"
+acquisition-owner = "local"
+
+[suites.measurement.probes]
+rustc = [ "rustc", "-vV" ]
+cargo = [ "cargo", "--version" ]
+just = [ "just", "--version" ]
+
+[suites.measurement.dependencies]
+criterion = "Cargo.lock"
+nalgebra = "Cargo.lock"
+faer = "Cargo.lock"
+
+[suites.measurement.phases]
+
+[suites.measurement.phases.baseline]
+sources = [ "src/**/*.rs", "Cargo.toml", "README.md" ]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "common-public-exact" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate" ]
+
+[suites.measurement.phases.baseline.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.baseline.discovery]
+required = [
+    "canonical_conversion_below_overflow_d2/rounded_array",
+    "canonical_conversion_below_overflow_d2/rounded_result",
+    "canonical_conversion_below_overflow_d2/strict_array",
+    "canonical_conversion_below_overflow_d2/strict_result",
+    "canonical_conversion_below_overflow_d3/rounded_array",
+    "canonical_conversion_below_overflow_d3/rounded_result",
+    "canonical_conversion_below_overflow_d3/strict_array",
+    "canonical_conversion_below_overflow_d3/strict_result",
+    "canonical_conversion_below_overflow_d4/rounded_array",
+    "canonical_conversion_below_overflow_d4/rounded_result",
+    "canonical_conversion_below_overflow_d4/strict_array",
+    "canonical_conversion_below_overflow_d4/strict_result",
+    "canonical_conversion_below_overflow_d5/rounded_array",
+    "canonical_conversion_below_overflow_d5/rounded_result",
+    "canonical_conversion_below_overflow_d5/strict_array",
+    "canonical_conversion_below_overflow_d5/strict_result",
+    "canonical_conversion_dyadic_d2/rounded_array",
+    "canonical_conversion_dyadic_d2/rounded_result",
+    "canonical_conversion_dyadic_d2/strict_array",
+    "canonical_conversion_dyadic_d2/strict_result",
+    "canonical_conversion_dyadic_d3/rounded_array",
+    "canonical_conversion_dyadic_d3/rounded_result",
+    "canonical_conversion_dyadic_d3/strict_array",
+    "canonical_conversion_dyadic_d3/strict_result",
+    "canonical_conversion_dyadic_d4/rounded_array",
+    "canonical_conversion_dyadic_d4/rounded_result",
+    "canonical_conversion_dyadic_d4/strict_array",
+    "canonical_conversion_dyadic_d4/strict_result",
+    "canonical_conversion_dyadic_d5/rounded_array",
+    "canonical_conversion_dyadic_d5/rounded_result",
+    "canonical_conversion_dyadic_d5/strict_array",
+    "canonical_conversion_dyadic_d5/strict_result",
+    "canonical_conversion_min_subnormal_d2/rounded_array",
+    "canonical_conversion_min_subnormal_d2/rounded_result",
+    "canonical_conversion_min_subnormal_d2/strict_array",
+    "canonical_conversion_min_subnormal_d2/strict_result",
+    "canonical_conversion_min_subnormal_d3/rounded_array",
+    "canonical_conversion_min_subnormal_d3/rounded_result",
+    "canonical_conversion_min_subnormal_d3/strict_array",
+    "canonical_conversion_min_subnormal_d3/strict_result",
+    "canonical_conversion_min_subnormal_d4/rounded_array",
+    "canonical_conversion_min_subnormal_d4/rounded_result",
+    "canonical_conversion_min_subnormal_d4/strict_array",
+    "canonical_conversion_min_subnormal_d4/strict_result",
+    "canonical_conversion_min_subnormal_d5/rounded_array",
+    "canonical_conversion_min_subnormal_d5/rounded_result",
+    "canonical_conversion_min_subnormal_d5/strict_array",
+    "canonical_conversion_min_subnormal_d5/strict_result",
+    "canonical_conversion_negative_underflow_d2/rounded_array",
+    "canonical_conversion_negative_underflow_d2/rounded_result",
+    "canonical_conversion_negative_underflow_d2/strict_array",
+    "canonical_conversion_negative_underflow_d2/strict_result",
+    "canonical_conversion_negative_underflow_d3/rounded_array",
+    "canonical_conversion_negative_underflow_d3/rounded_result",
+    "canonical_conversion_negative_underflow_d3/strict_array",
+    "canonical_conversion_negative_underflow_d3/strict_result",
+    "canonical_conversion_negative_underflow_d4/rounded_array",
+    "canonical_conversion_negative_underflow_d4/rounded_result",
+    "canonical_conversion_negative_underflow_d4/strict_array",
+    "canonical_conversion_negative_underflow_d4/strict_result",
+    "canonical_conversion_negative_underflow_d5/rounded_array",
+    "canonical_conversion_negative_underflow_d5/rounded_result",
+    "canonical_conversion_negative_underflow_d5/strict_array",
+    "canonical_conversion_negative_underflow_d5/strict_result",
+    "canonical_conversion_non_dyadic_d2/rounded_array",
+    "canonical_conversion_non_dyadic_d2/rounded_result",
+    "canonical_conversion_non_dyadic_d2/strict_array",
+    "canonical_conversion_non_dyadic_d2/strict_result",
+    "canonical_conversion_non_dyadic_d3/rounded_array",
+    "canonical_conversion_non_dyadic_d3/rounded_result",
+    "canonical_conversion_non_dyadic_d3/strict_array",
+    "canonical_conversion_non_dyadic_d3/strict_result",
+    "canonical_conversion_non_dyadic_d4/rounded_array",
+    "canonical_conversion_non_dyadic_d4/rounded_result",
+    "canonical_conversion_non_dyadic_d4/strict_array",
+    "canonical_conversion_non_dyadic_d4/strict_result",
+    "canonical_conversion_non_dyadic_d5/rounded_array",
+    "canonical_conversion_non_dyadic_d5/rounded_result",
+    "canonical_conversion_non_dyadic_d5/strict_array",
+    "canonical_conversion_non_dyadic_d5/strict_result",
+    "canonical_conversion_overflow_midpoint_d2/rounded_array",
+    "canonical_conversion_overflow_midpoint_d2/rounded_result",
+    "canonical_conversion_overflow_midpoint_d2/strict_array",
+    "canonical_conversion_overflow_midpoint_d2/strict_result",
+    "canonical_conversion_overflow_midpoint_d3/rounded_array",
+    "canonical_conversion_overflow_midpoint_d3/rounded_result",
+    "canonical_conversion_overflow_midpoint_d3/strict_array",
+    "canonical_conversion_overflow_midpoint_d3/strict_result",
+    "canonical_conversion_overflow_midpoint_d4/rounded_array",
+    "canonical_conversion_overflow_midpoint_d4/rounded_result",
+    "canonical_conversion_overflow_midpoint_d4/strict_array",
+    "canonical_conversion_overflow_midpoint_d4/strict_result",
+    "canonical_conversion_overflow_midpoint_d5/rounded_array",
+    "canonical_conversion_overflow_midpoint_d5/rounded_result",
+    "canonical_conversion_overflow_midpoint_d5/strict_array",
+    "canonical_conversion_overflow_midpoint_d5/strict_result",
+    "canonical_conversion_wide1024_d2/rounded_array",
+    "canonical_conversion_wide1024_d2/rounded_result",
+    "canonical_conversion_wide1024_d2/strict_array",
+    "canonical_conversion_wide1024_d2/strict_result",
+    "canonical_conversion_wide1024_d3/rounded_array",
+    "canonical_conversion_wide1024_d3/rounded_result",
+    "canonical_conversion_wide1024_d3/strict_array",
+    "canonical_conversion_wide1024_d3/strict_result",
+    "canonical_conversion_wide1024_d4/rounded_array",
+    "canonical_conversion_wide1024_d4/rounded_result",
+    "canonical_conversion_wide1024_d4/strict_array",
+    "canonical_conversion_wide1024_d4/strict_result",
+    "canonical_conversion_wide1024_d5/rounded_array",
+    "canonical_conversion_wide1024_d5/rounded_result",
+    "canonical_conversion_wide1024_d5/strict_array",
+    "canonical_conversion_wide1024_d5/strict_result",
+    "canonical_conversion_wide256_d2/rounded_array",
+    "canonical_conversion_wide256_d2/rounded_result",
+    "canonical_conversion_wide256_d2/strict_array",
+    "canonical_conversion_wide256_d2/strict_result",
+    "canonical_conversion_wide256_d3/rounded_array",
+    "canonical_conversion_wide256_d3/rounded_result",
+    "canonical_conversion_wide256_d3/strict_array",
+    "canonical_conversion_wide256_d3/strict_result",
+    "canonical_conversion_wide256_d4/rounded_array",
+    "canonical_conversion_wide256_d4/rounded_result",
+    "canonical_conversion_wide256_d4/strict_array",
+    "canonical_conversion_wide256_d4/strict_result",
+    "canonical_conversion_wide256_d5/rounded_array",
+    "canonical_conversion_wide256_d5/rounded_result",
+    "canonical_conversion_wide256_d5/strict_array",
+    "canonical_conversion_wide256_d5/strict_result",
+    "exact_d2/det",
+    "exact_d2/det_direct",
+    "exact_d2/det_direct_with_errbound",
+    "exact_d2/det_errbound",
+    "exact_d2/det_exact",
+    "exact_d2/det_exact_f64_result",
+    "exact_d2/det_exact_rounded_f64",
+    "exact_d2/det_sign_exact",
+    "exact_d2/solve_exact",
+    "exact_d2/solve_exact_f64_result",
+    "exact_d2/solve_exact_rounded_f64",
+    "exact_d3/det",
+    "exact_d3/det_direct",
+    "exact_d3/det_direct_with_errbound",
+    "exact_d3/det_errbound",
+    "exact_d3/det_exact",
+    "exact_d3/det_exact_f64_result",
+    "exact_d3/det_exact_rounded_f64",
+    "exact_d3/det_sign_exact",
+    "exact_d3/solve_exact",
+    "exact_d3/solve_exact_f64_result",
+    "exact_d3/solve_exact_rounded_f64",
+    "exact_d4/det",
+    "exact_d4/det_direct",
+    "exact_d4/det_direct_with_errbound",
+    "exact_d4/det_errbound",
+    "exact_d4/det_exact",
+    "exact_d4/det_exact_f64_result",
+    "exact_d4/det_exact_rounded_f64",
+    "exact_d4/det_sign_exact",
+    "exact_d4/solve_exact",
+    "exact_d4/solve_exact_f64_result",
+    "exact_d4/solve_exact_rounded_f64",
+    "exact_d5/det",
+    "exact_d5/det_exact",
+    "exact_d5/det_exact_f64_result",
+    "exact_d5/det_exact_rounded_f64",
+    "exact_d5/det_sign_exact",
+    "exact_d5/solve_exact",
+    "exact_d5/solve_exact_f64_result",
+    "exact_d5/solve_exact_rounded_f64",
+    "exact_hilbert_4x4/det_exact",
+    "exact_hilbert_4x4/det_sign_exact",
+    "exact_hilbert_4x4/solve_exact",
+    "exact_hilbert_4x4/solve_exact_f64_result",
+    "exact_hilbert_4x4/solve_exact_rounded_f64",
+    "exact_hilbert_5x5/det_exact",
+    "exact_hilbert_5x5/det_sign_exact",
+    "exact_hilbert_5x5/solve_exact",
+    "exact_hilbert_5x5/solve_exact_f64_result",
+    "exact_hilbert_5x5/solve_exact_rounded_f64",
+    "exact_large_entries_3x3/det_exact",
+    "exact_large_entries_3x3/det_sign_exact",
+    "exact_large_entries_3x3/solve_exact",
+    "exact_large_entries_3x3/solve_exact_f64_result",
+    "exact_large_entries_3x3/solve_exact_rounded_f64",
+    "exact_near_singular_3x3/det_exact",
+    "exact_near_singular_3x3/det_sign_exact",
+    "exact_near_singular_3x3/solve_exact",
+    "exact_near_singular_3x3/solve_exact_f64_result",
+    "exact_near_singular_3x3/solve_exact_rounded_f64",
+    "exact_random_corpus_d2/det_exact",
+    "exact_random_corpus_d2/det_sign_exact",
+    "exact_random_corpus_d2/solve_exact",
+    "exact_random_corpus_d2/solve_exact_f64_result",
+    "exact_random_corpus_d2/solve_exact_rounded_f64",
+    "exact_random_corpus_d3/det_exact",
+    "exact_random_corpus_d3/det_sign_exact",
+    "exact_random_corpus_d3/solve_exact",
+    "exact_random_corpus_d3/solve_exact_f64_result",
+    "exact_random_corpus_d3/solve_exact_rounded_f64",
+    "exact_random_corpus_d4/det_exact",
+    "exact_random_corpus_d4/det_sign_exact",
+    "exact_random_corpus_d4/solve_exact",
+    "exact_random_corpus_d4/solve_exact_f64_result",
+    "exact_random_corpus_d4/solve_exact_rounded_f64",
+    "exact_random_corpus_d5/det_exact",
+    "exact_random_corpus_d5/det_sign_exact",
+    "exact_random_corpus_d5/solve_exact",
+    "exact_random_corpus_d5/solve_exact_f64_result",
+    "exact_random_corpus_d5/solve_exact_rounded_f64",
     "public_exact_d2/matrix_access",
     "public_exact_d2/matrix_from_fn",
     "public_exact_d2/matrix_from_rows",
@@ -972,12 +1790,6 @@ required = [
     "public_exact_d5/vector_zero",
     "public_exact_scalar/rounded",
     "public_exact_scalar/strict",
-    "public_scalar/interval_access",
-    "public_scalar/interval_negate",
-    "public_scalar/interval_new",
-    "public_scalar/interval_point",
-    "public_scalar/interval_subtraction",
-    "public_scalar/tolerance",
     "rational_input_d2/det_row_cleared_bareiss",
     "rational_input_d2/det_sign_row_cleared_bareiss",
     "rational_input_d2/solve_row_cleared_bareiss",
@@ -1337,196 +2149,36 @@ required = [
     "rational_solve/upper/rational_d8/prepared",
 ]
 
-[[phases.baseline.discovery.suites]]
-name = "public-default"
-command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-public-default", "list" ]
+[[suites.measurement.phases.baseline.discovery.suites]]
+name = "core-exact"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "common-public-exact",
+    "list",
+]
 timeout = 14400
 
-[[phases.baseline.discovery.suites]]
-name = "public-exact"
-command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-public-exact", "list" ]
-timeout = 14400
+[suites.measurement.phases.current]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "common-public-exact" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-current" ]
 
-[[phases.baseline.discovery.suites]]
-name = "peers"
-command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-peers", "list" ]
-timeout = 14400
+[suites.measurement.phases.current.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
 
-[phases.current]
-command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "current-all" ]
-gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-public" ]
-environment = { CARGO_TARGET_DIR = "target", CRITERION_HOME = "target/criterion", RUSTUP_TOOLCHAIN = "1.99.1", RUSTFLAGS = "--cap-lints=warn", CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn", RUSTC = "rustc", RUSTC_WRAPPER = "", RUSTC_WORKSPACE_WRAPPER = "" }
-
-[phases.current.discovery]
+[suites.measurement.phases.current.discovery]
 required = [
-    "angle_d3/dense/borrowed_slice",
-    "angle_d3/dense/construct_then_angle",
-    "angle_d3/dense/prepared_vector",
-    "angle_d3/dense_antipodal/borrowed_slice",
-    "angle_d3/dense_antipodal/construct_then_angle",
-    "angle_d3/dense_antipodal/prepared_vector",
-    "angle_d3/dense_identical/borrowed_slice",
-    "angle_d3/dense_identical/construct_then_angle",
-    "angle_d3/dense_identical/prepared_vector",
-    "angle_d3/dense_varied/borrowed_slice",
-    "angle_d3/dense_varied/construct_then_angle",
-    "angle_d3/dense_varied/prepared_vector",
-    "angle_d3/maximum_small_angle/borrowed_slice",
-    "angle_d3/maximum_small_angle/construct_then_angle",
-    "angle_d3/maximum_small_angle/prepared_vector",
-    "angle_d3/mixed_scale/borrowed_slice",
-    "angle_d3/mixed_scale/construct_then_angle",
-    "angle_d3/mixed_scale/prepared_vector",
-    "angle_d3/near_antipodal/borrowed_slice",
-    "angle_d3/near_antipodal/construct_then_angle",
-    "angle_d3/near_antipodal/prepared_vector",
-    "angle_d3/near_parallel/borrowed_slice",
-    "angle_d3/near_parallel/construct_then_angle",
-    "angle_d3/near_parallel/prepared_vector",
-    "angle_d3/sparse_adjacent/borrowed_slice",
-    "angle_d3/sparse_adjacent/construct_then_angle",
-    "angle_d3/sparse_adjacent/prepared_vector",
-    "angle_d3/sparse_alternating/borrowed_slice",
-    "angle_d3/sparse_alternating/construct_then_angle",
-    "angle_d3/sparse_alternating/prepared_vector",
-    "angle_d3/sparse_antipodal/borrowed_slice",
-    "angle_d3/sparse_antipodal/construct_then_angle",
-    "angle_d3/sparse_antipodal/prepared_vector",
-    "angle_d3/sparse_identical/borrowed_slice",
-    "angle_d3/sparse_identical/construct_then_angle",
-    "angle_d3/sparse_identical/prepared_vector",
-    "angle_d3/subnormal/borrowed_slice",
-    "angle_d3/subnormal/construct_then_angle",
-    "angle_d3/subnormal/prepared_vector",
-    "angle_d3/subnormal_axes/borrowed_slice",
-    "angle_d3/subnormal_axes/construct_then_angle",
-    "angle_d3/subnormal_axes/prepared_vector",
-    "angle_d4/dense/borrowed_slice",
-    "angle_d4/dense/construct_then_angle",
-    "angle_d4/dense/prepared_vector",
-    "angle_d4/dense_antipodal/borrowed_slice",
-    "angle_d4/dense_antipodal/construct_then_angle",
-    "angle_d4/dense_antipodal/prepared_vector",
-    "angle_d4/dense_identical/borrowed_slice",
-    "angle_d4/dense_identical/construct_then_angle",
-    "angle_d4/dense_identical/prepared_vector",
-    "angle_d4/dense_varied/borrowed_slice",
-    "angle_d4/dense_varied/construct_then_angle",
-    "angle_d4/dense_varied/prepared_vector",
-    "angle_d4/maximum_small_angle/borrowed_slice",
-    "angle_d4/maximum_small_angle/construct_then_angle",
-    "angle_d4/maximum_small_angle/prepared_vector",
-    "angle_d4/mixed_scale/borrowed_slice",
-    "angle_d4/mixed_scale/construct_then_angle",
-    "angle_d4/mixed_scale/prepared_vector",
-    "angle_d4/near_antipodal/borrowed_slice",
-    "angle_d4/near_antipodal/construct_then_angle",
-    "angle_d4/near_antipodal/prepared_vector",
-    "angle_d4/near_parallel/borrowed_slice",
-    "angle_d4/near_parallel/construct_then_angle",
-    "angle_d4/near_parallel/prepared_vector",
-    "angle_d4/sparse_adjacent/borrowed_slice",
-    "angle_d4/sparse_adjacent/construct_then_angle",
-    "angle_d4/sparse_adjacent/prepared_vector",
-    "angle_d4/sparse_alternating/borrowed_slice",
-    "angle_d4/sparse_alternating/construct_then_angle",
-    "angle_d4/sparse_alternating/prepared_vector",
-    "angle_d4/sparse_antipodal/borrowed_slice",
-    "angle_d4/sparse_antipodal/construct_then_angle",
-    "angle_d4/sparse_antipodal/prepared_vector",
-    "angle_d4/sparse_identical/borrowed_slice",
-    "angle_d4/sparse_identical/construct_then_angle",
-    "angle_d4/sparse_identical/prepared_vector",
-    "angle_d4/subnormal/borrowed_slice",
-    "angle_d4/subnormal/construct_then_angle",
-    "angle_d4/subnormal/prepared_vector",
-    "angle_d4/subnormal_axes/borrowed_slice",
-    "angle_d4/subnormal_axes/construct_then_angle",
-    "angle_d4/subnormal_axes/prepared_vector",
-    "angle_d5/dense/borrowed_slice",
-    "angle_d5/dense/construct_then_angle",
-    "angle_d5/dense/prepared_vector",
-    "angle_d5/dense_antipodal/borrowed_slice",
-    "angle_d5/dense_antipodal/construct_then_angle",
-    "angle_d5/dense_antipodal/prepared_vector",
-    "angle_d5/dense_identical/borrowed_slice",
-    "angle_d5/dense_identical/construct_then_angle",
-    "angle_d5/dense_identical/prepared_vector",
-    "angle_d5/dense_varied/borrowed_slice",
-    "angle_d5/dense_varied/construct_then_angle",
-    "angle_d5/dense_varied/prepared_vector",
-    "angle_d5/maximum_small_angle/borrowed_slice",
-    "angle_d5/maximum_small_angle/construct_then_angle",
-    "angle_d5/maximum_small_angle/prepared_vector",
-    "angle_d5/mixed_scale/borrowed_slice",
-    "angle_d5/mixed_scale/construct_then_angle",
-    "angle_d5/mixed_scale/prepared_vector",
-    "angle_d5/near_antipodal/borrowed_slice",
-    "angle_d5/near_antipodal/construct_then_angle",
-    "angle_d5/near_antipodal/prepared_vector",
-    "angle_d5/near_parallel/borrowed_slice",
-    "angle_d5/near_parallel/construct_then_angle",
-    "angle_d5/near_parallel/prepared_vector",
-    "angle_d5/sparse_adjacent/borrowed_slice",
-    "angle_d5/sparse_adjacent/construct_then_angle",
-    "angle_d5/sparse_adjacent/prepared_vector",
-    "angle_d5/sparse_alternating/borrowed_slice",
-    "angle_d5/sparse_alternating/construct_then_angle",
-    "angle_d5/sparse_alternating/prepared_vector",
-    "angle_d5/sparse_antipodal/borrowed_slice",
-    "angle_d5/sparse_antipodal/construct_then_angle",
-    "angle_d5/sparse_antipodal/prepared_vector",
-    "angle_d5/sparse_identical/borrowed_slice",
-    "angle_d5/sparse_identical/construct_then_angle",
-    "angle_d5/sparse_identical/prepared_vector",
-    "angle_d5/subnormal/borrowed_slice",
-    "angle_d5/subnormal/construct_then_angle",
-    "angle_d5/subnormal/prepared_vector",
-    "angle_d5/subnormal_axes/borrowed_slice",
-    "angle_d5/subnormal_axes/construct_then_angle",
-    "angle_d5/subnormal_axes/prepared_vector",
-    "angle_d6/dense/borrowed_slice",
-    "angle_d6/dense/construct_then_angle",
-    "angle_d6/dense/prepared_vector",
-    "angle_d6/dense_antipodal/borrowed_slice",
-    "angle_d6/dense_antipodal/construct_then_angle",
-    "angle_d6/dense_antipodal/prepared_vector",
-    "angle_d6/dense_identical/borrowed_slice",
-    "angle_d6/dense_identical/construct_then_angle",
-    "angle_d6/dense_identical/prepared_vector",
-    "angle_d6/dense_varied/borrowed_slice",
-    "angle_d6/dense_varied/construct_then_angle",
-    "angle_d6/dense_varied/prepared_vector",
-    "angle_d6/maximum_small_angle/borrowed_slice",
-    "angle_d6/maximum_small_angle/construct_then_angle",
-    "angle_d6/maximum_small_angle/prepared_vector",
-    "angle_d6/mixed_scale/borrowed_slice",
-    "angle_d6/mixed_scale/construct_then_angle",
-    "angle_d6/mixed_scale/prepared_vector",
-    "angle_d6/near_antipodal/borrowed_slice",
-    "angle_d6/near_antipodal/construct_then_angle",
-    "angle_d6/near_antipodal/prepared_vector",
-    "angle_d6/near_parallel/borrowed_slice",
-    "angle_d6/near_parallel/construct_then_angle",
-    "angle_d6/near_parallel/prepared_vector",
-    "angle_d6/sparse_adjacent/borrowed_slice",
-    "angle_d6/sparse_adjacent/construct_then_angle",
-    "angle_d6/sparse_adjacent/prepared_vector",
-    "angle_d6/sparse_alternating/borrowed_slice",
-    "angle_d6/sparse_alternating/construct_then_angle",
-    "angle_d6/sparse_alternating/prepared_vector",
-    "angle_d6/sparse_antipodal/borrowed_slice",
-    "angle_d6/sparse_antipodal/construct_then_angle",
-    "angle_d6/sparse_antipodal/prepared_vector",
-    "angle_d6/sparse_identical/borrowed_slice",
-    "angle_d6/sparse_identical/construct_then_angle",
-    "angle_d6/sparse_identical/prepared_vector",
-    "angle_d6/subnormal/borrowed_slice",
-    "angle_d6/subnormal/construct_then_angle",
-    "angle_d6/subnormal/prepared_vector",
-    "angle_d6/subnormal_axes/borrowed_slice",
-    "angle_d6/subnormal_axes/construct_then_angle",
-    "angle_d6/subnormal_axes/prepared_vector",
     "canonical_conversion_below_overflow_d2/rounded_array",
     "canonical_conversion_below_overflow_d2/rounded_result",
     "canonical_conversion_below_overflow_d2/strict_array",
@@ -1655,6 +2307,841 @@ required = [
     "canonical_conversion_wide256_d5/rounded_result",
     "canonical_conversion_wide256_d5/strict_array",
     "canonical_conversion_wide256_d5/strict_result",
+    "exact_d2/det",
+    "exact_d2/det_direct",
+    "exact_d2/det_direct_with_errbound",
+    "exact_d2/det_errbound",
+    "exact_d2/det_exact",
+    "exact_d2/det_exact_f64_result",
+    "exact_d2/det_exact_rounded_f64",
+    "exact_d2/det_sign_exact",
+    "exact_d2/solve_exact",
+    "exact_d2/solve_exact_f64_result",
+    "exact_d2/solve_exact_rounded_f64",
+    "exact_d3/det",
+    "exact_d3/det_direct",
+    "exact_d3/det_direct_with_errbound",
+    "exact_d3/det_errbound",
+    "exact_d3/det_exact",
+    "exact_d3/det_exact_f64_result",
+    "exact_d3/det_exact_rounded_f64",
+    "exact_d3/det_sign_exact",
+    "exact_d3/solve_exact",
+    "exact_d3/solve_exact_f64_result",
+    "exact_d3/solve_exact_rounded_f64",
+    "exact_d4/det",
+    "exact_d4/det_direct",
+    "exact_d4/det_direct_with_errbound",
+    "exact_d4/det_errbound",
+    "exact_d4/det_exact",
+    "exact_d4/det_exact_f64_result",
+    "exact_d4/det_exact_rounded_f64",
+    "exact_d4/det_sign_exact",
+    "exact_d4/solve_exact",
+    "exact_d4/solve_exact_f64_result",
+    "exact_d4/solve_exact_rounded_f64",
+    "exact_d5/det",
+    "exact_d5/det_exact",
+    "exact_d5/det_exact_f64_result",
+    "exact_d5/det_exact_rounded_f64",
+    "exact_d5/det_sign_exact",
+    "exact_d5/solve_exact",
+    "exact_d5/solve_exact_f64_result",
+    "exact_d5/solve_exact_rounded_f64",
+    "exact_hilbert_4x4/det_exact",
+    "exact_hilbert_4x4/det_sign_exact",
+    "exact_hilbert_4x4/solve_exact",
+    "exact_hilbert_4x4/solve_exact_f64_result",
+    "exact_hilbert_4x4/solve_exact_rounded_f64",
+    "exact_hilbert_5x5/det_exact",
+    "exact_hilbert_5x5/det_sign_exact",
+    "exact_hilbert_5x5/solve_exact",
+    "exact_hilbert_5x5/solve_exact_f64_result",
+    "exact_hilbert_5x5/solve_exact_rounded_f64",
+    "exact_large_entries_3x3/det_exact",
+    "exact_large_entries_3x3/det_sign_exact",
+    "exact_large_entries_3x3/solve_exact",
+    "exact_large_entries_3x3/solve_exact_f64_result",
+    "exact_large_entries_3x3/solve_exact_rounded_f64",
+    "exact_near_singular_3x3/det_exact",
+    "exact_near_singular_3x3/det_sign_exact",
+    "exact_near_singular_3x3/solve_exact",
+    "exact_near_singular_3x3/solve_exact_f64_result",
+    "exact_near_singular_3x3/solve_exact_rounded_f64",
+    "exact_random_corpus_d2/det_exact",
+    "exact_random_corpus_d2/det_sign_exact",
+    "exact_random_corpus_d2/solve_exact",
+    "exact_random_corpus_d2/solve_exact_f64_result",
+    "exact_random_corpus_d2/solve_exact_rounded_f64",
+    "exact_random_corpus_d3/det_exact",
+    "exact_random_corpus_d3/det_sign_exact",
+    "exact_random_corpus_d3/solve_exact",
+    "exact_random_corpus_d3/solve_exact_f64_result",
+    "exact_random_corpus_d3/solve_exact_rounded_f64",
+    "exact_random_corpus_d4/det_exact",
+    "exact_random_corpus_d4/det_sign_exact",
+    "exact_random_corpus_d4/solve_exact",
+    "exact_random_corpus_d4/solve_exact_f64_result",
+    "exact_random_corpus_d4/solve_exact_rounded_f64",
+    "exact_random_corpus_d5/det_exact",
+    "exact_random_corpus_d5/det_sign_exact",
+    "exact_random_corpus_d5/solve_exact",
+    "exact_random_corpus_d5/solve_exact_f64_result",
+    "exact_random_corpus_d5/solve_exact_rounded_f64",
+    "public_exact_d2/matrix_access",
+    "public_exact_d2/matrix_from_fn",
+    "public_exact_d2/matrix_from_rows",
+    "public_exact_d2/matrix_into_rows",
+    "public_exact_d2/matrix_zero",
+    "public_exact_d2/vector_access",
+    "public_exact_d2/vector_from_fn",
+    "public_exact_d2/vector_into_array",
+    "public_exact_d2/vector_new",
+    "public_exact_d2/vector_zero",
+    "public_exact_d3/matrix_access",
+    "public_exact_d3/matrix_from_fn",
+    "public_exact_d3/matrix_from_rows",
+    "public_exact_d3/matrix_into_rows",
+    "public_exact_d3/matrix_zero",
+    "public_exact_d3/vector_access",
+    "public_exact_d3/vector_from_fn",
+    "public_exact_d3/vector_into_array",
+    "public_exact_d3/vector_new",
+    "public_exact_d3/vector_zero",
+    "public_exact_d4/matrix_access",
+    "public_exact_d4/matrix_from_fn",
+    "public_exact_d4/matrix_from_rows",
+    "public_exact_d4/matrix_into_rows",
+    "public_exact_d4/matrix_zero",
+    "public_exact_d4/vector_access",
+    "public_exact_d4/vector_from_fn",
+    "public_exact_d4/vector_into_array",
+    "public_exact_d4/vector_new",
+    "public_exact_d4/vector_zero",
+    "public_exact_d5/matrix_access",
+    "public_exact_d5/matrix_from_fn",
+    "public_exact_d5/matrix_from_rows",
+    "public_exact_d5/matrix_into_rows",
+    "public_exact_d5/matrix_zero",
+    "public_exact_d5/vector_access",
+    "public_exact_d5/vector_from_fn",
+    "public_exact_d5/vector_into_array",
+    "public_exact_d5/vector_new",
+    "public_exact_d5/vector_zero",
+    "public_exact_scalar/rounded",
+    "public_exact_scalar/strict",
+    "rational_input_d2/det_row_cleared_bareiss",
+    "rational_input_d2/det_sign_row_cleared_bareiss",
+    "rational_input_d2/solve_row_cleared_bareiss",
+    "rational_input_d3/det_row_cleared_bareiss",
+    "rational_input_d3/det_sign_row_cleared_bareiss",
+    "rational_input_d3/solve_row_cleared_bareiss",
+    "rational_input_d4/det_row_cleared_bareiss",
+    "rational_input_d4/det_sign_row_cleared_bareiss",
+    "rational_input_d4/solve_row_cleared_bareiss",
+    "rational_input_d5/det_row_cleared_bareiss",
+    "rational_input_d5/det_sign_row_cleared_bareiss",
+    "rational_input_d5/solve_row_cleared_bareiss",
+    "rational_input_d6/det_row_cleared_bareiss",
+    "rational_input_d6/det_sign_row_cleared_bareiss",
+    "rational_input_d6/solve_row_cleared_bareiss",
+    "rational_input_d7/det_row_cleared_bareiss",
+    "rational_input_d7/det_sign_row_cleared_bareiss",
+    "rational_input_d7/solve_row_cleared_bareiss",
+    "rational_input_d8/det_row_cleared_bareiss",
+    "rational_input_d8/det_sign_row_cleared_bareiss",
+    "rational_input_d8/solve_row_cleared_bareiss",
+    "rational_input_wide1024_d2/det_row_cleared_bareiss",
+    "rational_input_wide1024_d2/det_sign_row_cleared_bareiss",
+    "rational_input_wide1024_d2/solve_row_cleared_bareiss",
+    "rational_input_wide1024_d3/det_row_cleared_bareiss",
+    "rational_input_wide1024_d3/det_sign_row_cleared_bareiss",
+    "rational_input_wide1024_d3/solve_row_cleared_bareiss",
+    "rational_input_wide1024_d4/det_row_cleared_bareiss",
+    "rational_input_wide1024_d4/det_sign_row_cleared_bareiss",
+    "rational_input_wide1024_d4/solve_row_cleared_bareiss",
+    "rational_input_wide1024_d5/det_row_cleared_bareiss",
+    "rational_input_wide1024_d5/det_sign_row_cleared_bareiss",
+    "rational_input_wide1024_d5/solve_row_cleared_bareiss",
+    "rational_input_wide1024_d6/det_row_cleared_bareiss",
+    "rational_input_wide1024_d6/det_sign_row_cleared_bareiss",
+    "rational_input_wide1024_d6/solve_row_cleared_bareiss",
+    "rational_input_wide1024_d7/det_row_cleared_bareiss",
+    "rational_input_wide1024_d7/det_sign_row_cleared_bareiss",
+    "rational_input_wide1024_d7/solve_row_cleared_bareiss",
+    "rational_input_wide1024_d8/det_row_cleared_bareiss",
+    "rational_input_wide1024_d8/det_sign_row_cleared_bareiss",
+    "rational_input_wide1024_d8/solve_row_cleared_bareiss",
+    "rational_input_wide256_d2/det_row_cleared_bareiss",
+    "rational_input_wide256_d2/det_sign_row_cleared_bareiss",
+    "rational_input_wide256_d2/solve_row_cleared_bareiss",
+    "rational_input_wide256_d3/det_row_cleared_bareiss",
+    "rational_input_wide256_d3/det_sign_row_cleared_bareiss",
+    "rational_input_wide256_d3/solve_row_cleared_bareiss",
+    "rational_input_wide256_d4/det_row_cleared_bareiss",
+    "rational_input_wide256_d4/det_sign_row_cleared_bareiss",
+    "rational_input_wide256_d4/solve_row_cleared_bareiss",
+    "rational_input_wide256_d5/det_row_cleared_bareiss",
+    "rational_input_wide256_d5/det_sign_row_cleared_bareiss",
+    "rational_input_wide256_d5/solve_row_cleared_bareiss",
+    "rational_input_wide256_d6/det_row_cleared_bareiss",
+    "rational_input_wide256_d6/det_sign_row_cleared_bareiss",
+    "rational_input_wide256_d6/solve_row_cleared_bareiss",
+    "rational_input_wide256_d7/det_row_cleared_bareiss",
+    "rational_input_wide256_d7/det_sign_row_cleared_bareiss",
+    "rational_input_wide256_d7/solve_row_cleared_bareiss",
+    "rational_input_wide256_d8/det_row_cleared_bareiss",
+    "rational_input_wide256_d8/det_sign_row_cleared_bareiss",
+    "rational_input_wide256_d8/solve_row_cleared_bareiss",
+    "rational_solve/dense/dyadic_d2/adapter",
+    "rational_solve/dense/dyadic_d2/construct",
+    "rational_solve/dense/dyadic_d2/prepared",
+    "rational_solve/dense/dyadic_d3/adapter",
+    "rational_solve/dense/dyadic_d3/construct",
+    "rational_solve/dense/dyadic_d3/prepared",
+    "rational_solve/dense/dyadic_d4/adapter",
+    "rational_solve/dense/dyadic_d4/construct",
+    "rational_solve/dense/dyadic_d4/prepared",
+    "rational_solve/dense/dyadic_d5/adapter",
+    "rational_solve/dense/dyadic_d5/construct",
+    "rational_solve/dense/dyadic_d5/prepared",
+    "rational_solve/dense/dyadic_d6/adapter",
+    "rational_solve/dense/dyadic_d6/construct",
+    "rational_solve/dense/dyadic_d6/prepared",
+    "rational_solve/dense/dyadic_d7/adapter",
+    "rational_solve/dense/dyadic_d7/construct",
+    "rational_solve/dense/dyadic_d7/prepared",
+    "rational_solve/dense/dyadic_d8/adapter",
+    "rational_solve/dense/dyadic_d8/construct",
+    "rational_solve/dense/dyadic_d8/prepared",
+    "rational_solve/dense/rational_d2/adapter",
+    "rational_solve/dense/rational_d2/construct",
+    "rational_solve/dense/rational_d2/prepared",
+    "rational_solve/dense/rational_d3/adapter",
+    "rational_solve/dense/rational_d3/construct",
+    "rational_solve/dense/rational_d3/prepared",
+    "rational_solve/dense/rational_d4/adapter",
+    "rational_solve/dense/rational_d4/construct",
+    "rational_solve/dense/rational_d4/prepared",
+    "rational_solve/dense/rational_d5/adapter",
+    "rational_solve/dense/rational_d5/construct",
+    "rational_solve/dense/rational_d5/prepared",
+    "rational_solve/dense/rational_d6/adapter",
+    "rational_solve/dense/rational_d6/construct",
+    "rational_solve/dense/rational_d6/prepared",
+    "rational_solve/dense/rational_d7/adapter",
+    "rational_solve/dense/rational_d7/construct",
+    "rational_solve/dense/rational_d7/prepared",
+    "rational_solve/dense/rational_d8/adapter",
+    "rational_solve/dense/rational_d8/construct",
+    "rational_solve/dense/rational_d8/prepared",
+    "rational_solve/diagonal/dyadic_d2/adapter",
+    "rational_solve/diagonal/dyadic_d2/construct",
+    "rational_solve/diagonal/dyadic_d2/prepared",
+    "rational_solve/diagonal/dyadic_d3/adapter",
+    "rational_solve/diagonal/dyadic_d3/construct",
+    "rational_solve/diagonal/dyadic_d3/prepared",
+    "rational_solve/diagonal/dyadic_d4/adapter",
+    "rational_solve/diagonal/dyadic_d4/construct",
+    "rational_solve/diagonal/dyadic_d4/prepared",
+    "rational_solve/diagonal/dyadic_d5/adapter",
+    "rational_solve/diagonal/dyadic_d5/construct",
+    "rational_solve/diagonal/dyadic_d5/prepared",
+    "rational_solve/diagonal/dyadic_d6/adapter",
+    "rational_solve/diagonal/dyadic_d6/construct",
+    "rational_solve/diagonal/dyadic_d6/prepared",
+    "rational_solve/diagonal/dyadic_d7/adapter",
+    "rational_solve/diagonal/dyadic_d7/construct",
+    "rational_solve/diagonal/dyadic_d7/prepared",
+    "rational_solve/diagonal/dyadic_d8/adapter",
+    "rational_solve/diagonal/dyadic_d8/construct",
+    "rational_solve/diagonal/dyadic_d8/prepared",
+    "rational_solve/diagonal/rational_d2/adapter",
+    "rational_solve/diagonal/rational_d2/construct",
+    "rational_solve/diagonal/rational_d2/prepared",
+    "rational_solve/diagonal/rational_d3/adapter",
+    "rational_solve/diagonal/rational_d3/construct",
+    "rational_solve/diagonal/rational_d3/prepared",
+    "rational_solve/diagonal/rational_d4/adapter",
+    "rational_solve/diagonal/rational_d4/construct",
+    "rational_solve/diagonal/rational_d4/prepared",
+    "rational_solve/diagonal/rational_d5/adapter",
+    "rational_solve/diagonal/rational_d5/construct",
+    "rational_solve/diagonal/rational_d5/prepared",
+    "rational_solve/diagonal/rational_d6/adapter",
+    "rational_solve/diagonal/rational_d6/construct",
+    "rational_solve/diagonal/rational_d6/prepared",
+    "rational_solve/diagonal/rational_d7/adapter",
+    "rational_solve/diagonal/rational_d7/construct",
+    "rational_solve/diagonal/rational_d7/prepared",
+    "rational_solve/diagonal/rational_d8/adapter",
+    "rational_solve/diagonal/rational_d8/construct",
+    "rational_solve/diagonal/rational_d8/prepared",
+    "rational_solve/lower/dyadic_d2/adapter",
+    "rational_solve/lower/dyadic_d2/construct",
+    "rational_solve/lower/dyadic_d2/prepared",
+    "rational_solve/lower/dyadic_d3/adapter",
+    "rational_solve/lower/dyadic_d3/construct",
+    "rational_solve/lower/dyadic_d3/prepared",
+    "rational_solve/lower/dyadic_d4/adapter",
+    "rational_solve/lower/dyadic_d4/construct",
+    "rational_solve/lower/dyadic_d4/prepared",
+    "rational_solve/lower/dyadic_d5/adapter",
+    "rational_solve/lower/dyadic_d5/construct",
+    "rational_solve/lower/dyadic_d5/prepared",
+    "rational_solve/lower/dyadic_d6/adapter",
+    "rational_solve/lower/dyadic_d6/construct",
+    "rational_solve/lower/dyadic_d6/prepared",
+    "rational_solve/lower/dyadic_d7/adapter",
+    "rational_solve/lower/dyadic_d7/construct",
+    "rational_solve/lower/dyadic_d7/prepared",
+    "rational_solve/lower/dyadic_d8/adapter",
+    "rational_solve/lower/dyadic_d8/construct",
+    "rational_solve/lower/dyadic_d8/prepared",
+    "rational_solve/lower/rational_d2/adapter",
+    "rational_solve/lower/rational_d2/construct",
+    "rational_solve/lower/rational_d2/prepared",
+    "rational_solve/lower/rational_d3/adapter",
+    "rational_solve/lower/rational_d3/construct",
+    "rational_solve/lower/rational_d3/prepared",
+    "rational_solve/lower/rational_d4/adapter",
+    "rational_solve/lower/rational_d4/construct",
+    "rational_solve/lower/rational_d4/prepared",
+    "rational_solve/lower/rational_d5/adapter",
+    "rational_solve/lower/rational_d5/construct",
+    "rational_solve/lower/rational_d5/prepared",
+    "rational_solve/lower/rational_d6/adapter",
+    "rational_solve/lower/rational_d6/construct",
+    "rational_solve/lower/rational_d6/prepared",
+    "rational_solve/lower/rational_d7/adapter",
+    "rational_solve/lower/rational_d7/construct",
+    "rational_solve/lower/rational_d7/prepared",
+    "rational_solve/lower/rational_d8/adapter",
+    "rational_solve/lower/rational_d8/construct",
+    "rational_solve/lower/rational_d8/prepared",
+    "rational_solve/permuted_lower/dyadic_d2/adapter",
+    "rational_solve/permuted_lower/dyadic_d2/construct",
+    "rational_solve/permuted_lower/dyadic_d2/prepared",
+    "rational_solve/permuted_lower/dyadic_d3/adapter",
+    "rational_solve/permuted_lower/dyadic_d3/construct",
+    "rational_solve/permuted_lower/dyadic_d3/prepared",
+    "rational_solve/permuted_lower/dyadic_d4/adapter",
+    "rational_solve/permuted_lower/dyadic_d4/construct",
+    "rational_solve/permuted_lower/dyadic_d4/prepared",
+    "rational_solve/permuted_lower/dyadic_d5/adapter",
+    "rational_solve/permuted_lower/dyadic_d5/construct",
+    "rational_solve/permuted_lower/dyadic_d5/prepared",
+    "rational_solve/permuted_lower/dyadic_d6/adapter",
+    "rational_solve/permuted_lower/dyadic_d6/construct",
+    "rational_solve/permuted_lower/dyadic_d6/prepared",
+    "rational_solve/permuted_lower/dyadic_d7/adapter",
+    "rational_solve/permuted_lower/dyadic_d7/construct",
+    "rational_solve/permuted_lower/dyadic_d7/prepared",
+    "rational_solve/permuted_lower/dyadic_d8/adapter",
+    "rational_solve/permuted_lower/dyadic_d8/construct",
+    "rational_solve/permuted_lower/dyadic_d8/prepared",
+    "rational_solve/permuted_lower/rational_d2/adapter",
+    "rational_solve/permuted_lower/rational_d2/construct",
+    "rational_solve/permuted_lower/rational_d2/prepared",
+    "rational_solve/permuted_lower/rational_d3/adapter",
+    "rational_solve/permuted_lower/rational_d3/construct",
+    "rational_solve/permuted_lower/rational_d3/prepared",
+    "rational_solve/permuted_lower/rational_d4/adapter",
+    "rational_solve/permuted_lower/rational_d4/construct",
+    "rational_solve/permuted_lower/rational_d4/prepared",
+    "rational_solve/permuted_lower/rational_d5/adapter",
+    "rational_solve/permuted_lower/rational_d5/construct",
+    "rational_solve/permuted_lower/rational_d5/prepared",
+    "rational_solve/permuted_lower/rational_d6/adapter",
+    "rational_solve/permuted_lower/rational_d6/construct",
+    "rational_solve/permuted_lower/rational_d6/prepared",
+    "rational_solve/permuted_lower/rational_d7/adapter",
+    "rational_solve/permuted_lower/rational_d7/construct",
+    "rational_solve/permuted_lower/rational_d7/prepared",
+    "rational_solve/permuted_lower/rational_d8/adapter",
+    "rational_solve/permuted_lower/rational_d8/construct",
+    "rational_solve/permuted_lower/rational_d8/prepared",
+    "rational_solve/permuted_upper/dyadic_d2/adapter",
+    "rational_solve/permuted_upper/dyadic_d2/construct",
+    "rational_solve/permuted_upper/dyadic_d2/prepared",
+    "rational_solve/permuted_upper/dyadic_d3/adapter",
+    "rational_solve/permuted_upper/dyadic_d3/construct",
+    "rational_solve/permuted_upper/dyadic_d3/prepared",
+    "rational_solve/permuted_upper/dyadic_d4/adapter",
+    "rational_solve/permuted_upper/dyadic_d4/construct",
+    "rational_solve/permuted_upper/dyadic_d4/prepared",
+    "rational_solve/permuted_upper/dyadic_d5/adapter",
+    "rational_solve/permuted_upper/dyadic_d5/construct",
+    "rational_solve/permuted_upper/dyadic_d5/prepared",
+    "rational_solve/permuted_upper/dyadic_d6/adapter",
+    "rational_solve/permuted_upper/dyadic_d6/construct",
+    "rational_solve/permuted_upper/dyadic_d6/prepared",
+    "rational_solve/permuted_upper/dyadic_d7/adapter",
+    "rational_solve/permuted_upper/dyadic_d7/construct",
+    "rational_solve/permuted_upper/dyadic_d7/prepared",
+    "rational_solve/permuted_upper/dyadic_d8/adapter",
+    "rational_solve/permuted_upper/dyadic_d8/construct",
+    "rational_solve/permuted_upper/dyadic_d8/prepared",
+    "rational_solve/permuted_upper/rational_d2/adapter",
+    "rational_solve/permuted_upper/rational_d2/construct",
+    "rational_solve/permuted_upper/rational_d2/prepared",
+    "rational_solve/permuted_upper/rational_d3/adapter",
+    "rational_solve/permuted_upper/rational_d3/construct",
+    "rational_solve/permuted_upper/rational_d3/prepared",
+    "rational_solve/permuted_upper/rational_d4/adapter",
+    "rational_solve/permuted_upper/rational_d4/construct",
+    "rational_solve/permuted_upper/rational_d4/prepared",
+    "rational_solve/permuted_upper/rational_d5/adapter",
+    "rational_solve/permuted_upper/rational_d5/construct",
+    "rational_solve/permuted_upper/rational_d5/prepared",
+    "rational_solve/permuted_upper/rational_d6/adapter",
+    "rational_solve/permuted_upper/rational_d6/construct",
+    "rational_solve/permuted_upper/rational_d6/prepared",
+    "rational_solve/permuted_upper/rational_d7/adapter",
+    "rational_solve/permuted_upper/rational_d7/construct",
+    "rational_solve/permuted_upper/rational_d7/prepared",
+    "rational_solve/permuted_upper/rational_d8/adapter",
+    "rational_solve/permuted_upper/rational_d8/construct",
+    "rational_solve/permuted_upper/rational_d8/prepared",
+    "rational_solve/sparse/dyadic_d2/adapter",
+    "rational_solve/sparse/dyadic_d2/construct",
+    "rational_solve/sparse/dyadic_d2/prepared",
+    "rational_solve/sparse/dyadic_d3/adapter",
+    "rational_solve/sparse/dyadic_d3/construct",
+    "rational_solve/sparse/dyadic_d3/prepared",
+    "rational_solve/sparse/dyadic_d4/adapter",
+    "rational_solve/sparse/dyadic_d4/construct",
+    "rational_solve/sparse/dyadic_d4/prepared",
+    "rational_solve/sparse/dyadic_d5/adapter",
+    "rational_solve/sparse/dyadic_d5/construct",
+    "rational_solve/sparse/dyadic_d5/prepared",
+    "rational_solve/sparse/dyadic_d6/adapter",
+    "rational_solve/sparse/dyadic_d6/construct",
+    "rational_solve/sparse/dyadic_d6/prepared",
+    "rational_solve/sparse/dyadic_d7/adapter",
+    "rational_solve/sparse/dyadic_d7/construct",
+    "rational_solve/sparse/dyadic_d7/prepared",
+    "rational_solve/sparse/dyadic_d8/adapter",
+    "rational_solve/sparse/dyadic_d8/construct",
+    "rational_solve/sparse/dyadic_d8/prepared",
+    "rational_solve/sparse/rational_d2/adapter",
+    "rational_solve/sparse/rational_d2/construct",
+    "rational_solve/sparse/rational_d2/prepared",
+    "rational_solve/sparse/rational_d3/adapter",
+    "rational_solve/sparse/rational_d3/construct",
+    "rational_solve/sparse/rational_d3/prepared",
+    "rational_solve/sparse/rational_d4/adapter",
+    "rational_solve/sparse/rational_d4/construct",
+    "rational_solve/sparse/rational_d4/prepared",
+    "rational_solve/sparse/rational_d5/adapter",
+    "rational_solve/sparse/rational_d5/construct",
+    "rational_solve/sparse/rational_d5/prepared",
+    "rational_solve/sparse/rational_d6/adapter",
+    "rational_solve/sparse/rational_d6/construct",
+    "rational_solve/sparse/rational_d6/prepared",
+    "rational_solve/sparse/rational_d7/adapter",
+    "rational_solve/sparse/rational_d7/construct",
+    "rational_solve/sparse/rational_d7/prepared",
+    "rational_solve/sparse/rational_d8/adapter",
+    "rational_solve/sparse/rational_d8/construct",
+    "rational_solve/sparse/rational_d8/prepared",
+    "rational_solve/upper/dyadic_d2/adapter",
+    "rational_solve/upper/dyadic_d2/construct",
+    "rational_solve/upper/dyadic_d2/prepared",
+    "rational_solve/upper/dyadic_d3/adapter",
+    "rational_solve/upper/dyadic_d3/construct",
+    "rational_solve/upper/dyadic_d3/prepared",
+    "rational_solve/upper/dyadic_d4/adapter",
+    "rational_solve/upper/dyadic_d4/construct",
+    "rational_solve/upper/dyadic_d4/prepared",
+    "rational_solve/upper/dyadic_d5/adapter",
+    "rational_solve/upper/dyadic_d5/construct",
+    "rational_solve/upper/dyadic_d5/prepared",
+    "rational_solve/upper/dyadic_d6/adapter",
+    "rational_solve/upper/dyadic_d6/construct",
+    "rational_solve/upper/dyadic_d6/prepared",
+    "rational_solve/upper/dyadic_d7/adapter",
+    "rational_solve/upper/dyadic_d7/construct",
+    "rational_solve/upper/dyadic_d7/prepared",
+    "rational_solve/upper/dyadic_d8/adapter",
+    "rational_solve/upper/dyadic_d8/construct",
+    "rational_solve/upper/dyadic_d8/prepared",
+    "rational_solve/upper/rational_d2/adapter",
+    "rational_solve/upper/rational_d2/construct",
+    "rational_solve/upper/rational_d2/prepared",
+    "rational_solve/upper/rational_d3/adapter",
+    "rational_solve/upper/rational_d3/construct",
+    "rational_solve/upper/rational_d3/prepared",
+    "rational_solve/upper/rational_d4/adapter",
+    "rational_solve/upper/rational_d4/construct",
+    "rational_solve/upper/rational_d4/prepared",
+    "rational_solve/upper/rational_d5/adapter",
+    "rational_solve/upper/rational_d5/construct",
+    "rational_solve/upper/rational_d5/prepared",
+    "rational_solve/upper/rational_d6/adapter",
+    "rational_solve/upper/rational_d6/construct",
+    "rational_solve/upper/rational_d6/prepared",
+    "rational_solve/upper/rational_d7/adapter",
+    "rational_solve/upper/rational_d7/construct",
+    "rational_solve/upper/rational_d7/prepared",
+    "rational_solve/upper/rational_d8/adapter",
+    "rational_solve/upper/rational_d8/construct",
+    "rational_solve/upper/rational_d8/prepared",
+]
+
+[[suites.measurement.phases.current.discovery.suites]]
+name = "core-exact"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "common-public-exact",
+    "list",
+]
+timeout = 14400
+
+[[suites.measurement.series]]
+name = "la-stack baseline"
+phase = "baseline"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites.measurement.series]]
+name = "la-stack current"
+phase = "current"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites]]
+name = "lu-solve"
+contract = "la-stack-lu-solve-v1"
+nominal-seconds-per-case = 8
+
+[suites.measurement]
+schema = 4
+minimum-release = "v0.5.0"
+sources = [ "src/**/*.rs", "Cargo.toml" ]
+harness = [
+    "benches/**/*.rs",
+    "benches/comparison/Cargo.toml",
+    "examples/**/*.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "dependency-sources.toml",
+    "rust-toolchain.toml",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "tests/exact_bench_config.rs",
+    "tests/column_basis.rs",
+    "tests/rational_dot.rs",
+    "tests/interval_solve.rs",
+    "tests/common/interval_solve_oracle.rs",
+    "tests/common/proptest_config.rs",
+    "tests/polynomial_bench_inputs.rs",
+    "tooling/performance.just",
+    "tooling/performance-*.toml",
+    "tooling/*.py",
+    "tooling/criterion-inventory.toml",
+    "tooling/performance-policy.toml",
+    "tooling/measurements/*.toml",
+]
+sample-count = 100
+statistics = [ "mean", "median" ]
+confidence-level = 0.95
+unit = "ns"
+timeout = 21600
+compatible = [
+    "harness_sha256",
+    "context.os",
+    "context.architecture",
+    "context.cpu",
+    "context.tool.rustc",
+    "context.tool.cargo",
+    "context.tool.just",
+    "context.dependency.criterion",
+    "context.dependency.nalgebra",
+    "context.dependency.faer",
+]
+backend = "export"
+harness-mode = "common"
+workloads = [ "benches/**/*.rs" ]
+
+[suites.measurement.context]
+phase-driver = "just-v1"
+suite = "lu-solve"
+scope = "public-release-and-paired-lu-peers-v4"
+repository = "acgetchell/la-stack"
+acquisition-owner = "local"
+
+[suites.measurement.probes]
+rustc = [ "rustc", "-vV" ]
+cargo = [ "cargo", "--version" ]
+just = [ "just", "--version" ]
+
+[suites.measurement.dependencies]
+criterion = "Cargo.lock"
+nalgebra = "Cargo.lock"
+faer = "Cargo.lock"
+
+[suites.measurement.phases]
+
+[suites.measurement.phases.baseline]
+sources = [ "src/**/*.rs", "Cargo.toml", "README.md" ]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "lu-solve" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate" ]
+
+[suites.measurement.phases.baseline.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.baseline.discovery]
+required = [
+    "d16/faer_lu_solve",
+    "d16/la_stack_lu_solve",
+    "d16/nalgebra_lu_solve",
+    "d2/faer_lu_solve",
+    "d2/la_stack_lu_solve",
+    "d2/nalgebra_lu_solve",
+    "d3/faer_lu_solve",
+    "d3/la_stack_lu_solve",
+    "d3/nalgebra_lu_solve",
+    "d32/faer_lu_solve",
+    "d32/la_stack_lu_solve",
+    "d32/nalgebra_lu_solve",
+    "d4/faer_lu_solve",
+    "d4/la_stack_lu_solve",
+    "d4/nalgebra_lu_solve",
+    "d5/faer_lu_solve",
+    "d5/la_stack_lu_solve",
+    "d5/nalgebra_lu_solve",
+    "d64/faer_lu_solve",
+    "d64/la_stack_lu_solve",
+    "d64/nalgebra_lu_solve",
+    "d8/faer_lu_solve",
+    "d8/la_stack_lu_solve",
+    "d8/nalgebra_lu_solve",
+]
+
+[[suites.measurement.phases.baseline.discovery.suites]]
+name = "lu-solve"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "lu-solve",
+    "list",
+]
+timeout = 14400
+
+[suites.measurement.phases.current]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "lu-solve" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-current" ]
+
+[suites.measurement.phases.current.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.current.discovery]
+required = [
+    "d16/faer_lu_solve",
+    "d16/la_stack_lu_solve",
+    "d16/nalgebra_lu_solve",
+    "d2/faer_lu_solve",
+    "d2/la_stack_lu_solve",
+    "d2/nalgebra_lu_solve",
+    "d3/faer_lu_solve",
+    "d3/la_stack_lu_solve",
+    "d3/nalgebra_lu_solve",
+    "d32/faer_lu_solve",
+    "d32/la_stack_lu_solve",
+    "d32/nalgebra_lu_solve",
+    "d4/faer_lu_solve",
+    "d4/la_stack_lu_solve",
+    "d4/nalgebra_lu_solve",
+    "d5/faer_lu_solve",
+    "d5/la_stack_lu_solve",
+    "d5/nalgebra_lu_solve",
+    "d64/faer_lu_solve",
+    "d64/la_stack_lu_solve",
+    "d64/nalgebra_lu_solve",
+    "d8/faer_lu_solve",
+    "d8/la_stack_lu_solve",
+    "d8/nalgebra_lu_solve",
+]
+
+[[suites.measurement.phases.current.discovery.suites]]
+name = "lu-solve"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "lu-solve",
+    "list",
+]
+timeout = 14400
+
+[[suites.measurement.series]]
+name = "la-stack baseline"
+phase = "baseline"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites.measurement.series]]
+name = "la-stack current"
+phase = "current"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites.measurement.series]]
+name = "nalgebra"
+phase = "current"
+
+[suites.measurement.series.rows]
+"d2/la_stack_lu_solve" = "d2/nalgebra_lu_solve"
+"d3/la_stack_lu_solve" = "d3/nalgebra_lu_solve"
+"d4/la_stack_lu_solve" = "d4/nalgebra_lu_solve"
+"d5/la_stack_lu_solve" = "d5/nalgebra_lu_solve"
+"d8/la_stack_lu_solve" = "d8/nalgebra_lu_solve"
+"d16/la_stack_lu_solve" = "d16/nalgebra_lu_solve"
+"d32/la_stack_lu_solve" = "d32/nalgebra_lu_solve"
+"d64/la_stack_lu_solve" = "d64/nalgebra_lu_solve"
+
+[[suites.measurement.series]]
+name = "faer"
+phase = "current"
+
+[suites.measurement.series.rows]
+"d2/la_stack_lu_solve" = "d2/faer_lu_solve"
+"d3/la_stack_lu_solve" = "d3/faer_lu_solve"
+"d4/la_stack_lu_solve" = "d4/faer_lu_solve"
+"d5/la_stack_lu_solve" = "d5/faer_lu_solve"
+"d8/la_stack_lu_solve" = "d8/faer_lu_solve"
+"d16/la_stack_lu_solve" = "d16/faer_lu_solve"
+"d32/la_stack_lu_solve" = "d32/faer_lu_solve"
+"d64/la_stack_lu_solve" = "d64/faer_lu_solve"
+
+[[suites]]
+name = "column-basis"
+contract = "la-stack-column-basis-v1"
+since = "v0.5.2"
+nominal-seconds-per-case = 8
+
+[suites.measurement]
+schema = 4
+minimum-release = "v0.5.0"
+sources = [ "src/**/*.rs", "Cargo.toml" ]
+harness = [
+    "benches/**/*.rs",
+    "benches/comparison/Cargo.toml",
+    "examples/**/*.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "dependency-sources.toml",
+    "rust-toolchain.toml",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "tests/exact_bench_config.rs",
+    "tests/column_basis.rs",
+    "tests/rational_dot.rs",
+    "tests/interval_solve.rs",
+    "tests/common/interval_solve_oracle.rs",
+    "tests/common/proptest_config.rs",
+    "tests/polynomial_bench_inputs.rs",
+    "tooling/performance.just",
+    "tooling/performance-*.toml",
+    "tooling/*.py",
+    "tooling/criterion-inventory.toml",
+    "tooling/performance-policy.toml",
+    "tooling/measurements/*.toml",
+]
+sample-count = 100
+statistics = [ "mean", "median" ]
+confidence-level = 0.95
+unit = "ns"
+timeout = 21600
+compatible = [
+    "harness_sha256",
+    "context.os",
+    "context.architecture",
+    "context.cpu",
+    "context.tool.rustc",
+    "context.tool.cargo",
+    "context.tool.just",
+    "context.dependency.criterion",
+    "context.dependency.nalgebra",
+    "context.dependency.faer",
+]
+backend = "export"
+harness-mode = "common"
+workloads = [ "benches/**/*.rs" ]
+
+[suites.measurement.context]
+phase-driver = "just-v1"
+suite = "column-basis"
+scope = "public-release-and-paired-lu-peers-v4"
+repository = "acgetchell/la-stack"
+acquisition-owner = "local"
+
+[suites.measurement.probes]
+rustc = [ "rustc", "-vV" ]
+cargo = [ "cargo", "--version" ]
+just = [ "just", "--version" ]
+
+[suites.measurement.dependencies]
+criterion = "Cargo.lock"
+nalgebra = "Cargo.lock"
+faer = "Cargo.lock"
+
+[suites.measurement.phases]
+
+[suites.measurement.phases.baseline]
+sources = [ "src/**/*.rs", "Cargo.toml", "README.md" ]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "column-basis" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-column-basis" ]
+
+[suites.measurement.phases.baseline.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.baseline.discovery]
+required = [
     "column_basis/2x2/full_rank",
     "column_basis/2x2/large",
     "column_basis/2x2/near_dependent",
@@ -1710,340 +3197,222 @@ required = [
     "column_basis/8x14/near_dependent",
     "column_basis/8x14/rank_one",
     "column_basis/8x14/small",
-    "d16/la_stack_det",
-    "d16/la_stack_det_from_ldlt",
-    "d16/la_stack_det_from_lu",
-    "d16/la_stack_det_via_lu",
-    "d16/la_stack_dot",
-    "d16/la_stack_inf_norm",
-    "d16/la_stack_ldlt",
-    "d16/la_stack_ldlt_solve",
-    "d16/la_stack_lu",
-    "d16/la_stack_lu_solve",
-    "d16/la_stack_norm2",
-    "d16/la_stack_norm2_scenario_descending",
-    "d16/la_stack_norm2_scenario_repeated_scale",
-    "d16/la_stack_norm2_scenario_sparse",
-    "d16/la_stack_norm2_scenario_wide_dynamic_range",
-    "d16/la_stack_norm2_sq",
-    "d16/la_stack_solve_from_ldlt",
-    "d16/la_stack_solve_from_lu",
-    "d2/la_stack_det",
-    "d2/la_stack_det_from_ldlt",
-    "d2/la_stack_det_from_lu",
-    "d2/la_stack_det_via_lu",
-    "d2/la_stack_dot",
-    "d2/la_stack_inf_norm",
-    "d2/la_stack_ldlt",
-    "d2/la_stack_ldlt_solve",
-    "d2/la_stack_lu",
-    "d2/la_stack_lu_solve",
-    "d2/la_stack_norm2",
-    "d2/la_stack_norm2_scenario_descending",
-    "d2/la_stack_norm2_scenario_repeated_scale",
-    "d2/la_stack_norm2_scenario_sparse",
-    "d2/la_stack_norm2_scenario_wide_dynamic_range",
-    "d2/la_stack_norm2_sq",
-    "d2/la_stack_solve_from_ldlt",
-    "d2/la_stack_solve_from_lu",
-    "d3/la_stack_det",
-    "d3/la_stack_det_from_ldlt",
-    "d3/la_stack_det_from_lu",
-    "d3/la_stack_det_via_lu",
-    "d3/la_stack_dot",
-    "d3/la_stack_inf_norm",
-    "d3/la_stack_ldlt",
-    "d3/la_stack_ldlt_solve",
-    "d3/la_stack_lu",
-    "d3/la_stack_lu_solve",
-    "d3/la_stack_norm2",
-    "d3/la_stack_norm2_scenario_descending",
-    "d3/la_stack_norm2_scenario_repeated_scale",
-    "d3/la_stack_norm2_scenario_sparse",
-    "d3/la_stack_norm2_scenario_wide_dynamic_range",
-    "d3/la_stack_norm2_sq",
-    "d3/la_stack_solve_from_ldlt",
-    "d3/la_stack_solve_from_lu",
-    "d32/la_stack_det",
-    "d32/la_stack_det_from_ldlt",
-    "d32/la_stack_det_from_lu",
-    "d32/la_stack_det_via_lu",
-    "d32/la_stack_dot",
-    "d32/la_stack_inf_norm",
-    "d32/la_stack_ldlt",
-    "d32/la_stack_ldlt_solve",
-    "d32/la_stack_lu",
-    "d32/la_stack_lu_solve",
-    "d32/la_stack_norm2",
-    "d32/la_stack_norm2_scenario_descending",
-    "d32/la_stack_norm2_scenario_repeated_scale",
-    "d32/la_stack_norm2_scenario_sparse",
-    "d32/la_stack_norm2_scenario_wide_dynamic_range",
-    "d32/la_stack_norm2_sq",
-    "d32/la_stack_solve_from_ldlt",
-    "d32/la_stack_solve_from_lu",
-    "d4/la_stack_det",
-    "d4/la_stack_det_from_ldlt",
-    "d4/la_stack_det_from_lu",
-    "d4/la_stack_det_via_lu",
-    "d4/la_stack_dot",
-    "d4/la_stack_inf_norm",
-    "d4/la_stack_ldlt",
-    "d4/la_stack_ldlt_solve",
-    "d4/la_stack_lu",
-    "d4/la_stack_lu_solve",
-    "d4/la_stack_norm2",
-    "d4/la_stack_norm2_scenario_descending",
-    "d4/la_stack_norm2_scenario_repeated_scale",
-    "d4/la_stack_norm2_scenario_sparse",
-    "d4/la_stack_norm2_scenario_wide_dynamic_range",
-    "d4/la_stack_norm2_sq",
-    "d4/la_stack_solve_from_ldlt",
-    "d4/la_stack_solve_from_lu",
-    "d5/la_stack_det",
-    "d5/la_stack_det_from_ldlt",
-    "d5/la_stack_det_from_lu",
-    "d5/la_stack_det_via_lu",
-    "d5/la_stack_dot",
-    "d5/la_stack_inf_norm",
-    "d5/la_stack_ldlt",
-    "d5/la_stack_ldlt_solve",
-    "d5/la_stack_lu",
-    "d5/la_stack_lu_solve",
-    "d5/la_stack_norm2",
-    "d5/la_stack_norm2_scenario_descending",
-    "d5/la_stack_norm2_scenario_repeated_scale",
-    "d5/la_stack_norm2_scenario_sparse",
-    "d5/la_stack_norm2_scenario_wide_dynamic_range",
-    "d5/la_stack_norm2_sq",
-    "d5/la_stack_solve_from_ldlt",
-    "d5/la_stack_solve_from_lu",
-    "d64/la_stack_det",
-    "d64/la_stack_det_from_ldlt",
-    "d64/la_stack_det_from_lu",
-    "d64/la_stack_det_via_lu",
-    "d64/la_stack_dot",
-    "d64/la_stack_inf_norm",
-    "d64/la_stack_ldlt",
-    "d64/la_stack_ldlt_solve",
-    "d64/la_stack_lu",
-    "d64/la_stack_lu_solve",
-    "d64/la_stack_norm2",
-    "d64/la_stack_norm2_scenario_descending",
-    "d64/la_stack_norm2_scenario_repeated_scale",
-    "d64/la_stack_norm2_scenario_sparse",
-    "d64/la_stack_norm2_scenario_wide_dynamic_range",
-    "d64/la_stack_norm2_sq",
-    "d64/la_stack_solve_from_ldlt",
-    "d64/la_stack_solve_from_lu",
-    "d8/la_stack_det",
-    "d8/la_stack_det_from_ldlt",
-    "d8/la_stack_det_from_ldlt_balanced_range",
-    "d8/la_stack_det_from_lu",
-    "d8/la_stack_det_from_lu_balanced_range",
-    "d8/la_stack_det_via_lu",
-    "d8/la_stack_dot",
-    "d8/la_stack_inf_norm",
-    "d8/la_stack_ldlt",
-    "d8/la_stack_ldlt_ill_conditioned",
-    "d8/la_stack_ldlt_solve",
-    "d8/la_stack_lu",
-    "d8/la_stack_lu_ill_conditioned",
-    "d8/la_stack_lu_pivoting",
-    "d8/la_stack_lu_solve",
-    "d8/la_stack_norm2",
-    "d8/la_stack_norm2_scenario_descending",
-    "d8/la_stack_norm2_scenario_repeated_scale",
-    "d8/la_stack_norm2_scenario_sparse",
-    "d8/la_stack_norm2_scenario_wide_dynamic_range",
-    "d8/la_stack_norm2_sq",
-    "d8/la_stack_solve_from_ldlt",
-    "d8/la_stack_solve_from_lu",
-    "exact_d2/det",
-    "exact_d2/det_direct",
-    "exact_d2/det_direct_with_errbound",
-    "exact_d2/det_errbound",
-    "exact_d2/det_exact",
-    "exact_d2/det_exact_f64_result",
-    "exact_d2/det_exact_rounded_f64",
-    "exact_d2/det_sign_exact",
-    "exact_d2/solve_exact",
-    "exact_d2/solve_exact_f64_result",
-    "exact_d2/solve_exact_rounded_f64",
-    "exact_d3/det",
-    "exact_d3/det_direct",
-    "exact_d3/det_direct_with_errbound",
-    "exact_d3/det_errbound",
-    "exact_d3/det_exact",
-    "exact_d3/det_exact_f64_result",
-    "exact_d3/det_exact_rounded_f64",
-    "exact_d3/det_sign_exact",
-    "exact_d3/solve_exact",
-    "exact_d3/solve_exact_f64_result",
-    "exact_d3/solve_exact_rounded_f64",
-    "exact_d4/det",
-    "exact_d4/det_direct",
-    "exact_d4/det_direct_with_errbound",
-    "exact_d4/det_errbound",
-    "exact_d4/det_exact",
-    "exact_d4/det_exact_f64_result",
-    "exact_d4/det_exact_rounded_f64",
-    "exact_d4/det_sign_exact",
-    "exact_d4/solve_exact",
-    "exact_d4/solve_exact_f64_result",
-    "exact_d4/solve_exact_rounded_f64",
-    "exact_d5/det",
-    "exact_d5/det_exact",
-    "exact_d5/det_exact_f64_result",
-    "exact_d5/det_exact_rounded_f64",
-    "exact_d5/det_sign_exact",
-    "exact_d5/solve_exact",
-    "exact_d5/solve_exact_f64_result",
-    "exact_d5/solve_exact_rounded_f64",
-    "exact_hilbert_4x4/det_exact",
-    "exact_hilbert_4x4/det_sign_exact",
-    "exact_hilbert_4x4/solve_exact",
-    "exact_hilbert_4x4/solve_exact_f64_result",
-    "exact_hilbert_4x4/solve_exact_rounded_f64",
-    "exact_hilbert_5x5/det_exact",
-    "exact_hilbert_5x5/det_sign_exact",
-    "exact_hilbert_5x5/solve_exact",
-    "exact_hilbert_5x5/solve_exact_f64_result",
-    "exact_hilbert_5x5/solve_exact_rounded_f64",
-    "exact_large_entries_3x3/det_exact",
-    "exact_large_entries_3x3/det_sign_exact",
-    "exact_large_entries_3x3/solve_exact",
-    "exact_large_entries_3x3/solve_exact_f64_result",
-    "exact_large_entries_3x3/solve_exact_rounded_f64",
-    "exact_near_singular_3x3/det_exact",
-    "exact_near_singular_3x3/det_sign_exact",
-    "exact_near_singular_3x3/solve_exact",
-    "exact_near_singular_3x3/solve_exact_f64_result",
-    "exact_near_singular_3x3/solve_exact_rounded_f64",
-    "exact_random_corpus_d2/det_exact",
-    "exact_random_corpus_d2/det_sign_exact",
-    "exact_random_corpus_d2/solve_exact",
-    "exact_random_corpus_d2/solve_exact_f64_result",
-    "exact_random_corpus_d2/solve_exact_rounded_f64",
-    "exact_random_corpus_d3/det_exact",
-    "exact_random_corpus_d3/det_sign_exact",
-    "exact_random_corpus_d3/solve_exact",
-    "exact_random_corpus_d3/solve_exact_f64_result",
-    "exact_random_corpus_d3/solve_exact_rounded_f64",
-    "exact_random_corpus_d4/det_exact",
-    "exact_random_corpus_d4/det_sign_exact",
-    "exact_random_corpus_d4/solve_exact",
-    "exact_random_corpus_d4/solve_exact_f64_result",
-    "exact_random_corpus_d4/solve_exact_rounded_f64",
-    "exact_random_corpus_d5/det_exact",
-    "exact_random_corpus_d5/det_sign_exact",
-    "exact_random_corpus_d5/solve_exact",
-    "exact_random_corpus_d5/solve_exact_f64_result",
-    "exact_random_corpus_d5/solve_exact_rounded_f64",
-    "gram/1x2/dependent/la_stack",
-    "gram/1x2/mixed_scale/la_stack",
-    "gram/1x2/near_dependent/la_stack",
-    "gram/1x2/orthogonal/la_stack",
-    "gram/2x2/dependent/la_stack",
-    "gram/2x2/mixed_scale/la_stack",
-    "gram/2x2/near_dependent/la_stack",
-    "gram/2x2/orthogonal/la_stack",
-    "gram/2x3/dependent/la_stack",
-    "gram/2x3/mixed_scale/la_stack",
-    "gram/2x3/near_dependent/la_stack",
-    "gram/2x3/orthogonal/la_stack",
-    "gram/3x3/dependent/la_stack",
-    "gram/3x3/mixed_scale/la_stack",
-    "gram/3x3/near_dependent/la_stack",
-    "gram/3x3/orthogonal/la_stack",
-    "gram/3x4/dependent/la_stack",
-    "gram/3x4/mixed_scale/la_stack",
-    "gram/3x4/near_dependent/la_stack",
-    "gram/3x4/orthogonal/la_stack",
-    "gram/4x4/dependent/la_stack",
-    "gram/4x4/mixed_scale/la_stack",
-    "gram/4x4/near_dependent/la_stack",
-    "gram/4x4/orthogonal/la_stack",
-    "gram/4x5/dependent/la_stack",
-    "gram/4x5/mixed_scale/la_stack",
-    "gram/4x5/near_dependent/la_stack",
-    "gram/4x5/orthogonal/la_stack",
-    "gram/5x5/dependent/la_stack",
-    "gram/5x5/mixed_scale/la_stack",
-    "gram/5x5/near_dependent/la_stack",
-    "gram/5x5/orthogonal/la_stack",
-    "gram/5x6/dependent/la_stack",
-    "gram/5x6/mixed_scale/la_stack",
-    "gram/5x6/near_dependent/la_stack",
-    "gram/5x6/orthogonal/la_stack",
-    "gram/6x6/dependent/la_stack",
-    "gram/6x6/mixed_scale/la_stack",
-    "gram/6x6/near_dependent/la_stack",
-    "gram/6x6/orthogonal/la_stack",
-    "gram/6x7/dependent/la_stack",
-    "gram/6x7/mixed_scale/la_stack",
-    "gram/6x7/near_dependent/la_stack",
-    "gram/6x7/orthogonal/la_stack",
-    "gram/7x7/dependent/la_stack",
-    "gram/7x7/mixed_scale/la_stack",
-    "gram/7x7/near_dependent/la_stack",
-    "gram/7x7/orthogonal/la_stack",
-    "gram/7x8/dependent/la_stack",
-    "gram/7x8/mixed_scale/la_stack",
-    "gram/7x8/near_dependent/la_stack",
-    "gram/7x8/orthogonal/la_stack",
-    "gram/8x8/dependent/la_stack",
-    "gram/8x8/mixed_scale/la_stack",
-    "gram/8x8/near_dependent/la_stack",
-    "gram/8x8/orthogonal/la_stack",
-    "interval_d3/dense_inconclusive",
-    "interval_d3/dense_sign",
-    "interval_d3/lifted_assembly",
-    "interval_d3/lifted_assembly_and_sign",
-    "interval_d3/sparse_sign",
-    "interval_d4/dense_inconclusive",
-    "interval_d4/dense_sign",
-    "interval_d4/lifted_assembly",
-    "interval_d4/lifted_assembly_and_sign",
-    "interval_d4/sparse_sign",
-    "interval_d5/dense_inconclusive",
-    "interval_d5/dense_sign",
-    "interval_d5/lifted_assembly",
-    "interval_d5/lifted_assembly_and_sign",
-    "interval_d5/sparse_sign",
-    "interval_d6/dense_inconclusive",
-    "interval_d6/dense_sign",
-    "interval_d6/lifted_assembly",
-    "interval_d6/lifted_assembly_and_sign",
-    "interval_d6/sparse_sign",
-    "interval_d7/dense_inconclusive",
-    "interval_d7/dense_sign",
-    "interval_d7/lifted_assembly",
-    "interval_d7/lifted_assembly_and_sign",
-    "interval_d7/sparse_sign",
-    "interval_det_sign/d4_conclusive_lifted",
-    "interval_det_sign/d4_inconclusive_lifted",
-    "interval_det_sign/d7_conclusive_lifted",
+]
+
+[[suites.measurement.phases.baseline.discovery.suites]]
+name = "column-basis"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "column-basis",
+    "list",
+]
+timeout = 14400
+
+[suites.measurement.phases.current]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "column-basis" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-column-basis-current" ]
+
+[suites.measurement.phases.current.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.current.discovery]
+required = [
+    "column_basis/2x2/full_rank",
+    "column_basis/2x2/large",
+    "column_basis/2x2/near_dependent",
+    "column_basis/2x2/rank_one",
+    "column_basis/2x2/small",
+    "column_basis/2x3/shared_face",
+    "column_basis/3x3/full_rank",
+    "column_basis/3x3/large",
+    "column_basis/3x3/near_dependent",
+    "column_basis/3x3/rank_one",
+    "column_basis/3x3/small",
+    "column_basis/3x4/shared_face",
+    "column_basis/4x4/full_rank",
+    "column_basis/4x4/large",
+    "column_basis/4x4/near_dependent",
+    "column_basis/4x4/rank_one",
+    "column_basis/4x4/small",
+    "column_basis/4x5/shared_face",
+    "column_basis/4x6/full_rank",
+    "column_basis/4x6/large",
+    "column_basis/4x6/near_dependent",
+    "column_basis/4x6/rank_one",
+    "column_basis/4x6/small",
+    "column_basis/5x2/full_rank",
+    "column_basis/5x2/large",
+    "column_basis/5x2/near_dependent",
+    "column_basis/5x2/rank_one",
+    "column_basis/5x2/small",
+    "column_basis/5x5/full_rank",
+    "column_basis/5x5/large",
+    "column_basis/5x5/near_dependent",
+    "column_basis/5x5/rank_one",
+    "column_basis/5x5/small",
+    "column_basis/5x6/shared_face",
+    "column_basis/5x8/full_rank",
+    "column_basis/5x8/large",
+    "column_basis/5x8/near_dependent",
+    "column_basis/5x8/rank_one",
+    "column_basis/5x8/small",
+    "column_basis/6x10/full_rank",
+    "column_basis/6x10/large",
+    "column_basis/6x10/near_dependent",
+    "column_basis/6x10/rank_one",
+    "column_basis/6x10/small",
+    "column_basis/6x7/shared_face",
+    "column_basis/7x12/full_rank",
+    "column_basis/7x12/large",
+    "column_basis/7x12/near_dependent",
+    "column_basis/7x12/rank_one",
+    "column_basis/7x12/small",
+    "column_basis/8x14/full_rank",
+    "column_basis/8x14/large",
+    "column_basis/8x14/near_dependent",
+    "column_basis/8x14/rank_one",
+    "column_basis/8x14/small",
+]
+
+[[suites.measurement.phases.current.discovery.suites]]
+name = "column-basis"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "column-basis",
+    "list",
+]
+timeout = 14400
+
+[[suites.measurement.series]]
+name = "la-stack baseline"
+phase = "baseline"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites.measurement.series]]
+name = "la-stack current"
+phase = "current"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites]]
+name = "interval-solve"
+contract = "la-stack-interval-solve-v1"
+since = "v0.5.2"
+nominal-seconds-per-case = 8
+
+[suites.measurement]
+schema = 4
+minimum-release = "v0.5.0"
+sources = [ "src/**/*.rs", "Cargo.toml" ]
+harness = [
+    "benches/**/*.rs",
+    "benches/comparison/Cargo.toml",
+    "examples/**/*.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "dependency-sources.toml",
+    "rust-toolchain.toml",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "tests/exact_bench_config.rs",
+    "tests/column_basis.rs",
+    "tests/rational_dot.rs",
+    "tests/interval_solve.rs",
+    "tests/common/interval_solve_oracle.rs",
+    "tests/common/proptest_config.rs",
+    "tests/polynomial_bench_inputs.rs",
+    "tooling/performance.just",
+    "tooling/performance-*.toml",
+    "tooling/*.py",
+    "tooling/criterion-inventory.toml",
+    "tooling/performance-policy.toml",
+    "tooling/measurements/*.toml",
+]
+sample-count = 100
+statistics = [ "mean", "median" ]
+confidence-level = 0.95
+unit = "ns"
+timeout = 21600
+compatible = [
+    "harness_sha256",
+    "context.os",
+    "context.architecture",
+    "context.cpu",
+    "context.tool.rustc",
+    "context.tool.cargo",
+    "context.tool.just",
+    "context.dependency.criterion",
+    "context.dependency.nalgebra",
+    "context.dependency.faer",
+]
+backend = "export"
+harness-mode = "common"
+workloads = [ "benches/**/*.rs" ]
+
+[suites.measurement.context]
+phase-driver = "just-v1"
+suite = "interval-solve"
+scope = "public-release-and-paired-lu-peers-v4"
+repository = "acgetchell/la-stack"
+acquisition-owner = "local"
+
+[suites.measurement.probes]
+rustc = [ "rustc", "-vV" ]
+cargo = [ "cargo", "--version" ]
+just = [ "just", "--version" ]
+
+[suites.measurement.dependencies]
+criterion = "Cargo.lock"
+nalgebra = "Cargo.lock"
+faer = "Cargo.lock"
+
+[suites.measurement.phases]
+
+[suites.measurement.phases.baseline]
+sources = [ "src/**/*.rs", "Cargo.toml", "README.md" ]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "interval-solve" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-interval-solve" ]
+
+[suites.measurement.phases.baseline.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.baseline.discovery]
+required = [
     "interval_division/negative",
     "interval_division/positive",
     "interval_division/reciprocal",
     "interval_division/subnormal",
     "interval_division/tiny_ratio",
-    "interval_scalar/cancellation/add",
-    "interval_scalar/cancellation/multiply",
-    "interval_scalar/cancellation/square",
-    "interval_scalar/exact/add",
-    "interval_scalar/exact/multiply",
-    "interval_scalar/exact/square",
-    "interval_scalar/point/add",
-    "interval_scalar/point/multiply",
-    "interval_scalar/point/square",
-    "interval_scalar/subnormal/add",
-    "interval_scalar/subnormal/multiply",
-    "interval_scalar/subnormal/square",
-    "interval_scalar/zero/add",
-    "interval_scalar/zero/multiply",
-    "interval_scalar/zero/square",
     "interval_solve_d1/dense",
     "interval_solve_d1/near_singular",
     "interval_solve_d1/range_exhausted",
@@ -2074,283 +3443,351 @@ required = [
     "interval_solve_d6/range_exhausted",
     "interval_solve_d6/singular",
     "interval_solve_d6/uncertain_dense",
-    "linear_form_d2_batch/origin/construction",
-    "linear_form_d2_batch/origin/prepared",
-    "linear_form_d2_batch/origin/with_construction",
-    "linear_form_d2_batch/translated/construction",
-    "linear_form_d2_batch/translated/prepared",
-    "linear_form_d2_batch/translated/with_construction",
-    "linear_form_d2_prepared/cancellation/difference",
-    "linear_form_d2_prepared/cancellation/difference_endpoints",
-    "linear_form_d2_prepared/cancellation/dot",
-    "linear_form_d2_prepared/cancellation/dot_endpoints",
-    "linear_form_d2_prepared/dense/difference",
-    "linear_form_d2_prepared/dense/difference_endpoints",
-    "linear_form_d2_prepared/dense/dot",
-    "linear_form_d2_prepared/dense/dot_endpoints",
-    "linear_form_d2_prepared/dense_inexact/difference",
-    "linear_form_d2_prepared/dense_inexact/difference_endpoints",
-    "linear_form_d2_prepared/dense_inexact/dot",
-    "linear_form_d2_prepared/dense_inexact/dot_endpoints",
-    "linear_form_d2_prepared/overflow/dot",
-    "linear_form_d2_prepared/sparse/difference",
-    "linear_form_d2_prepared/sparse/difference_endpoints",
-    "linear_form_d2_prepared/sparse/dot",
-    "linear_form_d2_prepared/sparse/dot_endpoints",
-    "linear_form_d2_prepared/underflow/difference",
-    "linear_form_d2_prepared/underflow/difference_endpoints",
-    "linear_form_d2_prepared/underflow/dot",
-    "linear_form_d2_prepared/underflow/dot_endpoints",
-    "linear_form_d3_batch/origin/construction",
-    "linear_form_d3_batch/origin/prepared",
-    "linear_form_d3_batch/origin/with_construction",
-    "linear_form_d3_batch/translated/construction",
-    "linear_form_d3_batch/translated/prepared",
-    "linear_form_d3_batch/translated/with_construction",
-    "linear_form_d3_prepared/cancellation/difference",
-    "linear_form_d3_prepared/cancellation/difference_endpoints",
-    "linear_form_d3_prepared/cancellation/dot",
-    "linear_form_d3_prepared/cancellation/dot_endpoints",
-    "linear_form_d3_prepared/dense/difference",
-    "linear_form_d3_prepared/dense/difference_endpoints",
-    "linear_form_d3_prepared/dense/dot",
-    "linear_form_d3_prepared/dense/dot_endpoints",
-    "linear_form_d3_prepared/dense_inexact/difference",
-    "linear_form_d3_prepared/dense_inexact/difference_endpoints",
-    "linear_form_d3_prepared/dense_inexact/dot",
-    "linear_form_d3_prepared/dense_inexact/dot_endpoints",
-    "linear_form_d3_prepared/overflow/dot",
-    "linear_form_d3_prepared/sparse/difference",
-    "linear_form_d3_prepared/sparse/difference_endpoints",
-    "linear_form_d3_prepared/sparse/dot",
-    "linear_form_d3_prepared/sparse/dot_endpoints",
-    "linear_form_d3_prepared/underflow/difference",
-    "linear_form_d3_prepared/underflow/difference_endpoints",
-    "linear_form_d3_prepared/underflow/dot",
-    "linear_form_d3_prepared/underflow/dot_endpoints",
-    "linear_form_d4/dot_bounded_inconclusive",
-    "linear_form_d4/dot_bounded_well_separated",
-    "linear_form_d4/dot_difference_bounded_inconclusive",
-    "linear_form_d4/dot_difference_bounded_well_separated",
-    "linear_form_d4/dot_plain_well_separated",
-    "linear_form_d4_batch/origin/construction",
-    "linear_form_d4_batch/origin/prepared",
-    "linear_form_d4_batch/origin/with_construction",
-    "linear_form_d4_batch/translated/construction",
-    "linear_form_d4_batch/translated/prepared",
-    "linear_form_d4_batch/translated/with_construction",
-    "linear_form_d4_prepared/cancellation/difference",
-    "linear_form_d4_prepared/cancellation/difference_endpoints",
-    "linear_form_d4_prepared/cancellation/dot",
-    "linear_form_d4_prepared/cancellation/dot_endpoints",
-    "linear_form_d4_prepared/dense/difference",
-    "linear_form_d4_prepared/dense/difference_endpoints",
-    "linear_form_d4_prepared/dense/dot",
-    "linear_form_d4_prepared/dense/dot_endpoints",
-    "linear_form_d4_prepared/dense_inexact/difference",
-    "linear_form_d4_prepared/dense_inexact/difference_endpoints",
-    "linear_form_d4_prepared/dense_inexact/dot",
-    "linear_form_d4_prepared/dense_inexact/dot_endpoints",
-    "linear_form_d4_prepared/overflow/dot",
-    "linear_form_d4_prepared/sparse/difference",
-    "linear_form_d4_prepared/sparse/difference_endpoints",
-    "linear_form_d4_prepared/sparse/dot",
-    "linear_form_d4_prepared/sparse/dot_endpoints",
-    "linear_form_d4_prepared/underflow/difference",
-    "linear_form_d4_prepared/underflow/difference_endpoints",
-    "linear_form_d4_prepared/underflow/dot",
-    "linear_form_d4_prepared/underflow/dot_endpoints",
-    "linear_form_d5_batch/origin/construction",
-    "linear_form_d5_batch/origin/prepared",
-    "linear_form_d5_batch/origin/with_construction",
-    "linear_form_d5_batch/translated/construction",
-    "linear_form_d5_batch/translated/prepared",
-    "linear_form_d5_batch/translated/with_construction",
-    "linear_form_d5_prepared/cancellation/difference",
-    "linear_form_d5_prepared/cancellation/difference_endpoints",
-    "linear_form_d5_prepared/cancellation/dot",
-    "linear_form_d5_prepared/cancellation/dot_endpoints",
-    "linear_form_d5_prepared/dense/difference",
-    "linear_form_d5_prepared/dense/difference_endpoints",
-    "linear_form_d5_prepared/dense/dot",
-    "linear_form_d5_prepared/dense/dot_endpoints",
-    "linear_form_d5_prepared/dense_inexact/difference",
-    "linear_form_d5_prepared/dense_inexact/difference_endpoints",
-    "linear_form_d5_prepared/dense_inexact/dot",
-    "linear_form_d5_prepared/dense_inexact/dot_endpoints",
-    "linear_form_d5_prepared/overflow/dot",
-    "linear_form_d5_prepared/sparse/difference",
-    "linear_form_d5_prepared/sparse/difference_endpoints",
-    "linear_form_d5_prepared/sparse/dot",
-    "linear_form_d5_prepared/sparse/dot_endpoints",
-    "linear_form_d5_prepared/underflow/difference",
-    "linear_form_d5_prepared/underflow/difference_endpoints",
-    "linear_form_d5_prepared/underflow/dot",
-    "linear_form_d5_prepared/underflow/dot_endpoints",
-    "linear_form_d6_batch/origin/construction",
-    "linear_form_d6_batch/origin/prepared",
-    "linear_form_d6_batch/origin/with_construction",
-    "linear_form_d6_batch/translated/construction",
-    "linear_form_d6_batch/translated/prepared",
-    "linear_form_d6_batch/translated/with_construction",
-    "linear_form_d6_prepared/cancellation/difference",
-    "linear_form_d6_prepared/cancellation/difference_endpoints",
-    "linear_form_d6_prepared/cancellation/dot",
-    "linear_form_d6_prepared/cancellation/dot_endpoints",
-    "linear_form_d6_prepared/dense/difference",
-    "linear_form_d6_prepared/dense/difference_endpoints",
-    "linear_form_d6_prepared/dense/dot",
-    "linear_form_d6_prepared/dense/dot_endpoints",
-    "linear_form_d6_prepared/dense_inexact/difference",
-    "linear_form_d6_prepared/dense_inexact/difference_endpoints",
-    "linear_form_d6_prepared/dense_inexact/dot",
-    "linear_form_d6_prepared/dense_inexact/dot_endpoints",
-    "linear_form_d6_prepared/overflow/dot",
-    "linear_form_d6_prepared/sparse/difference",
-    "linear_form_d6_prepared/sparse/difference_endpoints",
-    "linear_form_d6_prepared/sparse/dot",
-    "linear_form_d6_prepared/sparse/dot_endpoints",
-    "linear_form_d6_prepared/underflow/difference",
-    "linear_form_d6_prepared/underflow/difference_endpoints",
-    "linear_form_d6_prepared/underflow/dot",
-    "linear_form_d6_prepared/underflow/dot_endpoints",
-    "polynomial/coincident_lifted/order4/determinant",
-    "polynomial/coincident_lifted/order5/determinant",
-    "polynomial/coincident_lifted/order6/determinant",
-    "polynomial/coincident_lifted/order7/determinant",
-    "polynomial/coincident_lifted/order8/determinant",
-    "public_d2/det_bound",
-    "public_d2/det_direct",
-    "public_d2/det_with_bound",
-    "public_d2/first_asymmetry",
-    "public_d2/interval_det",
-    "public_d2/interval_matrix_access",
-    "public_d2/interval_matrix_from_matrix",
-    "public_d2/interval_matrix_from_points",
-    "public_d2/interval_matrix_from_rows",
-    "public_d2/interval_matrix_identity",
-    "public_d2/interval_matrix_set",
-    "public_d2/interval_matrix_zero",
-    "public_d2/is_symmetric",
-    "public_d2/matrix_access",
-    "public_d2/matrix_from_rows",
-    "public_d2/matrix_identity",
-    "public_d2/matrix_set",
-    "public_d2/matrix_zero",
-    "public_d2/vector_access",
-    "public_d2/vector_new",
-    "public_d2/vector_zero",
-    "public_d3/det_bound",
-    "public_d3/det_direct",
-    "public_d3/det_with_bound",
-    "public_d3/first_asymmetry",
-    "public_d3/interval_det",
-    "public_d3/interval_matrix_access",
-    "public_d3/interval_matrix_from_matrix",
-    "public_d3/interval_matrix_from_points",
-    "public_d3/interval_matrix_from_rows",
-    "public_d3/interval_matrix_identity",
-    "public_d3/interval_matrix_set",
-    "public_d3/interval_matrix_zero",
-    "public_d3/is_symmetric",
-    "public_d3/matrix_access",
-    "public_d3/matrix_from_rows",
-    "public_d3/matrix_identity",
-    "public_d3/matrix_set",
-    "public_d3/matrix_zero",
-    "public_d3/vector_access",
-    "public_d3/vector_new",
-    "public_d3/vector_zero",
-    "public_d4/det_bound",
-    "public_d4/det_direct",
-    "public_d4/det_with_bound",
-    "public_d4/first_asymmetry",
-    "public_d4/interval_det",
-    "public_d4/interval_matrix_access",
-    "public_d4/interval_matrix_from_matrix",
-    "public_d4/interval_matrix_from_points",
-    "public_d4/interval_matrix_from_rows",
-    "public_d4/interval_matrix_identity",
-    "public_d4/interval_matrix_set",
-    "public_d4/interval_matrix_zero",
-    "public_d4/is_symmetric",
-    "public_d4/matrix_access",
-    "public_d4/matrix_from_rows",
-    "public_d4/matrix_identity",
-    "public_d4/matrix_set",
-    "public_d4/matrix_zero",
-    "public_d4/vector_access",
-    "public_d4/vector_new",
-    "public_d4/vector_zero",
-    "public_d5/det_bound",
-    "public_d5/det_direct",
-    "public_d5/det_with_bound",
-    "public_d5/first_asymmetry",
-    "public_d5/interval_det",
-    "public_d5/interval_matrix_access",
-    "public_d5/interval_matrix_from_matrix",
-    "public_d5/interval_matrix_from_points",
-    "public_d5/interval_matrix_from_rows",
-    "public_d5/interval_matrix_identity",
-    "public_d5/interval_matrix_set",
-    "public_d5/interval_matrix_zero",
-    "public_d5/is_symmetric",
-    "public_d5/matrix_access",
-    "public_d5/matrix_from_rows",
-    "public_d5/matrix_identity",
-    "public_d5/matrix_set",
-    "public_d5/matrix_zero",
-    "public_d5/vector_access",
-    "public_d5/vector_new",
-    "public_d5/vector_zero",
-    "public_exact_d2/matrix_access",
-    "public_exact_d2/matrix_from_fn",
-    "public_exact_d2/matrix_from_rows",
-    "public_exact_d2/matrix_into_rows",
-    "public_exact_d2/matrix_zero",
-    "public_exact_d2/vector_access",
-    "public_exact_d2/vector_from_fn",
-    "public_exact_d2/vector_into_array",
-    "public_exact_d2/vector_new",
-    "public_exact_d2/vector_zero",
-    "public_exact_d3/matrix_access",
-    "public_exact_d3/matrix_from_fn",
-    "public_exact_d3/matrix_from_rows",
-    "public_exact_d3/matrix_into_rows",
-    "public_exact_d3/matrix_zero",
-    "public_exact_d3/vector_access",
-    "public_exact_d3/vector_from_fn",
-    "public_exact_d3/vector_into_array",
-    "public_exact_d3/vector_new",
-    "public_exact_d3/vector_zero",
-    "public_exact_d4/matrix_access",
-    "public_exact_d4/matrix_from_fn",
-    "public_exact_d4/matrix_from_rows",
-    "public_exact_d4/matrix_into_rows",
-    "public_exact_d4/matrix_zero",
-    "public_exact_d4/vector_access",
-    "public_exact_d4/vector_from_fn",
-    "public_exact_d4/vector_into_array",
-    "public_exact_d4/vector_new",
-    "public_exact_d4/vector_zero",
-    "public_exact_d5/matrix_access",
-    "public_exact_d5/matrix_from_fn",
-    "public_exact_d5/matrix_from_rows",
-    "public_exact_d5/matrix_into_rows",
-    "public_exact_d5/matrix_zero",
-    "public_exact_d5/vector_access",
-    "public_exact_d5/vector_from_fn",
-    "public_exact_d5/vector_into_array",
-    "public_exact_d5/vector_new",
-    "public_exact_d5/vector_zero",
-    "public_exact_scalar/rounded",
-    "public_exact_scalar/strict",
-    "public_scalar/interval_access",
-    "public_scalar/interval_negate",
-    "public_scalar/interval_new",
-    "public_scalar/interval_point",
-    "public_scalar/interval_subtraction",
-    "public_scalar/tolerance",
+]
+
+[[suites.measurement.phases.baseline.discovery.suites]]
+name = "interval-solve"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "interval-solve",
+    "list",
+]
+timeout = 14400
+
+[suites.measurement.phases.current]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "interval-solve" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-interval-solve-current" ]
+
+[suites.measurement.phases.current.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.current.discovery]
+required = [
+    "interval_division/negative",
+    "interval_division/positive",
+    "interval_division/reciprocal",
+    "interval_division/subnormal",
+    "interval_division/tiny_ratio",
+    "interval_solve_d1/dense",
+    "interval_solve_d1/near_singular",
+    "interval_solve_d1/range_exhausted",
+    "interval_solve_d1/singular",
+    "interval_solve_d1/uncertain_dense",
+    "interval_solve_d2/dense",
+    "interval_solve_d2/near_singular",
+    "interval_solve_d2/range_exhausted",
+    "interval_solve_d2/singular",
+    "interval_solve_d2/uncertain_dense",
+    "interval_solve_d3/dense",
+    "interval_solve_d3/near_singular",
+    "interval_solve_d3/range_exhausted",
+    "interval_solve_d3/singular",
+    "interval_solve_d3/uncertain_dense",
+    "interval_solve_d4/dense",
+    "interval_solve_d4/near_singular",
+    "interval_solve_d4/range_exhausted",
+    "interval_solve_d4/singular",
+    "interval_solve_d4/uncertain_dense",
+    "interval_solve_d5/dense",
+    "interval_solve_d5/near_singular",
+    "interval_solve_d5/range_exhausted",
+    "interval_solve_d5/singular",
+    "interval_solve_d5/uncertain_dense",
+    "interval_solve_d6/dense",
+    "interval_solve_d6/near_singular",
+    "interval_solve_d6/range_exhausted",
+    "interval_solve_d6/singular",
+    "interval_solve_d6/uncertain_dense",
+]
+
+[[suites.measurement.phases.current.discovery.suites]]
+name = "interval-solve"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "interval-solve",
+    "list",
+]
+timeout = 14400
+
+[[suites.measurement.series]]
+name = "la-stack baseline"
+phase = "baseline"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites.measurement.series]]
+name = "la-stack current"
+phase = "current"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites]]
+name = "polynomial"
+contract = "la-stack-polynomial-v1"
+since = "v0.5.2"
+nominal-seconds-per-case = 8
+
+[suites.measurement]
+schema = 4
+minimum-release = "v0.5.0"
+sources = [ "src/**/*.rs", "Cargo.toml" ]
+harness = [
+    "benches/**/*.rs",
+    "benches/comparison/Cargo.toml",
+    "examples/**/*.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "dependency-sources.toml",
+    "rust-toolchain.toml",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "tests/exact_bench_config.rs",
+    "tests/column_basis.rs",
+    "tests/rational_dot.rs",
+    "tests/interval_solve.rs",
+    "tests/common/interval_solve_oracle.rs",
+    "tests/common/proptest_config.rs",
+    "tests/polynomial_bench_inputs.rs",
+    "tooling/performance.just",
+    "tooling/performance-*.toml",
+    "tooling/*.py",
+    "tooling/criterion-inventory.toml",
+    "tooling/performance-policy.toml",
+    "tooling/measurements/*.toml",
+]
+sample-count = 100
+statistics = [ "mean", "median" ]
+confidence-level = 0.95
+unit = "ns"
+timeout = 21600
+compatible = [
+    "harness_sha256",
+    "context.os",
+    "context.architecture",
+    "context.cpu",
+    "context.tool.rustc",
+    "context.tool.cargo",
+    "context.tool.just",
+    "context.dependency.criterion",
+    "context.dependency.nalgebra",
+    "context.dependency.faer",
+]
+backend = "export"
+harness-mode = "common"
+workloads = [ "benches/**/*.rs" ]
+
+[suites.measurement.context]
+phase-driver = "just-v1"
+suite = "polynomial"
+scope = "public-release-and-paired-lu-peers-v4"
+repository = "acgetchell/la-stack"
+acquisition-owner = "local"
+
+[suites.measurement.probes]
+rustc = [ "rustc", "-vV" ]
+cargo = [ "cargo", "--version" ]
+just = [ "just", "--version" ]
+
+[suites.measurement.dependencies]
+criterion = "Cargo.lock"
+nalgebra = "Cargo.lock"
+faer = "Cargo.lock"
+
+[suites.measurement.phases]
+
+[suites.measurement.phases.baseline]
+sources = [ "src/**/*.rs", "Cargo.toml", "README.md" ]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "polynomial" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-polynomial" ]
+
+[suites.measurement.phases.baseline.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.baseline.discovery]
+required = [ "polynomial/coincident_lifted/order4/determinant", "polynomial/coincident_lifted/order5/determinant", "polynomial/coincident_lifted/order6/determinant", "polynomial/coincident_lifted/order7/determinant", "polynomial/coincident_lifted/order8/determinant" ]
+
+[[suites.measurement.phases.baseline.discovery.suites]]
+name = "polynomial"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "polynomial",
+    "list",
+]
+timeout = 14400
+
+[suites.measurement.phases.current]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "polynomial" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-polynomial-current" ]
+
+[suites.measurement.phases.current.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.current.discovery]
+required = [ "polynomial/coincident_lifted/order4/determinant", "polynomial/coincident_lifted/order5/determinant", "polynomial/coincident_lifted/order6/determinant", "polynomial/coincident_lifted/order7/determinant", "polynomial/coincident_lifted/order8/determinant" ]
+
+[[suites.measurement.phases.current.discovery.suites]]
+name = "polynomial"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "polynomial",
+    "list",
+]
+timeout = 14400
+
+[[suites.measurement.series]]
+name = "la-stack baseline"
+phase = "baseline"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites.measurement.series]]
+name = "la-stack current"
+phase = "current"
+
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites]]
+name = "rational-dot"
+contract = "la-stack-rational-dot-v1"
+since = "v0.5.2"
+nominal-seconds-per-case = 8
+
+[suites.measurement]
+schema = 4
+minimum-release = "v0.5.0"
+sources = [ "src/**/*.rs", "Cargo.toml" ]
+harness = [
+    "benches/**/*.rs",
+    "benches/comparison/Cargo.toml",
+    "examples/**/*.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "dependency-sources.toml",
+    "rust-toolchain.toml",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "tests/exact_bench_config.rs",
+    "tests/column_basis.rs",
+    "tests/rational_dot.rs",
+    "tests/interval_solve.rs",
+    "tests/common/interval_solve_oracle.rs",
+    "tests/common/proptest_config.rs",
+    "tests/polynomial_bench_inputs.rs",
+    "tooling/performance.just",
+    "tooling/performance-*.toml",
+    "tooling/*.py",
+    "tooling/criterion-inventory.toml",
+    "tooling/performance-policy.toml",
+    "tooling/measurements/*.toml",
+]
+sample-count = 100
+statistics = [ "mean", "median" ]
+confidence-level = 0.95
+unit = "ns"
+timeout = 21600
+compatible = [
+    "harness_sha256",
+    "context.os",
+    "context.architecture",
+    "context.cpu",
+    "context.tool.rustc",
+    "context.tool.cargo",
+    "context.tool.just",
+    "context.dependency.criterion",
+    "context.dependency.nalgebra",
+    "context.dependency.faer",
+]
+backend = "export"
+harness-mode = "common"
+workloads = [ "benches/**/*.rs" ]
+
+[suites.measurement.context]
+phase-driver = "just-v1"
+suite = "rational-dot"
+scope = "public-release-and-paired-lu-peers-v4"
+repository = "acgetchell/la-stack"
+acquisition-owner = "local"
+
+[suites.measurement.probes]
+rustc = [ "rustc", "-vV" ]
+cargo = [ "cargo", "--version" ]
+just = [ "just", "--version" ]
+
+[suites.measurement.dependencies]
+criterion = "Cargo.lock"
+nalgebra = "Cargo.lock"
+faer = "Cargo.lock"
+
+[suites.measurement.phases]
+
+[suites.measurement.phases.baseline]
+sources = [ "src/**/*.rs", "Cargo.toml", "README.md" ]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "rational-dot" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-rational-dot" ]
+
+[suites.measurement.phases.baseline.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.baseline.discovery]
+required = [
     "rational_dot/cancellation/d14/prepared",
     "rational_dot/cancellation/d14/slice",
     "rational_dot/cancellation/d2/prepared",
@@ -2405,407 +3842,119 @@ required = [
     "rational_dot/non_dyadic/d7/slice",
     "rational_dot/non_dyadic/d8/prepared",
     "rational_dot/non_dyadic/d8/slice",
-    "rational_input_d2/det_row_cleared_bareiss",
-    "rational_input_d2/det_sign_row_cleared_bareiss",
-    "rational_input_d2/solve_row_cleared_bareiss",
-    "rational_input_d3/det_row_cleared_bareiss",
-    "rational_input_d3/det_sign_row_cleared_bareiss",
-    "rational_input_d3/solve_row_cleared_bareiss",
-    "rational_input_d4/det_row_cleared_bareiss",
-    "rational_input_d4/det_sign_row_cleared_bareiss",
-    "rational_input_d4/solve_row_cleared_bareiss",
-    "rational_input_d5/det_row_cleared_bareiss",
-    "rational_input_d5/det_sign_row_cleared_bareiss",
-    "rational_input_d5/solve_row_cleared_bareiss",
-    "rational_input_d6/det_row_cleared_bareiss",
-    "rational_input_d6/det_sign_row_cleared_bareiss",
-    "rational_input_d6/solve_row_cleared_bareiss",
-    "rational_input_d7/det_row_cleared_bareiss",
-    "rational_input_d7/det_sign_row_cleared_bareiss",
-    "rational_input_d7/solve_row_cleared_bareiss",
-    "rational_input_d8/det_row_cleared_bareiss",
-    "rational_input_d8/det_sign_row_cleared_bareiss",
-    "rational_input_d8/solve_row_cleared_bareiss",
-    "rational_input_wide1024_d2/det_row_cleared_bareiss",
-    "rational_input_wide1024_d2/det_sign_row_cleared_bareiss",
-    "rational_input_wide1024_d2/solve_row_cleared_bareiss",
-    "rational_input_wide1024_d3/det_row_cleared_bareiss",
-    "rational_input_wide1024_d3/det_sign_row_cleared_bareiss",
-    "rational_input_wide1024_d3/solve_row_cleared_bareiss",
-    "rational_input_wide1024_d4/det_row_cleared_bareiss",
-    "rational_input_wide1024_d4/det_sign_row_cleared_bareiss",
-    "rational_input_wide1024_d4/solve_row_cleared_bareiss",
-    "rational_input_wide1024_d5/det_row_cleared_bareiss",
-    "rational_input_wide1024_d5/det_sign_row_cleared_bareiss",
-    "rational_input_wide1024_d5/solve_row_cleared_bareiss",
-    "rational_input_wide1024_d6/det_row_cleared_bareiss",
-    "rational_input_wide1024_d6/det_sign_row_cleared_bareiss",
-    "rational_input_wide1024_d6/solve_row_cleared_bareiss",
-    "rational_input_wide1024_d7/det_row_cleared_bareiss",
-    "rational_input_wide1024_d7/det_sign_row_cleared_bareiss",
-    "rational_input_wide1024_d7/solve_row_cleared_bareiss",
-    "rational_input_wide1024_d8/det_row_cleared_bareiss",
-    "rational_input_wide1024_d8/det_sign_row_cleared_bareiss",
-    "rational_input_wide1024_d8/solve_row_cleared_bareiss",
-    "rational_input_wide256_d2/det_row_cleared_bareiss",
-    "rational_input_wide256_d2/det_sign_row_cleared_bareiss",
-    "rational_input_wide256_d2/solve_row_cleared_bareiss",
-    "rational_input_wide256_d3/det_row_cleared_bareiss",
-    "rational_input_wide256_d3/det_sign_row_cleared_bareiss",
-    "rational_input_wide256_d3/solve_row_cleared_bareiss",
-    "rational_input_wide256_d4/det_row_cleared_bareiss",
-    "rational_input_wide256_d4/det_sign_row_cleared_bareiss",
-    "rational_input_wide256_d4/solve_row_cleared_bareiss",
-    "rational_input_wide256_d5/det_row_cleared_bareiss",
-    "rational_input_wide256_d5/det_sign_row_cleared_bareiss",
-    "rational_input_wide256_d5/solve_row_cleared_bareiss",
-    "rational_input_wide256_d6/det_row_cleared_bareiss",
-    "rational_input_wide256_d6/det_sign_row_cleared_bareiss",
-    "rational_input_wide256_d6/solve_row_cleared_bareiss",
-    "rational_input_wide256_d7/det_row_cleared_bareiss",
-    "rational_input_wide256_d7/det_sign_row_cleared_bareiss",
-    "rational_input_wide256_d7/solve_row_cleared_bareiss",
-    "rational_input_wide256_d8/det_row_cleared_bareiss",
-    "rational_input_wide256_d8/det_sign_row_cleared_bareiss",
-    "rational_input_wide256_d8/solve_row_cleared_bareiss",
-    "rational_solve/dense/dyadic_d2/adapter",
-    "rational_solve/dense/dyadic_d2/construct",
-    "rational_solve/dense/dyadic_d2/prepared",
-    "rational_solve/dense/dyadic_d3/adapter",
-    "rational_solve/dense/dyadic_d3/construct",
-    "rational_solve/dense/dyadic_d3/prepared",
-    "rational_solve/dense/dyadic_d4/adapter",
-    "rational_solve/dense/dyadic_d4/construct",
-    "rational_solve/dense/dyadic_d4/prepared",
-    "rational_solve/dense/dyadic_d5/adapter",
-    "rational_solve/dense/dyadic_d5/construct",
-    "rational_solve/dense/dyadic_d5/prepared",
-    "rational_solve/dense/dyadic_d6/adapter",
-    "rational_solve/dense/dyadic_d6/construct",
-    "rational_solve/dense/dyadic_d6/prepared",
-    "rational_solve/dense/dyadic_d7/adapter",
-    "rational_solve/dense/dyadic_d7/construct",
-    "rational_solve/dense/dyadic_d7/prepared",
-    "rational_solve/dense/dyadic_d8/adapter",
-    "rational_solve/dense/dyadic_d8/construct",
-    "rational_solve/dense/dyadic_d8/prepared",
-    "rational_solve/dense/rational_d2/adapter",
-    "rational_solve/dense/rational_d2/construct",
-    "rational_solve/dense/rational_d2/prepared",
-    "rational_solve/dense/rational_d3/adapter",
-    "rational_solve/dense/rational_d3/construct",
-    "rational_solve/dense/rational_d3/prepared",
-    "rational_solve/dense/rational_d4/adapter",
-    "rational_solve/dense/rational_d4/construct",
-    "rational_solve/dense/rational_d4/prepared",
-    "rational_solve/dense/rational_d5/adapter",
-    "rational_solve/dense/rational_d5/construct",
-    "rational_solve/dense/rational_d5/prepared",
-    "rational_solve/dense/rational_d6/adapter",
-    "rational_solve/dense/rational_d6/construct",
-    "rational_solve/dense/rational_d6/prepared",
-    "rational_solve/dense/rational_d7/adapter",
-    "rational_solve/dense/rational_d7/construct",
-    "rational_solve/dense/rational_d7/prepared",
-    "rational_solve/dense/rational_d8/adapter",
-    "rational_solve/dense/rational_d8/construct",
-    "rational_solve/dense/rational_d8/prepared",
-    "rational_solve/diagonal/dyadic_d2/adapter",
-    "rational_solve/diagonal/dyadic_d2/construct",
-    "rational_solve/diagonal/dyadic_d2/prepared",
-    "rational_solve/diagonal/dyadic_d3/adapter",
-    "rational_solve/diagonal/dyadic_d3/construct",
-    "rational_solve/diagonal/dyadic_d3/prepared",
-    "rational_solve/diagonal/dyadic_d4/adapter",
-    "rational_solve/diagonal/dyadic_d4/construct",
-    "rational_solve/diagonal/dyadic_d4/prepared",
-    "rational_solve/diagonal/dyadic_d5/adapter",
-    "rational_solve/diagonal/dyadic_d5/construct",
-    "rational_solve/diagonal/dyadic_d5/prepared",
-    "rational_solve/diagonal/dyadic_d6/adapter",
-    "rational_solve/diagonal/dyadic_d6/construct",
-    "rational_solve/diagonal/dyadic_d6/prepared",
-    "rational_solve/diagonal/dyadic_d7/adapter",
-    "rational_solve/diagonal/dyadic_d7/construct",
-    "rational_solve/diagonal/dyadic_d7/prepared",
-    "rational_solve/diagonal/dyadic_d8/adapter",
-    "rational_solve/diagonal/dyadic_d8/construct",
-    "rational_solve/diagonal/dyadic_d8/prepared",
-    "rational_solve/diagonal/rational_d2/adapter",
-    "rational_solve/diagonal/rational_d2/construct",
-    "rational_solve/diagonal/rational_d2/prepared",
-    "rational_solve/diagonal/rational_d3/adapter",
-    "rational_solve/diagonal/rational_d3/construct",
-    "rational_solve/diagonal/rational_d3/prepared",
-    "rational_solve/diagonal/rational_d4/adapter",
-    "rational_solve/diagonal/rational_d4/construct",
-    "rational_solve/diagonal/rational_d4/prepared",
-    "rational_solve/diagonal/rational_d5/adapter",
-    "rational_solve/diagonal/rational_d5/construct",
-    "rational_solve/diagonal/rational_d5/prepared",
-    "rational_solve/diagonal/rational_d6/adapter",
-    "rational_solve/diagonal/rational_d6/construct",
-    "rational_solve/diagonal/rational_d6/prepared",
-    "rational_solve/diagonal/rational_d7/adapter",
-    "rational_solve/diagonal/rational_d7/construct",
-    "rational_solve/diagonal/rational_d7/prepared",
-    "rational_solve/diagonal/rational_d8/adapter",
-    "rational_solve/diagonal/rational_d8/construct",
-    "rational_solve/diagonal/rational_d8/prepared",
-    "rational_solve/lower/dyadic_d2/adapter",
-    "rational_solve/lower/dyadic_d2/construct",
-    "rational_solve/lower/dyadic_d2/prepared",
-    "rational_solve/lower/dyadic_d3/adapter",
-    "rational_solve/lower/dyadic_d3/construct",
-    "rational_solve/lower/dyadic_d3/prepared",
-    "rational_solve/lower/dyadic_d4/adapter",
-    "rational_solve/lower/dyadic_d4/construct",
-    "rational_solve/lower/dyadic_d4/prepared",
-    "rational_solve/lower/dyadic_d5/adapter",
-    "rational_solve/lower/dyadic_d5/construct",
-    "rational_solve/lower/dyadic_d5/prepared",
-    "rational_solve/lower/dyadic_d6/adapter",
-    "rational_solve/lower/dyadic_d6/construct",
-    "rational_solve/lower/dyadic_d6/prepared",
-    "rational_solve/lower/dyadic_d7/adapter",
-    "rational_solve/lower/dyadic_d7/construct",
-    "rational_solve/lower/dyadic_d7/prepared",
-    "rational_solve/lower/dyadic_d8/adapter",
-    "rational_solve/lower/dyadic_d8/construct",
-    "rational_solve/lower/dyadic_d8/prepared",
-    "rational_solve/lower/rational_d2/adapter",
-    "rational_solve/lower/rational_d2/construct",
-    "rational_solve/lower/rational_d2/prepared",
-    "rational_solve/lower/rational_d3/adapter",
-    "rational_solve/lower/rational_d3/construct",
-    "rational_solve/lower/rational_d3/prepared",
-    "rational_solve/lower/rational_d4/adapter",
-    "rational_solve/lower/rational_d4/construct",
-    "rational_solve/lower/rational_d4/prepared",
-    "rational_solve/lower/rational_d5/adapter",
-    "rational_solve/lower/rational_d5/construct",
-    "rational_solve/lower/rational_d5/prepared",
-    "rational_solve/lower/rational_d6/adapter",
-    "rational_solve/lower/rational_d6/construct",
-    "rational_solve/lower/rational_d6/prepared",
-    "rational_solve/lower/rational_d7/adapter",
-    "rational_solve/lower/rational_d7/construct",
-    "rational_solve/lower/rational_d7/prepared",
-    "rational_solve/lower/rational_d8/adapter",
-    "rational_solve/lower/rational_d8/construct",
-    "rational_solve/lower/rational_d8/prepared",
-    "rational_solve/permuted_lower/dyadic_d2/adapter",
-    "rational_solve/permuted_lower/dyadic_d2/construct",
-    "rational_solve/permuted_lower/dyadic_d2/prepared",
-    "rational_solve/permuted_lower/dyadic_d3/adapter",
-    "rational_solve/permuted_lower/dyadic_d3/construct",
-    "rational_solve/permuted_lower/dyadic_d3/prepared",
-    "rational_solve/permuted_lower/dyadic_d4/adapter",
-    "rational_solve/permuted_lower/dyadic_d4/construct",
-    "rational_solve/permuted_lower/dyadic_d4/prepared",
-    "rational_solve/permuted_lower/dyadic_d5/adapter",
-    "rational_solve/permuted_lower/dyadic_d5/construct",
-    "rational_solve/permuted_lower/dyadic_d5/prepared",
-    "rational_solve/permuted_lower/dyadic_d6/adapter",
-    "rational_solve/permuted_lower/dyadic_d6/construct",
-    "rational_solve/permuted_lower/dyadic_d6/prepared",
-    "rational_solve/permuted_lower/dyadic_d7/adapter",
-    "rational_solve/permuted_lower/dyadic_d7/construct",
-    "rational_solve/permuted_lower/dyadic_d7/prepared",
-    "rational_solve/permuted_lower/dyadic_d8/adapter",
-    "rational_solve/permuted_lower/dyadic_d8/construct",
-    "rational_solve/permuted_lower/dyadic_d8/prepared",
-    "rational_solve/permuted_lower/rational_d2/adapter",
-    "rational_solve/permuted_lower/rational_d2/construct",
-    "rational_solve/permuted_lower/rational_d2/prepared",
-    "rational_solve/permuted_lower/rational_d3/adapter",
-    "rational_solve/permuted_lower/rational_d3/construct",
-    "rational_solve/permuted_lower/rational_d3/prepared",
-    "rational_solve/permuted_lower/rational_d4/adapter",
-    "rational_solve/permuted_lower/rational_d4/construct",
-    "rational_solve/permuted_lower/rational_d4/prepared",
-    "rational_solve/permuted_lower/rational_d5/adapter",
-    "rational_solve/permuted_lower/rational_d5/construct",
-    "rational_solve/permuted_lower/rational_d5/prepared",
-    "rational_solve/permuted_lower/rational_d6/adapter",
-    "rational_solve/permuted_lower/rational_d6/construct",
-    "rational_solve/permuted_lower/rational_d6/prepared",
-    "rational_solve/permuted_lower/rational_d7/adapter",
-    "rational_solve/permuted_lower/rational_d7/construct",
-    "rational_solve/permuted_lower/rational_d7/prepared",
-    "rational_solve/permuted_lower/rational_d8/adapter",
-    "rational_solve/permuted_lower/rational_d8/construct",
-    "rational_solve/permuted_lower/rational_d8/prepared",
-    "rational_solve/permuted_upper/dyadic_d2/adapter",
-    "rational_solve/permuted_upper/dyadic_d2/construct",
-    "rational_solve/permuted_upper/dyadic_d2/prepared",
-    "rational_solve/permuted_upper/dyadic_d3/adapter",
-    "rational_solve/permuted_upper/dyadic_d3/construct",
-    "rational_solve/permuted_upper/dyadic_d3/prepared",
-    "rational_solve/permuted_upper/dyadic_d4/adapter",
-    "rational_solve/permuted_upper/dyadic_d4/construct",
-    "rational_solve/permuted_upper/dyadic_d4/prepared",
-    "rational_solve/permuted_upper/dyadic_d5/adapter",
-    "rational_solve/permuted_upper/dyadic_d5/construct",
-    "rational_solve/permuted_upper/dyadic_d5/prepared",
-    "rational_solve/permuted_upper/dyadic_d6/adapter",
-    "rational_solve/permuted_upper/dyadic_d6/construct",
-    "rational_solve/permuted_upper/dyadic_d6/prepared",
-    "rational_solve/permuted_upper/dyadic_d7/adapter",
-    "rational_solve/permuted_upper/dyadic_d7/construct",
-    "rational_solve/permuted_upper/dyadic_d7/prepared",
-    "rational_solve/permuted_upper/dyadic_d8/adapter",
-    "rational_solve/permuted_upper/dyadic_d8/construct",
-    "rational_solve/permuted_upper/dyadic_d8/prepared",
-    "rational_solve/permuted_upper/rational_d2/adapter",
-    "rational_solve/permuted_upper/rational_d2/construct",
-    "rational_solve/permuted_upper/rational_d2/prepared",
-    "rational_solve/permuted_upper/rational_d3/adapter",
-    "rational_solve/permuted_upper/rational_d3/construct",
-    "rational_solve/permuted_upper/rational_d3/prepared",
-    "rational_solve/permuted_upper/rational_d4/adapter",
-    "rational_solve/permuted_upper/rational_d4/construct",
-    "rational_solve/permuted_upper/rational_d4/prepared",
-    "rational_solve/permuted_upper/rational_d5/adapter",
-    "rational_solve/permuted_upper/rational_d5/construct",
-    "rational_solve/permuted_upper/rational_d5/prepared",
-    "rational_solve/permuted_upper/rational_d6/adapter",
-    "rational_solve/permuted_upper/rational_d6/construct",
-    "rational_solve/permuted_upper/rational_d6/prepared",
-    "rational_solve/permuted_upper/rational_d7/adapter",
-    "rational_solve/permuted_upper/rational_d7/construct",
-    "rational_solve/permuted_upper/rational_d7/prepared",
-    "rational_solve/permuted_upper/rational_d8/adapter",
-    "rational_solve/permuted_upper/rational_d8/construct",
-    "rational_solve/permuted_upper/rational_d8/prepared",
-    "rational_solve/sparse/dyadic_d2/adapter",
-    "rational_solve/sparse/dyadic_d2/construct",
-    "rational_solve/sparse/dyadic_d2/prepared",
-    "rational_solve/sparse/dyadic_d3/adapter",
-    "rational_solve/sparse/dyadic_d3/construct",
-    "rational_solve/sparse/dyadic_d3/prepared",
-    "rational_solve/sparse/dyadic_d4/adapter",
-    "rational_solve/sparse/dyadic_d4/construct",
-    "rational_solve/sparse/dyadic_d4/prepared",
-    "rational_solve/sparse/dyadic_d5/adapter",
-    "rational_solve/sparse/dyadic_d5/construct",
-    "rational_solve/sparse/dyadic_d5/prepared",
-    "rational_solve/sparse/dyadic_d6/adapter",
-    "rational_solve/sparse/dyadic_d6/construct",
-    "rational_solve/sparse/dyadic_d6/prepared",
-    "rational_solve/sparse/dyadic_d7/adapter",
-    "rational_solve/sparse/dyadic_d7/construct",
-    "rational_solve/sparse/dyadic_d7/prepared",
-    "rational_solve/sparse/dyadic_d8/adapter",
-    "rational_solve/sparse/dyadic_d8/construct",
-    "rational_solve/sparse/dyadic_d8/prepared",
-    "rational_solve/sparse/rational_d2/adapter",
-    "rational_solve/sparse/rational_d2/construct",
-    "rational_solve/sparse/rational_d2/prepared",
-    "rational_solve/sparse/rational_d3/adapter",
-    "rational_solve/sparse/rational_d3/construct",
-    "rational_solve/sparse/rational_d3/prepared",
-    "rational_solve/sparse/rational_d4/adapter",
-    "rational_solve/sparse/rational_d4/construct",
-    "rational_solve/sparse/rational_d4/prepared",
-    "rational_solve/sparse/rational_d5/adapter",
-    "rational_solve/sparse/rational_d5/construct",
-    "rational_solve/sparse/rational_d5/prepared",
-    "rational_solve/sparse/rational_d6/adapter",
-    "rational_solve/sparse/rational_d6/construct",
-    "rational_solve/sparse/rational_d6/prepared",
-    "rational_solve/sparse/rational_d7/adapter",
-    "rational_solve/sparse/rational_d7/construct",
-    "rational_solve/sparse/rational_d7/prepared",
-    "rational_solve/sparse/rational_d8/adapter",
-    "rational_solve/sparse/rational_d8/construct",
-    "rational_solve/sparse/rational_d8/prepared",
-    "rational_solve/upper/dyadic_d2/adapter",
-    "rational_solve/upper/dyadic_d2/construct",
-    "rational_solve/upper/dyadic_d2/prepared",
-    "rational_solve/upper/dyadic_d3/adapter",
-    "rational_solve/upper/dyadic_d3/construct",
-    "rational_solve/upper/dyadic_d3/prepared",
-    "rational_solve/upper/dyadic_d4/adapter",
-    "rational_solve/upper/dyadic_d4/construct",
-    "rational_solve/upper/dyadic_d4/prepared",
-    "rational_solve/upper/dyadic_d5/adapter",
-    "rational_solve/upper/dyadic_d5/construct",
-    "rational_solve/upper/dyadic_d5/prepared",
-    "rational_solve/upper/dyadic_d6/adapter",
-    "rational_solve/upper/dyadic_d6/construct",
-    "rational_solve/upper/dyadic_d6/prepared",
-    "rational_solve/upper/dyadic_d7/adapter",
-    "rational_solve/upper/dyadic_d7/construct",
-    "rational_solve/upper/dyadic_d7/prepared",
-    "rational_solve/upper/dyadic_d8/adapter",
-    "rational_solve/upper/dyadic_d8/construct",
-    "rational_solve/upper/dyadic_d8/prepared",
-    "rational_solve/upper/rational_d2/adapter",
-    "rational_solve/upper/rational_d2/construct",
-    "rational_solve/upper/rational_d2/prepared",
-    "rational_solve/upper/rational_d3/adapter",
-    "rational_solve/upper/rational_d3/construct",
-    "rational_solve/upper/rational_d3/prepared",
-    "rational_solve/upper/rational_d4/adapter",
-    "rational_solve/upper/rational_d4/construct",
-    "rational_solve/upper/rational_d4/prepared",
-    "rational_solve/upper/rational_d5/adapter",
-    "rational_solve/upper/rational_d5/construct",
-    "rational_solve/upper/rational_d5/prepared",
-    "rational_solve/upper/rational_d6/adapter",
-    "rational_solve/upper/rational_d6/construct",
-    "rational_solve/upper/rational_d6/prepared",
-    "rational_solve/upper/rational_d7/adapter",
-    "rational_solve/upper/rational_d7/construct",
-    "rational_solve/upper/rational_d7/prepared",
-    "rational_solve/upper/rational_d8/adapter",
-    "rational_solve/upper/rational_d8/construct",
-    "rational_solve/upper/rational_d8/prepared",
 ]
 
-[[phases.current.discovery.suites]]
-name = "public-default"
-command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "current-public-default", "list" ]
+[[suites.measurement.phases.baseline.discovery.suites]]
+name = "rational-dot"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "rational-dot",
+    "list",
+]
 timeout = 14400
 
-[[phases.current.discovery.suites]]
-name = "public-exact"
-command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "current-public-exact", "list" ]
+[suites.measurement.phases.current]
+command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "rational-dot" ]
+gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate-rational-dot-current" ]
+
+[suites.measurement.phases.current.environment]
+CARGO_TARGET_DIR = "target/build"
+CRITERION_HOME = "target/criterion"
+RUSTUP_TOOLCHAIN = "1.99.1"
+RUSTFLAGS = "--cap-lints=warn"
+CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn"
+RUSTC = "rustc"
+RUSTC_WRAPPER = ""
+RUSTC_WORKSPACE_WRAPPER = ""
+CARGO_BUILD_BUILD_DIR = "target/build/intermediates"
+
+[suites.measurement.phases.current.discovery]
+required = [
+    "rational_dot/cancellation/d14/prepared",
+    "rational_dot/cancellation/d14/slice",
+    "rational_dot/cancellation/d2/prepared",
+    "rational_dot/cancellation/d2/slice",
+    "rational_dot/cancellation/d22/prepared",
+    "rational_dot/cancellation/d22/slice",
+    "rational_dot/cancellation/d3/prepared",
+    "rational_dot/cancellation/d3/slice",
+    "rational_dot/cancellation/d4/prepared",
+    "rational_dot/cancellation/d4/slice",
+    "rational_dot/cancellation/d5/prepared",
+    "rational_dot/cancellation/d5/slice",
+    "rational_dot/cancellation/d6/prepared",
+    "rational_dot/cancellation/d6/slice",
+    "rational_dot/cancellation/d7/prepared",
+    "rational_dot/cancellation/d7/slice",
+    "rational_dot/cancellation/d8/prepared",
+    "rational_dot/cancellation/d8/slice",
+    "rational_dot/large/d14/prepared",
+    "rational_dot/large/d14/slice",
+    "rational_dot/large/d2/prepared",
+    "rational_dot/large/d2/slice",
+    "rational_dot/large/d22/prepared",
+    "rational_dot/large/d22/slice",
+    "rational_dot/large/d3/prepared",
+    "rational_dot/large/d3/slice",
+    "rational_dot/large/d4/prepared",
+    "rational_dot/large/d4/slice",
+    "rational_dot/large/d5/prepared",
+    "rational_dot/large/d5/slice",
+    "rational_dot/large/d6/prepared",
+    "rational_dot/large/d6/slice",
+    "rational_dot/large/d7/prepared",
+    "rational_dot/large/d7/slice",
+    "rational_dot/large/d8/prepared",
+    "rational_dot/large/d8/slice",
+    "rational_dot/non_dyadic/d14/prepared",
+    "rational_dot/non_dyadic/d14/slice",
+    "rational_dot/non_dyadic/d2/prepared",
+    "rational_dot/non_dyadic/d2/slice",
+    "rational_dot/non_dyadic/d22/prepared",
+    "rational_dot/non_dyadic/d22/slice",
+    "rational_dot/non_dyadic/d3/prepared",
+    "rational_dot/non_dyadic/d3/slice",
+    "rational_dot/non_dyadic/d4/prepared",
+    "rational_dot/non_dyadic/d4/slice",
+    "rational_dot/non_dyadic/d5/prepared",
+    "rational_dot/non_dyadic/d5/slice",
+    "rational_dot/non_dyadic/d6/prepared",
+    "rational_dot/non_dyadic/d6/slice",
+    "rational_dot/non_dyadic/d7/prepared",
+    "rational_dot/non_dyadic/d7/slice",
+    "rational_dot/non_dyadic/d8/prepared",
+    "rational_dot/non_dyadic/d8/slice",
+]
+
+[[suites.measurement.phases.current.discovery.suites]]
+name = "rational-dot"
+command = [
+    "just",
+    "--justfile",
+    "tooling/performance.just",
+    "--working-directory",
+    ".",
+    "rational-dot",
+    "list",
+]
 timeout = 14400
 
-[[series]]
+[[suites.measurement.series]]
 name = "la-stack baseline"
 phase = "baseline"
-select = { include = [ "*" ], exclude = [ "d*/nalgebra_*", "d*/faer_*" ] }
 
-[[series]]
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]
+
+[[suites.measurement.series]]
 name = "la-stack current"
 phase = "current"
-select = { include = [ "*" ], exclude = [ "d*/nalgebra_*", "d*/faer_*" ] }
 
-[[series]]
-name = "nalgebra"
-phase = "baseline"
-[series.rows]
-"d2/la_stack_lu_solve" = "d2/nalgebra_lu_solve"
-"d3/la_stack_lu_solve" = "d3/nalgebra_lu_solve"
-"d4/la_stack_lu_solve" = "d4/nalgebra_lu_solve"
-"d5/la_stack_lu_solve" = "d5/nalgebra_lu_solve"
-"d8/la_stack_lu_solve" = "d8/nalgebra_lu_solve"
-"d16/la_stack_lu_solve" = "d16/nalgebra_lu_solve"
-"d32/la_stack_lu_solve" = "d32/nalgebra_lu_solve"
-"d64/la_stack_lu_solve" = "d64/nalgebra_lu_solve"
-
-[[series]]
-name = "faer"
-phase = "baseline"
-[series.rows]
-"d2/la_stack_lu_solve" = "d2/faer_lu_solve"
-"d3/la_stack_lu_solve" = "d3/faer_lu_solve"
-"d4/la_stack_lu_solve" = "d4/faer_lu_solve"
-"d5/la_stack_lu_solve" = "d5/faer_lu_solve"
-"d8/la_stack_lu_solve" = "d8/faer_lu_solve"
-"d16/la_stack_lu_solve" = "d16/faer_lu_solve"
-"d32/la_stack_lu_solve" = "d32/faer_lu_solve"
-"d64/la_stack_lu_solve" = "d64/faer_lu_solve"
+[suites.measurement.series.select]
+include = [ "*" ]
+exclude = [ "d*/nalgebra_*", "d*/faer_*" ]

@@ -165,7 +165,7 @@ inherit the root workspace lints and share the lockfile and target directory.
 The [Benchmarking guide](BENCHMARKING.md) owns benchmark commands, methodology,
 baselines, output locations, and report promotion. The [Tooling guide](../tooling/README.md)
 owns the performance declaration inventory, consumer-test scope, and recipe ownership.
-The pinned published `research-repo-tools` dependency
+The pinned `research-repo-tools` dependency
 owns changelog generation, normalization, minor-series archiving, note lookup,
 and tag preparation through its CLI. Consumer identity and dependency-body policy
 stay in `[tool.research-repo-tools.changelog]` in `pyproject.toml`, with
@@ -192,9 +192,9 @@ and review policy belong in [Security Checks](../SECURITY.md#security-checks).
 The shared package also owns managed tool installation, verification, and update
 implementation. `.python-version`, `rust-toolchain.toml`, and `pyproject.toml`
 own consumer declarations; `tests/tooling/test_toolchain_integration.py` checks
-the exact published pin, registry lock, installed version and distribution hashes,
+the exact supplier source, lock and installed identity,
 alongside actual recipe sequencing and native managed execution. The
-`.github/actions/setup-tools/action.yml` composite synchronizes the locked PyPI
+`.github/actions/setup-tools/action.yml` composite synchronizes the locked
 package and exports verified paths for CI. Release callers disable its caches.
 
 `.github/actions-allowlist.json` owns approved action identities for local
@@ -232,24 +232,33 @@ Hosted Dependabot approvals use the pinned shared
 GitHub workflow; the [rollout guide](dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
 owns settings and deployment verification.
 
-`tooling/criterion-inventory.toml` declares hosted la-stack-only list commands and
+`tooling/criterion-inventory.toml` declares optional saved-baseline list commands and
 independent public API coverage. `tooling/criterion-saved.toml` declares
 complete saved-sample requirements. Shared discovery and saved-sample APIs own
 inventory parsing and exact raw-file verification. The shared package also owns
 suite-scoped verification, provenance, packaging and complete archive assembly.
-The release workflow retains the feature matrix, native commands, job budgets
-and artifact handoff; its regression and archive tests live in
-`tests/tooling/test_release_baseline.py`.
+Legacy archive and saved-sample regressions live in
+`tests/tooling/test_release_baseline.py`; new release archives reuse accepted local evidence.
 There is no repository-specific suite verifier or archive merge implementation.
 
 `tooling/performance.just` declares native Cargo discovery, correctness gates
 and measurements. `tooling/measurements/{full,non-exact}.toml` declares the
-minimum release, complete sampling, independent required cases, original
-baseline-phase peers, sources, harness, probes, environment and compatibility.
+minimum release, complete sampling, independent required cases, availability,
+phase-owned peers, sources, harness, probes, environment and compatibility.
 `tooling/performance-policy.toml` remains the independent scientific catalog
-used by consumer acceptance tests and the local budget display. Full acquisition
-adds only 16 peer LU-and-solve cases in the baseline phase; the non-exact
-diagnostic retains broader peers. Runtime commands consume the shared schemas.
+used by consumer acceptance tests. The schema-6 full plan schedules one sequential trial and groups paired LU
+measurements, shared default/exact workloads and four API-introduction suites.
+It includes 16 LU peer cases on each phase and selects current-phase peers for
+README ratios; the non-exact diagnostic retains broader baseline peers.
+Runtime commands consume the shared schemas.
+The root `dependency-sources.toml` declares Python/Cargo release ownership for
+shared dependency validation and is included in benchmark harness inputs.
+The [workload review](dev/benchmark-workload-review.md) records the scientific
+selection argument, supplier contract findings and remaining adoption evidence;
+it does not replace the independent case catalog.
+The [candidate review](dev/benchmark-candidate-review.md) records the independent
+release-ordering and trust review for resume and acquisition reuse. The
+release guide owns the implemented operational procedure.
 
 `tooling/performance-report.toml` binds release eligibility to the full
 measurement declaration and owns the current report and immutable history.
@@ -263,7 +272,13 @@ All views require explicit input ownership.
 the measurement, report and README policies. Installed `performance prepare`,
 `release` and `readme` commands own those separately retriable phases.
 The former measurement/publication implementations and root `scripts/` directory are retired.
-The installed CLI owns orchestration, validation and publication transactions.
+Shared public APIs own acquisition, validation and publication transactions.
+`tooling/release_candidate.py` owns thin repository orchestration: immutable
+owner records outside the checkout, pre-promotion capture, named final acceptance,
+original archive derivation, exact draft staging and authenticated transfer.
+It does not implement a comparison engine, archive parser or CI verifier.
+`tests/tooling/test_candidate_transfer.py` exercises actual privileged workflow
+blocks and exact selection/credential boundaries.
 Working-tree measurements now include nonignored untracked regular files.
 `tests/tooling/test_performance_workflow.py` exercises actual recipes and
 scientific policy. Shared failure matrices remain upstream. The
@@ -285,9 +300,6 @@ validates separately. `tests/tooling/test_semgrep_integration.py` exercises the
 locked fixture command and its failure statuses. Git-ignored dependencies, environments, caches, and build
 outputs remain outside production scans.
 
-`.github/actions/prepare-release-benchmarks/action.yml` groups tool installation,
-input validation, and inventory under the release workflow's shared setup timeout.
-
 `.github/workflows/ci.yml` owns native checks, default/exact Cargo dry-runs and
 signed main-push validation evidence. `tooling/release-evidence.toml` supplies
 native/Cargo and signer policy to the installed verifier;
@@ -295,8 +307,12 @@ native/Cargo and signer policy to the installed verifier;
 `tooling/release-assets.toml` declares the draft-target identity for the installed
 `release-assets` recipe. Privileged benchmark jobs continue to use installed
 asset commands from `RUNNER_TEMP`, without executing checkout code.
-`.github/workflows/publish-crates.yml` owns the reviewed-release event, reuse of
-that exact CI attempt and artifact, deployment approval and OIDC upload. The publishing declaration
+`.github/workflows/release-benchmarks.yml` separates no-checkout draft retrieval,
+read-only candidate verification and no-checkout attachment. It does not measure.
+`.github/workflows/publish-crates.yml` consumes a second maintainer dispatch with
+independent canonical-asset and full acceptance assertions. It owns approval,
+the immutable approval receipt, explicit native-evidence renewal, revalidation
+and OIDC upload. The publishing declaration
 in `pyproject.toml` selects `la-stack`, native checks and the Criterion asset;
 shared release gates own generic identity, ancestry and registry checks.
 `tests/tooling/test_release_publishing.py` owns installed-package consumer checks

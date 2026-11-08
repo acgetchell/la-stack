@@ -272,6 +272,15 @@ wheels = [
 ]
 
 [[package]]
+name = "execnet"
+version = "2.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/89/780e11f9588d9e7128a3f87788354c7946a9cbb1401ad38a48c4db9a4f07/execnet-2.1.2.tar.gz", hash = "sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd", size = 166622, upload-time = "2025-11-12T09:56:37.75Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/84/02fc1827e8cdded4aa65baef11296a9bbe595c474f0d6d758af082d849fd/execnet-2.1.2-py3-none-any.whl", hash = "sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec", size = 40708, upload-time = "2025-11-12T09:56:36.333Z" },
+]
+
+[[package]]
 name = "face"
 version = "26.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -408,6 +417,7 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "actionlint-py" },
+    { name = "pytest-xdist" },
     { name = "research-repo-tools", extra = ["python-tools", "semgrep"] },
     { name = "shellcheck-py" },
     { name = "shfmt-py" },
@@ -422,12 +432,13 @@ tooling = [
 [package.metadata.requires-dev]
 dev = [
     { name = "actionlint-py", specifier = "==1.7.12.25" },
-    { name = "research-repo-tools", extras = ["python-tools", "semgrep"], specifier = "==0.2.6" },
+    { name = "pytest-xdist", specifier = "==3.8.0" },
+    { name = "research-repo-tools", extras = ["python-tools", "semgrep"], git = "https://github.com/acgetchell/research-repo-tools?rev=055353c630604b1ae3438c1eaf534ba85e067a7e" },
     { name = "shellcheck-py", specifier = "==0.11.0.1" },
     { name = "shfmt-py", specifier = "==4.2.0" },
     { name = "yamllint", specifier = "==1.38.0" },
 ]
-tooling = [{ name = "research-repo-tools", extras = ["python-tools", "semgrep"], specifier = "==0.2.6" }]
+tooling = [{ name = "research-repo-tools", extras = ["python-tools", "semgrep"], git = "https://github.com/acgetchell/research-repo-tools?rev=055353c630604b1ae3438c1eaf534ba85e067a7e" }]
 
 [[package]]
 name = "markdown-it-py"
@@ -812,6 +823,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pytest-xdist"
+version = "3.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "execnet" },
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/b4/439b179d1ff526791eb921115fca8e44e596a13efeda518b9d845a619450/pytest_xdist-3.8.0.tar.gz", hash = "sha256:7e578125ec9bc6050861aa93f2d59f1d8d085595d6551c2c90b6f4fad8d3a9f1", size = 88069, upload-time = "2025-07-01T13:30:59.346Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/31/d4e37e9e550c2b92a9cbc2e4d0b7420a27224968580b5a447f420847c975/pytest_xdist-3.8.0-py3-none-any.whl", hash = "sha256:202ca578cfeb7370784a8c33d6d05bc6e13b4f25b5053c30a152269fd10f0b88", size = 46396, upload-time = "2025-07-01T13:30:56.632Z" },
+]
+
+[[package]]
 name = "python-dotenv"
 version = "1.2.4"
 source = { registry = "https://pypi.org/simple" }
@@ -876,15 +900,11 @@ wheels = [
 [[package]]
 name = "research-repo-tools"
 version = "0.2.6"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/acgetchell/research-repo-tools?rev=055353c630604b1ae3438c1eaf534ba85e067a7e#055353c630604b1ae3438c1eaf534ba85e067a7e" }
 dependencies = [
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "rust-just" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/cd/96/73185e1070954e856cc2ca3a99141bbc17e487950717fcff5859587c6f7b/research_repo_tools-0.2.6.tar.gz", hash = "sha256:dd826a916f037f47b925ca3268adc76d415a8561547bedda348a67f4f2e2e065", size = 1209707, upload-time = "2026-11-05T15:57:52.368Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f8/8e/e712f3e57bc1141f2dd89624aeb106a99200c3bc7611c7ce1686eb0a5fb3/research_repo_tools-0.2.6-py3-none-any.whl", hash = "sha256:89ebae476b5bde0cffc321603ed1d867796e3276a7fb88c7dc1f7de53a13e7c2", size = 496754, upload-time = "2026-11-05T15:57:50.732Z" },
 ]
 
 [package.optional-dependencies]
@@ -1137,15 +1157,15 @@ wheels = [
 
 [[package]]
 name = "sse-starlette"
-version = "3.6.0"
+version = "3.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "starlette" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/71/7f/3b8ec4f27833f7b8c270a3ef960b6d435e1065439847bc0fcd1e58ae898b/sse_starlette-3.6.0.tar.gz", hash = "sha256:623151d6c20dc0eebf1b3379c27faae91fff883bac7ab6665f16f46440a88b3a", size = 41174, upload-time = "2026-10-25T20:31:59.372Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/41/43/a232e3cd804293bd4f6d01e8895bc0f6f83ea148d712baf9d783c7d93d23/sse_starlette-3.7.0.tar.gz", hash = "sha256:326416da2ab52e9a41b3f409d3ff897eda45aa68c9f3b7b17d0913aab8d219c3", size = 43869, upload-time = "2026-11-07T11:15:49.389Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cf/49/35053078cdfcf639237e8bee6dc6f34f1b3a3cc8d01800a1e213e1660ff6/sse_starlette-3.6.0-py3-none-any.whl", hash = "sha256:e4dfa4d237d2712cb2b4d4918eda9b457cd6b44bbecdc838af75de836565bafd", size = 17985, upload-time = "2026-10-25T20:31:58.134Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/11/25cabac0a24fa76f58637d8671b549c90d818d69d26beecf0c59a3b186e0/sse_starlette-3.7.0-py3-none-any.whl", hash = "sha256:f1d3136caa12d129284fca3d2ded79bc9af943320b6472712955fea52a6d3eea", size = 18432, upload-time = "2026-11-07T11:15:47.86Z" },
 ]
 
 [[package]]

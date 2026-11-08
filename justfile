@@ -8,6 +8,8 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 _run := "uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain run --"
 
+_pytest_parallel := "-n " + quote(env("LA_STACK_TEST_WORKERS", "4")) + " --dist worksteal --max-worker-restart 0"
+
 # Semgrep misreads Python 3.15's positive RLIM_INFINITY on Linux.
 # Keep its inherited stack finite until semgrep/semgrep#11979 is fixed.
 semgrep_stack_limit := if os() == "linux" { 'if [[ "$(ulimit -Hs)" == unlimited ]]; then ulimit -s 1048576; fi;' } else { "" }
@@ -51,6 +53,15 @@ _ensure-uv:
 
 _ensure-yamllint: _ensure-uv
     uv run --locked yamllint --version >/dev/null
+
+# Isolate the supplier runtime from the observed candidate checkout.
+[positional-arguments]
+[private]
+[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e", "python", "-I")]
+_release-candidate *args:
+    import runpy
+    from pathlib import Path
+    runpy.run_path(str(Path.cwd() / "tooling/release_candidate.py"), run_name="__main__")
 
 # Require the GitHub release title and body to match the generated notes.
 [private]
@@ -339,6 +350,11 @@ markdown-ci: markdown-check spell-check
 markdown-fix: tools-check
     {{ _run }} research-repo-tools files run {{ _markdown_inputs }} -- rumdl check --fix
 
+# Retry original local receipt retention without measuring or publishing reports.
+[positional-arguments]
+performance-capture owner *args:
+    uv run --locked --no-sync python -I tooling/release_candidate.py capture "$@"
+
 # Render the retained release report offline, with independent eligibility checks.
 performance-doc: python-sync
     {{ _run }} uv run --locked research-repo-tools performance promote tooling/performance-report.toml
@@ -371,14 +387,28 @@ performance-readme current_tag="" current_revision="" baseline_tag="" baseline_r
     {{ _run }} uv run --locked --no-sync research-repo-tools performance readme tooling/performance-release.toml {{ if current_tag + current_revision + baseline_tag + baseline_revision == "" { "" } else { "--current-release " + quote(current_tag) + " --current-revision " + quote(current_revision) + " --baseline-release " + quote(baseline_tag) + " --baseline-revision " + quote(baseline_revision) } }}
 
 # Fetch tags, prepare source assertions, measure, retain, and promote the release report.
-performance-release: _ensure-gh python-sync
+performance-release progress="human" cadence="300" checkpoint="target/bench-reports/full/checkpoint" mode="fresh": _ensure-gh python-sync
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p target/bench-reports/full
     started=$(date +%s)
     trap 'status=$?; elapsed=$(($(date +%s) - started)); printf "performance-release: %s seconds; exit %s\\n" "$elapsed" "$status" | tee target/bench-reports/full/runtime.txt' EXIT
-    uv run --locked --no-sync research-repo-tools performance prepare tooling/performance-release.toml --fetch-tags --allow-git-mutations
-    {{ _run }} uv run --locked research-repo-tools performance release tooling/performance-release.toml --allow-git-mutations
+    args=(--checkpoint {{ quote(checkpoint) }})
+    case {{ quote(mode) }} in
+        fresh)
+            if [[ -e {{ quote(checkpoint) }} ]]; then
+                echo "Checkpoint exists; use performance-resume or select a new checkpoint." >&2
+                exit 2
+            fi
+            uv run --locked --no-sync research-repo-tools performance prepare tooling/performance-release.toml --fetch-tags --allow-git-mutations --release-intent
+            ;;
+        resume) args+=(--resume) ;;
+        *) echo "mode must be fresh or resume" >&2; exit 2 ;;
+    esac
+    {{ _run }} uv run --locked --no-sync python -I tooling/release_candidate.py acquire --progress {{ quote(progress) }} --progress-cadence {{ quote(cadence) }} "${args[@]}"
+
+# Revalidate a checkpoint and acquire only eligible missing work, reusing saved preparation.
+performance-resume checkpoint="target/bench-reports/full/checkpoint" progress="human" cadence="300": (performance-release progress cadence checkpoint "resume")
 
 # Render a named metric/statistic/axis view from explicitly retained or scratch inputs.
 plot-vs-linalg current_tag current_revision baseline_tag baseline_revision view="lu_solve-median-linear" input="retained": python-sync
@@ -416,9 +446,12 @@ python-sync: _ensure-uv
 python-typecheck: python-sync
     uv run --locked research-repo-tools python typecheck
 
+# Derive the already accepted original acquisition without measuring or building.
+release-archive owner selection="reviewed": (_release-candidate "archive" owner "--selection" selection)
+
 # Preflight, upload or verify a captured draft target with an isolated trusted runtime.
 [positional-arguments]
-[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.6", "python", "-I")]
+[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e", "python", "-I")]
 release-assets operation tag *args:
     import sys
     from pathlib import Path
@@ -428,10 +461,23 @@ release-assets operation tag *args:
     commit = run_git_command(["--no-pager", "rev-parse", "HEAD"], cwd=root, timeout=30).stdout.strip()
     sys.exit(main(["release", "assets", sys.argv[1], "tooling/release-assets.toml", "--checkout", str(root), "--commit", commit, "--tag", sys.argv[2], *sys.argv[3:]]))
 
+# Verify upstream tooling publication before release preparation or acquisition.
+release-dependencies:
+    uv run --locked --no-sync research-repo-tools release dependencies
+
+# Bind the original local acquisition to clean HEAD and signed native CI.
+release-evidence owner selection="reviewed": (_release-candidate "verify" owner "--selection" selection)
+
+# Require the release event, reviewed commit, native checks, assets, and notes.
+release-gate tag:
+    uv run --locked --no-sync research-repo-tools release gate {{ quote(tag) }}
+    gh api "repos/acgetchell/la-stack/releases/$(jq -er '.release.id' "$GITHUB_EVENT_PATH")" | jq -e '.immutable == true' >/dev/null
+    just _release-notes-check {{ quote(tag) }}
+
 # Verify signed native/Cargo evidence; accept --expected PATH and --github-output PATH.
 [positional-arguments]
-[script("uvx", "--python", "3.15", "--from", "research-repo-tools==0.2.6", "python", "-I")]
-release-evidence *args:
+[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e", "python", "-I")]
+release-native-evidence *args:
     import sys
     import tempfile
     from pathlib import Path
@@ -443,12 +489,6 @@ release-evidence *args:
     with tempfile.TemporaryDirectory(prefix="la-stack-release-evidence-") as temporary:
         sys.exit(main(["release", "evidence", "verify", "tooling/release-evidence.toml", "--checkout", str(root), "--commit", commit, "--version", read_package_info(root).version, "--output", str(Path(temporary).resolve() / "selection.json"), *sys.argv[1:]]))
 
-# Require the release event, reviewed commit, native checks, assets, and notes.
-release-gate tag:
-    uv run --locked --no-sync research-repo-tools release gate {{ quote(tag) }}
-    gh api "repos/acgetchell/la-stack/releases/$(jq -er '.release.id' "$GITHUB_EVENT_PATH")" | jq -e '.immutable == true' >/dev/null
-    just _release-notes-check {{ quote(tag) }}
-
 # Print release notes from the root changelog or a completed minor archive.
 release-notes tag: python-sync
     uv run --locked --group dev research-repo-tools changelog notes {{ quote(tag) }}
@@ -458,9 +498,20 @@ release-package:
     {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run
     {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run --features exact
 
+# Freeze the canonical attached archive ID and bytes before publishing the draft.
+release-publication owner selection="reviewed": (_release-candidate "seal" owner "--selection" selection)
+
 # Approve the benchmark-equipped draft as the authenticated maintainer.
-release-publish tag: (_release-notes-check tag) release-evidence
+release-publish tag owner selection="reviewed": (_release-notes-check tag) (release-evidence owner selection) (release-publication owner selection)
     uv run --locked --no-sync research-repo-tools release publish {{ quote(tag) }} --approve
+
+# Verify the maintainer's dispatch input; never acquire timings or build packages.
+[positional-arguments]
+release-receive destination *args:
+    just _release-candidate receive "$@"
+
+# Stage accepted inert assets and print the independently retained dispatch record.
+release-stage owner selection="reviewed": (_release-candidate "stage" owner "--selection" selection)
 
 # Verify the published GitHub release, required assets, and exact crates.io version.
 release-verify tag:
@@ -559,7 +610,7 @@ test-integration-compile: tools-check
 
 # Run Python consumer integration and benchmark-policy tests.
 test-python: tools-check python-sync
-    {{ semgrep_stack_limit }} {{ _run }} uv run --locked pytest -q
+    {{ semgrep_stack_limit }} {{ _run }} uv run --locked pytest -q {{ _pytest_parallel }} --durations=20
 
 # Run all runnable Rust tests and both doctest configurations.
 test-rust: test-rust-ci test-doc test-doc-exact

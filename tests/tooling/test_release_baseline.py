@@ -8,23 +8,20 @@ import shutil
 import subprocess
 import sys
 import tarfile
-import textwrap
 import tomllib
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-from packaging.requirements import Requirement
+import yaml
 from research_repo_tools.criterion_inventory import CriterionInventory, load_discovery, serialize_inventory
 from research_repo_tools.host_metadata import HostMetadata, serialize_host
 from research_repo_tools.process import run_command
 
+from tests.tooling.test_toolchain_integration import TOOLING_REQUIREMENT
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SHARED_REQUIREMENT = Requirement(tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["dependency-groups"]["tooling"][0])
-# Release orchestration needs the core package independently of contributor extras.
-TOOLING_REQUIREMENT = SHARED_REQUIREMENT.name + str(SHARED_REQUIREMENT.specifier)
 WORKFLOW = REPO_ROOT / ".github/workflows/release-benchmarks.yml"
-PREPARATION = REPO_ROOT / ".github/actions/prepare-release-benchmarks/action.yml"
 CATALOG = tomllib.loads((REPO_ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
 REQUIRED = set(CATALOG["release"]["default"] + CATALOG["release"]["exact"])
 # Retain optional diagnostic additions without letting a declaration omission
@@ -84,19 +81,6 @@ def verify_saved(root: Path, *, suite: str | None = None, criterion_dir: str = "
     )
 
 
-def shell_step(name: str, source: Path = WORKFLOW) -> str:
-    """Extract a literal run block so tests exercise the workflow's actual shell."""
-    text = source.read_text(encoding="utf-8")
-    indent = "    " if source == PREPARATION else "      "
-    step = text.split(f"{indent}- name: {name}\n", 1)[1].split(f"\n{indent}- ", 1)[0]
-    lines: list[str] = []
-    for line in step.split(f"{indent}  run: |\n", 1)[1].splitlines():
-        if line.strip() and not line.startswith(f"{indent}    "):
-            break
-        lines.append(line)
-    return textwrap.dedent("\n".join(lines)).rstrip()
-
-
 def run_shell(script: str, cwd: Path, extra_env: dict[str, str], *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
     bash = shutil.which("bash")
     assert bash is not None
@@ -135,22 +119,62 @@ def package_suites(root: Path, manifest: Path, criterion: Path) -> None:
         for benchmark in ids:
             storage = STORAGE[benchmark]
             shutil.copytree(criterion / storage, output / storage)
-        # Substitute only native version/hash observations. The real uvx command
-        # installs the exact published suite package independently of root tooling.
-        probes = (
-            f'rustc() {{ printf "rustc fixture\\nLLVM fixture\\n"; }}\ncargo() {{ echo "cargo fixture"; }}\nsha256sum() {{ echo "{"f" * 64}  Cargo.lock"; }}\n'
-        )
-        result = run_shell(
-            probes + shell_step("Package Criterion suite"),
-            shard,
-            {**SUITE_ENV, "BENCH_SUITE": suite, "RUNNER_NAME": suite, "ImageOS": "ubuntu24", "ImageVersion": "fixture-image"},
-            timeout=180,
+        # Retain compatibility with previously published suite archives using
+        # the public installed packer; new releases use candidate archives.
+        result = run_command(
+            "uv",
+            [
+                "run",
+                "--locked",
+                "--no-sync",
+                "research-repo-tools",
+                "--root",
+                str(shard),
+                "performance",
+                "pack-suite",
+                "tooling/criterion-saved.toml",
+                suite,
+                "--saved-sample",
+                BASELINE,
+                "--output",
+                f"target/release-suites/{suite}/criterion.tar.gz",
+                "--revision",
+                "a" * 40,
+                "--session",
+                "owner/repo:123:2",
+                "--host",
+                "target/release-host.json",
+                "--started-at",
+                "100",
+                "--finished-at",
+                "200",
+                "--context",
+                f"command=just bench-save-baseline {BASELINE} {suite}",
+                "--context",
+                "features=" + ("bench,exact" if suite == "public-exact" else "bench"),
+                "--context",
+                f"runner={suite}",
+                "--context",
+                "image=ubuntu24",
+                "--context",
+                "image_version=fixture-image",
+                "--context",
+                "rustc=rustc fixture;LLVM fixture",
+                "--context",
+                "cargo=cargo fixture",
+                "--context",
+                "cargo_lock_sha256=" + "f" * 64,
+            ],
+            cwd=REPO_ROOT,
+            check=False,
         )
         assert result.returncode == 0, result.stdout + result.stderr
         shutil.move(shard / "target/release-suites" / suite, destination / suite)
+        if suite == "public-default":
+            shutil.copyfile(manifest, destination / suite / "inventory.json")
 
 
-def test_complete_dataset_round_trips_through_workflow_archive(dataset: tuple[Path, Path], tmp_path: Path) -> None:
+def test_complete_dataset_round_trips_through_legacy_suite_archive(dataset: tuple[Path, Path], tmp_path: Path) -> None:
     criterion, manifest = dataset
     criterion = criterion.rename(tmp_path / "original-criterion")
     package_suites(tmp_path, manifest, criterion)
@@ -163,7 +187,14 @@ def test_complete_dataset_round_trips_through_workflow_archive(dataset: tuple[Pa
     manifest.unlink()
     output = tmp_path / "step outputs"
     asset = f"la-stack-{BASELINE}-criterion-baseline.tar.gz"
-    script = shell_step("Assemble release Criterion baseline")
+    script = (
+        "set -euo pipefail\n"
+        "cp target/release-suites/public-default/inventory.json target/release-benchmark-inventory.json\n"
+        "uv run --locked --no-sync research-repo-tools performance assemble-suites tooling/criterion-saved.toml "
+        "target/release-suites/public-default/criterion.tar.gz target/release-suites/public-exact/criterion.tar.gz "
+        '--saved-sample "$RELEASE_TAG" --output "la-stack-$RELEASE_TAG-criterion-baseline.tar.gz" '
+        '--revision "$GITHUB_SHA" --session "$GITHUB_REPOSITORY:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"\n'
+    )
     env = {**SUITE_ENV, "GITHUB_WORKSPACE": tmp_path.as_posix(), "GITHUB_OUTPUT": output.as_posix()}
     for assertion in ({"GITHUB_SHA": "b" * 40}, {"GITHUB_RUN_ATTEMPT": "3"}):
         rejected = run_shell(script, tmp_path, {**env, **assertion}, timeout=180)
@@ -174,7 +205,7 @@ def test_complete_dataset_round_trips_through_workflow_archive(dataset: tuple[Pa
     # Git Bash accepts forward-slash drive paths on Windows as well as POSIX paths.
     result = run_shell(script, tmp_path, env, timeout=180)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert output.read_text(encoding="utf-8") == f"asset={asset}\nartifact-name=bench-baseline-{BASELINE}-123-2\n"
+    assert not output.exists()
     assert_archive_contents(tmp_path / asset, criterion)
     # Release readers keep the standard tooling environment. Exercise its
     # documented extraction and full-dataset verification against the new archive.
@@ -311,170 +342,49 @@ def test_scientific_inventory_detects_a_nonsentinel_omission(tmp_path: Path, dec
         assert_scientific_inventory(tmp_path)
 
 
-def test_workflow_requires_preflight_and_isolates_publication_permissions() -> None:
-    workflow = WORKFLOW.read_text(encoding="utf-8")
-    preparation = PREPARATION.read_text(encoding="utf-8")
-    assert preparation.index("- name: Inventory full release suites") < preparation.index("- name: Validate benchmark inputs")
-    assert "run: just test-bench-inputs" in preparation
-    assert "run: just bench-release-inventory" in preparation
-    assert "continue-on-error" not in preparation
-    assert preparation.index("- name: Require fresh release preflight") < preparation.index("- name: Set up declared tools without caches")
-    assert "uses: ./.github/actions/setup-tools" in preparation
-    assert "cache: false" in preparation
-    steps = [
-        "Prepare release benchmarks",
-        "Capture runner host",
-        "Save Criterion suite",
-        "Package Criterion suite",
-        "Upload temporary suite artifact",
-        "Assemble release Criterion baseline",
-        "Upload temporary baseline artifact",
-    ]
-    positions = [workflow.index(f"- name: {step}") for step in steps]
-    assert positions == sorted(positions)
-    for step in steps:
-        body = workflow.split(f"      - name: {step}\n", 1)[1].split("\n      - ", 1)[0]
-        assert "\n        if:" not in body
-    assert "continue-on-error" not in workflow
-    assert "workflow_dispatch:" in workflow
-    assert "required: true" in workflow
-    assert "\n  release:" not in workflow
-    assert "group: release-benchmarks-${{ inputs.tag }}" in workflow
-    assert "cancel-in-progress: false" in workflow
-    preflight, remainder = workflow.split("  measure-baseline:\n", 1)
-    producer, remainder = remainder.split("  release-baseline:\n", 1)
-    _assembler, publisher = remainder.split("  publish-baseline:\n", 1)
-    assert "needs: validate-release" in producer
-    assert "validated-attempt: ${{ github.run_attempt }}" in preflight
-    assert "validated-attempt: ${{ needs.validate-release.outputs.validated-attempt }}" in producer
-    assert "ref: ${{ github.sha }}" in producer
-    assert "ref: ${{ needs.validate-release.outputs.commit }}" not in producer
-    assert "contents: write" not in producer
-    assert "persist-credentials: false" in producer
-    assert "contents: write" in preflight
-    assert "actions/checkout@" not in preflight + publisher
-    assert "target: ${{ steps.target.outputs.target }}" in preflight
-    assert "RELEASE_TARGET: ${{ needs.validate-release.outputs.target }}" in publisher
-    assert '--expected-title "$RELEASE_TAG"' in preflight
-    assert '--target "$RUNNER_TEMP/release-target.json"' in publisher
-    assert "--publish" not in publisher
-    assert (preflight + publisher).count(f"--from {TOOLING_REQUIREMENT}") == 2
-    assert "uses: ./" not in preflight + publisher
-    assert "--clobber" not in workflow
-    assert "needs: [validate-release, release-baseline]" in publisher
-    assert "GH_REPO: ${{ github.repository }}" in publisher
-    assert "contents: write" in publisher
-    assert "name: ${{ needs.release-baseline.outputs.artifact-name }}" in publisher
-    assert "performance host --output target/release-host.json" in producer
-    assert "--host target/release-host.json" in producer
-    assert "path: target/release-suites/${{ matrix.suite }}" in producer
-    assert "tar -" not in workflow
-    assert "tooling.release_benchmarks" not in (REPO_ROOT / "justfile").read_text(encoding="utf-8")
-
-
-def test_parallel_suites_require_both_current_attempts_before_assembly() -> None:
-    workflow = WORKFLOW.read_text(encoding="utf-8")
-    producer, remainder = workflow.split("  measure-baseline:\n", 1)[1].split("  release-baseline:\n", 1)
-    assembler = remainder.split("  publish-baseline:\n", 1)[0]
-    assert "fail-fast: false" in producer
-    assert "suite: [public-default, public-exact]" in producer
-    assert "max-parallel: 1" not in producer
-    assert "BENCH_SUITE: ${{ matrix.suite }}" in producer
-    assert 'just bench-save-baseline "$RELEASE_TAG" "$BENCH_SUITE"' in producer
-    assert "performance pack-suite" in producer
-    assert 'tooling/criterion-saved.toml "$BENCH_SUITE" --saved-sample "$RELEASE_TAG"' in producer
-    assert "ref: ${{ github.sha }}" in assembler
-    assert "persist-credentials: false" in assembler
-    assert "contents: write" not in assembler
-    assert "needs: [validate-release, measure-baseline]" in assembler
-    assert "always()" not in assembler
-    for suite in IDS:
-        assert f"name: bench-suite-${{{{ inputs.tag }}}}-${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}-{suite}" in assembler
-        assert f"path: target/release-suites/{suite}" in assembler
-        assert f"target/release-suites/{suite}/criterion.tar.gz" in assembler
-    assert "performance assemble-suites tooling/criterion-saved.toml" in assembler
-    for job in (producer, assembler):
-        assert '--session "$GITHUB_REPOSITORY:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"' in job
-        assert '--revision "$GITHUB_SHA"' in job
-    for job in (producer, assembler):
-        assert f"--from {TOOLING_REQUIREMENT}" in job
-
-
-def test_setup_limits_preserve_benchmark_and_tail_budgets() -> None:
-    workflow = WORKFLOW.read_text(encoding="utf-8")
-    producer = workflow.split("  measure-baseline:\n", 1)[1].split("  release-baseline:\n", 1)[0]
-    job_limit = re.search(r"(?m)^    timeout-minutes: (\d+)$", producer)
-    assert job_limit is not None
-    setup = producer.split("    steps:\n", 1)[1].split("      - name: Save Criterion suite", 1)[0]
-    setup_steps = re.findall(r"(?ms)^      - .*?(?=^      - |\Z)", setup)
-    assert setup_steps
-    setup_limits: list[int] = []
-    for step in setup_steps:
-        limit = re.search(r"(?m)^        timeout-minutes: (\d+)$", step)
-        assert limit is not None, f"unbounded setup step: {step}"
-        setup_limits.append(int(limit[1]))
-    assert all(limit > 0 for limit in setup_limits)
-    discovery = load_discovery(REPO_ROOT, "tooling/criterion-inventory.toml")
-    discovery_minutes = sum(suite.timeout for suite in discovery.suites) / 60
-    # The failed hosted run spent 27 minutes on uncached tool installation.
-    # Reserve 35 for tools, each declared cold discovery deadline, and 5 for inputs.
-    preparation = re.search(r"(?ms)^      - name: Prepare release benchmarks\n.*?^        timeout-minutes: (\d+)$", setup)
-    assert preparation is not None
-    assert int(preparation[1]) >= 35 + discovery_minutes + 5
-    assert "uses: ./.github/actions/prepare-release-benchmarks" in setup
-    assert "using: composite" in PREPARATION.read_text(encoding="utf-8")
-    benchmark_limit = re.search(r"(?ms)^      - name: Save Criterion suite\n.*?^        timeout-minutes: (\d+)$", producer)
-    assert benchmark_limit is not None
-    assert int(benchmark_limit[1]) == 240
-    for suite in ("default", "exact"):
-        # Keep at least 50% headroom beyond the documented planning rate.
-        assert int(benchmark_limit[1]) * 60 >= len(CATALOG["release"][suite]) * 12 * 1.5
-    assert int(job_limit[1]) - sum(setup_limits) - int(benchmark_limit[1]) >= 20
-    assert int(job_limit[1]) <= 360
-
-
-@pytest.mark.parametrize("suite", ["public-default", "public-exact"])
-def test_failed_suite_retains_timing_and_does_not_mark_completion(tmp_path: Path, suite: str) -> None:
-    (tmp_path / "target").mkdir()
-    # A shell function substitutes only the benchmark command; timestamps and
-    # failure handling execute exactly as checked into the workflow.
-    script = "just() { return 7; }\n" + shell_step("Save Criterion suite")
-    result = run_shell(script, tmp_path, {"RELEASE_TAG": BASELINE, "BENCH_SUITE": suite})
-    assert result.returncode == 7
-    assert (tmp_path / f"target/{suite}-started").is_file()
-    assert not (tmp_path / f"target/{suite}-finished").exists()
-    summary = tmp_path / "suite summary.md"
-    result = run_shell(
-        shell_step("Suite timing summary"),
-        tmp_path,
-        {
-            "GITHUB_STEP_SUMMARY": summary.as_posix(),
-            "BENCH_SUITE": suite,
-            "SUITE_OUTCOME": "failure",
-        },
-    )
-    assert result.returncode == 0, result.stderr
-    assert f"| {suite} | failure |" in summary.read_text(encoding="utf-8")
-    assert "| 240 |" in summary.read_text(encoding="utf-8")
+def test_workflow_reuses_original_acquisition_and_isolates_write_credentials() -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_bytes())
+    assert set(workflow[True]) == {"workflow_dispatch"}
+    assert set(workflow[True]["workflow_dispatch"]["inputs"]) == {"tag", "candidate"}
+    assert workflow["concurrency"]["cancel-in-progress"] is False
+    jobs = workflow["jobs"]
+    assert set(jobs) == {"fetch", "verify", "attach"}
+    assert jobs["verify"]["needs"] == "fetch"
+    assert jobs["attach"]["needs"] == "verify"
+    assert jobs["verify"]["permissions"] == {"contents": "read", "checks": "read", "actions": "read"}
+    assert "github.triggering_actor == 'acgetchell'" in jobs["fetch"]["if"]
+    for name in ("fetch", "attach"):
+        job = jobs[name]
+        assert job["permissions"]["contents"] == "write"
+        assert not any("checkout@" in step.get("uses", "") or step.get("uses", "").startswith("./") for step in job["steps"])
+        assert job["steps"][0]["with"]["enable-cache"] is False
+        assert job["steps"][0]["with"]["cache-python"] is False
+    verifier = jobs["verify"]["steps"]
+    assert verifier[0]["with"] == {"ref": "${{ github.sha }}", "fetch-depth": 0, "persist-credentials": False}
+    assert verifier[1]["with"]["cache"] is False
+    assert verifier[3]["with"]["artifact-ids"] == "${{ needs.fetch.outputs.artifact-id }}"
+    assert verifier[4]["env"]["CANDIDATE_TRANSFER"] == "${{ inputs.candidate }}"
+    assert 'release-receive "$RUNNER_TEMP/accepted-candidate" --incoming "$RUNNER_TEMP/incoming-candidate"' in verifier[4]["run"]
+    attach = jobs["attach"]["steps"]
+    assert attach[2]["with"]["artifact-ids"] == "${{ needs.verify.outputs.artifact-id }}"
+    assert attach[1]["env"]["ARTIFACT_DIGEST"] == "${{ needs.verify.outputs.artifact-digest }}"
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert text.count(f"--from {shlex.quote(TOOLING_REQUIREMENT)}") == 2
+    for forbidden in ("bench-save-baseline", "measure-baseline", "cargo bench", "performance measure", "--clobber", "continue-on-error"):
+        assert forbidden not in text
+    assert "publish_release_asset(root, target.repository, target.tag, artifact, target=target)" in text
+    assert "publish=True" not in text
 
 
 @pytest.mark.parametrize("validated_attempt", ["", "1", "2"])
-def test_benchmark_retry_requires_current_preflight(tmp_path: Path, validated_attempt: str) -> None:
+def test_retry_requires_current_retrieval(tmp_path: Path, validated_attempt: str) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_bytes())
     result = run_shell(
-        shell_step("Require fresh release preflight", PREPARATION),
+        workflow["jobs"]["verify"]["steps"][2]["run"],
         tmp_path,
         {"VALIDATED_ATTEMPT": validated_attempt, "GITHUB_RUN_ATTEMPT": "2"},
     )
     assert result.returncode == (0 if validated_attempt == "2" else 1)
-
-
-@pytest.mark.parametrize("ref", ["refs/heads/main", f"refs/heads/{BASELINE}", "refs/tags/v9.9.9", ""])
-def test_preflight_rejects_dispatch_outside_release_tag(tmp_path: Path, ref: str) -> None:
-    output = tmp_path / "outputs"
-    result = run_shell(shell_step("Validate draft release target"), tmp_path, {"RELEASE_TAG": BASELINE, "GITHUB_REF": ref, "GITHUB_OUTPUT": output.as_posix()})
-    assert result.returncode == 1
-    assert f"Dispatch with --ref {BASELINE}" in result.stdout
-    assert not output.exists()
 
 
 GH_FIXTURE = r"""import hashlib, json, os, sys
@@ -545,19 +455,32 @@ def test_installed_cli_binds_trusted_target_and_leaves_draft_for_review(tmp_path
     # Substitute only uvx's environment acquisition; retain its exact package
     # arguments and execute the already locked package in a real child process.
     runner = installed_runner()
-    result = run_shell(runner + shell_step("Validate draft release target"), fixture, env)
+    preflight = (
+        "set -euo pipefail\n"
+        f"uvx --python 3.15 --from {shlex.quote(TOOLING_REQUIREMENT)} research-repo-tools "
+        '--root "$RUNNER_TEMP" performance release-draft "$GH_REPO" "$RELEASE_TAG" '
+        '--commit "$GITHUB_SHA" --expected-title "$RELEASE_TAG" > "$GITHUB_OUTPUT"\n'
+    )
+    upload = (
+        "set -euo pipefail\n"
+        'printf "%s" "$RELEASE_TARGET" > "$RUNNER_TEMP/release-target.json"\n'
+        f"uvx --python 3.15 --from {shlex.quote(TOOLING_REQUIREMENT)} research-repo-tools "
+        '--root "$RUNNER_TEMP" performance release-upload "$GH_REPO" "$RELEASE_TAG" '
+        '"$RUNNER_TEMP/$RELEASE_ASSET" --target "$RUNNER_TEMP/release-target.json"\n'
+    )
+    result = run_shell(runner + preflight, fixture, env)
     assert result.returncode == 0, result.stderr
     target = output.read_text(encoding="utf-8").strip().removeprefix("target=")
     assert json.loads(target)["release_id"] == 42
     assert json.loads(target)["commit"] == "a" * 40
     assert json.loads(target)["expected_title"] == BASELINE
-    stale = run_shell(runner + shell_step("Attach baseline for review"), fixture, {**env, "RELEASE_TARGET": target, "REMOTE_COMMIT": "b" * 40})
+    stale = run_shell(runner + upload, fixture, {**env, "RELEASE_TARGET": target, "REMOTE_COMMIT": "b" * 40})
     assert stale.returncode != 0
     assert not (fixture / "uploaded").exists()
     assert not (fixture / "published").exists()
     stale_calls = [json.loads(line) for line in (fixture / "api-calls").read_text(encoding="utf-8").splitlines()]
     assert not any(urlsplit(item).hostname == "uploads.github.com" for call in stale_calls for item in call)
-    result = run_shell(runner + shell_step("Attach baseline for review"), fixture, {**env, "RELEASE_TARGET": target})
+    result = run_shell(runner + upload, fixture, {**env, "RELEASE_TARGET": target})
     assert result.returncode == 0, result.stderr
     assert (fixture / "uploaded").exists()
     assert not (fixture / "published").exists()

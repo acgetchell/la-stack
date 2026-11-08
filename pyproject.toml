@@ -108,11 +108,16 @@ override-dependencies = [
     "tomli==2.5.0",
 ]
 
+# Temporary downstream rehearsal pin; return to PyPI after the supplying release.
+[tool.uv.sources]
+research-repo-tools = { git = "https://github.com/acgetchell/research-repo-tools", rev = "055353c630604b1ae3438c1eaf534ba85e067a7e" }
+
 [dependency-groups]
 tooling = [ "research-repo-tools[python-tools,semgrep]==0.2.6" ]
 dev = [
     { include-group = "tooling" },
     "actionlint-py==1.7.12.25",
+    "pytest-xdist==3.8.0",
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.2.0",
     "yamllint==1.38.0",
@@ -168,6 +173,7 @@ required-checks = [
 required-assets = [ "la-stack-v{version}-criterion-baseline.tar.gz" ]
 
 [tool.research-repo-tools.release]
+published-dependencies = [ "research-repo-tools" ]
 # Release preparation and post-merge tagging can happen on different UTC days.
 date-policy = "declared"
 tag-policy = "canonical-stable"

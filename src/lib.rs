@@ -1,7 +1,11 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![doc = include_str!("../README.md")]
+#![cfg_attr(
+    not(doc),
+    doc = "Small, fixed-dimension linear algebra with checked numerical contracts."
+)]
+#![cfg_attr(doc, doc = include_str!("../README.md"))]
 
 #[cfg(doc)]
 mod readme_doctests {

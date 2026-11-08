@@ -1,9 +1,6 @@
 name: Release Benchmarks
 
-# Attach full Criterion baselines for maintainer review before publication.
-# Release jobs publish durable artifacts, so they intentionally do not restore
-# or save dependency caches.
-
+# Attach the single local acquisition; no job collects benchmark timings.
 permissions:
   contents: read
 
@@ -11,7 +8,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Stable vX.Y.Z tag matching the workflow ref, with a mutable draft release
+        description: Stable tag matching the workflow ref and mutable draft
+        required: true
+        type: string
+      candidate:
+        description: Independent owner transfer.json from just release-stage
         required: true
         type: string
 
@@ -19,19 +20,18 @@ concurrency:
   group: release-benchmarks-${{ inputs.tag }}
   cancel-in-progress: false
 
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
-
 jobs:
-  validate-release:
-    # Draft visibility requires push access. This job executes no repository code.
-    permissions:
-      contents: write
+  fetch:
+    if: >-
+      github.repository == 'acgetchell/la-stack' &&
+      github.actor == 'acgetchell' && github.triggering_actor == 'acgetchell'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
+    permissions:
+      # Draft visibility requires push access. Execute no checkout code.
+      contents: write
     outputs:
-      target: ${{ steps.target.outputs.target }}
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
       validated-attempt: ${{ github.run_attempt }}
     steps:
       - name: Install trusted package runner
@@ -41,192 +41,121 @@ jobs:
           enable-cache: false
           cache-python: false
 
-      - name: Validate draft release target
-        id: target
+      - name: Retrieve exact independently selected draft assets
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag }}
+          CANDIDATE_TRANSFER: ${{ inputs.candidate }}
         run: |
           set -euo pipefail
+          uvx --python 3.15 \
+            --from 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e' \
+            python -I - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from research_repo_tools.release_assets import (
+              download_release_asset, parse_release_target, publish_release_asset,
+              revalidate_release_target,
+          )
+          root = Path(os.environ["RUNNER_TEMP"])
+          data = json.loads(os.environ["CANDIDATE_TRANSFER"])
+          target = parse_release_target(json.dumps(data["target"]).encode("utf-8"))
+          if (target.repository, target.tag, target.commit, target.expected_title) != (
+              "acgetchell/la-stack", os.environ["RELEASE_TAG"], os.environ["GITHUB_SHA"], os.environ["RELEASE_TAG"],
+          ) or os.environ["GITHUB_REF"] != "refs/tags/" + target.tag:
+              raise ValueError("dispatch differs from independent release target")
+          if set(data["assets"]) != {"policy", "publication", "acceptance", "archive"}:
+              raise ValueError("attachment requires the original four-asset transfer")
+          def check():
+              release = revalidate_release_target(root, target)
+              for selected in data["assets"].values():
+                  entries = [item for item in release.assets if item[0] == selected["name"]]
+                  if len(entries) != 1 or type(selected["id"]) is not int or entries[0][1] != selected["id"]:
+                      raise ValueError("original candidate asset ID changed")
+                  if entries[0][3] is not None and entries[0][3] != selected["sha256"]:
+                      raise ValueError("original candidate asset digest changed")
+          check()
+          directory = root / "incoming-candidate"
+          directory.mkdir()
+          for role, selected in data["assets"].items():
+              destination = directory / ("archive.tar.gz" if role == "archive" else role + ".json")
+              download_release_asset(
+                  root, target.repository, target.tag, selected["name"], destination,
+                  expected_sha256=selected["sha256"], allow_draft=True,
+              )
+          check()
+          PY
 
-          if [[ "$GITHUB_REF" != "refs/tags/$RELEASE_TAG" ]]; then
-            echo "::error::Dispatch with --ref $RELEASE_TAG and the matching tag input"
-            exit 1
-          fi
-          target="$(uvx --python 3.15 --from research-repo-tools==0.2.6 research-repo-tools \
-            --root "$RUNNER_TEMP" performance release-draft "$GH_REPO" "$RELEASE_TAG" \
-            --commit "$GITHUB_SHA" --expected-title "$RELEASE_TAG" | jq -c .)"
-          echo "target=$target" >> "$GITHUB_OUTPUT"
-
-  measure-baseline:
-    needs: validate-release
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [public-default, public-exact]
-    # Per runner: 2 min checkout + 60 min preparation + 2 min host capture
-    # + 240 min measurement + 26 min packaging, upload and overhead.
-    timeout-minutes: 330
-    env:
-      RELEASE_TAG: ${{ inputs.tag }}
-      BENCH_SUITE: ${{ matrix.suite }}
-      CRITERION_HOME: ${{ github.workspace }}/target/criterion
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-        timeout-minutes: 2
-
-      - name: Prepare release benchmarks
-        timeout-minutes: 60
-        uses: ./.github/actions/prepare-release-benchmarks # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
-        with:
-          validated-attempt: ${{ needs.validate-release.outputs.validated-attempt }}
-
-      - name: Capture runner host
-        timeout-minutes: 2
-        run: uv run --locked --no-sync research-repo-tools performance host --output target/release-host.json
-
-      - name: Save Criterion suite
-        id: measurement
-        timeout-minutes: 240
-        run: |
-          set -euo pipefail
-          echo "[release-baseline] $BENCH_SUITE started $(date -u +%FT%TZ); budget 240 min"
-          date +%s > "target/$BENCH_SUITE-started"
-          just bench-save-baseline "$RELEASE_TAG" "$BENCH_SUITE"
-          date +%s > "target/$BENCH_SUITE-finished"
-
-      - name: Package Criterion suite
-        run: |
-          set -euo pipefail
-          output="target/release-suites/$BENCH_SUITE"
-          features=bench
-          if [[ "$BENCH_SUITE" == public-exact ]]; then
-            features=bench,exact
-          fi
-          uvx --python 3.15 --from research-repo-tools==0.2.6 research-repo-tools performance pack-suite \
-            tooling/criterion-saved.toml "$BENCH_SUITE" --saved-sample "$RELEASE_TAG" \
-            --output "$output/criterion.tar.gz" --revision "$GITHUB_SHA" \
-            --session "$GITHUB_REPOSITORY:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT" \
-            --host target/release-host.json \
-            --started-at "$(cat "target/$BENCH_SUITE-started")" \
-            --finished-at "$(cat "target/$BENCH_SUITE-finished")" \
-            --context "command=just bench-save-baseline $RELEASE_TAG $BENCH_SUITE" \
-            --context "features=$features" --context "runner=$RUNNER_NAME" \
-            --context "image=$ImageOS" --context "image_version=$ImageVersion" \
-            --context "rustc=$(rustc -vV | paste -sd ';' -)" \
-            --context "cargo=$(cargo --version)" \
-            --context "cargo_lock_sha256=$(sha256sum Cargo.lock | cut -d ' ' -f 1)"
-          # Transport the native inventory separately for the assembly plan.
-          # Both archives must match it and the checked-in required case policy.
-          if [[ "$BENCH_SUITE" == public-default ]]; then
-            cp target/release-benchmark-inventory.json "$output/inventory.json"
-          fi
-
-      - name: Upload temporary suite artifact
+      - name: Upload inert candidate input
+        id: upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: bench-suite-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.suite }}
-          path: target/release-suites/${{ matrix.suite }}
+          name: candidate-input-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/incoming-candidate/
           retention-days: 30
           if-no-files-found: error
 
-      - name: Suite timing summary
-        if: ${{ always() }}
-        env:
-          SUITE_OUTCOME: ${{ steps.measurement.outcome }}
-        run: |
-          set -euo pipefail
-          elapsed="not started"
-          if [[ -f "target/$BENCH_SUITE-started" ]]; then
-            end="$(date +%s)"
-            if [[ -f "target/$BENCH_SUITE-finished" ]]; then
-              end="$(cat "target/$BENCH_SUITE-finished")"
-            fi
-            elapsed="$((end - $(cat "target/$BENCH_SUITE-started")))"
-          fi
-          {
-            echo "### Release benchmark timing"
-            echo ""
-            echo "| Suite | Outcome | Elapsed seconds | Budget minutes |"
-            echo "| --- | --- | --- | --- |"
-            echo "| $BENCH_SUITE | $SUITE_OUTCOME | $elapsed | 240 |"
-            echo ""
-            echo "An unfinished suite reports elapsed time through this summary."
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-
-  release-baseline:
-    needs: [validate-release, measure-baseline]
+  verify:
+    needs: fetch
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      RELEASE_TAG: ${{ inputs.tag }}
+    permissions:
+      contents: read
+      checks: read
+      actions: read
     outputs:
-      release-asset: ${{ steps.package-baseline.outputs.asset }}
-      artifact-name: ${{ steps.package-baseline.outputs.artifact-name }}
-
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      artifact-digest: ${{ steps.upload.outputs.artifact-digest }}
+      validated-attempt: ${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Install trusted package runner
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Set up declared tools without caches
+        uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
         with:
-          version: "0.13.7"
-          enable-cache: false
-          cache-python: false
+          cache: false
 
-      - name: Download default suite
+      - name: Require this retrieval attempt
+        env:
+          VALIDATED_ATTEMPT: ${{ needs.fetch.outputs.validated-attempt }}
+        run: test "$VALIDATED_ATTEMPT" = "$GITHUB_RUN_ATTEMPT"
+
+      - name: Download exact candidate input
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: bench-suite-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-public-default
-          path: target/release-suites/public-default
+          artifact-ids: ${{ needs.fetch.outputs.artifact-id }}
+          path: ${{ runner.temp }}/incoming-candidate
+          merge-multiple: true
 
-      - name: Download exact suite
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: bench-suite-${{ inputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}-public-exact
-          path: target/release-suites/public-exact
+      - name: Verify original acquisition and full frozen acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          CANDIDATE_TRANSFER: ${{ inputs.candidate }}
+        run: just release-receive "$RUNNER_TEMP/accepted-candidate" --incoming "$RUNNER_TEMP/incoming-candidate"
 
-      - name: Assemble release Criterion baseline
-        id: package-baseline
-        run: |
-          set -euo pipefail
-
-          asset="la-stack-${RELEASE_TAG}-criterion-baseline.tar.gz"
-          cp target/release-suites/public-default/inventory.json target/release-benchmark-inventory.json
-          uvx --python 3.15 --from research-repo-tools==0.2.6 research-repo-tools \
-            --root "$GITHUB_WORKSPACE" performance assemble-suites tooling/criterion-saved.toml \
-            target/release-suites/public-default/criterion.tar.gz \
-            target/release-suites/public-exact/criterion.tar.gz \
-            --saved-sample "$RELEASE_TAG" --output "$asset" --revision "$GITHUB_SHA" \
-            --session "$GITHUB_REPOSITORY:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"
-          echo "asset=$asset" >> "$GITHUB_OUTPUT"
-          echo "artifact-name=bench-baseline-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload temporary baseline artifact
+      - name: Upload verified inert archive
+        id: upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ${{ steps.package-baseline.outputs.artifact-name }}
-          path: ${{ steps.package-baseline.outputs.asset }}
+          name: accepted-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/accepted-candidate/
           retention-days: 30
           if-no-files-found: error
 
-  publish-baseline:
-    needs: [validate-release, release-baseline]
+  attach:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+      actions: read
     steps:
+      # No checkout or repository code runs with attachment credentials.
       - name: Install trusted package runner
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
@@ -234,36 +163,67 @@ jobs:
           enable-cache: false
           cache-python: false
 
-      - name: Download release baseline
+      - name: Require this exact verification attempt and artifact
+        env:
+          VALIDATED_ATTEMPT: ${{ needs.verify.outputs.validated-attempt }}
+          ARTIFACT_ID: ${{ needs.verify.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ needs.verify.outputs.artifact-digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$VALIDATED_ATTEMPT" == "$GITHUB_RUN_ATTEMPT" ]] || exit 1
+          [[ "$ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] || exit 1
+          [[ "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" \
+            | jq -e --arg digest "sha256:$ARTIFACT_DIGEST" --arg run "$GITHUB_RUN_ID" \
+              '.expired == false and .digest == $digest and (.workflow_run.id | tostring) == $run' >/dev/null
+
+      - name: Download the exact verified artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: ${{ needs.release-baseline.outputs.artifact-name }}
+          artifact-ids: ${{ needs.verify.outputs.artifact-id }}
+          path: ${{ runner.temp }}/accepted-candidate
+          merge-multiple: true
 
-      - name: Attach baseline for review
+      - name: Attach the original accepted archive
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag }}
-          RELEASE_TARGET: ${{ needs.validate-release.outputs.target }}
-          RELEASE_ASSET: ${{ needs.release-baseline.outputs.release-asset }}
+          CANDIDATE_TRANSFER: ${{ inputs.candidate }}
         run: |
           set -euo pipefail
-
-          [[ "$RELEASE_ASSET" == "la-stack-${RELEASE_TAG}-criterion-baseline.tar.gz" ]] || exit 1
-          printf '%s\n' "$RELEASE_TARGET" > "$RUNNER_TEMP/release-target.json"
-          uvx --python 3.15 --from research-repo-tools==0.2.6 research-repo-tools \
-            --root "$RUNNER_TEMP" performance release-upload "$GH_REPO" "$RELEASE_TAG" \
-            "$GITHUB_WORKSPACE/$RELEASE_ASSET" --target "$RUNNER_TEMP/release-target.json"
-
-      - name: Release baseline summary
-        env:
-          RELEASE_ASSET: ${{ needs.release-baseline.outputs.release-asset }}
-        run: |
-          set -euo pipefail
-
-          {
-            echo "### Release Benchmark Baseline"
-            echo ""
-            echo "Draft release with verified asset: \`$RELEASE_ASSET\`"
-            echo "Review the draft, then run \`just release-publish <tag>\` as the maintainer."
-          } >> "$GITHUB_STEP_SUMMARY"
+          uvx --python 3.15 \
+            --from 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e' \
+            python -I - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from research_repo_tools.release_assets import (
+              download_release_asset, parse_release_target, publish_release_asset,
+              revalidate_release_target,
+          )
+          root = Path(os.environ["RUNNER_TEMP"])
+          data = json.loads(os.environ["CANDIDATE_TRANSFER"])
+          target = parse_release_target(json.dumps(data["target"]).encode("utf-8"))
+          if (target.repository, target.tag, target.commit, target.expected_title) != (
+              "acgetchell/la-stack", os.environ["RELEASE_TAG"], os.environ["GITHUB_SHA"], os.environ["RELEASE_TAG"],
+          ) or os.environ["GITHUB_REF"] != "refs/tags/" + target.tag:
+              raise ValueError("dispatch differs from independent release target")
+          if set(data["assets"]) != {"policy", "publication", "acceptance", "archive"}:
+              raise ValueError("attachment requires the original four-asset transfer")
+          def check():
+              release = revalidate_release_target(root, target)
+              for selected in data["assets"].values():
+                  entries = [item for item in release.assets if item[0] == selected["name"]]
+                  if len(entries) != 1 or type(selected["id"]) is not int or entries[0][1] != selected["id"]:
+                      raise ValueError("original candidate asset ID changed")
+                  if entries[0][3] is not None and entries[0][3] != selected["sha256"]:
+                      raise ValueError("original candidate asset digest changed")
+          check()
+          directory = root / "accepted-candidate"
+          artifact = directory / f"la-stack-{target.tag}-criterion-baseline.tar.gz"
+          for role, path in (("acceptance", directory / "acceptance.json"), ("archive", artifact)):
+              if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != data["assets"][role]["sha256"]:
+                  raise ValueError("verified artifact differs from independent dispatch assertion")
+          publish_release_asset(root, target.repository, target.tag, artifact, target=target)
+          check()
+          PY

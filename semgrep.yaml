@@ -512,7 +512,6 @@ rules:
         - "/.github/workflows/release-*.yaml"
         - "/tests/semgrep/.github/workflows/release-*.yml"
         - "/tests/semgrep/.github/workflows/release-*.yaml"
-        - "/.github/actions/prepare-release-benchmarks/action.yml"
     pattern-either:
       - patterns:
           - pattern: |

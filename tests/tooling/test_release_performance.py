@@ -12,8 +12,11 @@ import pytest
 from research_repo_tools import performance_release
 from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
+from research_repo_tools.performance_progress import ProgressReporter
 from research_repo_tools.process import run_command, run_git_command
 from research_repo_tools.releases import PublishedRelease
+
+from tooling import release_candidate as candidate
 
 ROOT = Path(__file__).resolve().parents[2]
 INPUTS = "target/bench-reports/release-inputs.json"
@@ -32,7 +35,10 @@ def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "absent-gitconfig"))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     run_git_command(["--no-pager", "init", "--quiet"], cwd=root)
-    for tag in ("v0.5.0", "v0.5.1", "head"):
+    for tag in ("v0.4.6", "v0.5.0", "v0.5.1", "head"):
+        release = "0.5.2" if tag == "head" else tag.removeprefix("v")
+        (root / "Cargo.toml").write_text(f'[package]\nname = "fixture"\nversion = "{release}"\n', encoding="utf-8", newline="\n")
+        run_git_command(["--no-pager", "add", "Cargo.toml"], cwd=root)
         run_git_command(
             [
                 "--no-pager",
@@ -163,15 +169,64 @@ def test_missing_or_legacy_preparation_stops_before_readme_and_measurement(consu
     assert not (consumer / "target/bench-reports/full").exists()
 
 
+@pytest.mark.parametrize("owner_kind", ["directory", "file"])
+def test_fresh_acquisition_preserves_existing_owner_with_recovery_guidance(consumer: Path, monkeypatch: pytest.MonkeyPatch, owner_kind: str) -> None:
+    releases(monkeypatch, "v0.5.1")
+    performance_release.prepare_performance(consumer, settings(consumer))
+    owner = consumer.parent / "independent owner"
+    if owner_kind == "directory":
+        owner.mkdir()
+    retained = owner / "preparation.json" if owner_kind == "directory" else owner
+    original = b"original owner bytes\r\n\xff"
+    retained.write_bytes(original)
+    monkeypatch.setattr(candidate, "check_release_dependencies", lambda _root: None)
+    monkeypatch.setattr(candidate, "freeze", lambda *_args, **_kwargs: pytest.fail("existing owner must be rejected before freezing"))
+    monkeypatch.setattr(candidate, "measure_release", lambda *_args, **_kwargs: pytest.fail("existing owner must not start acquisition"))
+
+    with pytest.raises(ValueError, match="acquisition owner record already exists") as stopped:
+        candidate.acquire(consumer, owner, "target/checkpoint", resume=False, progress=ProgressReporter(mode="none"))
+
+    assert str(owner) in str(stopped.value)
+    assert "new checkpoint/owner directory" in str(stopped.value)
+    assert "performance-resume if the original checkpoint still exists" in str(stopped.value)
+    assert retained.read_bytes() == original
+    if owner_kind == "directory":
+        assert list(owner.iterdir()) == [retained]
+    assert not (consumer / "target/checkpoint").exists()
+
+
+def test_fresh_acquisition_preserves_unrelated_directory_creation_error(consumer: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    releases(monkeypatch, "v0.5.1")
+    performance_release.prepare_performance(consumer, settings(consumer))
+    owner = consumer.parent / "independent owner"
+    failure = FileExistsError("unrelated directory creation failure")
+
+    def fail_mkdir(_self: Path, *_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(candidate, "check_release_dependencies", lambda _root: None)
+    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    with pytest.raises(FileExistsError) as stopped:
+        candidate.acquire(consumer, owner, "target/checkpoint", resume=False, progress=ProgressReporter(mode="none"))
+
+    assert stopped.value is failure
+    assert not owner.exists()
+
+
 def test_release_prepares_before_measurement_and_readme_remains_separate() -> None:
     preparation = dry_run(ROOT, "performance-prepare").stderr
     assert 'performance prepare tooling/performance-release.toml "$@"' in preparation
     assert "git fetch" not in preparation
     measurement = dry_run(ROOT, "performance-release").stderr
     assert measurement.count("performance prepare tooling/performance-release.toml --fetch-tags --allow-git-mutations") == 1
-    assert measurement.count("performance release tooling/performance-release.toml") == 1
-    assert measurement.index("performance prepare") < measurement.index("performance release")
+    assert measurement.count("--release-intent") == 1
+    assert measurement.count("tooling/release_candidate.py acquire") == 1
+    assert measurement.index("performance prepare") < measurement.index("tooling/release_candidate.py acquire")
     assert "performance readme" not in measurement
+    assert "--progress 'human' --progress-cadence '300'" in measurement
+    captured = dry_run(ROOT, "performance-release", ["json", "60"]).stderr
+    assert "--progress 'json' --progress-cadence '60'" in captured
+    assert captured.count("tooling/release_candidate.py acquire") == 1
     publication = dry_run(ROOT, "performance-readme").stderr
     assert "performance readme tooling/performance-release.toml" in publication
     assert "performance measure" not in publication
@@ -179,8 +234,9 @@ def test_release_prepares_before_measurement_and_readme_remains_separate() -> No
     assert "performance release" not in publication
 
 
+@pytest.mark.parametrize("mode", ["fresh", "resume"])
 @pytest.mark.parametrize("failed_phase", ["none", "prepare", "release"])
-def test_release_recipe_stops_on_failure_without_publishing_readme(tmp_path: Path, failed_phase: str) -> None:
+def test_release_recipe_stops_on_failure_without_publishing_readme(tmp_path: Path, failed_phase: str, mode: str) -> None:
     """Execute the real Bash recipe with a bounded CLI substitute, never fetching or timing."""
     root = tmp_path / "release with spaces"
     root.mkdir()
@@ -191,7 +247,7 @@ def test_release_recipe_stops_on_failure_without_publishing_readme(tmp_path: Pat
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         'printf "%s\\n" "$*" >> "$PERFORMANCE_COMMAND_LOG"\n'
-        'if [[ " $* " == *" performance $PERFORMANCE_FAIL_PHASE "* ]]; then\n'
+        'if [[ " $* " == *" performance $PERFORMANCE_FAIL_PHASE "* || ( "$PERFORMANCE_FAIL_PHASE" == release && " $* " == *" acquire "* ) ]]; then\n'
         '    printf "fixture %s failure\\n" "$PERFORMANCE_FAIL_PHASE" >&2\n'
         "    exit 7\n"
         "fi\n",
@@ -202,7 +258,7 @@ def test_release_recipe_stops_on_failure_without_publishing_readme(tmp_path: Pat
     log = root / "commands.log"
     result = run_command(
         "just",
-        ["--no-deps", "--justfile", str(ROOT / "justfile"), "--working-directory", str(root), "performance-release"],
+        ["--no-deps", "--justfile", str(ROOT / "justfile"), "--working-directory", str(root), "performance-release", "human", "300", "target/checkpoint", mode],
         cwd=root,
         env=os.environ
         | {
@@ -213,12 +269,26 @@ def test_release_recipe_stops_on_failure_without_publishing_readme(tmp_path: Pat
         check=False,
     )
     commands = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
-    phases = [command[command.index("performance") + 1 :] for command in commands]
-    expected = [["prepare", "tooling/performance-release.toml", "--fetch-tags", "--allow-git-mutations"]]
-    if failed_phase != "prepare":
-        expected.append(["release", "tooling/performance-release.toml", "--allow-git-mutations"])
+    phases = [
+        command[command.index("performance") + 1 :] if "performance" in command else command[command.index("tooling/release_candidate.py") + 1 :]
+        for command in commands
+    ]
+    expected = [["prepare", "tooling/performance-release.toml", "--fetch-tags", "--allow-git-mutations", "--release-intent"]] if mode == "fresh" else []
+    if failed_phase != "prepare" or mode == "resume":
+        expected.append(
+            [
+                "acquire",
+                "--progress",
+                "human",
+                "--progress-cadence",
+                "300",
+                "--checkpoint",
+                "target/checkpoint",
+            ]
+            + (["--resume"] if mode == "resume" else [])
+        )
     assert phases == expected
-    status = 0 if failed_phase == "none" else 7
+    status = 0 if failed_phase == "none" or (mode == "resume" and failed_phase == "prepare") else 7
     assert result.returncode == status, result.stderr
     if status:
         assert f"fixture {failed_phase} failure" in result.stderr
