@@ -225,7 +225,7 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert steps[7]["if"] == "${{ !cancelled() && steps.auth.outcome == 'success' }}"
     assert steps[7]["run"] == 'just release-verify "$RELEASE_TAG"'
     assert "continue-on-error" not in WORKFLOW.read_text(encoding="utf-8")
-    commands = dry_run(REPO_ROOT, "release-package").stderr
+    commands = dry_run(REPO_ROOT, "publish-check").stderr
     assert commands.count("--package la-stack --registry crates-io --dry-run") == 2
     assert "--features exact" in commands
     assert "--allow-dirty" not in commands
@@ -269,7 +269,7 @@ def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
     runtime = (
         '[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ '
-        'git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e", "python", "-I")]'
+        'git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3", "python", "-I")]'
     )
     assert source.count(runtime) == 3
     # Run the exact recipe body/argument transport with the locked test runtime.
@@ -528,7 +528,7 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
     assert jobs["build"]["steps"][-1] == {"name": "Run CI checks", "run": "just ci"}
     package = jobs["release-package"]
     assert package["steps"][1]["with"]["cache"] == "false"
-    assert package["steps"][-1] == {"name": "Verify default and exact Cargo packages", "run": "just release-package"}
+    assert package["steps"][-1] == {"name": "Verify default and exact Cargo packages", "run": "just publish-check"}
     evidence = jobs["release-evidence"]
     assert evidence["needs"] == ["build", "release-package"]
     assert evidence["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'acgetchell/la-stack'"
@@ -543,7 +543,7 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
         "--python",
         "3.15",
         "--from",
-        "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e",
+        "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3",
         "python",
         "-I",
         "-",
@@ -593,7 +593,7 @@ def test_main_ci_creates_no_release_evidence_for_development_pins(tmp_path: Path
 
 
 def test_native_packaging_failure_stops_before_further_validation(tmp_path: Path) -> None:
-    script = dry_run(REPO_ROOT, "release-package").stderr
+    script = dry_run(REPO_ROOT, "publish-check").stderr
     calls = tmp_path / "calls"
     # Cargo/dependency failure is propagated by the real recipe's strict shell.
     runner = f"uv() {{ echo invoked >> {shlex.quote(calls.as_posix())}; return 17; }}\n"

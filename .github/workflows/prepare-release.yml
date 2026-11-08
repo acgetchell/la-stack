@@ -1,0 +1,191 @@
+name: Prepare GitHub release
+
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: read
+  actions: read
+
+# All cooperative draft writers serialize by repository/tag without cancellation.
+concurrency:
+  group: release-draft-${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'acgetchell/la-stack'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      artifact-id: ${{ steps.handoff.outputs.artifact-id }}
+      artifact-digest: ${{ steps.handoff.outputs.artifact-digest }}
+      validated-attempt: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install trusted package runner
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.7"
+          enable-cache: false
+          cache-python: false
+      - name: Verify tagged source and freeze native evidence and notes
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == "refs/tags/$RELEASE_TAG" ]]
+          commit=$(git --no-pager rev-parse "$GITHUB_REF^{commit}")
+          [[ "$commit" == "$GITHUB_SHA" && "$(git --no-pager rev-parse HEAD)" == "$commit" ]]
+          git --no-pager merge-base --is-ancestor "$commit" origin/main
+          mkdir "$RUNNER_TEMP/handoff"
+          cp tooling/release-evidence.toml "$RUNNER_TEMP/handoff/evidence.toml"
+          runtime=(uv run --no-config --no-project --isolated --no-cache --python 3.15
+            --with 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3'
+            python -I -c 'import sys; from research_repo_tools.cli import main; sys.exit(main())')
+          "${runtime[@]}" --root "$GITHUB_WORKSPACE" release check "$RELEASE_TAG"
+          "${runtime[@]}" --root "$GITHUB_WORKSPACE" release evidence verify \
+            "$RUNNER_TEMP/handoff/evidence.toml" --checkout "$GITHUB_WORKSPACE" \
+            --commit "$commit" --version "${RELEASE_TAG#v}" \
+            --output "$RUNNER_TEMP/handoff/selection.json"
+          "${runtime[@]}" --root "$GITHUB_WORKSPACE" changelog notes "$RELEASE_TAG" > "$RUNNER_TEMP/handoff/notes.md"
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+      - name: Retain inert verified handoff
+        id: handoff
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: draft-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/handoff/*
+          if-no-files-found: error
+          retention-days: 30
+
+  prepare:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      # No checkout, local action, project environment or handoff code executes here.
+      - name: Install trusted package runner
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.7"
+          enable-cache: false
+          cache-python: false
+      - name: Authenticate handoff and prepare the unpublished draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ needs.verify.outputs.commit }}
+          HANDOFF_ID: ${{ needs.verify.outputs.artifact-id }}
+          HANDOFF_SHA256: ${{ needs.verify.outputs.artifact-digest }}
+          VALIDATED_ATTEMPT: ${{ needs.verify.outputs.validated-attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Recovery must retrieve the original journal, never start a new intent.
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$VALIDATED_ATTEMPT" = "$GITHUB_RUN_ATTEMPT"
+          cd "$RUNNER_TEMP"
+          uv run --no-config --no-project --isolated --no-cache --python 3.15 \
+            --with 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3' \
+            python -I - <<'PY'
+          import os
+          from functools import partial
+          from pathlib import Path
+          from research_repo_tools.files import replace_many
+          from research_repo_tools.release_assets import serialize_release_target
+          from research_repo_tools.release_drafts import prepare_release_draft
+          from research_repo_tools.release_interfaces import load_evidence_policy
+          from research_repo_tools.release_validation import api, download_artifact, read_pages
+
+          root = Path.cwd()
+          repository = os.environ["GITHUB_REPOSITORY"]
+          run = int(os.environ["GITHUB_RUN_ID"])
+          attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+          if (repository != "acgetchell/la-stack" or attempt != 1
+              or os.environ["VALIDATED_ATTEMPT"] != str(attempt)
+              or os.environ["GITHUB_EVENT_NAME"] != "push"
+              or os.environ["GITHUB_REF"] != "refs/tags/" + os.environ["RELEASE_TAG"]
+              or os.environ["GITHUB_SHA"] != os.environ["RELEASE_COMMIT"]):
+              raise ValueError("draft preparation requires the original exact tag push")
+          identifier = int(os.environ["HANDOFF_ID"])
+          artifact = api(f"actions/artifacts/{identifier}", repository=repository)
+          producer = artifact.get("workflow_run", {})
+          if not (
+              type(artifact.get("id")) is int and artifact["id"] == identifier
+              and artifact.get("expired") is False
+              and artifact.get("name") == f"draft-handoff-{run}-{attempt}"
+              and artifact.get("digest") == "sha256:" + os.environ["HANDOFF_SHA256"]
+              and type(producer.get("id")) is int and producer["id"] == run
+              and producer.get("head_sha") == os.environ["GITHUB_SHA"]
+          ):
+              raise ValueError("handoff artifact/run/digest identity differs")
+          current = api(f"actions/runs/{run}", repository=repository)
+          workflow = current.get("workflow_id")
+          if (type(current.get("id")) is not int or current["id"] != run
+              or type(workflow) is not int or workflow <= 0
+              or type(current.get("run_attempt")) is not int or current["run_attempt"] != attempt
+              or current.get("path") not in {
+                  ".github/workflows/prepare-release.yml",
+                  ".github/workflows/prepare-release.yml@" + os.environ["GITHUB_REF"],
+                  ".github/workflows/prepare-release.yml@" + os.environ["RELEASE_TAG"],
+              }
+              or current.get("event") != "push"
+              or current.get("head_branch") != os.environ["RELEASE_TAG"]
+              or current.get("head_sha") != os.environ["GITHUB_SHA"]):
+              raise ValueError("handoff producer attempt or event changed")
+          # Unfiltered history avoids the filtered workflow-run result cap.
+          history = read_pages(partial(api, repository=repository),
+                               f"actions/workflows/{workflow}/runs", "workflow_runs")
+          same_tag, seen = [], set()
+          for previous in history:
+              if (type(previous.get("id")) is not int or previous["id"] <= 0
+                  or type(previous.get("workflow_id")) is not int or previous["workflow_id"] != workflow
+                  or not isinstance(previous.get("event"), str)
+                  or not isinstance(previous.get("head_branch"), str)):
+                  raise ValueError("workflow history identity is incomplete")
+              if previous["id"] in seen:
+                  raise ValueError("workflow history contains duplicate runs")
+              seen.add(previous["id"])
+              if previous["event"] == "push" and previous["head_branch"] == os.environ["RELEASE_TAG"]:
+                  same_tag.append(previous["id"])
+          if same_tag != [run]:
+              raise ValueError("tag has prior or unproven preparation intent; recover the original journal")
+          handoff = root / "handoff"
+          download_artifact(repository, artifact, handoff, ("evidence.toml", "selection.json", "notes.md"))
+          latest = api(f"actions/runs/{run}", repository=repository)
+          if any(type(latest.get(key)) is not type(current.get(key)) or latest.get(key) != current.get(key)
+                 for key in ("id", "workflow_id", "run_attempt", "event", "head_branch", "head_sha", "path")):
+              raise ValueError("handoff producer changed during download")
+          target = prepare_release_draft(
+              root, repository, os.environ["RELEASE_TAG"], os.environ["RELEASE_COMMIT"],
+              policy=load_evidence_policy(handoff / "evidence.toml"),
+              expected=(handoff / "selection.json").read_bytes(), title=os.environ["RELEASE_TAG"],
+              notes=(handoff / "notes.md").read_bytes(), receipt=root / "draft-receipt.json", approve=True,
+          )
+          replace_many({root / "target.json": serialize_release_target(target)})
+          PY
+      - name: Retain journal even after an unconfirmed creation
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: draft-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/draft-receipt.json
+            ${{ runner.temp }}/target.json
+          if-no-files-found: ignore
+          retention-days: 30

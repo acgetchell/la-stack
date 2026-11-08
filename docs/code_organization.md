@@ -279,6 +279,12 @@ original archive derivation, exact draft staging and authenticated transfer.
 It does not implement a comparison engine, archive parser or CI verifier.
 `tests/tooling/test_candidate_transfer.py` exercises actual privileged workflow
 blocks and exact selection/credential boundaries.
+`tests/tooling/test_release_flow.py` exercises canonical dispatch and automated
+draft preparation through the installed shared API. `tests/tooling/test_validation_graph.py`
+checks parallel/serial validator ownership, shared setup, failure propagation
+and the managed compilation-cache boundary.
+`tests/tooling/test_release_context.py` owns automatic external owner selection,
+authenticated original draft-receipt retrieval and reviewed publication dispatch.
 Working-tree measurements now include nonignored untracked regular files.
 `tests/tooling/test_performance_workflow.py` exercises actual recipes and
 scientific policy. Shared failure matrices remain upstream. The
@@ -309,6 +315,13 @@ native/Cargo and signer policy to the installed verifier;
 asset commands from `RUNNER_TEMP`, without executing checkout code.
 `.github/workflows/release-benchmarks.yml` separates no-checkout draft retrieval,
 read-only candidate verification and no-checkout attachment. It does not measure.
+`.github/workflows/prepare-release.yml` owns tag-triggered read-only native
+evidence inspection and isolated draft creation. Its authenticated inert handoff
+and durable journal use the installed draft API; no local creation engine exists.
+`tooling/draft-receipt.toml` declares the original tag-push workflow and required
+receipt-producing jobs/steps for the installed retrieval API.
+The [integration record](dev/release-flow-integration.md) maps command/validation
+ownership and records baseline timings and remaining adoption evidence.
 `.github/workflows/publish-crates.yml` consumes a second maintainer dispatch with
 independent canonical-asset and full acceptance assertions. It owns approval,
 the immutable approval receipt, explicit native-evidence renewal, revalidation

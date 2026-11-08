@@ -923,9 +923,12 @@ just bench-save-last
 The durable baseline is derived from the accepted Step 1 local acquisition.
 The committed comparison is `docs/performance.md`. Follow
 [Releasing](RELEASING.md#step-2-publish-after-the-pr-is-merged) to verify the
-final clean commit, create a draft, stage the independent records, and dispatch
+final clean commit, wait for the tag-triggered draft, stage the independent records
+against its authenticated captured target, and dispatch
 attachment and publication. Both dispatches use the exact tag and owner-generated
 selection JSON; downloaded files cannot authenticate their own assertions.
+`just release-benchmarks "$TAG"` dispatches attachment using the explicitly
+selected `CANDIDATE_TRANSFER_FILE` and returns without waiting or acquiring data.
 
 ### Hosted Release Verification
 

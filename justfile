@@ -24,6 +24,19 @@ _coverage_base_args := '''--features exact \
   --workspace --lib --tests \
   --verbose'''
 
+# All parallel work shares the completed policy/setup phase in this invocation.
+[parallel]
+[private]
+_ci-execution: _ci-rust test-python
+
+# Cheap policy failures stop before either execution lane starts.
+[private]
+_ci-policy: action-lint workflow-allowlist-check zizmor markdown-check spell-check _version-check changelog-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-check cargo-lock-check fmt-check semgrep semgrep-test unused-deps shell-check
+
+# Keep root Cargo outputs and compilation reuse in one sequential lane.
+[private]
+_ci-rust: clippy-all-targets doc-check test-rust-ci test-doc test-doc-exact bench-compile test-bench-exact examples
+
 # List all public recipes with their arguments and descriptions.
 [default]
 [private]
@@ -57,7 +70,7 @@ _ensure-yamllint: _ensure-uv
 # Isolate the supplier runtime from the observed candidate checkout.
 [positional-arguments]
 [private]
-[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e", "python", "-I")]
+[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3", "python", "-I")]
 _release-candidate *args:
     import runpy
     from pathlib import Path
@@ -74,6 +87,11 @@ _release-notes-check tag:
     uv run --locked --no-sync research-repo-tools changelog notes "$tag" > "$notes"
     gh release view "$tag" --repo acgetchell/la-stack --json tagName,name,body |
         jq -e --arg tag "$tag" --rawfile notes "$notes" '.tagName == $tag and .name == $tag and ((.body | gsub("\r\n"; "\n") | rtrimstr("\n")) == ($notes | rtrimstr("\n")))' >/dev/null
+
+# Ordinary checks accept unreleased history; final release validation is stricter.
+[private]
+_version-check: python-sync
+    uv run --locked --group dev research-repo-tools release check
 
 # GitHub Actions workflow validation
 action-lint: _ensure-actionlint
@@ -242,7 +260,7 @@ check-fast:
     {{ _run }} cargo check
 
 # Run the complete local CI validation, tests, examples, and benchmark compilation.
-ci: action-lint workflow-allowlist-check zizmor markdown-check spell-check docs-version-check changelog-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-check test-python cargo-lock-check fmt-check clippy-all-targets doc-check semgrep semgrep-test unused-deps shell-check test-rust-ci test-doc test-doc-exact bench-compile test-bench-exact examples
+ci: python-sync tools-check _ci-policy _ci-execution
     @echo "🎯 CI checks complete!"
 
 # Validate CITATION.cff against the Citation File Format schema.
@@ -295,10 +313,6 @@ doc-check:
     RUSTDOCFLAGS='-D warnings' {{ _run }} cargo doc --no-deps
     RUSTDOCFLAGS='-D warnings' {{ _run }} cargo doc --no-deps --features exact
 
-# Check synchronized release metadata without changing files.
-docs-version-check: python-sync
-    uv run --locked --group dev research-repo-tools release check
-
 # Build and run all library examples, including exact arithmetic.
 examples:
     {{ _run }} research-repo-tools validation cargo-examples tooling/examples.toml
@@ -335,7 +349,7 @@ lint-code: rust-core-check python-check shell-check
 lint-config: validate-json toml-check yaml-check github-actions-check justfile-fmt-check
 
 # Check Markdown, spelling, release metadata, and generated changelogs.
-lint-docs: markdown-ci docs-version-check changelog-check
+lint-docs: markdown-ci _version-check changelog-check
 
 # Check active Markdown formatting, local links, and line lengths.
 markdown-check: tools-check _ensure-uv
@@ -414,6 +428,11 @@ performance-resume checkpoint="target/bench-reports/full/checkpoint" progress="h
 plot-vs-linalg current_tag current_revision baseline_tag baseline_revision view="lu_solve-median-linear" input="retained": python-sync
     {{ _run }} uv run --locked research-repo-tools performance publish {{ quote("tooling/plots/" + input + "/" + view + ".toml") }} --artifacts-only --current-release {{ quote(current_tag) }} --current-revision {{ quote(current_revision) }} --baseline-release {{ quote(baseline_tag) }} --baseline-revision {{ quote(baseline_revision) }}
 
+# Verify clean Cargo source packaging with default and exact features, without upload.
+publish-check:
+    {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run
+    {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run --features exact
+
 # Check Python formatting, lint, fixtures, and types.
 python-check: python-sync
     uv run --locked research-repo-tools python check
@@ -447,26 +466,33 @@ python-typecheck: python-sync
     uv run --locked research-repo-tools python typecheck
 
 # Derive the already accepted original acquisition without measuring or building.
-release-archive owner selection="reviewed": (_release-candidate "archive" owner "--selection" selection)
+release-archive owner="" selection="reviewed": (_release-candidate "archive" owner "--selection" selection)
 
-# Preflight, upload or verify a captured draft target with an isolated trusted runtime.
+# Use explicit shared asset/recovery operations with an isolated trusted runtime.
 [positional-arguments]
-[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e", "python", "-I")]
-release-assets operation tag *args:
+[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3", "python", "-I")]
+release-assets +args:
     import sys
-    from pathlib import Path
     from research_repo_tools.cli import main
-    from research_repo_tools.process import run_git_command
-    root = Path.cwd()
-    commit = run_git_command(["--no-pager", "rev-parse", "HEAD"], cwd=root, timeout=30).stdout.strip()
-    sys.exit(main(["release", "assets", sys.argv[1], "tooling/release-assets.toml", "--checkout", str(root), "--commit", commit, "--tag", sys.argv[2], *sys.argv[3:]]))
+    sys.exit(main(["release", "assets", *sys.argv[1:]]))
+
+# Dispatch retained benchmark attachment using the original Step 1 owner selection.
+release-benchmarks tag: _ensure-gh _ensure-jq
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tag={{ quote(tag) }}
+    [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "A canonical stable tag is required." >&2; exit 2; }
+    transfer="${CANDIDATE_TRANSFER_FILE-$(just --quiet _release-candidate record transfer)}"
+    [[ -f "$transfer" && -r "$transfer" ]] || { echo "The selected transfer must be a readable file." >&2; exit 2; }
+    jq -e --arg tag "$tag" '.schema == 1 and .target.repository == "acgetchell/la-stack" and .target.tag == $tag and .target.expected_title == $tag' -- "$transfer" >/dev/null
+    gh workflow run release-benchmarks.yml --repo acgetchell/la-stack --ref "$tag" -f "tag=$tag" -F "candidate=@$transfer"
 
 # Verify upstream tooling publication before release preparation or acquisition.
 release-dependencies:
     uv run --locked --no-sync research-repo-tools release dependencies
 
 # Bind the original local acquisition to clean HEAD and signed native CI.
-release-evidence owner selection="reviewed": (_release-candidate "verify" owner "--selection" selection)
+release-evidence owner="" selection="reviewed": (_release-candidate "verify" owner "--selection" selection)
 
 # Require the release event, reviewed commit, native checks, assets, and notes.
 release-gate tag:
@@ -476,7 +502,7 @@ release-gate tag:
 
 # Verify signed native/Cargo evidence; accept --expected PATH and --github-output PATH.
 [positional-arguments]
-[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e", "python", "-I")]
+[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3", "python", "-I")]
 release-native-evidence *args:
     import sys
     import tempfile
@@ -493,16 +519,11 @@ release-native-evidence *args:
 release-notes tag: python-sync
     uv run --locked --group dev research-repo-tools changelog notes {{ quote(tag) }}
 
-# Verify native Cargo packaging for the root crate, with default and exact features.
-release-package:
-    {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run
-    {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run --features exact
-
 # Freeze the canonical attached archive ID and bytes before publishing the draft.
-release-publication owner selection="reviewed": (_release-candidate "seal" owner "--selection" selection)
+release-publication owner="" selection="reviewed": (_release-candidate "seal" owner "--selection" selection)
 
 # Approve the benchmark-equipped draft as the authenticated maintainer.
-release-publish tag owner selection="reviewed": (_release-notes-check tag) (release-evidence owner selection) (release-publication owner selection)
+release-publish tag owner="" selection="reviewed": (_release-notes-check tag) (_release-candidate "reviewed" owner "--selection" selection) (release-publication owner selection)
     uv run --locked --no-sync research-repo-tools release publish {{ quote(tag) }} --approve
 
 # Verify the maintainer's dispatch input; never acquire timings or build packages.
@@ -511,11 +532,18 @@ release-receive destination *args:
     just _release-candidate receive "$@"
 
 # Stage accepted inert assets and print the independently retained dispatch record.
-release-stage owner selection="reviewed": (_release-candidate "stage" owner "--selection" selection)
+release-stage owner="" target="" selection="reviewed": (_release-candidate "stage" owner "--selection" selection "--target" target)
+
+# Dispatch Cargo publication using the existing reviewed acceptance and immutable assets.
+release-upload tag owner="" selection="reviewed": (_release-candidate "upload" tag owner "--selection" selection)
 
 # Verify the published GitHub release, required assets, and exact crates.io version.
 release-verify tag:
     uv run --locked --no-sync research-repo-tools release verify {{ quote(tag) }} --attempts 7 --interval 10
+
+# Require final changelog, citation date and package metadata agreement.
+release-version-check: python-sync
+    uv run --locked --group dev research-repo-tools release check --final-release
 
 # Review branch and local changes against a verified origin/main, or an explicit local base.
 review base="origin/main":
@@ -567,11 +595,11 @@ spell-check: tools-check
     {{ _run }} research-repo-tools files run --exclude typos.toml -- typos --config typos.toml --force-exclude --
 
 # Create an annotated git tag from the CHANGELOG.md section for the given version
-tag version: python-sync
+tag version owner="" selection="reviewed": release-version-check (_release-candidate "reviewed" owner "--selection" selection)
     uv run --locked --group dev research-repo-tools changelog tag {{ quote(version) }}
 
 # Replace an existing local tag only after validating the release notes.
-tag-force version: python-sync
+tag-force version owner="" selection="reviewed": release-version-check (_release-candidate "reviewed" owner "--selection" selection)
     uv run --locked --group dev research-repo-tools changelog tag {{ quote(version) }} --force
 
 # Run library unit tests and default-feature doctests.
@@ -610,7 +638,7 @@ test-integration-compile: tools-check
 
 # Run Python consumer integration and benchmark-policy tests.
 test-python: tools-check python-sync
-    {{ semgrep_stack_limit }} {{ _run }} uv run --locked pytest -q {{ _pytest_parallel }} --durations=20
+    {{ semgrep_stack_limit }} {{ _run }} uv run --locked --no-sync pytest -q {{ _pytest_parallel }} --durations=20
 
 # Run all runnable Rust tests and both doctest configurations.
 test-rust: test-rust-ci test-doc test-doc-exact

@@ -35,7 +35,7 @@ from research_repo_tools.suite_measurement import SuiteMeasurementPlan
 from research_repo_tools.suite_runs import comparison_incompatibilities, parse_suite_run
 from research_repo_tools.worktrees import capture_snapshot
 
-from tooling.release_candidate import ReviewedAcceptance, archive, capture, freeze, receive, verify
+from tooling.release_candidate import ReviewedAcceptance, archive, capture, freeze, receive, remember_owner, selected_owner, verify
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -245,7 +245,7 @@ def test_routine_ci_validates_benchmarks_without_acquiring_timings() -> None:
     assert any("--no-run --features bench,exact --bench exact" in line for line in compile_commands)
     assert [line for line in bench_commands if line not in compile_commands] == ['--locked --features bench,exact --bench exact -- "$@"']
     recipes = inspect_justfile(ROOT).recipes
-    assert {"test-bench-exact", "bench-compile", "test-rust-ci"} <= {dep["recipe"] for dep in recipes["ci"]["dependencies"]}
+    assert {"test-bench-exact", "bench-compile", "test-rust-ci"} <= {dep["recipe"] for dep in recipes["_ci-rust"]["dependencies"]}
     smoke = recipes["test-bench-exact"]["dependencies"]
     assert [(dep["recipe"], dep["arguments"]) for dep in smoke] == [("bench-exact", ["--test"])]
 
@@ -754,8 +754,7 @@ def test_local_candidate_capture_and_final_acceptance_reuse_original_bytes(
     assert (owner / "run.json").read_bytes() == (root / "target/bench-reports/full/run.json").read_bytes()
     assert (owner / "evidence.json").read_bytes() == (root / "target/bench-reports/full/evidence.json").read_bytes()
     original = {path.name: path.read_bytes() for path in owner.iterdir()}
-    assert capture(root, owner) == assertions
-    assert {path.name: path.read_bytes() for path in owner.iterdir()} == original
+    assert_owner_capture(root, owner, assertions, original, monkeypatch)
     publish_publication(
         load_report_plan(
             root,
@@ -809,6 +808,16 @@ def test_local_candidate_capture_and_final_acceptance_reuse_original_bytes(
         verify(root, owner)
     assert accepted.read_bytes() == original_acceptance
     assert artifact.read_bytes() == original_archive
+
+
+def assert_owner_capture(root: Path, owner: Path, assertions: dict[str, str], original: dict[str, bytes], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Retain the actual captured assertions while registering automatic lookup."""
+    assert capture(root, owner) == assertions
+    assert {path.name: path.read_bytes() for path in owner.iterdir()} == original
+    with monkeypatch.context() as context:
+        context.setattr(Path, "home", lambda: owner.parent / "state home")
+        remember_owner(root, owner)
+        assert selected_owner(root) == owner.resolve()
 
 
 def assert_hosted_reuse(root: Path, owner: Path, accepted: Path, artifact: Path, monkeypatch: pytest.MonkeyPatch) -> None:

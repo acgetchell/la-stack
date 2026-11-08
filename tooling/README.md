@@ -25,6 +25,14 @@ slowest test durations are reported; assertions and test selection are unchanged
 repository validation. Native Linux, macOS and Windows CI is required for
 adoption; local macOS results do not establish the other platforms.
 
+After shared setup and fast policy checks, `just ci` overlaps Python consumer
+tests with a single sequential Cargo lane. `just --jobs 1 ci` preserves serial
+execution. No measurement recipes join either lane. The shared managed Cargo
+build cache retains compilation separately from exact-version installations;
+ordinary CI caches only that compilation directory, with exact OS/architecture
+and tool/lock keys. Release jobs disable caches. See
+[validation integration](../docs/dev/release-flow-integration.md).
+
 For subprocess fixtures, run Bash and Python source from files, and pass paths
 and payloads as arguments or environment data. Nested `-c` commands add Windows
 argument parsing boundaries that POSIX shell quoting does not protect. Supply an
@@ -59,7 +67,7 @@ Other platforms resolve Semgrep 1.184.0 or newer within the shared range.
 ## Shared capability adoption
 
 This development branch tests upstream commit
-`055353c630604b1ae3438c1eaf534ba85e067a7e` through an exact uv Git source override.
+`cd8594f658b5bf3ade063a685834565cc62e0cb3` through an exact uv Git source override.
 The package metadata still says 0.2.6; integration checks verify the manifest,
 lock and installed commit, including the isolated `uvx --python 3.15` runtimes.
 Advance the full commit deliberately after upstream changes; do not float on
@@ -89,7 +97,7 @@ come from their registries for release. The file is retained in source exports
 and both benchmark harness declarations, so policy changes invalidate evidence.
 
 The capability inventory below uses the pinned CLI and
-its [exact-commit contracts](https://github.com/acgetchell/research-repo-tools/blob/055353c630604b1ae3438c1eaf534ba85e067a7e/README.md#common-workflows).
+its [exact-commit contracts](https://github.com/acgetchell/research-repo-tools/blob/cd8594f658b5bf3ade063a685834565cc62e0cb3/README.md#common-workflows).
 The shared updater installs and verifies candidate Cargo tools before publishing
 new pins; no local updater implementation is needed.
 Native Rust algorithms, assertions, benchmark selection and release decisions
@@ -286,7 +294,7 @@ explicit dates remain supported. Generation never advances citation metadata.
 The publishing declaration selects only `la-stack`, requires native platform
 and scientific checks on the exact commit, and requires the durable Criterion
 release asset. `release-gate`, `release-publish` and `release-verify`
-use the shared release contract; `release-package` owns native default/exact
+use the shared release contract; `publish-check` owns native default/exact
 Cargo dry-runs. Main CI signs those packaging and native validation identities;
 `release-evidence <owner>` binds the original acquisition, precise publisher
 receipt, final clean commit and signed native acceptance. Named review records
@@ -295,7 +303,11 @@ are immutable; selecting a later native attempt requires an explicit new name.
 `release-assets.toml` owns the draft-target policy. Evidence recipes use the pinned
 installed runtime outside the observed checkout. The [release guide](../docs/RELEASING.md#reusable-ci-evidence)
 owns the independent owner selection and frozen approval contract.
-`release-stage` freezes the draft ID before upload; `release-publication` adds
+Tag-triggered `prepare-release.yml` reuses signed native evidence and generated
+notes through the installed draft API. Its isolated writer retains the original
+journal and captured target. `release-stage` retrieves that original target through
+the installed tag-aware receipt verifier and freezes its ID before upload;
+`release-publication` adds
 canonical archive ID/hash assertions. Two maintainer dispatches use those
 independent records. Write-scope hosted jobs execute no checkout code;
 read-only verification authenticates full acceptance with an owner-reviewed
@@ -307,6 +319,15 @@ the original immutable release archive and asset selections.
 `tests/tooling/test_release_publishing.py` checks consumer policy and upload barriers
 without registry credentials. The release guide owns retention, complete-rerun
 recovery and the distinction between reused checks and Cargo repackaging.
+`tests/tooling/test_release_flow.py` exercises the actual draft writer with the
+installed verifier and draft API, plus canonical `release-benchmarks TAG`
+forwarding with automatic original-owner lookup or explicit `CANDIDATE_TRANSFER_FILE`.
+Step 1 retains the immutable external owner selection; routine Step 2 recipes
+need no `OWNER` or `RELEASE_COMMIT` shell variables. `release-upload` dispatches
+the existing reviewed publication selection without approving deployment.
+`release-version-check`
+requires final metadata; ordinary CI retains a private nonfinal metadata check.
+There are no `docs-version-check` or `release-package` recipe aliases.
 
 `tests/tooling/test_toolchain_integration.py` owns the package-identity check:
 manifest source, exact Git lock and installed commit for this rehearsal.

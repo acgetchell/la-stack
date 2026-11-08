@@ -77,7 +77,7 @@ def test_saved_release_baseline_selects_only_public_workloads() -> None:
 def test_ci_enforces_full_python_fixture_lint_policy() -> None:
     """Canonical CI should lint fixtures without narrowing the Ruff configuration."""
     recipes = just_recipes()
-    ci_dependencies = {dependency["recipe"] for dependency in recipes["ci"]["dependencies"]}
+    ci_dependencies = {dependency["recipe"] for dependency in recipes["_ci-policy"]["dependencies"]}
     python_body = json.dumps(recipes["python-check"]["body"])
 
     assert "python-check" in ci_dependencies
@@ -150,7 +150,7 @@ def test_dependabot_shared_caller_covers_dependencies_with_explicit_manual_revie
         if path.suffix in {".yml", ".yaml"}
     }
     # Publication and signed evidence production retain maintainer review.
-    manual_review = {".github/workflows/publish-crates.yml", ".github/workflows/ci.yml"}
+    manual_review = {".github/workflows/publish-crates.yml", ".github/workflows/ci.yml", ".github/workflows/prepare-release.yml"}
     assert manual_review <= actions
     assert set(policy["github_actions"]["files"]) == actions - manual_review
 

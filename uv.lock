@@ -433,12 +433,12 @@ tooling = [
 dev = [
     { name = "actionlint-py", specifier = "==1.7.12.25" },
     { name = "pytest-xdist", specifier = "==3.8.0" },
-    { name = "research-repo-tools", extras = ["python-tools", "semgrep"], git = "https://github.com/acgetchell/research-repo-tools?rev=055353c630604b1ae3438c1eaf534ba85e067a7e" },
+    { name = "research-repo-tools", extras = ["python-tools", "semgrep"], git = "https://github.com/acgetchell/research-repo-tools?rev=cd8594f658b5bf3ade063a685834565cc62e0cb3" },
     { name = "shellcheck-py", specifier = "==0.11.0.1" },
     { name = "shfmt-py", specifier = "==4.2.0" },
     { name = "yamllint", specifier = "==1.38.0" },
 ]
-tooling = [{ name = "research-repo-tools", extras = ["python-tools", "semgrep"], git = "https://github.com/acgetchell/research-repo-tools?rev=055353c630604b1ae3438c1eaf534ba85e067a7e" }]
+tooling = [{ name = "research-repo-tools", extras = ["python-tools", "semgrep"], git = "https://github.com/acgetchell/research-repo-tools?rev=cd8594f658b5bf3ade063a685834565cc62e0cb3" }]
 
 [[package]]
 name = "markdown-it-py"
@@ -900,7 +900,7 @@ wheels = [
 [[package]]
 name = "research-repo-tools"
 version = "0.2.6"
-source = { git = "https://github.com/acgetchell/research-repo-tools?rev=055353c630604b1ae3438c1eaf534ba85e067a7e#055353c630604b1ae3438c1eaf534ba85e067a7e" }
+source = { git = "https://github.com/acgetchell/research-repo-tools?rev=cd8594f658b5bf3ade063a685834565cc62e0cb3#cd8594f658b5bf3ade063a685834565cc62e0cb3" }
 dependencies = [
     { name = "packaging" },
     { name = "pyyaml" },
