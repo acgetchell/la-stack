@@ -97,8 +97,9 @@ def test_native_updates_advance_eligible_dependencies_and_preserve_coupled_requi
         ["--justfile", str(consumer / "recipes.just"), "--working-directory", str(consumer), recipe],
         cwd=consumer,
         timeout=120,
+        check=False,
     )
-    assert result.returncode == 0
+    assert result.returncode == 0, result.stdout + result.stderr
     after = tomllib.loads((consumer / "Cargo.toml").read_text(encoding="utf-8"))["dependencies"]
     assert after["num-bigint"] == before["num-bigint"]
     assert after["num-rational"] == before["num-rational"]
