@@ -8,6 +8,8 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 _run := "uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain run --"
 
+_pytest_parallel := "-n " + quote(env("LA_STACK_TEST_WORKERS", "4")) + " --dist worksteal --max-worker-restart 0"
+
 # Semgrep misreads Python 3.15's positive RLIM_INFINITY on Linux.
 # Keep its inherited stack finite until semgrep/semgrep#11979 is fixed.
 semgrep_stack_limit := if os() == "linux" { 'if [[ "$(ulimit -Hs)" == unlimited ]]; then ulimit -s 1048576; fi;' } else { "" }
@@ -608,7 +610,7 @@ test-integration-compile: tools-check
 
 # Run Python consumer integration and benchmark-policy tests.
 test-python: tools-check python-sync
-    {{ semgrep_stack_limit }} {{ _run }} uv run --locked pytest -q
+    {{ semgrep_stack_limit }} {{ _run }} uv run --locked pytest -q {{ _pytest_parallel }} --durations=20
 
 # Run all runnable Rust tests and both doctest configurations.
 test-rust: test-rust-ci test-doc test-doc-exact

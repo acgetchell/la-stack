@@ -132,7 +132,16 @@ def acquire(root: Path, owner: Path, checkpoint: str, *, resume: bool, progress:
             message = "resume requires the original acquisition owner record"
             raise ValueError(message)
     else:
-        owner.mkdir(mode=0o700, parents=True)
+        try:
+            owner.mkdir(mode=0o700, parents=True)
+        except FileExistsError as error:
+            if not owner.exists():
+                raise
+            message = (
+                f"acquisition owner record already exists: {owner}; preserve it and select a new checkpoint/owner directory, "
+                "or use performance-resume if the original checkpoint still exists"
+            )
+            raise ValueError(message) from error
     freeze(owner, {"preparation.json": serialize_preparation(preparation)})
 
     def before_promotion() -> None:

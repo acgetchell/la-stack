@@ -207,6 +207,36 @@ def test_update_failure_stops_later_steps(consumer: Path, monkeypatch: pytest.Mo
     assert calls == WORKFLOWS["update"][:step]
 
 
+@pytest.mark.parametrize("workers", [None, "0", "2"])
+@pytest.mark.parametrize("failure", [False, True])
+def test_python_recipe_preserves_worker_selection_and_failure(consumer: Path, monkeypatch: pytest.MonkeyPatch, workers: str | None, failure: bool) -> None:
+    if workers is None:
+        monkeypatch.delenv("LA_STACK_TEST_WORKERS", raising=False)
+    else:
+        monkeypatch.setenv("LA_STACK_TEST_WORKERS", workers)
+    if failure:
+        monkeypatch.setenv("UPDATE_FAIL_STEP", "4")
+
+    result, calls = invoke(consumer, "test-python")
+
+    assert result.returncode == (23 if failure else 0), result.stderr
+    assert len(calls) == 4
+    invocation = calls[-1]
+    assert invocation[invocation.index("pytest") :] == [
+        "pytest",
+        "-q",
+        "-n",
+        workers or "4",
+        "--dist",
+        "worksteal",
+        "--max-worker-restart",
+        "0",
+        "--durations=20",
+    ]
+    if failure:
+        assert "fixture update failed" in result.stderr
+
+
 def test_declared_tools_are_verified_and_cargo_edit_runs_from_managed_store(capsys: pytest.CaptureFixture[str]) -> None:
     """Exercise the installed public CLI on each native CI platform, without installs."""
     assert main(["--root", str(REPO_ROOT), "toolchain", "check", "--json"]) == 0

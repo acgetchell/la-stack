@@ -117,6 +117,7 @@ tooling = [ "research-repo-tools[python-tools,semgrep]==0.2.6" ]
 dev = [
     { include-group = "tooling" },
     "actionlint-py==1.7.12.25",
+    "pytest-xdist==3.8.0",
     "shellcheck-py==0.11.0.1",
     "shfmt-py==4.2.0",
     "yamllint==1.38.0",

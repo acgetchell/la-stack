@@ -17,7 +17,11 @@ versions. `toolchain.inherit-python-tools` verifies declarations, the locked
 development graph and executable versions. Local lint rules remain in this
 repository; the `dev` group does not carry competing tool pins.
 `just test-python`
-runs the installed-package integration tests. `just ci` is the final
+runs every installed-package integration test with four isolated pytest workers,
+work-stealing scheduling and no worker restarts. Set `LA_STACK_TEST_WORKERS=0`
+for serial diagnosis or another fixed count to bound local resource use. The
+slowest test durations are reported; assertions and test selection are unchanged.
+`just ci` is the final
 repository validation. Native Linux, macOS and Windows CI is required for
 adoption; local macOS results do not establish the other platforms.
 

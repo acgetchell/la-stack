@@ -12,8 +12,11 @@ import pytest
 from research_repo_tools import performance_release
 from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
+from research_repo_tools.performance_progress import ProgressReporter
 from research_repo_tools.process import run_command, run_git_command
 from research_repo_tools.releases import PublishedRelease
+
+from tooling import release_candidate as candidate
 
 ROOT = Path(__file__).resolve().parents[2]
 INPUTS = "target/bench-reports/release-inputs.json"
@@ -164,6 +167,50 @@ def test_missing_or_legacy_preparation_stops_before_readme_and_measurement(consu
     for command in ("readme", "release"):
         assert main(["performance", command, "tooling/performance-release.toml"]) == 1
     assert not (consumer / "target/bench-reports/full").exists()
+
+
+@pytest.mark.parametrize("owner_kind", ["directory", "file"])
+def test_fresh_acquisition_preserves_existing_owner_with_recovery_guidance(consumer: Path, monkeypatch: pytest.MonkeyPatch, owner_kind: str) -> None:
+    releases(monkeypatch, "v0.5.1")
+    performance_release.prepare_performance(consumer, settings(consumer))
+    owner = consumer.parent / "independent owner"
+    if owner_kind == "directory":
+        owner.mkdir()
+    retained = owner / "preparation.json" if owner_kind == "directory" else owner
+    original = b"original owner bytes\r\n\xff"
+    retained.write_bytes(original)
+    monkeypatch.setattr(candidate, "check_release_dependencies", lambda _root: None)
+    monkeypatch.setattr(candidate, "freeze", lambda *_args, **_kwargs: pytest.fail("existing owner must be rejected before freezing"))
+    monkeypatch.setattr(candidate, "measure_release", lambda *_args, **_kwargs: pytest.fail("existing owner must not start acquisition"))
+
+    with pytest.raises(ValueError, match="acquisition owner record already exists") as stopped:
+        candidate.acquire(consumer, owner, "target/checkpoint", resume=False, progress=ProgressReporter(mode="none"))
+
+    assert str(owner) in str(stopped.value)
+    assert "new checkpoint/owner directory" in str(stopped.value)
+    assert "performance-resume if the original checkpoint still exists" in str(stopped.value)
+    assert retained.read_bytes() == original
+    if owner_kind == "directory":
+        assert list(owner.iterdir()) == [retained]
+    assert not (consumer / "target/checkpoint").exists()
+
+
+def test_fresh_acquisition_preserves_unrelated_directory_creation_error(consumer: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    releases(monkeypatch, "v0.5.1")
+    performance_release.prepare_performance(consumer, settings(consumer))
+    owner = consumer.parent / "independent owner"
+    failure = FileExistsError("unrelated directory creation failure")
+
+    def fail_mkdir(_self: Path, *_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(candidate, "check_release_dependencies", lambda _root: None)
+    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    with pytest.raises(FileExistsError) as stopped:
+        candidate.acquire(consumer, owner, "target/checkpoint", resume=False, progress=ProgressReporter(mode="none"))
+
+    assert stopped.value is failure
+    assert not owner.exists()
 
 
 def test_release_prepares_before_measurement_and_readme_remains_separate() -> None:
