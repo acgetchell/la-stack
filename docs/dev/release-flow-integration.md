@@ -125,10 +125,10 @@ Just rejection of publication without prior review. Windows-targeted static
 type checking and the exact lock check passed. Astra's source review found no
 remaining trust-boundary blocker; it did not substitute for native validation.
 
-New native CI, authenticated hosted retained-evidence handoff and matched cold/warm managed
-installation timings require the final reviewed commit. No speedup is claimed
-from configuration, graph-fixture timing or these unmatched cache observations.
-[#333](https://github.com/acgetchell/la-stack/issues/333) retains final published
-package/native release adoption; #338 remains open for its native timing and
-published-package acceptance until those are demonstrated. No release, tag or
-benchmark campaign is run as part of this integration.
+The implementation PR closes #330 and #338 on merge.
+[#333](https://github.com/acgetchell/la-stack/issues/333) owns final native
+validation, authenticated hosted retained-evidence handoff, matched cold/warm
+managed installation timings and published-tooling adoption. No speedup is
+claimed from configuration, graph-fixture timing or these unmatched cache
+observations. No release, tag or benchmark campaign is run as part of this
+integration.
