@@ -1,11 +1,21 @@
 # Release and validation integration
 
-Implementation record for [#330](https://github.com/acgetchell/la-stack/issues/330)
+Implementation record for [#326](https://github.com/acgetchell/la-stack/issues/326),
+[#330](https://github.com/acgetchell/la-stack/issues/330)
 and [#338](https://github.com/acgetchell/la-stack/issues/338). The starting source
 is `7c3a3625220773369c089e64e568a979abc0bb7f`. The authorized supplying revision is
 research-repo-tools `cd8594f658b5bf3ade063a685834565cc62e0cb3` (PRs #207 and #209).
 Its installed metadata remains 0.2.6; the Git commit, manifest, lock and isolated
 runtime assertions distinguish this development rehearsal from publication.
+
+## Workstream readiness
+
+[PR #335](https://github.com/acgetchell/la-stack/pull/335) merged at the starting
+source above. Its Linux, macOS, Windows, Cargo packaging and static checks passed;
+all six prerequisites of #326 (#320 through #325) are closed. This integration
+completes the remaining #330 command/guide and automatic-draft work, plus #338's
+validation graph and cache wiring. Required PR checks and review still gate merge.
+Final release validation and published-tooling adoption belong to #333.
 
 ## Release contract
 
@@ -125,7 +135,7 @@ Just rejection of publication without prior review. Windows-targeted static
 type checking and the exact lock check passed. Astra's source review found no
 remaining trust-boundary blocker; it did not substitute for native validation.
 
-The implementation PR closes #330 and #338 on merge.
+The implementation PR closes #326, #330 and #338 on merge.
 [#333](https://github.com/acgetchell/la-stack/issues/333) owns final native
 validation, authenticated hosted retained-evidence handoff, matched cold/warm
 managed installation timings and published-tooling adoption. No speedup is

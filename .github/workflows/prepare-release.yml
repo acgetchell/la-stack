@@ -93,16 +93,13 @@ jobs:
           HANDOFF_ID: ${{ needs.verify.outputs.artifact-id }}
           HANDOFF_SHA256: ${{ needs.verify.outputs.artifact-digest }}
           VALIDATED_ATTEMPT: ${{ needs.verify.outputs.validated-attempt }}
-        shell: bash
+        working-directory: ${{ runner.temp }}
+        # Run Python from the runner's script file, avoiding actionlint #651's stdin deadlock.
+        shell: >-
+          uv run --no-config --no-project --isolated --no-cache --python 3.15
+          --with "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3"
+          python -I "{0}"
         run: |
-          set -euo pipefail
-          # Recovery must retrieve the original journal, never start a new intent.
-          test "$GITHUB_RUN_ATTEMPT" = 1
-          test "$VALIDATED_ATTEMPT" = "$GITHUB_RUN_ATTEMPT"
-          cd "$RUNNER_TEMP"
-          uv run --no-config --no-project --isolated --no-cache --python 3.15 \
-            --with 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3' \
-            python -I - <<'PY'
           import os
           from functools import partial
           from pathlib import Path
@@ -117,6 +114,7 @@ jobs:
           run = int(os.environ["GITHUB_RUN_ID"])
           attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
           if (repository != "acgetchell/la-stack" or attempt != 1
+              or os.environ["GITHUB_RUN_ATTEMPT"] != "1"
               or os.environ["VALIDATED_ATTEMPT"] != str(attempt)
               or os.environ["GITHUB_EVENT_NAME"] != "push"
               or os.environ["GITHUB_REF"] != "refs/tags/" + os.environ["RELEASE_TAG"]
@@ -178,7 +176,6 @@ jobs:
               notes=(handoff / "notes.md").read_bytes(), receipt=root / "draft-receipt.json", approve=True,
           )
           replace_many({root / "target.json": serialize_release_target(target)})
-          PY
       - name: Retain journal even after an unconfirmed creation
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

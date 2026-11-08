@@ -927,8 +927,9 @@ final clean commit, wait for the tag-triggered draft, stage the independent reco
 against its authenticated captured target, and dispatch
 attachment and publication. Both dispatches use the exact tag and owner-generated
 selection JSON; downloaded files cannot authenticate their own assertions.
-`just release-benchmarks "$TAG"` dispatches attachment using the explicitly
-selected `CANDIDATE_TRANSFER_FILE` and returns without waiting or acquiring data.
+`just release-benchmarks "$TAG"` dispatches attachment using the transfer from
+the retained owner record by default. `CANDIDATE_TRANSFER_FILE` is an optional
+recovery override. Dispatch returns without waiting or acquiring data.
 
 ### Hosted Release Verification
 

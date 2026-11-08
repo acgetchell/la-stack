@@ -184,7 +184,7 @@ def draft_handoff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
     source = next(step["run"] for step in workflow["jobs"]["prepare"]["steps"] if "run" in step)
     script = tmp_path / "writer.py"
-    script.write_text(source.split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0], encoding="utf-8", newline="\n")
+    script.write_text(source, encoding="utf-8", newline="\n")
     return {**state, "state": state, "provider": provider, "script": script}
 
 
@@ -201,11 +201,15 @@ def test_actual_writer_creates_once_and_retains_exact_draft(draft_handoff: dict[
     assert (target.tag, target.commit, target.release_id, target.expected_title) == (TAG, COMMIT, 42, TAG)
 
 
-@pytest.mark.parametrize("failure", ["ref", "commit", "attempt", "artifact", "digest", "expired", "history", "workflow", "native"])
+@pytest.mark.parametrize(
+    "failure", ["ref", "commit", "attempt", "attempt-spelling", "validated-attempt", "artifact", "digest", "expired", "history", "workflow", "native"]
+)
 def test_writer_rejects_changed_handoff_without_creating_a_draft(
     draft_handoff: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
 ) -> None:
-    if failure in {"ref", "commit", "attempt"}:
+    if failure in {"attempt-spelling", "validated-attempt"}:
+        monkeypatch.setenv("GITHUB_RUN_ATTEMPT" if failure == "attempt-spelling" else "VALIDATED_ATTEMPT", "01")
+    elif failure in {"ref", "commit", "attempt"}:
         monkeypatch.setenv({"ref": "GITHUB_REF", "commit": "GITHUB_SHA", "attempt": "GITHUB_RUN_ATTEMPT"}[failure], "changed")
         if failure == "attempt":
             monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
@@ -218,7 +222,11 @@ def test_writer_rejects_changed_handoff_without_creating_a_draft(
         draft_handoff["current"]["path"] = ".github/workflows/other.yml"
     else:
         draft_handoff["provider"].jobs[0]["conclusion"] = "failure"
-    diagnostic = "original exact tag push" if failure in {"ref", "commit", "attempt"} else "handoff|preparation intent|did not succeed"
+    diagnostic = (
+        "original exact tag push"
+        if failure in {"ref", "commit", "attempt", "attempt-spelling", "validated-attempt"}
+        else "handoff|preparation intent|did not succeed"
+    )
     with pytest.raises(ValueError, match=diagnostic):
         runpy.run_path(str(draft_handoff["script"]), run_name="__main__")
     assert draft_handoff["posts"] == []
@@ -233,9 +241,24 @@ def test_draft_workflow_keeps_the_writer_isolated_and_recovery_explicit() -> Non
     assert writer["needs"] == "verify"
     assert writer["permissions"] == {"actions": "read", "contents": "write"}
     assert all(not step.get("uses", "").startswith("./") and "checkout@" not in step.get("uses", "") for step in writer["steps"])
-    script = writer["steps"][1]["run"]
-    assert 'test "$GITHUB_RUN_ATTEMPT" = 1' in script
-    assert "--no-config --no-project --isolated --no-cache" in script
+    step = writer["steps"][1]
+    # Custom shells use .NET argument parsing; single quotes are not delimiters.
+    command = shlex.split(step["shell"], posix=False)
+    assert command[:9] == ["uv", "run", "--no-config", "--no-project", "--isolated", "--no-cache", "--python", "3.15", "--with"]
+    assert command[9].startswith('"research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@')
+    assert command[9].endswith('"')
+    assert command[10:] == ["python", "-I", '"{0}"']
+    assert step["working-directory"] == "${{ runner.temp }}"
     assert writer["steps"][-1]["if"] == "always()"
     assert "draft-receipt.json" in writer["steps"][-1]["with"]["path"]
     assert all(step.get("with", {}).get("enable-cache", False) is False for step in writer["steps"])
+
+
+def test_draft_workflow_avoids_actionlint_prestart_pipe_deadlock() -> None:
+    """The pinned linter writes Bash scripts before starting their pipe reader."""
+    workflow = yaml.safe_load(WORKFLOW.read_bytes())
+    for job in workflow["jobs"].values():
+        for step in job["steps"]:
+            if "run" in step and step.get("shell", "bash").split()[0] in {"bash", "sh"}:
+                payload = ("set -eo pipefail\n" + step["run"] + "\n").encode("utf-8")
+                assert len(payload) <= 4096, f"{step['name']} sends {len(payload)} bytes to actionlint's pre-start Windows pipe"
