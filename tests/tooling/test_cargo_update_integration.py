@@ -3,6 +3,7 @@
 import hashlib
 import io
 import json
+import select
 import shutil
 import sys
 import tarfile
@@ -11,15 +12,42 @@ import tomllib
 from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 from research_repo_tools.process import run_command
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from socket import socket
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+class RegistryHandler(SimpleHTTPRequestHandler):
+    """Make HTTP/1.0 connection closure explicit, including empty 304 replies."""
+
+    @override
+    def end_headers(self) -> None:
+        # cargo-edit's HTTP client can otherwise pool a 304 connection before
+        # this single-request server closes it, racing the next index lookup.
+        self.send_header("Connection", "close")
+        super().end_headers()
+
+
+class ClientClosingServer(HTTPServer):
+    """Expose premature connection reuse without a timing-dependent sleep."""
+
+    @override
+    def shutdown_request(self, request: socket | tuple[bytes, socket]) -> None:
+        assert not isinstance(request, tuple), "the HTTP registry requires a TCP socket"
+        # Hold the server's close until the client closes or sends another
+        # request. Reusing this HTTP/1.0 connection then fails deterministically.
+        # Bound the wait so a broken client cannot hang fixture cleanup.
+        try:
+            select.select([request], [], [], 5)
+        finally:
+            super().shutdown_request(request)
 
 
 def crate(registry: Path, name: str, version: str) -> dict[str, object]:
@@ -42,7 +70,7 @@ def crate(registry: Path, name: str, version: str) -> dict[str, object]:
 
 
 @pytest.fixture
-def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, server_type: type[HTTPServer]) -> Iterator[Path]:
     """Keep actual tool declarations and recipes; substitute only registry inputs."""
     root = tmp_path / "cargo consumer"
     root.mkdir()
@@ -58,7 +86,7 @@ def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     versions = {name: dependencies[name]["version"] for name in ("num-bigint", "num-rational", "num-traits")}
     registry = tmp_path / "registry"
     registry.mkdir()
-    server = HTTPServer(("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=str(registry)))
+    server = server_type(("127.0.0.1", 0), partial(RegistryHandler, directory=str(registry)))
     host = f"http://127.0.0.1:{server.server_port}"
     index = registry / "index"
     index.mkdir()
@@ -89,6 +117,7 @@ def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 
 
 @pytest.mark.parametrize("recipe", ["update-cargo-dependencies", "update-dependencies"])
+@pytest.mark.parametrize("server_type", [HTTPServer, ClientClosingServer], ids=["normal-close", "client-close"])
 def test_native_updates_advance_eligible_dependencies_and_preserve_coupled_requirements(consumer: Path, recipe: str) -> None:
     """Cargo upgrade and cargo update run through the installed checked toolchain."""
     before = tomllib.loads((consumer / "Cargo.toml").read_text(encoding="utf-8"))["dependencies"]
