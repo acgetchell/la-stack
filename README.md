@@ -238,9 +238,11 @@ for the full contracts.
 
 ¹ Requires `features = ["exact"]`.
 
-For tested usage examples, see [exact dot products and column selection][guide-exact-reductions],
-[interval division and solution enclosures][guide-intervals], and the runnable
-[polynomial determinant example][example-polynomial].
+For tested usage, see the guides to [exact dot products and column selection][guide-exact-reductions]
+and [interval division and solution enclosures][guide-intervals]. Runnable workflows cover
+[column selection][example-column-basis], [interval solves][example-interval-solve],
+[exact rational solves and objectives][example-rational-input], and
+[polynomial determinants][example-polynomial].
 
 [api-reference]: https://docs.rs/la-stack/latest/la_stack/
 [api-guide]: https://docs.rs/la-stack/latest/la_stack/guide/index.html
@@ -457,22 +459,26 @@ for current release planning.
 
 The `examples/` directory contains small, runnable programs:
 
+- **[`column_basis`][example-column-basis]** — select columns of a rectangular matrix and handle partial numerical rank
 - **[`const_det_4x4`][example-const-det]** — compile-time 4×4 determinant via `det_direct()`
 - **[`det_5x5`][example-det]** — determinant of a 5×5 matrix via LU
 - **[`exact_det_3x3`][example-exact-det]** — exact determinant value of a near-singular 3×3 matrix (requires `exact` feature)
 - **[`exact_sign_3x3`][example-exact-sign]** — exact determinant sign of a near-singular 3×3 matrix (requires `exact` feature)
 - **[`exact_solve_3x3`][example-exact-solve]** — exact solve of a near-singular 3×3 system vs f64 LU (requires `exact` feature)
+- **[`interval_solve`][example-interval-solve]** — divide by a zero-free interval, enclose all admitted solutions, and identify when fallback is required
 - **[`ldlt_solve_3x3`][example-ldlt-solve]** — solve a 3×3 symmetric positive definite system via LDLT
 - **[`polynomial_determinant`][example-polynomial]** — exact cancellation, leading coefficients, and explicit work limits (requires `exact` feature)
-- **[`rational_input_5x5`][example-rational-input]** — exact rational solve of a 5×5 system that becomes singular as f64 (requires `exact` feature)
+- **[`rational_input_5x5`][example-rational-input]** — exact solve and rational dot products for a system that becomes singular as f64 (requires `exact`)
 - **[`solve_5x5`][example-solve]** — solve a 5×5 system via LU with partial pivoting
 - **[`vector_angles`][example-vector-angles]** — unsigned angles for fixed vectors and borrowed slices, including extreme magnitudes and subnormal separations
 
+[example-column-basis]: https://github.com/acgetchell/la-stack/blob/main/examples/column_basis.rs
 [example-const-det]: https://github.com/acgetchell/la-stack/blob/main/examples/const_det_4x4.rs
 [example-det]: https://github.com/acgetchell/la-stack/blob/main/examples/det_5x5.rs
 [example-exact-det]: https://github.com/acgetchell/la-stack/blob/main/examples/exact_det_3x3.rs
 [example-exact-sign]: https://github.com/acgetchell/la-stack/blob/main/examples/exact_sign_3x3.rs
 [example-exact-solve]: https://github.com/acgetchell/la-stack/blob/main/examples/exact_solve_3x3.rs
+[example-interval-solve]: https://github.com/acgetchell/la-stack/blob/main/examples/interval_solve.rs
 [example-ldlt-solve]: https://github.com/acgetchell/la-stack/blob/main/examples/ldlt_solve_3x3.rs
 [example-polynomial]: https://github.com/acgetchell/la-stack/blob/main/examples/polynomial_determinant.rs
 [example-rational-input]: https://github.com/acgetchell/la-stack/blob/main/examples/rational_input_5x5.rs
@@ -482,12 +488,15 @@ The `examples/` directory contains small, runnable programs:
 ```bash
 just examples
 # or individually:
+cargo run --locked --example column_basis
 cargo run --example const_det_4x4
 cargo run --example det_5x5
 cargo run --features exact --example exact_det_3x3
 cargo run --features exact --example exact_sign_3x3
 cargo run --features exact --example exact_solve_3x3
+cargo run --locked --example interval_solve
 cargo run --example ldlt_solve_3x3
+cargo run --locked --features exact --example polynomial_determinant
 cargo run --features exact --example rational_input_5x5
 cargo run --example solve_5x5
 cargo run --locked --example vector_angles

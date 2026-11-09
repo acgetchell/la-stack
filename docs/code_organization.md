@@ -116,10 +116,16 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
 - `tooling/examples.toml` owns the Cargo example package, feature overrides and
   time budgets. The shared runner discovers every binary example from metadata;
   executable numerical assertions stay in `examples/`.
-- `examples/vector_angles.rs` demonstrates fixed-vector and borrowed-slice angles,
-  independent magnitude scaling, and subnormal separations.
+- `examples/column_basis.rs` demonstrates full and partial rectangular column
+  selections with explicit absolute tolerances and a rank check before extracting a minor.
+- `examples/interval_solve.rs` demonstrates zero-free division and reciprocals,
+  an analytical solution enclosure, and the two typed solve fallback cases.
 - `examples/polynomial_determinant.rs` demonstrates exact cancellation, borrowed
   leading coefficients and typed work-budget exhaustion.
+- `examples/rational_input_5x5.rs` demonstrates an exact rational solve and exact
+  objective evaluation with prepared vectors and checked borrowed slices.
+- `examples/vector_angles.rs` demonstrates fixed-vector and borrowed-slice angles,
+  independent magnitude scaling, and subnormal separations.
 
 Use [Testing guidance](dev/testing.md) for dimension coverage and test design,
 and [Documentation guidance](dev/docs.md) for executable-example ownership.

@@ -185,7 +185,7 @@ exclude = [ "docs/archive/**", "docs/performance/**", "docs/performance-runs/**"
 path = "README.md"
 pattern = 'https://(?:github\.com/acgetchell/la-stack/(?:blob|raw|tree)/|raw\.githubusercontent\.com/acgetchell/la-stack/)(?P<value>main|v[0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{7,40})/[^\s)\]>"?]+'
 value = "main"
-count = 42
+count = 44
 exclude = '/docs/(?:assets/bench|performance-runs)/'
 
 [[tool.research-repo-tools.release.rules]]
