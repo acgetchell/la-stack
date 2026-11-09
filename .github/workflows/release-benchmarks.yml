@@ -17,7 +17,7 @@ on:
         type: string
 
 concurrency:
-  group: release-benchmarks-${{ inputs.tag }}
+  group: release-draft-${{ github.repository }}-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           uvx --python 3.15 \
-            --from 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e' \
+            --from 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3' \
             python -I - <<'PY'
           import hashlib, json, os
           from pathlib import Path
@@ -193,7 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           uvx --python 3.15 \
-            --from 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@055353c630604b1ae3438c1eaf534ba85e067a7e' \
+            --from 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3' \
             python -I - <<'PY'
           import hashlib, json, os
           from pathlib import Path

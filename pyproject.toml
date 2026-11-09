@@ -110,7 +110,7 @@ override-dependencies = [
 
 # Temporary downstream rehearsal pin; return to PyPI after the supplying release.
 [tool.uv.sources]
-research-repo-tools = { git = "https://github.com/acgetchell/research-repo-tools", rev = "055353c630604b1ae3438c1eaf534ba85e067a7e" }
+research-repo-tools = { git = "https://github.com/acgetchell/research-repo-tools", rev = "cd8594f658b5bf3ade063a685834565cc62e0cb3" }
 
 [dependency-groups]
 tooling = [ "research-repo-tools[python-tools,semgrep]==0.2.6" ]

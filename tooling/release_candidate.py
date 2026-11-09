@@ -30,19 +30,21 @@ from research_repo_tools.files import replace_many
 from research_repo_tools.measurement import load_measurement, resolve_revision
 from research_repo_tools.performance_progress import ProgressReporter
 from research_repo_tools.performance_release import load_performance_release, load_preparation, measure_release, serialize_preparation
+from research_repo_tools.process import run_command
 from research_repo_tools.publication import publish_publication
 from research_repo_tools.release_assets import (
     ReleaseTarget,
     download_release_asset,
     parse_release_target,
-    preflight_release_target,
     publish_release_asset,
+    require_release_checkout,
     revalidate_release_target,
     serialize_release_target,
 )
 from research_repo_tools.release_interfaces import load_evidence_policy
+from research_repo_tools.release_metadata import read_package_info
 from research_repo_tools.release_publishing import ReviewedRelease, check_reviewed_release
-from research_repo_tools.release_validation import api
+from research_repo_tools.release_validation import api, parse_release_json
 from research_repo_tools.scheduled_runs import ScheduledRun
 from research_repo_tools.suite_runs import parse_suite_run
 
@@ -51,10 +53,26 @@ REPOSITORY = "acgetchell/la-stack"
 ROLES = ("policy", "publication", "acceptance", "archive")
 
 
+def release_tag(root: Path) -> str:
+    """Derive the canonical release identity from the observed package."""
+    tag = "v" + read_package_info(root).version
+    if re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag) is None:
+        message = "release context requires a canonical stable package version"
+        raise ValueError(message)
+    return tag
+
+
+def selection_directory(root: Path) -> Path:
+    """Address one original selection by checkout and tag, never by latest time."""
+    checkout = hashlib.sha256(str(root.resolve()).encode("utf-8")).hexdigest()
+    directory = Path.home() / ".local/state/la-stack/releases" / checkout / release_tag(root)
+    return owner_directory(root, "", directory)
+
+
 def owner_directory(root: Path, checkpoint: str, selected: Path | None = None) -> Path:
     """Keep the operator's immutable record outside candidate-controlled files."""
     identity = hashlib.sha256(str((root / checkpoint).resolve()).encode("utf-8")).hexdigest()
-    directory = (selected or Path.home() / ".local/state/la-stack/acquisitions" / identity).expanduser().resolve()
+    directory = (selected if selected is not None else Path.home() / ".local/state/la-stack/acquisitions" / release_tag(root) / identity).expanduser().resolve()
     if directory.is_relative_to(root) or root.is_relative_to(directory):
         message = "acquisition owner directory must be separate from the checkout"
         raise ValueError(message)
@@ -76,6 +94,67 @@ def freeze(directory: Path, files: dict[str, bytes]) -> None:
 
     unchanged()
     replace_many(updates, verify=unchanged)
+
+
+def remember_owner(root: Path, owner: Path) -> None:
+    """Register only original Step 1 assertions, before report promotion."""
+    policy = parse_candidate_policy((owner / "policy.json").read_bytes())
+    if policy.tag != release_tag(root):
+        message = "acquisition tag differs from the package release context"
+        raise ValueError(message)
+    directory = selection_directory(root)
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    record = {
+        "schema": 1,
+        "repository": REPOSITORY,
+        "checkout": str(root.resolve()),
+        "tag": policy.tag,
+        "owner": str(owner.resolve()),
+        "acquisition": (owner / "acquisition.sha256").read_text(encoding="ascii").strip(),
+        "publication": (owner / "publication.sha256").read_text(encoding="ascii").strip(),
+    }
+    freeze(directory, {"owner.json": json.dumps(record, sort_keys=True).encode("utf-8") + b"\n"})
+
+
+def selected_owner(root: Path, explicit: str = "") -> Path:
+    """Resolve the original external selection; explicit recovery never replaces it."""
+    if explicit:
+        return owner_directory(root, "", Path(explicit))
+    path = selection_directory(root) / "owner.json"
+    try:
+        data = parse_release_json(path.read_bytes())
+    except FileNotFoundError as error:
+        message = "no original Step 1 owner selection; restore its external owner.json or pass the original owner directory explicitly"
+        raise ValueError(message) from error
+    fields = {"schema", "repository", "checkout", "tag", "owner", "acquisition", "publication"}
+    if (
+        not isinstance(data, dict)
+        or set(data) != fields
+        or type(data["schema"]) is not int
+        or data["schema"] != 1
+        or (data["repository"], data["checkout"], data["tag"]) != (REPOSITORY, str(root.resolve()), release_tag(root))
+        or not isinstance(data["owner"], str)
+        or not Path(data["owner"]).is_absolute()
+    ):
+        message = "original owner selection differs from this checkout and release"
+        raise ValueError(message)
+    owner = owner_directory(root, "", Path(data["owner"]))
+    for field in ("acquisition", "publication"):
+        digest = data[field]
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            message = "owner selection requires original SHA-256 assertions"
+            raise ValueError(message)
+        if (owner / f"{field}.sha256").read_text(encoding="ascii").strip() != digest:
+            message = "original owner assertions changed; restore the retained selection"
+            raise ValueError(message)
+    policy = parse_candidate_policy((owner / "policy.json").read_bytes())
+    if policy.tag != data["tag"] or acquisition_assertion_digest(policy) != data["acquisition"]:
+        message = "original owner policy differs from the retained selection"
+        raise ValueError(message)
+    if hashlib.sha256((owner / "publication.json").read_bytes()).hexdigest() != data["publication"]:
+        message = "original publication receipt differs from the retained selection"
+        raise ValueError(message)
+    return owner
 
 
 def capture(root: Path, owner: Path, *, retained_scratch: bool = False) -> dict[str, str]:
@@ -127,6 +206,9 @@ def acquire(root: Path, owner: Path, checkpoint: str, *, resume: bool, progress:
     settings = load_performance_release(root, SETTINGS)
     preparation = load_preparation(root, settings)
     check_release_dependencies(root)
+    if (selection_directory(root) / "owner.json").exists() and selected_owner(root) != owner.resolve():
+        message = "this checkout/tag already selects a different original owner; use that record or explicitly reconcile the release before acquisition"
+        raise ValueError(message)
     if resume:
         if not owner.is_dir():
             message = "resume requires the original acquisition owner record"
@@ -147,6 +229,7 @@ def acquire(root: Path, owner: Path, checkpoint: str, *, resume: bool, progress:
     def before_promotion() -> None:
         freeze(owner, {"run.json": (root / settings.payload).read_bytes(), "evidence.json": (root / settings.manifest).read_bytes()})
         capture(root, owner)
+        remember_owner(root, owner)
 
     measure_release(
         root,
@@ -216,6 +299,16 @@ def verify(root: Path, owner: Path, selection: str = "reviewed") -> Path:
         if status:
             raise RuntimeError(f"candidate verification failed with exit {status}")
         freeze(final, {"acceptance.json": output.read_bytes()})
+    return accepted
+
+
+def verify_existing(root: Path, owner: Path, selection: str) -> Path:
+    """Revalidate an already reviewed commit without silently creating a selection."""
+    accepted = final_directory(owner, resolve_revision(root, "HEAD"), selection) / "acceptance.json"
+    expected = accepted.read_bytes()
+    if verify(root, owner, selection).read_bytes() != expected:
+        message = "reviewed acceptance changed; repeat explicit release-evidence review"
+        raise ValueError(message)
     return accepted
 
 
@@ -301,21 +394,46 @@ def parse_transfer(payload: bytes) -> Transfer:
     return Transfer(target, digest(data["acquisition"]), digest(data["publication"]), assets)
 
 
-def stage(root: Path, owner: Path, selection: str) -> Path:
+def preparation_target(root: Path, owner: Path, selection: str) -> Path:
+    """Retrieve the original authenticated target through the installed supplier."""
+    commit = resolve_revision(root, "HEAD")
+    require_release_checkout(root, commit)
+    output = final_directory(owner, commit, selection) / "preparation"
+    status = shared_main(
+        [
+            "--root",
+            str(root),
+            "release",
+            "assets",
+            "retrieve",
+            "tooling/draft-receipt.toml",
+            "--commit",
+            commit,
+            "--tag",
+            release_tag(root),
+            "--output",
+            str(output),
+        ]
+    )
+    if status:
+        raise RuntimeError(f"original preparation retrieval failed with exit {status}")
+    return output / "target.json"
+
+
+def stage(root: Path, owner: Path, selection: str, prepared_target: Path | None = None) -> Path:
     """Upload inert original records, retaining dispatch assertions independently."""
-    accepted = verify(root, owner, selection)
+    accepted = verify_existing(root, owner, selection)
     commit = resolve_revision(root, "HEAD")
     final = final_directory(owner, commit, selection)
     policy = parse_candidate_policy((final / "policy.json").read_bytes())
     artifact = archive(owner, commit, selection)
     target_path = final / "target.json"
-    if not target_path.exists():
-        target = preflight_release_target(root, REPOSITORY, policy.tag, commit, expected_title=policy.tag, checkout=root)
-        freeze(final, {"target.json": serialize_release_target(target)})
-    target = parse_release_target(target_path.read_bytes())
-    if (target.repository, target.tag, target.commit) != (REPOSITORY, policy.tag, commit):
+    target = parse_release_target((prepared_target or preparation_target(root, owner, selection)).read_bytes())
+    if (target.repository, target.tag, target.commit, target.expected_title) != (REPOSITORY, policy.tag, commit, policy.tag):
         message = "staging target differs from the accepted candidate"
         raise ValueError(message)
+    freeze(final, {"target.json": serialize_release_target(target)})
+    target = parse_release_target(target_path.read_bytes())
     revalidate_release_target(root, target, checkout=root)
     inputs = {"policy": final / "policy.json", "publication": owner / "publication.json", "acceptance": accepted, "archive": artifact}
     transport = final / "transport"
@@ -371,6 +489,64 @@ def seal(root: Path, owner: Path, selection: str) -> Path:
     parse_transfer(sealed)
     freeze(final, {"publication-transfer.json": sealed})
     return final / "publication-transfer.json"
+
+
+def record_path(root: Path, owner: Path, selection: str, role: str) -> Path:
+    """Locate an already retained transfer for this exact clean release commit."""
+    commit = resolve_revision(root, "HEAD")
+    require_release_checkout(root, commit)
+    filename = "transfer.json" if role == "transfer" else "publication-transfer.json"
+    path = final_directory(owner, commit, selection) / filename
+    transfer = parse_transfer(path.read_bytes())
+    if (transfer.target.tag, transfer.target.commit) != (release_tag(root), commit):
+        message = "saved transfer differs from the current release checkout"
+        raise ValueError(message)
+    if role == "publication" and "attached" not in {item[0] for item in transfer.assets}:
+        message = "publication requires the already captured canonical archive"
+        raise ValueError(message)
+    return path
+
+
+def upload_dispatch(root: Path, owner: Path, selection: str, tag: str) -> None:
+    """Dispatch registry publication using only the existing reviewed acceptance."""
+    if tag != release_tag(root):
+        message = "dispatch tag differs from the package release"
+        raise ValueError(message)
+    publication = record_path(root, owner, selection, "publication")
+    transfer_bytes = publication.read_bytes()
+    transfer = parse_transfer(transfer_bytes)
+    accepted = publication.parent / "acceptance.json"
+    expected = accepted.read_bytes()  # Missing review must never create a new selection.
+    if verify_existing(root, owner, selection).read_bytes() != expected:
+        message = "reviewed acceptance changed before publication dispatch"
+        raise ValueError(message)
+    check_published_transfer(root, transfer)
+    if publication.read_bytes() != transfer_bytes or accepted.read_bytes() != expected:
+        message = "publication assertions changed before dispatch"
+        raise ValueError(message)
+    # Snapshot the same original bytes sent by the prior explicit CLI procedure.
+    with tempfile.TemporaryDirectory(prefix="la-stack-publication-dispatch-") as temporary:
+        snapshot = Path(temporary) / "publication-transfer.json"
+        snapshot.write_bytes(transfer_bytes)
+        run_command(
+            "gh",
+            [
+                "workflow",
+                "run",
+                "publish-crates.yml",
+                "--repo",
+                REPOSITORY,
+                "--ref",
+                tag,
+                "-f",
+                f"tag={tag}",
+                "-F",
+                f"candidate=@{snapshot}",
+                "-f",
+                f"acceptance={hashlib.sha256(expected).hexdigest()}",
+            ],
+            cwd=root,
+        )
 
 
 def require_dispatch(transfer: Transfer, *, published: bool) -> None:
@@ -518,8 +694,8 @@ def dispatch_source(options: argparse.Namespace) -> Path | ReviewedAcceptance:
     return Path(options.incoming)
 
 
-def main() -> None:
-    """Expose only repository orchestration; shared APIs own every evidence check."""
+def argument_parser() -> argparse.ArgumentParser:
+    """Declare explicit recovery inputs alongside automatic retained context."""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="operation", required=True)
     measurement = commands.add_parser("acquire")
@@ -528,19 +704,55 @@ def main() -> None:
     measurement.add_argument("--owner-directory", type=Path)
     measurement.add_argument("--progress", choices=("human", "json", "none"), default="human")
     measurement.add_argument("--progress-cadence", type=float, default=300)
-    for name in ("capture", "verify", "archive", "stage", "seal"):
+    for name in ("capture", "verify", "reviewed", "archive", "stage", "seal", "record", "upload"):
         command = commands.add_parser(name)
-        command.add_argument("owner_directory", type=Path)
+        if name == "record":
+            command.add_argument("role", choices=("transfer", "publication"))
+        if name == "upload":
+            command.add_argument("tag")
+        command.add_argument("owner_directory", nargs="?", default="")
         if name == "capture":
             command.add_argument("--retained-scratch", action="store_true", help="explicitly retry retention of the original locally controlled acquisition")
         else:
             command.add_argument("--selection", default="reviewed", help="immutable review record; choose a new name to review a different native CI attempt")
+            if name == "stage":
+                command.add_argument(
+                    "--target", default="", help="explicit authenticated target.json for manual recovery; otherwise retrieve the original receipt"
+                )
     receiver = commands.add_parser("receive")
     receiver.add_argument("destination", type=Path)
     receiver.add_argument("--published", action="store_true")
     receiver.add_argument("--incoming", type=Path)
     receiver.add_argument("--expected", type=Path)
-    options = parser.parse_args()
+    return parser
+
+
+def run_owner_operation(root: Path, options: argparse.Namespace) -> None:
+    """Route operations after resolving their independent acquisition owner."""
+    owner = selected_owner(root, options.owner_directory)
+    if options.operation == "capture":
+        print(json.dumps(capture(root, owner, retained_scratch=options.retained_scratch)))
+        remember_owner(root, owner)
+    elif options.operation == "verify":
+        accepted = verify(root, owner, options.selection)
+        print(json.dumps({"acceptance": str(accepted), "sha256": hashlib.sha256(accepted.read_bytes()).hexdigest()}))
+    elif options.operation == "reviewed":
+        print(verify_existing(root, owner, options.selection))
+    elif options.operation == "archive":
+        print(archive(owner, resolve_revision(root, "HEAD"), options.selection))
+    elif options.operation == "stage":
+        print(stage(root, owner, options.selection, Path(options.target) if options.target else None))
+    elif options.operation == "seal":
+        print(seal(root, owner, options.selection))
+    elif options.operation == "record":
+        print(record_path(root, owner, options.selection, options.role))
+    else:
+        upload_dispatch(root, owner, options.selection, options.tag)
+
+
+def main() -> None:
+    """Expose only repository orchestration; shared APIs own every evidence check."""
+    options = argument_parser().parse_args()
     root = Path.cwd().resolve()
     if options.operation == "acquire":
         owner = owner_directory(root, options.checkpoint, options.owner_directory)
@@ -556,18 +768,7 @@ def main() -> None:
     elif options.operation == "receive":
         print(receive(root, options.destination, os.environ["CANDIDATE_TRANSFER"].encode("utf-8"), source=dispatch_source(options)))
     else:
-        owner = owner_directory(root, "", options.owner_directory)
-        if options.operation == "capture":
-            print(json.dumps(capture(root, owner, retained_scratch=options.retained_scratch)))
-        elif options.operation == "verify":
-            accepted = verify(root, owner, options.selection)
-            print(json.dumps({"acceptance": str(accepted), "sha256": hashlib.sha256(accepted.read_bytes()).hexdigest()}))
-        elif options.operation == "archive":
-            print(archive(owner, resolve_revision(root, "HEAD"), options.selection))
-        elif options.operation == "stage":
-            print(stage(root, owner, options.selection))
-        else:
-            print(seal(root, owner, options.selection))
+        run_owner_operation(root, options)
 
 
 if __name__ == "__main__":

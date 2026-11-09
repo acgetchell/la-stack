@@ -488,8 +488,22 @@ rules:
         - "/tests/semgrep/.github/workflows/**/*.yml"
         - "/tests/semgrep/.github/workflows/**/*.yaml"
     patterns:
-      - pattern: |
-          run: $SCRIPT
+      - pattern-either:
+          - patterns:
+              - pattern: |
+                  run: $SCRIPT
+                  ...
+              - pattern-not-inside: |
+                  shell: $SHELL
+                  ...
+          - patterns:
+              - pattern: |
+                  run: $SCRIPT
+                  shell: $SHELL
+                  ...
+              - metavariable-regex:
+                  metavariable: $SHELL
+                  regex: ^(?:bash|sh)(?:\s|$)
       - metavariable-pattern:
           metavariable: $SCRIPT
           language: bash

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     import subprocess
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TOOLING_REVISION = "055353c630604b1ae3438c1eaf534ba85e067a7e"
+TOOLING_REVISION = "cd8594f658b5bf3ade063a685834565cc62e0cb3"
 TOOLING_REPOSITORY = "https://github.com/acgetchell/research-repo-tools"
 TOOLING_REQUIREMENT = f"research-repo-tools @ git+{TOOLING_REPOSITORY}@{TOOLING_REVISION}"
 CHECKED = ["run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--"]

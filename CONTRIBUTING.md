@@ -292,12 +292,27 @@ in [Testing guidance](docs/dev/testing.md). README and guide doctest requirement
 live in [Documentation guidance](docs/dev/docs.md).
 
 Run `just ci` for core Rust, public behavior, or GitHub-equivalent validation.
-It composes leaf validators directly and runs `clippy-all-targets` to match the
-GitHub Clippy SARIF workflow. Unit and integration tests still run together once
+It synchronizes the environment once, completes fast policy checks, then overlaps
+Python consumer tests with one sequential Rust lane. Use `just --jobs 1 ci` for
+serial execution on a constrained host. Keep benchmark acquisition separate from
+validation so concurrent work does not affect measurements.
+The Rust lane runs `clippy-all-targets` to match the GitHub Clippy SARIF workflow.
+Unit and integration tests still run together once
 through the release-profile `test-rust-ci` bucket, and doctests remain separate
 because nextest does not execute them. The test, example, and benchmark buckets
 retain their execution or compile-contract roles because ordinary compilation
 does not execute Clippy lints.
+
+Native CI retains the same `build (OS)` and `Run CI checks` identities. Ordinary
+setup caches only managed Cargo compilation by OS, architecture and exact tool
+declarations; exact-version tool installations are freshly verified. GitHub's
+cache ref scopes separate PR entries from protected main. Release packaging and
+publication keep caches disabled. The shared local build cache defaults to the
+tooling home's `cargo-build/<host>/<Rust version>`; an absolute
+`RESEARCH_REPO_TOOLS_CARGO_BUILD_HOME` selects separate compilation storage.
+This cache does not replace project builds or validation. See the
+[integration record](docs/dev/release-flow-integration.md) for graph ownership,
+baseline timings and remaining native/published-package evidence.
 
 `la-stack` intentionally has no notebook validation bucket: the repository has
 no notebooks or supported Python binding surface. Add notebook tooling only

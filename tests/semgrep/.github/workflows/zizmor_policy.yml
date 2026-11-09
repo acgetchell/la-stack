@@ -19,3 +19,33 @@ jobs:
           set -euo pipefail
           uv run --locked --no-sync research-repo-tools \
             toolchain run -- zizmor --persona regular --format sarif .github
+      # ruleid: la-stack.github-actions.zizmor-managed-execution
+      - run: zizmor --persona regular .github
+        shell: bash
+      # ok: la-stack.github-actions.zizmor-managed-execution
+      - run: uv run --locked --no-sync research-repo-tools toolchain run -- zizmor --persona regular .github
+        shell: bash
+      # ruleid: la-stack.github-actions.zizmor-managed-execution
+      - run: zizmor --persona regular .github
+        shell: bash --noprofile --norc -eo pipefail {0}
+      # ok: la-stack.github-actions.zizmor-managed-execution
+      - run: uv run --locked --no-sync research-repo-tools toolchain run -- zizmor --persona regular .github
+        shell: bash --noprofile --norc -eo pipefail {0}
+      # ruleid: la-stack.github-actions.zizmor-managed-execution
+      - run: zizmor --persona regular .github
+        shell: sh
+      # ok: la-stack.github-actions.zizmor-managed-execution
+      - run: uv run --locked --no-sync research-repo-tools toolchain run -- zizmor --persona regular .github
+        shell: sh
+      # ok: la-stack.github-actions.zizmor-managed-execution
+      - run: |
+          record = {"tag": "v0.5.42"}
+          if record["tag"] != "v0.5.42":
+              raise ValueError("wrong tag")
+        shell: python
+      # ok: la-stack.github-actions.zizmor-managed-execution
+      - run: |
+          record = {"tag": "v0.5.42"}
+          if record["tag"] != "v0.5.42":
+              raise ValueError("wrong tag")
+        shell: uv run --no-project --isolated python -I "{0}"

@@ -3,13 +3,14 @@
 Prepare each `vX.Y.Z` release in a dedicated PR. Acquire the comparison once
 locally during Step 1, keeping original assertions outside the checkout.
 After merge and native CI, verify that acquisition against the final clean
-commit before tagging. Create a draft, stage accepted records, and dispatch
+commit before tagging. The tag push prepares a draft automatically. Stage accepted records and dispatch
 `Release Benchmarks` to verify and attach the original archive. Publish the
 reviewed draft, explicitly dispatch `Publish to crates.io` with the independent
 publication selection, then approve its `crates-io` deployment.
 
-Both workflows require the maintainer's authenticated dispatch against the exact
-release tag. Neither measures benchmarks. Development supplier pins support
+Benchmark attachment and Cargo publication require the maintainer's authenticated
+dispatch against the exact release tag. Preparation and both dispatches reuse evidence without measurements.
+Development supplier pins support
 rehearsal and ordinary checks; actual release work requires published tooling.
 
 The changelog is generated for the target tag before the tag exists, so the
@@ -30,6 +31,7 @@ including when a rerun happens after UTC midnight.
 ## Contents
 
 - [Reusable CI evidence](#reusable-ci-evidence)
+- [Release command alignment](#release-command-alignment)
 - [Prepare the environment](#prepare-the-environment)
 - [Step 1: Prepare the release PR](#step-1-prepare-the-release-pr)
 - [Step 2: Publish after the PR is merged](#step-2-publish-after-the-pr-is-merged)
@@ -50,7 +52,7 @@ The `release-evidence` job signs their exact commit, run, attempt, job IDs and
 package identity, then retains the manifest and Sigstore bundle in an immutable
 Actions artifact for 30 days.
 
-`just release-evidence <owner-directory>` verifies original acquisition,
+`just release-evidence` automatically resolves the original Step 1 owner and verifies original acquisition,
 the precise publisher receipt, final clean tree and signed native evidence.
 It requires one successful `push` run on `main`, every required job and step
 from that attempt, and a nonexpired immutable artifact. The shared verifier
@@ -60,7 +62,12 @@ results cannot replace main-push evidence.
 
 Retain the owner directory printed by `performance-release` and an independent
 backup under exclusive maintainer control. Its default location is
-`~/.local/state/la-stack/acquisitions/<checkpoint-path-sha256>`. An ignored
+`~/.local/state/la-stack/acquisitions/<tag>/<checkpoint-path-sha256>`. Step 1
+also freezes `owner.json` under `~/.local/state/la-stack/releases/<checkout-sha256>/<tag>/`,
+binding the original owner and acquisition/publication digests. Routine Step 2
+commands read that record and derive the full commit from the clean checkout;
+they never search for the newest owner or reconstruct ownership from candidate files.
+Retain both directories and an independent backup. An ignored
 checkout directory is not an authentication boundary. Original raw evidence,
 preparation, acquisition assertions, publication receipt and their digests
 are immutable.
@@ -101,6 +108,38 @@ Use a current GitHub CLI with `gh attestation verify` and the signer/source
 constraints used by the installed verifier. See GitHub's
 [attestation verification options](https://cli.github.com/manual/gh_attestation_verify).
 
+## Release command alignment
+
+The common Step 1/Step 2 flow follows the
+[research-repo-tools v0.2.6 guide](https://github.com/acgetchell/research-repo-tools/blob/eb7e3eaf158024a045a6711898a8af199729131b/docs/RELEASING.md).
+Draft preparation uses the public capability from upstream
+[PR #207](https://github.com/acgetchell/research-repo-tools/pull/207), rehearsed here at
+`cd8594f658b5bf3ade063a685834565cc62e0cb3`, including receipt retrieval from
+[PR #209](https://github.com/acgetchell/research-repo-tools/pull/209). Published-package and final native adoption
+remain required by [#333](https://github.com/acgetchell/la-stack/issues/333).
+
+| Command | Common behavior and la-stack declaration |
+| --- | --- |
+| `update-version TAG [ARGS...]` | Prepare package/citation metadata; Cargo owns the Rust lock, the private Python environment retains its version |
+| `changelog-release TAG [DATE]` | Generate prospective notes using the prepared citation date |
+| `release-version-check` | Require synchronized final metadata, changelog and citation dates |
+| `publish-check` | Verify clean Cargo source with default/exact dry-runs; Cargo requires builds here, unlike the reference's existing-distribution Twine check |
+| `release-evidence [OWNER] [SELECTION]` | Inspect retained signed main CI and original benchmark acceptance without builds; defaults recover the original owner and `reviewed` selection |
+| `tag TAG` | Run the final version check and create the annotated tag from generated notes |
+| `release-notes TAG` | Print generated notes; tag-triggered preparation supplies these to the draft automatically |
+| `release-benchmarks TAG` | Dispatch retained archive attachment from the original owner record; explicit `CANDIDATE_TRANSFER_FILE` remains a recovery override |
+| `release-publish TAG [OWNER] [SELECTION]` | Revalidate acceptance, notes and canonical assets, then explicitly approve GitHub publication |
+| `release-upload TAG [OWNER] [SELECTION]` | Dispatch Cargo publication using the existing reviewed acceptance and original publication transfer |
+| `release-verify TAG` | Verify stable GitHub assets and the exact crates.io version |
+
+This repository verifies evidence **before** creating or pushing the tag. The
+reference's Python distribution inspection requires a pushed tag; that ordering
+difference does not weaken la-stack's pre-tag gate. Preparation independently
+revalidates its frozen native selection before creating an unpublished draft.
+Benchmark acquisition and README generation belong only to Step 1. Cargo's
+nonbuilding repackaging/upload, explicit transfer selection and `crates-io`
+approval are the remaining registry and scientific-asset differences.
+
 ## Prepare the environment
 
 Replace any development tooling pin with its supplying published release and
@@ -125,7 +164,7 @@ Verify the repository remotes and synchronize `main`:
 
 ```bash
 gh auth status
-git remote -v
+git --no-pager remote -v
 git switch main
 git pull --ff-only
 ```
@@ -365,23 +404,24 @@ inputs, named metric/statistic/axis views, output ownership and methodology.
 
 ```bash
 just ci
-cargo publish --locked --package la-stack --registry crates-io --allow-dirty --dry-run
-cargo publish --locked --package la-stack --registry crates-io --allow-dirty --dry-run --features exact
+just release-version-check
 ```
 
 `just ci` includes the lockfile, citation, documentation, test, and benchmark
 compile checks.
-The preparation dry-runs permit the uncommitted release artifacts. After review
-and merge, main CI runs `just release-package` on the clean release source with
-both default and `exact` features and explicitly selects only `la-stack`.
-Those hosted results become the reusable packaging evidence.
+The final version check requires the current changelog heading and citation date
+to agree. After committing the reviewed artifacts below, run `just publish-check`
+on that clean release branch. It performs native default/exact Cargo dry-runs,
+selecting only `la-stack`. Main CI repeats this on the final merged commit;
+those hosted results become the reusable packaging evidence. Step 2 reuses them
+and never repeats package-verification builds.
 
 ### 7. Review, stage, and commit the release artifacts
 
 Inspect all changes before staging:
 
 ```bash
-git status --short
+git --no-pager status --short
 git --no-pager diff
 ```
 
@@ -402,6 +442,8 @@ git commit -m "chore(release): release $TAG
 - Generate the release changelog
 - Update benchmark and performance artifacts
 - Update release documentation"
+
+just publish-check
 ```
 
 ### 8. Push the branch and open the PR
@@ -424,25 +466,48 @@ hand-edit the generated changelog to add a known-issue note.
 
 ## Step 2: Publish after the PR is merged
 
-### 1. Synchronize `main`
+### 1. Synchronize `main` and wait for CI
 
 ```bash
 git switch main
 git pull --ff-only
+test -z "$(git --no-pager status --porcelain)"
 ```
+
+Use a clean checkout of the reviewed release commit. If `main` advanced, review
+the intervening changes and refresh generated notes through a PR as needed.
+Wait for that commit's complete main-push CI run. The next step derives the commit
+and checks eligible evidence automatically; pending results stop it with a retry
+diagnostic. Use GitHub's Actions page or the
+[manual inspection commands](#manual-context-and-inspection) when troubleshooting.
+
+Require the complete run: all three native `build` jobs, default/exact Cargo
+packaging in `release-package`, and signed `release-evidence`. A development
+supplier pin skips signing and cannot provide eligible release evidence.
+Inspect the independent SARIF checks for this exact commit too:
+
+```bash
+gh run list --workflow rust-clippy.yml --event push --branch main --commit "$(git --no-pager rev-parse HEAD)" --limit 20
+gh run list --workflow semgrep-sarif.yml --event push --branch main --commit "$(git --no-pager rev-parse HEAD)" --limit 20
+```
+
+Wait for successful `Clippy SARIF Analysis` and `Repository Rule SARIF Analysis`
+from GitHub Actions (app ID `15368`). They are separate publication gates;
+`release-evidence` verifies only the jobs and signer declared in its evidence
+policy, not every independent workflow. PR review remains a protected-branch
+requirement and cannot replace merged main-push evidence.
 
 ### 2. Verify the final release commit
 
-Set `OWNER` to the independent directory printed during Step 1:
+The normal commands need no `OWNER` or `RELEASE_COMMIT` shell variables:
 
 ```bash
-OWNER="/path/to/independent/acquisition"
-just release-evidence "$OWNER"
-just release-archive "$OWNER"
+just release-evidence
+just release-archive
 ```
 
-Require native Linux, macOS and Windows CI, default/exact Cargo packaging,
-signed main-push evidence and exact-commit SARIF checks. The candidate verifier
+Require native Linux, macOS and Windows CI, default/exact Cargo packaging and
+signed main-push evidence, plus the independently checked SARIF results. The candidate verifier
 also checks that the final tree differs from the measured candidate only through
 the accepted publication contract. It preserves the original measured revision
 separately from the final commit. Do not tag until verification succeeds.
@@ -456,27 +521,41 @@ evidence. Pending, failed, cancelled or expired evidence blocks publication.
 ```bash
 just tag "$TAG"
 git --no-pager tag -l --format='%(contents)' "$TAG"
+test "$(git --no-pager rev-parse "$TAG^{commit}")" = "$(git --no-pager rev-parse HEAD)"
 ```
 
-`just tag` builds the annotation from the matching active or archived changelog
+`just tag` first runs `release-version-check` and revalidates the existing reviewed
+acceptance for clean HEAD. A different commit or missing receipt requires an
+explicit `release-evidence` review before tagging. It then builds the annotation from the matching active or archived changelog
 section. For a changelog larger than 125 kB, it links that section.
 
 ### 4. Push the tag
+
+Only after evidence verification and tag inspection succeed, push the tag.
+This starts `Prepare GitHub release`; pushing does not wait for or verify CI.
 
 ```bash
 git push origin "$TAG"
 ```
 
-### 5. Create the draft GitHub release
+### 5. Wait for the draft GitHub release
 
-Create an unpublished release where the workflow can attach its benchmark archive:
+The tag push starts `prepare-release.yml`. Let its original attempt finish;
+the next `release-stage` command automatically retrieves and verifies that exact
+preparation receipt. Missing or pending preparation stops staging; wait for the
+original run and retry. The manual inspection commands below can show that run.
+Let preparation create the draft; manual creation is unnecessary.
+The read-only job checks the exact tagged source, main ancestry, final metadata
+and retained signed native evidence, then freezes that selection and generated
+notes. An isolated pinned writer with no checkout authenticates the handoff by
+immutable artifact ID, digest, run and attempt, revalidates the same native
+selection and creates the unpublished draft through the shared API.
 
-```bash
-NOTES="$(mktemp)"
-just release-notes "$TAG" > "$NOTES"
-gh release create "$TAG" --verify-tag --draft --title "$TAG" --notes-file "$NOTES"
-rm "$NOTES"
-```
+Retain the handoff and separate draft-receipt artifact IDs, ZIP digests and
+producer run/attempts in independent release review notes. Preserve the captured
+release ID in `target.json`. An existing exact matching draft is unchanged;
+conflicting notes, title, lifecycle, moved tags or missing evidence stop work.
+No tests, package builds, signing or benchmark acquisition run during preparation.
 
 Keep the release title identical to the tag, including its leading `v`.
 Leave it as a stable draft: publishing now would make the release immutable
@@ -488,17 +567,29 @@ before the benchmark archive can be attached. GitHub recommends this
 Stage the four inert records:
 
 ```bash
-just release-stage "$OWNER"
+just release-stage
 ```
 
-This revalidates acceptance, freezes the draft ID before any upload, and prints
+Staging uses the installed `release assets retrieve` operation and
+`tooling/draft-receipt.toml`. It authenticates the exact tag-push workflow source,
+original successful attempt, required jobs/steps, immutable artifact ID and ZIP
+digest before retaining `selection.json`, `target.json` and `draft-receipt.json`
+under the owner's final record. Retries revalidate that frozen provider selection
+instead of searching again. A replacement draft is rejected before any upload.
+
+This revalidates acceptance, freezes the prepared draft ID before any upload, and prints
 the independent `transfer.json` path. A retry uses that same draft and identical
 bytes. Dispatch from the exact tag using the printed path:
 
 ```bash
-TRANSFER="$OWNER/final/$(git rev-parse HEAD)/reviewed/transfer.json"
-gh workflow run release-benchmarks.yml --ref "$TAG" -f tag="$TAG" -F candidate=@"$TRANSFER"
+just release-benchmarks "$TAG"
 ```
+
+The recipe resolves the existing transfer from the original owner record and
+clean HEAD, validates the explicitly supplied tag, and returns after dispatch.
+It never substitutes another owner or tag, polls, creates a draft,
+acquires measurements or runs `performance-readme`. Inspect the matching
+`Release Benchmarks` run and require success before publishing.
 
 The no-checkout retrieval job checks original release/asset identities and
 downloads the selected bytes. A separate read-only checkout job verifies
@@ -521,7 +612,7 @@ pinned tooling and execute no checkout code.
 From the clean tagged checkout and your human GitHub CLI session:
 
 ```bash
-just release-publish "$TAG" "$OWNER"
+just release-publish "$TAG"
 ```
 
 This verifies acceptance and remote notes, freezes the canonical attached archive
@@ -529,19 +620,20 @@ ID/hash in `publication-transfer.json`, then publishes the reviewed draft
 through the shared gate. It authorizes GitHub Release publication. The release
 must become immutable before Cargo publication.
 
-Supply that independently retained selection to the second explicit dispatch:
+Dispatch Cargo publication from that independently retained selection:
 
 ```bash
-just release-evidence "$OWNER"
-# Copy the printed SHA-256 of the full acceptance after reviewing its selection.
-ACCEPTANCE_SHA="<reviewed-full-acceptance-sha256>"
-PUBLICATION="$OWNER/final/$(git rev-parse HEAD)/reviewed/publication-transfer.json"
-gh workflow run publish-crates.yml --ref "$TAG" -f tag="$TAG" \
-  -F candidate=@"$PUBLICATION" -f acceptance="$ACCEPTANCE_SHA"
+just release-upload "$TAG"
 gh run list --workflow publish-crates.yml --limit 5
 ```
 
-The first job checks immutable release state, canonical and transport asset
+`release-upload` revalidates the already existing acceptance and original
+publication transfer, checks the immutable release, and sends a snapshot of the
+same assertions and acceptance digest. Missing review or changed evidence stops
+dispatch; this command never creates a review selection or chooses a newer run.
+It returns after dispatch and does not approve the deployment.
+
+The first hosted job checks immutable release state, canonical and transport asset
 IDs/hashes, original archive acceptance, final clean commit and generated notes.
 It verifies current native evidence against the separately reviewed full
 acceptance digest and freezes the exact receipt in an immutable Actions artifact.
@@ -595,7 +687,82 @@ but execute no checkout code. See
 [workflow validation](BENCHMARKING.md#validate-the-release-workflow) for the
 exact handoff, local regressions and separate hosted evidence requirements.
 
+### Manual context and inspection
+
+The normal commands recover context after restarting the shell. Explicit paths,
+selections and GitHub commands remain available for older acquisitions, a moved
+checkout or deliberate recovery. They do not replace or rewrite the normal
+external owner selection. Do not infer missing assertions from received assets.
+
+```bash
+RELEASE_COMMIT=$(git --no-pager rev-parse HEAD)
+OWNER="/path/to/original/independent/acquisition"
+just release-evidence "$OWNER"
+just release-archive "$OWNER"
+```
+
+The same explicit owner and optional selection arguments are supported by
+`tag`, `tag-force`, `release-publish` and `release-upload` during recovery.
+
+Use the recorded workflow/run or inspect the exact current commit:
+
+```bash
+gh run list --workflow ci.yml --event push --branch main --commit "$RELEASE_COMMIT" --limit 20
+gh run list --workflow prepare-release.yml --event push --branch "$TAG" --commit "$RELEASE_COMMIT" --limit 20
+gh run watch ORIGINAL_RUN_ID --exit-status
+```
+
+For manually reviewed preparation retrieval, the shared CLI preserves the same
+source, original-attempt, job and artifact checks:
+
+```bash
+just release-assets retrieve tooling/draft-receipt.toml --tag "$TAG" --commit "$RELEASE_COMMIT" \
+  --run-id ORIGINAL_PREPARATION_RUN_ID --output /path/to/independent/preparation
+just release-stage "$OWNER" /path/to/independent/preparation/target.json
+export CANDIDATE_TRANSFER_FILE="$OWNER/final/$RELEASE_COMMIT/reviewed/transfer.json"
+just release-benchmarks "$TAG"
+just release-publish "$TAG" "$OWNER"
+just release-upload "$TAG" "$OWNER"
+```
+
+For direct dispatch troubleshooting, `publish-crates.yml` still accepts
+`--ref "$TAG" -f tag="$TAG" -F candidate=@/original/publication-transfer.json`
+and `-f acceptance=REVIEWED_FULL_ACCEPTANCE_SHA256`. The explicit selection must
+be the same original owner record; do not copy a digest from incoming assets.
+
 ### Recovering a failed run
+
+If HEAD changes, return to Step 2's synchronization and exact-commit verification.
+If a native run/attempt changes, explicitly review a new named selection as
+described below. Missing, expired, PR, dispatch or partial-rerun evidence never
+authorizes fallback to a replacement run or a local rebuild.
+
+#### Draft preparation recovery
+
+Automatic preparation accepts only its original attempt and rejects prior runs
+for the same tag. Do not rerun a failed preparation or recreate its tag to obtain
+a fresh receipt. Preserve the original authenticated handoff and journal on
+success and failure. A pending journal means creation may have happened; a
+captured journal binds the existing release ID. A missing or edited draft is not
+permission to create a replacement.
+
+Recover the exact original artifacts by independently recorded immutable IDs,
+verify their ZIP digests and producer run/attempts, and retain the original policy,
+selection, notes and receipt. Follow the supplying package's
+[recovery](https://github.com/acgetchell/research-repo-tools/blob/cd8594f658b5bf3ade063a685834565cc62e0cb3/docs/PREPARING_DRAFTS.md#retry-and-recovery).
+After independent provider/audit review, its `release assets prepare` CLI accepts
+`--recover-release-id REVIEWED_ID` with the original pending receipt and frozen
+inputs; recovery performs no POST. A captured ID cannot be replaced. This is an
+explicit maintainer recovery, not another automatic preparation attempt.
+
+The workflow retains records for 30 days; hard runner termination or upload
+failure may prevent journal retention. GitHub history guards are not a permanent
+intent ledger. Keep workflow identity/history intact for retriggerable tags. If
+history or the journal is unavailable, stop automation and reconcile intent and
+provider state manually before authorizing any further creation. Recovery writers
+must use the same repository/tag serialization group as preparation and attachment.
+
+#### Benchmark and publication recovery
 
 Resume local acquisition with `just performance-resume`; keep the original
 checkpoint, preparation and owner record. Retry capture, report promotion and
@@ -625,8 +792,9 @@ verification. These retries perform no timings.
 
 Upload retries reuse the original draft ID and identical bytes. Conflicting
 or incomplete assets stop without overwriting or deletion. Inspect failures
-before manual correction. A replacement draft needs a new explicit review
-selection. Never move a published tag or replace independent digests with values
+before manual correction. A replacement draft requires explicitly authorized
+preparation recovery and an authenticated new target; a new review selection
+alone does not authorize replacement. Never move a published tag or replace independent digests with values
 from received files.
 
 A rerun uses the tagged workflow. A later workflow fix requires a reviewed new

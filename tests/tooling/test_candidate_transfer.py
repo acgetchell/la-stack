@@ -176,13 +176,8 @@ def test_staging_retry_keeps_original_draft_before_any_upload(tmp_path: Path, mo
     monkeypatch.setattr(candidate, "archive", lambda *_args: final / "archive.tar.gz")
     monkeypatch.setattr(candidate, "parse_candidate_policy", lambda *_args: SimpleNamespace(tag=TAG))
     original = ReleaseTarget(candidate.REPOSITORY, TAG, 42, SHA, TAG)
-    preflights: list[int] = []
-
-    def preflight(*_args: object, **_kwargs: object) -> ReleaseTarget:
-        preflights.append(42)
-        return original
-
-    monkeypatch.setattr(candidate, "preflight_release_target", preflight)
+    prepared = tmp_path / "prepared-target.json"
+    prepared.write_bytes(serialize_release_target(original))
     monkeypatch.setattr(candidate, "revalidate_release_target", lambda *_args, **_kwargs: None)
 
     def interrupted(*_args: object, **_kwargs: object) -> None:
@@ -192,7 +187,7 @@ def test_staging_retry_keeps_original_draft_before_any_upload(tmp_path: Path, mo
 
     monkeypatch.setattr(candidate, "publish_release_asset", interrupted)
     with pytest.raises(OSError, match="interrupted upload"):
-        candidate.stage(root, owner, "reviewed")
+        candidate.stage(root, owner, "reviewed", prepared)
 
     def replaced(_root: Path, target: ReleaseTarget, **_kwargs: object) -> None:
         assert target == original
@@ -202,8 +197,10 @@ def test_staging_retry_keeps_original_draft_before_any_upload(tmp_path: Path, mo
     monkeypatch.setattr(candidate, "revalidate_release_target", replaced)
     monkeypatch.setattr(candidate, "publish_release_asset", lambda *_args, **_kwargs: pytest.fail("replacement draft must never receive an upload"))
     with pytest.raises(ValueError, match="original draft no longer exists"):
-        candidate.stage(root, owner, "reviewed")
-    assert preflights == [42]
+        candidate.stage(root, owner, "reviewed", prepared)
+    prepared.write_bytes(serialize_release_target(replace(original, release_id=43)))
+    with pytest.raises(ValueError, match="immutable output differs"):
+        candidate.stage(root, owner, "reviewed", prepared)
 
 
 def test_owner_records_reject_overwrite_and_path_escape(tmp_path: Path) -> None:
@@ -215,6 +212,37 @@ def test_owner_records_reject_overwrite_and_path_escape(tmp_path: Path) -> None:
         candidate.freeze(tmp_path, {"../escaped": b"new"})
     assert (tmp_path / "record").read_bytes() == b"original"
     assert not (tmp_path / "other").exists()
+
+
+@pytest.mark.parametrize("field", ["repository", "tag", "commit", "expected_title", "release_id"])
+def test_initial_stage_requires_the_exact_prepared_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str) -> None:
+    root, owner = tmp_path / "checkout", tmp_path / "owner"
+    root.mkdir()
+    owner.mkdir()
+    final = candidate.final_directory(owner, SHA, "reviewed")
+    final.mkdir(parents=True)
+    monkeypatch.setattr(candidate, "verify", lambda *_args: final / "acceptance.json")
+    monkeypatch.setattr(candidate, "resolve_revision", lambda *_args: SHA)
+    monkeypatch.setattr(candidate, "archive", lambda *_args: final / "archive.tar.gz")
+    monkeypatch.setattr(candidate, "parse_candidate_policy", lambda *_args: SimpleNamespace(tag=TAG))
+    (final / "policy.json").write_bytes(b"owner policy")
+    (final / "acceptance.json").write_bytes(b"reviewed acceptance")
+    target = ReleaseTarget(candidate.REPOSITORY, TAG, 42, SHA, TAG)
+    changes = {"repository": "other/repo", "tag": "v9.9.9", "commit": "f" * 40, "expected_title": "edited", "release_id": 43}
+    supplied = replace(target, **{field: changes[field]})
+    prepared = tmp_path / "target.json"
+    prepared.write_bytes(serialize_release_target(supplied))
+
+    def original(_root: Path, observed: ReleaseTarget, **_kwargs: object) -> None:
+        assert observed.release_id == 43
+        message = "original prepared draft no longer exists"
+        raise ValueError(message)
+
+    monkeypatch.setattr(candidate, "revalidate_release_target", original)
+    monkeypatch.setattr(candidate, "publish_release_asset", lambda *_args, **_kwargs: pytest.fail("a different prepared target must receive no uploads"))
+    diagnostic = "original prepared draft no longer exists" if field == "release_id" else "staging target differs"
+    with pytest.raises(ValueError, match=diagnostic):
+        candidate.stage(root, owner, "reviewed", prepared)
 
 
 @pytest.mark.parametrize("failure", ["none", "missing-attached", "changed-attached", "title", "mutable", "changed-acceptance", "reviewed-digest"])
