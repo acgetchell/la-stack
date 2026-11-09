@@ -17,6 +17,7 @@ use std::{array::from_fn, hint::black_box};
 use allocation_counter::{AllocationInfo, measure};
 use la_stack::{BigInt, BigRational};
 use pastey::paste;
+
 use rational_bench::{RationalInputKind, rational_input};
 
 /// Reproduce the positive-canonical branch before a62e72a removed its clones.

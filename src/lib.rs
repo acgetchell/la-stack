@@ -1253,7 +1253,7 @@ macro_rules! try_with_stack_matrix {
             5 => $crate::try_with_stack_matrix!(@arm 5, $matrix, $ret, $body),
             6 => $crate::try_with_stack_matrix!(@arm 6, $matrix, $ret, $body),
             7 => $crate::try_with_stack_matrix!(@arm 7, $matrix, $ret, $body),
-            requested => Err(::core::convert::From::from(
+            requested => ::core::result::Result::Err(::core::convert::From::from(
                 $crate::LaError::unsupported_dimension(
                     requested,
                     $crate::MAX_STACK_MATRIX_DISPATCH_DIM,
@@ -1272,7 +1272,7 @@ macro_rules! try_with_stack_matrix {
             5 => $crate::try_with_stack_matrix!(@arm_mut 5, $matrix, $ret, $body),
             6 => $crate::try_with_stack_matrix!(@arm_mut 6, $matrix, $ret, $body),
             7 => $crate::try_with_stack_matrix!(@arm_mut 7, $matrix, $ret, $body),
-            requested => Err(::core::convert::From::from(
+            requested => ::core::result::Result::Err(::core::convert::From::from(
                 $crate::LaError::unsupported_dimension(
                     requested,
                     $crate::MAX_STACK_MATRIX_DISPATCH_DIM,
@@ -1337,7 +1337,7 @@ macro_rules! try_with_interval_matrix {
             5 => $crate::try_with_interval_matrix!(@arm 5, $matrix, $ret, $body),
             6 => $crate::try_with_interval_matrix!(@arm 6, $matrix, $ret, $body),
             7 => $crate::try_with_interval_matrix!(@arm 7, $matrix, $ret, $body),
-            requested => Err(::core::convert::From::from(
+            requested => ::core::result::Result::Err(::core::convert::From::from(
                 $crate::LaError::unsupported_dimension(
                     requested,
                     $crate::MAX_INTERVAL_MATRIX_DIM,
@@ -1356,7 +1356,7 @@ macro_rules! try_with_interval_matrix {
             5 => $crate::try_with_interval_matrix!(@arm_mut 5, $matrix, $ret, $body),
             6 => $crate::try_with_interval_matrix!(@arm_mut 6, $matrix, $ret, $body),
             7 => $crate::try_with_interval_matrix!(@arm_mut 7, $matrix, $ret, $body),
-            requested => Err(::core::convert::From::from(
+            requested => ::core::result::Result::Err(::core::convert::From::from(
                 $crate::LaError::unsupported_dimension(
                     requested,
                     $crate::MAX_INTERVAL_MATRIX_DIM,
@@ -1425,7 +1425,7 @@ macro_rules! try_with_rational_matrix {
             6 => $crate::try_with_rational_matrix!(@arm 6, $matrix, $ret, $body),
             7 => $crate::try_with_rational_matrix!(@arm 7, $matrix, $ret, $body),
             8 => $crate::try_with_rational_matrix!(@arm 8, $matrix, $ret, $body),
-            requested => Err(::core::convert::From::from(
+            requested => ::core::result::Result::Err(::core::convert::From::from(
                 $crate::LaError::unsupported_dimension(
                     requested,
                     $crate::MAX_RATIONAL_MATRIX_DISPATCH_DIM,
@@ -1445,7 +1445,7 @@ macro_rules! try_with_rational_matrix {
             6 => $crate::try_with_rational_matrix!(@arm_mut 6, $matrix, $ret, $body),
             7 => $crate::try_with_rational_matrix!(@arm_mut 7, $matrix, $ret, $body),
             8 => $crate::try_with_rational_matrix!(@arm_mut 8, $matrix, $ret, $body),
-            requested => Err(::core::convert::From::from(
+            requested => ::core::result::Result::Err(::core::convert::From::from(
                 $crate::LaError::unsupported_dimension(
                     requested,
                     $crate::MAX_RATIONAL_MATRIX_DISPATCH_DIM,

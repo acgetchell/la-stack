@@ -3,7 +3,7 @@
 //! Analytical rectangular ranks, numerical boundaries, and exact certification.
 
 use core::assert_matches;
-use std::array::from_fn;
+use std::{array::from_fn, hint::black_box};
 
 use la_stack::prelude::*;
 use pastey::paste;
@@ -261,9 +261,9 @@ fn allocation_free_and_const_evaluable() {
     };
     assert_eq!(BASIS.unwrap().columns(), &[1, 2]);
     let allocations = allocation_counter::measure(|| {
-        let rows = std::hint::black_box([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+        let rows = black_box([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
         assert_eq!(
-            std::hint::black_box(column_basis(&rows, tolerance(0.0)).unwrap()).rank(),
+            black_box(column_basis(&rows, tolerance(0.0)).unwrap()).rank(),
             2
         );
     });

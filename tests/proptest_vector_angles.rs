@@ -3,6 +3,7 @@
 //! Exact Gram-determinant oracles, symmetry, and exact rescaling properties.
 
 use core::f64::consts::PI;
+use core::iter::repeat_n;
 
 use la_stack::prelude::*;
 use pastey::paste;
@@ -152,8 +153,8 @@ macro_rules! gen_angle_properties {
                     for i in 0..$d {
                         padded_a.push(a[i]);
                         padded_b.push(b[i]);
-                        padded_a.extend(core::iter::repeat_n(0.0, gaps[i]));
-                        padded_b.extend(core::iter::repeat_n(-0.0, gaps[i]));
+                        padded_a.extend(repeat_n(0.0, gaps[i]));
+                        padded_b.extend(repeat_n(-0.0, gaps[i]));
                     }
                     prop_assert_eq!(
                         padded_a.as_slice().angle(padded_b.as_slice()).unwrap().to_bits(),

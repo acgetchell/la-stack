@@ -880,6 +880,7 @@ impl<const D: usize> Default for Vector<D> {
 
 #[cfg(test)]
 mod tests {
+    use core::array::from_fn;
     use core::hint::black_box;
 
     use approx::assert_abs_diff_eq;
@@ -1395,8 +1396,7 @@ mod tests {
     fn assert_one_exact_normal_product<const D: usize>() {
         let zero = Vector::<D>::new([0.0; D]);
         for value in [f64::MIN_POSITIVE, -2.0, f64::MAX] {
-            let left =
-                Vector::<D>::new(core::array::from_fn(|i| if i == 1 { value } else { -0.0 }));
+            let left = Vector::<D>::new(from_fn(|i| if i == 1 { value } else { -0.0 }));
             let right = Vector::<D>::new([1.0; D]);
             for (result, expected) in [
                 (left.dot_with_errbound(&right), value),
@@ -1410,18 +1410,14 @@ mod tests {
                 assert_eq!(certificate.upper_bound().to_bits(), expected.to_bits());
             }
         }
-        let inexact = Vector::<D>::new(core::array::from_fn(|i| if i == 1 { 0.1 } else { 0.0 }))
+        let inexact = Vector::<D>::new(from_fn(|i| if i == 1 { 0.1 } else { 0.0 }))
             .dot_with_errbound(&Vector::new([0.3; D]))
             .unwrap()
             .unwrap();
         assert!(inexact.absolute_error_bound() > 0.0);
         assert_eq!(
-            Vector::<D>::new(core::array::from_fn(|i| if i == 1 {
-                f64::MIN_POSITIVE
-            } else {
-                0.0
-            }))
-            .dot_with_errbound(&Vector::new([0.5; D])),
+            Vector::<D>::new(from_fn(|i| if i == 1 { f64::MIN_POSITIVE } else { 0.0 }))
+                .dot_with_errbound(&Vector::new([0.5; D])),
             Ok(None),
         );
     }

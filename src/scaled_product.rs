@@ -65,7 +65,40 @@ struct NormalizedFactor {
     exponent: i128,
 }
 
-/// A finite product kept as `(-1)^negative × mantissa × 2^exponent`.
+impl NormalizedFactor {
+    const ONE: Self = Self {
+        mantissa: 1.0,
+        exponent: 0,
+    };
+
+    /// Fold one normalized factor into the running product.
+    #[inline]
+    const fn multiply(&mut self, factor: Self) {
+        self.mantissa *= factor.mantissa;
+        self.exponent += factor.exponent;
+
+        // Both operands were in [1, 2), and even the two largest binary64
+        // mantissas multiply to a value that rounds below 4.0. Therefore one
+        // factor-of-two normalization is sufficient to preserve
+        // `mantissa < 2`.
+        if self.mantissa >= 2.0 {
+            self.mantissa *= 0.5;
+            self.exponent += 1;
+        }
+    }
+}
+
+enum ProductMagnitude {
+    Empty,
+    NonZero {
+        prefix: NormalizedFactor,
+        pending: NormalizedFactor,
+    },
+    Zero,
+    NonFinite,
+}
+
+/// A signed product that retains its range while accumulating finite factors.
 ///
 /// Non-zero finite factors are normalized to `1 ≤ mantissa < 2` before
 /// multiplication. Consequently, no intermediate mantissa multiplication can
@@ -74,12 +107,8 @@ struct NormalizedFactor {
 /// subnormal product can be formed directly in the binary64 destination range
 /// without first rounding it as a normal mantissa.
 pub(crate) struct ScaledProduct {
-    mantissa: f64,
-    exponent: i128,
-    pending_factor: Option<NormalizedFactor>,
     negative: bool,
-    zero: bool,
-    non_finite: bool,
+    magnitude: ProductMagnitude,
 }
 
 impl ScaledProduct {
@@ -87,12 +116,8 @@ impl ScaledProduct {
     #[inline]
     pub(crate) const fn new(negative: bool) -> Self {
         Self {
-            mantissa: 1.0,
-            exponent: 0,
-            pending_factor: None,
             negative,
-            zero: false,
-            non_finite: false,
+            magnitude: ProductMagnitude::Empty,
         }
     }
 
@@ -110,18 +135,25 @@ impl ScaledProduct {
         let fraction = magnitude & FRACTION_MASK;
 
         if biased_exponent == EXPONENT_MASK {
-            self.non_finite = true;
+            self.magnitude = ProductMagnitude::NonFinite;
             return;
         }
         if biased_exponent == 0 && fraction == 0 {
-            self.zero = true;
+            if !matches!(self.magnitude, ProductMagnitude::NonFinite) {
+                self.magnitude = ProductMagnitude::Zero;
+            }
             return;
         }
-        if self.zero {
-            return;
-        }
-
-        let (factor_mantissa, factor_exponent) = if biased_exponent == 0 {
+        let prefix = match self.magnitude {
+            ProductMagnitude::Empty => NormalizedFactor::ONE,
+            ProductMagnitude::NonZero { prefix, pending } => {
+                let mut prefix = prefix;
+                prefix.multiply(pending);
+                prefix
+            }
+            ProductMagnitude::Zero | ProductMagnitude::NonFinite => return,
+        };
+        let (mantissa, exponent) = if biased_exponent == 0 {
             // A subnormal value is `fraction × 2^-1074`. Move its highest set
             // bit to the binary64 hidden-bit position to obtain a mantissa in
             // [1, 2), and compensate in the exponent.
@@ -139,29 +171,10 @@ impl ScaledProduct {
             )
         };
 
-        if let Some(pending) = self.pending_factor {
-            self.absorb_factor(pending);
-        }
-        self.pending_factor = Some(NormalizedFactor {
-            mantissa: factor_mantissa,
-            exponent: factor_exponent,
-        });
-    }
-
-    /// Fold one normalized factor into the running product.
-    #[inline]
-    const fn absorb_factor(&mut self, factor: NormalizedFactor) {
-        self.mantissa *= factor.mantissa;
-        self.exponent += factor.exponent;
-
-        // Both operands were in [1, 2), and even the two largest binary64
-        // mantissas multiply to a value that rounds below 4.0. Therefore one
-        // factor-of-two normalization is sufficient to preserve
-        // `mantissa < 2`.
-        if self.mantissa >= 2.0 {
-            self.mantissa *= 0.5;
-            self.exponent += 1;
-        }
+        self.magnitude = ProductMagnitude::NonZero {
+            prefix,
+            pending: NormalizedFactor { mantissa, exponent },
+        };
     }
 
     /// Finalize the accumulated mantissa and pending factor as binary64.
@@ -178,20 +191,16 @@ impl ScaledProduct {
         clippy::cast_sign_loss,
         reason = "the preceding bounds prove the normal and deferred-final biased exponents fit u64"
     )]
-    pub(crate) const fn finish(mut self) -> Option<f64> {
-        if self.non_finite {
-            return None;
-        }
-
+    pub(crate) const fn finish(self) -> Option<f64> {
         let sign = if self.negative { SIGN_MASK } else { 0 };
-        if self.zero {
-            return Some(f64::from_bits(sign));
-        }
-        let Some(pending) = self.pending_factor else {
-            return Some(f64::from_bits(sign | (1023_u64 << FRACTION_BITS)));
+        let (mut prefix, pending) = match self.magnitude {
+            ProductMagnitude::Empty => return Some(f64::from_bits(sign | 1.0_f64.to_bits())),
+            ProductMagnitude::NonZero { prefix, pending } => (prefix, pending),
+            ProductMagnitude::Zero => return Some(f64::from_bits(sign)),
+            ProductMagnitude::NonFinite => return None,
         };
 
-        let final_exponent = self.exponent + pending.exponent;
+        let final_exponent = prefix.exponent + pending.exponent;
 
         // The product of two mantissas in [1, 2) is strictly below 4. Values
         // below this exponent are therefore strictly below half the least
@@ -206,7 +215,7 @@ impl ScaledProduct {
             // mantissas first would round once to 53 bits here and a second time
             // to the much coarser subnormal grid below.
             let left = f64::from_bits(
-                (1_u64 << FRACTION_BITS) | (self.mantissa.to_bits() & FRACTION_MASK),
+                (1_u64 << FRACTION_BITS) | (prefix.mantissa.to_bits() & FRACTION_MASK),
             );
             let right_biased_exponent =
                 (final_exponent - MIN_NORMAL_EXPONENT + EXPONENT_BIAS) as u64;
@@ -218,14 +227,14 @@ impl ScaledProduct {
             return Some(f64::from_bits(sign | magnitude.to_bits()));
         }
 
-        self.absorb_factor(pending);
-        if self.exponent > EXPONENT_BIAS {
+        prefix.multiply(pending);
+        if prefix.exponent > EXPONENT_BIAS {
             return None;
         }
 
-        let mantissa_bits = self.mantissa.to_bits();
+        let mantissa_bits = prefix.mantissa.to_bits();
         let fraction = mantissa_bits & FRACTION_MASK;
-        let biased_exponent = (self.exponent + EXPONENT_BIAS) as u64;
+        let biased_exponent = (prefix.exponent + EXPONENT_BIAS) as u64;
         Some(f64::from_bits(
             sign | (biased_exponent << FRACTION_BITS) | fraction,
         ))

@@ -6,6 +6,7 @@
 //! See the [invariant and resource contract](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#exact-sparse-polynomial-determinants).
 
 use std::collections::{BTreeMap, btree_map::Entry};
+use std::mem::take;
 
 use num_rational::BigRational;
 use num_traits::{One, Zero};
@@ -193,7 +194,7 @@ pub fn polynomial_determinant<const D: usize>(
     let mut products = 0;
     for mask in 0..state_count - 1 {
         let row = mask.count_ones() as usize;
-        let partial = std::mem::take(&mut partials[mask]);
+        let partial = take(&mut partials[mask]);
         if partial.is_zero() {
             continue;
         }
@@ -228,5 +229,5 @@ pub fn polynomial_determinant<const D: usize>(
             }
         }
     }
-    Ok(std::mem::take(&mut partials[state_count - 1]))
+    Ok(take(&mut partials[state_count - 1]))
 }

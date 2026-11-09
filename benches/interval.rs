@@ -2,6 +2,7 @@
 
 //! Criterion coverage for conclusive and inconclusive interval determinants.
 
+use core::array::from_fn;
 use std::hint::black_box;
 
 use criterion::Criterion;
@@ -108,8 +109,8 @@ fn dimension_benchmarks<const N: usize>(criterion: &mut Criterion) {
     );
     // I + 11ᵀ has determinant N+1. Widen a repeated row to obtain an
     // inconclusive dense enclosure that still includes a singular matrix.
-    let dense_rows = core::array::from_fn(|row| {
-        core::array::from_fn(|column| {
+    let dense_rows = from_fn(|row| {
+        from_fn(|column| {
             if row == column {
                 Interval::point(2.0).or_abort("dense diagonal")
             } else {

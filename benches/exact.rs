@@ -35,8 +35,7 @@ use std::hint::black_box;
 
 use criterion::{BenchmarkGroup, Criterion, Throughput, measurement::WallTime};
 
-use la_stack::ExactF64Conversion;
-use la_stack::{Matrix, Vector};
+use la_stack::{ExactF64Conversion, Matrix, Vector};
 
 #[path = "common/bench_utils.rs"]
 mod bench_utils;
