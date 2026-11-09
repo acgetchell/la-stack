@@ -274,10 +274,11 @@ fn benchmark_corpus_has_independently_validated_outcomes() {
 
 #[cfg(feature = "exact")]
 mod exact_tests {
+    use proptest::prelude::*;
+
     use super::oracle::{assert_encloses, exact, exact_solve};
     use super::proptest_config::with_default_cases;
     use super::*;
-    use proptest::prelude::*;
 
     fn check_point_system<const D: usize>(a: [[i8; D]; D], b: [i8; D]) {
         let a = a.map(|row| row.map(|x| f64::from(x) / 10.0));

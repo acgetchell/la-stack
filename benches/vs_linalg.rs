@@ -11,10 +11,9 @@
 //! - Matrix infinity norm is the maximum absolute row sum on all sides.
 //! - Euclidean-norm rows include safe reference kernels as well as peer crates.
 
-use std::hint::black_box;
+use std::{array::from_fn, hint::black_box};
 
-use criterion::measurement::WallTime;
-use criterion::{BenchmarkGroup, Criterion};
+use criterion::{BenchmarkGroup, Criterion, measurement::WallTime};
 use faer::linalg::matmul::dot::inner_prod;
 use faer::linalg::solvers::Solve;
 use faer::mat::AsMatRef;
@@ -29,12 +28,11 @@ mod bench_utils;
 pub mod vs_linalg_common;
 
 use bench_utils::OrAbort;
-use vs_linalg_common::norm_scenarios;
-use vs_linalg_common::{LuSolveScenario, validated_lu_solve_input};
 use vs_linalg_common::{
-    PreparedFaerLuDet, delaunay_scaled_norm, faer_det_from_ldlt, iterative_hypot,
+    LuSolveScenario, PreparedFaerLuDet, delaunay_scaled_norm, faer_det_from_ldlt, iterative_hypot,
     make_balanced_dynamic_range_rows, make_ill_conditioned_matrix_rows, make_matrix_rows,
-    make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, vector_entry,
+    make_pivoting_matrix_rows, make_vector_array, matrix_entry, nalgebra_inf_norm, norm_scenarios,
+    validated_lu_solve_input, vector_entry,
 };
 
 /// Build the deterministic la-stack matrix shared by a benchmark family.
@@ -671,12 +669,12 @@ where
         let nrhs = SVector::<f64, D>::from_fn(|i, _| rhs.as_array()[i]);
         let nlu = na.lu();
         let nx = nlu.solve(&nrhs).or_abort("diagnostic nalgebra solve");
-        input.validate_solution(&std::array::from_fn(|i| nx[i]));
+        input.validate_solution(&from_fn(|i| nx[i]));
         let fa = Mat::from_fn(D, D, |i, j| a.as_rows()[i][j]);
         let frhs = Mat::from_fn(D, 1, |i, _| rhs.as_array()[i]);
         let flu = fa.partial_piv_lu();
         let fx = flu.solve(&frhs);
-        input.validate_solution(&std::array::from_fn(|i| fx[(i, 0)]));
+        input.validate_solution(&from_fn(|i| fx[(i, 0)]));
 
         let mut group = c.benchmark_group(format!("lu_solve_{}_d{D}", scenario.name()));
         group.bench_function("la_stack_lu_solve", |b| {

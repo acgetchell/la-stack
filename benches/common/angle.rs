@@ -2,6 +2,7 @@
 
 //! Independently checked fixtures shared by angle benchmarks and their tests.
 
+use core::array::from_fn;
 use core::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 
 use la_stack::{Vector, VectorAngle};
@@ -104,8 +105,8 @@ pub(crate) fn fixtures<const D: usize>() -> [AngleInput<D>; 14] {
     let alternating_reference = (4.0 * (support - 1.0)).sqrt().atan2(support - 2.0);
     // Deterministic varied dense coordinates, independently evaluated with
     // integer Gram products (no production minor or compensated reduction).
-    let dense_left = core::array::from_fn(|i| i32::try_from(i + 1).or_abort("small dimension"));
-    let dense_varied = core::array::from_fn(|i| {
+    let dense_left = from_fn(|i| i32::try_from(i + 1).or_abort("small dimension"));
+    let dense_varied = from_fn(|i| {
         i32::try_from(D - i).or_abort("small dimension") * if i % 2 == 0 { 1 } else { -1 }
     });
     let dot: i32 = dense_left

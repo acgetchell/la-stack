@@ -2,8 +2,9 @@
 
 //! Focused structure-sensitive exact solve measurements, outside release reports.
 
-use criterion::Criterion;
 use std::hint::black_box;
+
+use criterion::Criterion;
 
 #[path = "common/bench_utils.rs"]
 mod bench_utils;

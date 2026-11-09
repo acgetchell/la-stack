@@ -18,6 +18,10 @@ macro_rules! gen_dispatch_capture_tests {
     ($name:ident, $dispatch:ident, $entry:expr, $max:expr) => {
         #[test]
         fn $name() -> Result<(), LaError> {
+            // A caller's value named Err must not affect the generated error arm.
+            struct Err;
+            let _caller_value = Err;
+
             for dimension in 2..=5 {
                 let mut visited = Vec::new();
                 let count = $dispatch!(dimension, |matrix| -> Result<usize, LaError> {
@@ -56,14 +60,20 @@ macro_rules! gen_dispatch_capture_tests {
                 visited.push(matrix.as_rows().len());
                 Ok(())
             });
-            assert_eq!(rejected, Err(LaError::unsupported_dimension(99, $max)));
+            assert_eq!(
+                rejected,
+                Result::Err(LaError::unsupported_dimension(99, $max))
+            );
             assert!(visited.is_empty());
             let rejected = $dispatch!(99usize, |mut matrix| -> Result<(), LaError> {
                 matrix.set(0, 0, $entry)?;
                 visited.push(matrix.as_rows().len());
                 Ok(())
             });
-            assert_eq!(rejected, Err(LaError::unsupported_dimension(99, $max)));
+            assert_eq!(
+                rejected,
+                Result::Err(LaError::unsupported_dimension(99, $max))
+            );
             assert!(visited.is_empty());
             Ok(())
         }
