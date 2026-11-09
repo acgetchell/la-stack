@@ -5,8 +5,9 @@
 
 use std::array::from_fn;
 
-use super::bench_utils::OrAbort;
 use la_stack::{ArithmeticOperation, Interval, IntervalMatrix, LaError};
+
+use super::bench_utils::OrAbort;
 
 pub(crate) const CASES: usize = 32;
 

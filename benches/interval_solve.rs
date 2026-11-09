@@ -2,9 +2,10 @@
 
 //! Criterion diagnostics for interval reciprocal, division, and solution enclosures.
 
+use std::hint::black_box;
+
 use criterion::Criterion;
 use la_stack::Interval;
-use std::hint::black_box;
 
 #[path = "common/bench_utils.rs"]
 mod bench_utils;

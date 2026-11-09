@@ -4,8 +4,7 @@
 
 use std::hint::black_box;
 
-use criterion::measurement::WallTime;
-use criterion::{BenchmarkGroup, Criterion};
+use criterion::{BenchmarkGroup, Criterion, measurement::WallTime};
 use la_stack::{Interval, IntervalMatrix, Matrix, Tolerance, Vector};
 
 #[path = "common/bench_utils.rs"]

@@ -118,7 +118,7 @@ def test_actual_writer_handoff_rejects_replacement_before_upload(
         assert "upload" not in transfer["calls"]
 
 
-@pytest.mark.parametrize("failure", ["duplicate", "missing", "extra", "path", "bool-id", "digest", "alias", "attached"])
+@pytest.mark.parametrize("failure", ["duplicate", "missing", "extra", "path", "bool-id", "digest", "alias", "attached", "nonfinite"])
 def test_transfer_parser_rejects_invalid_assertions(transfer: dict[str, Any], failure: str) -> None:
     data = transfer["data"]
     if failure == "missing":
@@ -135,11 +135,13 @@ def test_transfer_parser_rejects_invalid_assertions(transfer: dict[str, Any], fa
         data["assets"]["archive"]["id"] = 1
     elif failure == "attached":
         data["assets"]["attached"] = {"name": f"la-stack-{TAG}-criterion-baseline.tar.gz", "id": 9, "sha256": "d" * 64}
+    elif failure == "nonfinite":
+        data["target"]["release_id"] = float("inf")
     payload = json.dumps(data)
     if failure == "duplicate":
         payload = payload.replace('"schema": 1', '"schema": 1, "schema": 1')
     diagnostics = {
-        "duplicate": "duplicate transfer field",
+        "duplicate": "duplicate JSON key",
         "missing": "four original assets",
         "extra": "invalid candidate transfer schema",
         "path": "safe names",
@@ -147,9 +149,32 @@ def test_transfer_parser_rejects_invalid_assertions(transfer: dict[str, Any], fa
         "digest": "full SHA-256",
         "alias": "distinct names and IDs",
         "attached": "canonical attached archive",
+        "nonfinite": "nonfinite JSON number",
     }
     with pytest.raises(ValueError, match=diagnostics[failure]):
         candidate.parse_transfer(payload.encode())
+
+
+def test_draft_rejects_publication_transfer_before_reading_transport(transfer: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    data = transfer["data"]
+    data["assets"]["attached"] = {"name": f"la-stack-{TAG}-criterion-baseline.tar.gz", "id": 9, "sha256": data["assets"]["archive"]["sha256"]}
+    monkeypatch.setattr(candidate, "check_release_dependencies", lambda *_args: pytest.fail("wrong transfer must stop before checking dependencies"))
+    output = tmp_path / "output"
+    with pytest.raises(ValueError, match="draft verification requires the original four-asset transfer"):
+        candidate.receive(tmp_path / "checkout", output, json.dumps(data).encode(), source=tmp_path / "missing transport")
+    assert not output.exists()
+
+
+def test_transfer_variants_keep_wire_schema(transfer: dict[str, Any]) -> None:
+    data = transfer["data"]
+    draft = candidate.parse_transfer(json.dumps(data).encode())
+    assert isinstance(draft, candidate.DraftTransfer)
+    assert json.loads(candidate.serialize_transfer(draft)) == data
+    data["assets"]["attached"] = {"name": f"la-stack-{TAG}-criterion-baseline.tar.gz", "id": 9, "sha256": data["assets"]["archive"]["sha256"]}
+    publication = candidate.parse_transfer(json.dumps(data).encode())
+    assert isinstance(publication, candidate.PublicationTransfer)
+    assert publication.original == draft
+    assert json.loads(candidate.serialize_transfer(publication)) == data
 
 
 @pytest.mark.parametrize("key", ["GITHUB_ACTOR", "GITHUB_TRIGGERING_ACTOR", "GITHUB_EVENT_NAME", "GITHUB_WORKFLOW_REF", "GITHUB_SHA", "GITHUB_REF"])
@@ -203,6 +228,24 @@ def test_staging_retry_keeps_original_draft_before_any_upload(tmp_path: Path, mo
         candidate.stage(root, owner, "reviewed", prepared)
 
 
+def test_staging_rejects_malformed_owner_digest_before_provider_access(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root, owner = tmp_path / "checkout", tmp_path / "owner"
+    final = candidate.final_directory(owner, SHA, "reviewed")
+    final.mkdir(parents=True)
+    (final / "policy.json").write_bytes(b"policy")
+    (final / "acceptance.json").write_bytes(b"reviewed")
+    (owner / "acquisition.sha256").write_bytes(b"invalid")
+    (owner / "publication.sha256").write_bytes(b"a" * 64)
+    prepared = tmp_path / "target.json"
+    prepared.write_bytes(serialize_release_target(ReleaseTarget(candidate.REPOSITORY, TAG, 42, SHA, TAG)))
+    monkeypatch.setattr(candidate, "resolve_revision", lambda *_args: SHA)
+    monkeypatch.setattr(candidate, "verify", lambda *_args: pytest.fail("invalid assertions must stop before revalidation"))
+    monkeypatch.setattr(candidate, "revalidate_release_target", lambda *_args, **_kwargs: pytest.fail("invalid assertions must stop before provider access"))
+    with pytest.raises(ValueError, match="full SHA-256 assertions"):
+        candidate.stage(root, owner, "reviewed", prepared)
+    assert not (final / "target.json").exists()
+
+
 def test_owner_records_reject_overwrite_and_path_escape(tmp_path: Path) -> None:
     candidate.freeze(tmp_path, {"record": b"original"})
     candidate.freeze(tmp_path, {"record": b"original"})
@@ -227,6 +270,8 @@ def test_initial_stage_requires_the_exact_prepared_target(tmp_path: Path, monkey
     monkeypatch.setattr(candidate, "parse_candidate_policy", lambda *_args: SimpleNamespace(tag=TAG))
     (final / "policy.json").write_bytes(b"owner policy")
     (final / "acceptance.json").write_bytes(b"reviewed acceptance")
+    for name in ("acquisition.sha256", "publication.sha256"):
+        (owner / name).write_bytes(b"a" * 64)
     target = ReleaseTarget(candidate.REPOSITORY, TAG, 42, SHA, TAG)
     changes = {"repository": "other/repo", "tag": "v9.9.9", "commit": "f" * 40, "expected_title": "edited", "release_id": 43}
     supplied = replace(target, **{field: changes[field]})

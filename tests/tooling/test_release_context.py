@@ -221,7 +221,15 @@ def test_registry_dispatch_sends_only_the_existing_reviewed_snapshot(tmp_path: P
     final = candidate.final_directory(owner, SHA, "reviewed")
     final.mkdir(parents=True)
     publication = final / "publication-transfer.json"
-    original = b"original owner publication\r\n"
+    target = ReleaseTarget(candidate.REPOSITORY, TAG, 42, SHA, TAG)
+    assets = {role: {"name": f"{role}.bin", "id": index, "sha256": "b" * 64} for index, role in enumerate((*candidate.ROLES, "attached"), 1)}
+    assets["attached"]["name"] = f"la-stack-{TAG}-criterion-baseline.tar.gz"
+    original = (
+        json.dumps(
+            {"schema": 1, "target": json.loads(serialize_release_target(target)), "acquisition": "c" * 64, "publication": "d" * 64, "assets": assets}
+        ).encode()
+        + b"\r\n"
+    )
     publication.write_bytes(original)
     accepted = final / "acceptance.json"
     reviewed = b"original full acceptance\r\n"
@@ -229,7 +237,6 @@ def test_registry_dispatch_sends_only_the_existing_reviewed_snapshot(tmp_path: P
         accepted.write_bytes(reviewed)
     monkeypatch.setattr(candidate, "release_tag", lambda _root: TAG)
     monkeypatch.setattr(candidate, "record_path", lambda *_args: publication)
-    monkeypatch.setattr(candidate, "parse_transfer", lambda _payload: SimpleNamespace())
     verified: list[Path] = []
 
     def verify(*_args: object) -> Path:

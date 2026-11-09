@@ -9,6 +9,7 @@ import tempfile
 from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
+from typing import Literal
 
 from research_repo_tools.candidate_publication import plan_candidate_publication
 from research_repo_tools.candidate_reuse import (
@@ -51,6 +52,7 @@ from research_repo_tools.suite_runs import parse_suite_run
 SETTINGS = "tooling/performance-release.toml"
 REPOSITORY = "acgetchell/la-stack"
 ROLES = ("policy", "publication", "acceptance", "archive")
+type AssetRole = Literal["policy", "publication", "acceptance", "archive", "attached"]
 
 
 def release_tag(root: Path) -> str:
@@ -327,40 +329,108 @@ def archive(owner: Path, commit: str, selection: str = "reviewed") -> Path:
 
 
 @dataclass(frozen=True, slots=True)
-class Transfer:
-    """A parsed owner selection; only an authorized invocation authenticates it."""
+class AssetAssertion:
+    """A provider asset name, exact numeric ID, and independently selected digest."""
 
-    target: ReleaseTarget
-    acquisition: str
-    publication: str
-    assets: tuple[tuple[str, str, int, str], ...]
+    name: str
+    identifier: int
+    sha256: str
+
+    def __post_init__(self) -> None:
+        """Validate provider values before carrying them as assertions."""
+        if (
+            not isinstance(self.name, str)
+            or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}", self.name) is None
+            or type(self.identifier) is not int
+            or self.identifier <= 0
+        ):
+            message = "candidate assets require safe names and positive exact IDs"
+            raise ValueError(message)
+        if not isinstance(self.sha256, str) or re.fullmatch(r"[0-9a-f]{64}", self.sha256) is None:
+            message = "candidate asset requires a full SHA-256 assertion"
+            raise ValueError(message)
 
 
-def transfer_asset(role: str, raw: object) -> tuple[str, str, int, str]:
+def transfer_asset(raw: object) -> AssetAssertion:
     """Parse one exact inert asset selection."""
     if not isinstance(raw, dict) or set(raw) != {"name", "id", "sha256"}:
         message = "invalid candidate asset assertion"
         raise ValueError(message)
-    name, identifier, digest = raw["name"], raw["id"], raw["sha256"]
-    if not isinstance(name, str) or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}", name) is None or type(identifier) is not int or identifier <= 0:
-        message = "candidate assets require safe names and positive exact IDs"
+    return AssetAssertion(raw["name"], raw["id"], raw["sha256"])
+
+
+@dataclass(frozen=True, slots=True)
+class OriginalAssets:
+    """Every original role is required exactly once."""
+
+    policy: AssetAssertion
+    publication: AssetAssertion
+    acceptance: AssetAssertion
+    archive: AssetAssertion
+
+    def __post_init__(self) -> None:
+        """Check the cross-role identity constraint."""
+        assets = (self.policy, self.publication, self.acceptance, self.archive)
+        if len({asset.name for asset in assets}) != len(assets) or len({asset.identifier for asset in assets}) != len(assets):
+            message = "candidate assets must have distinct names and IDs"
+            raise ValueError(message)
+
+    def role_assertions(self) -> tuple[tuple[AssetRole, AssetAssertion], ...]:
+        """Return the original assets with their fixed transport roles."""
+        return (("policy", self.policy), ("publication", self.publication), ("acceptance", self.acceptance), ("archive", self.archive))
+
+
+@dataclass(frozen=True, slots=True)
+class DraftTransfer:
+    """The original four-asset selection, before attachment."""
+
+    target: ReleaseTarget
+    acquisition: str
+    publication: str
+    assets: OriginalAssets
+
+
+@dataclass(frozen=True, slots=True)
+class PublicationTransfer:
+    """The original selection plus an independently selected canonical attachment."""
+
+    original: DraftTransfer
+    attached: AssetAssertion
+
+    def __post_init__(self) -> None:
+        """Require a distinct attachment with the accepted archive bytes."""
+        if any(self.attached.name == asset.name or self.attached.identifier == asset.identifier for _, asset in self.original.assets.role_assertions()):
+            message = "candidate assets must have distinct names and IDs"
+            raise ValueError(message)
+        if self.attached.name != archive_name(self.original.target.tag) or self.attached.sha256 != self.original.assets.archive.sha256:
+            message = "canonical attached archive must match the originally accepted bytes"
+            raise ValueError(message)
+
+    def role_assertions(self) -> tuple[tuple[AssetRole, AssetAssertion], ...]:
+        """Return every asset selected for publication."""
+        return (*self.original.assets.role_assertions(), ("attached", self.attached))
+
+
+type Transfer = DraftTransfer | PublicationTransfer
+
+
+def archive_name(tag: str) -> str:
+    """Name the canonical attached benchmark archive."""
+    return f"la-stack-{tag}-criterion-baseline.tar.gz"
+
+
+def transfer_digest(value: object) -> str:
+    """Require an exact SHA-256 assertion before preparing transport."""
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        message = "candidate transfer requires full SHA-256 assertions"
         raise ValueError(message)
-    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
-        message = "candidate asset requires a full SHA-256 assertion"
-        raise ValueError(message)
-    return role, name, identifier, digest
+    return value
 
 
 def parse_transfer(payload: bytes) -> Transfer:
     """Reject malformed or ambiguous operator assertions before provider access."""
 
-    def unique(pairs: list[tuple[str, object]]) -> dict[str, object]:
-        if len(dict(pairs)) != len(pairs):
-            message = "duplicate transfer field"
-            raise ValueError(message)
-        return dict(pairs)
-
-    data = json.loads(payload, object_pairs_hook=unique)
+    data: object = parse_release_json(payload)
     if (
         not isinstance(data, dict)
         or set(data) != {"schema", "target", "acquisition", "publication", "assets"}
@@ -374,24 +444,50 @@ def parse_transfer(payload: bytes) -> Transfer:
         message = "candidate transfer must select this repository and its exact release title"
         raise ValueError(message)
 
-    def digest(value: object) -> str:
-        if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
-            message = "candidate transfer requires full SHA-256 assertions"
-            raise ValueError(message)
-        return value
-
     raw_assets = data["assets"]
     if not isinstance(raw_assets, dict) or set(raw_assets) not in (set(ROLES), {*ROLES, "attached"}):
         message = "candidate transfer requires four original assets and an optional attached archive"
         raise ValueError(message)
-    assets = tuple(transfer_asset(role, raw_assets[role]) for role in (*ROLES, *(["attached"] if "attached" in raw_assets else [])))
-    if len({item[1] for item in assets}) != len(assets) or len({item[2] for item in assets}) != len(assets):
-        message = "candidate assets must have distinct names and IDs"
-        raise ValueError(message)
-    if "attached" in raw_assets and (raw_assets["attached"]["name"] != f"la-stack-{target.tag}-criterion-baseline.tar.gz" or assets[-1][3] != assets[3][3]):
-        message = "canonical attached archive must match the originally accepted bytes"
-        raise ValueError(message)
-    return Transfer(target, digest(data["acquisition"]), digest(data["publication"]), assets)
+    assets = OriginalAssets(
+        policy=transfer_asset(raw_assets["policy"]),
+        publication=transfer_asset(raw_assets["publication"]),
+        acceptance=transfer_asset(raw_assets["acceptance"]),
+        archive=transfer_asset(raw_assets["archive"]),
+    )
+    original = DraftTransfer(target, transfer_digest(data["acquisition"]), transfer_digest(data["publication"]), assets)
+    if "attached" in raw_assets:
+        return PublicationTransfer(original, transfer_asset(raw_assets["attached"]))
+    return original
+
+
+def require_draft_transfer(transfer: Transfer) -> DraftTransfer:
+    """Require the original four-asset dispatch selection."""
+    if isinstance(transfer, DraftTransfer):
+        return transfer
+    message = "draft verification requires the original four-asset transfer"
+    raise ValueError(message)
+
+
+def require_publication_transfer(transfer: Transfer) -> PublicationTransfer:
+    """Require the canonical attachment before any publication operation."""
+    if isinstance(transfer, PublicationTransfer):
+        return transfer
+    message = "publication requires the independently selected canonical archive"
+    raise ValueError(message)
+
+
+def serialize_transfer(transfer: Transfer) -> bytes:
+    """Preserve the schema-1 wire shape of a validated owner selection."""
+    original = transfer.original if isinstance(transfer, PublicationTransfer) else transfer
+    assets = transfer.role_assertions() if isinstance(transfer, PublicationTransfer) else transfer.assets.role_assertions()
+    record = {
+        "schema": 1,
+        "target": json.loads(serialize_release_target(original.target)),
+        "acquisition": original.acquisition,
+        "publication": original.publication,
+        "assets": {role: {"name": asset.name, "id": asset.identifier, "sha256": asset.sha256} for role, asset in assets},
+    }
+    return json.dumps(record, sort_keys=True).encode("utf-8") + b"\n"
 
 
 def preparation_target(root: Path, owner: Path, selection: str) -> Path:
@@ -422,11 +518,12 @@ def preparation_target(root: Path, owner: Path, selection: str) -> Path:
 
 def stage(root: Path, owner: Path, selection: str, prepared_target: Path | None = None) -> Path:
     """Upload inert original records, retaining dispatch assertions independently."""
+    acquisition = transfer_digest((owner / "acquisition.sha256").read_text(encoding="ascii").strip())
+    publication = transfer_digest((owner / "publication.sha256").read_text(encoding="ascii").strip())
     accepted = verify_existing(root, owner, selection)
     commit = resolve_revision(root, "HEAD")
     final = final_directory(owner, commit, selection)
     policy = parse_candidate_policy((final / "policy.json").read_bytes())
-    artifact = archive(owner, commit, selection)
     target_path = final / "target.json"
     target = parse_release_target((prepared_target or preparation_target(root, owner, selection)).read_bytes())
     if (target.repository, target.tag, target.commit, target.expected_title) != (REPOSITORY, policy.tag, commit, policy.tag):
@@ -435,6 +532,7 @@ def stage(root: Path, owner: Path, selection: str, prepared_target: Path | None 
     freeze(final, {"target.json": serialize_release_target(target)})
     target = parse_release_target(target_path.read_bytes())
     revalidate_release_target(root, target, checkout=root)
+    artifact = archive(owner, commit, selection)
     inputs = {"policy": final / "policy.json", "publication": owner / "publication.json", "acceptance": accepted, "archive": artifact}
     transport = final / "transport"
     transport.mkdir(exist_ok=True)
@@ -446,22 +544,25 @@ def stage(root: Path, owner: Path, selection: str, prepared_target: Path | None 
         freeze(transport, {name: payload})
         publish_release_asset(root, REPOSITORY, policy.tag, transport / name, target=target, checkout=root)
         release = revalidate_release_target(root, target, checkout=root)
-        entry = next(item for item in release.assets if item[0] == name)
+        entry = next((item for item in release.assets if item[0] == name), None)
+        if entry is None:
+            message = f"staged candidate asset is missing from the prepared release: {name}"
+            raise ValueError(message)
         assertions[role] = {"name": name, "id": entry[1], "sha256": hashlib.sha256(payload).hexdigest()}
     payload = (
         json.dumps(
             {
                 "schema": 1,
                 "target": json.loads(serialize_release_target(target)),
-                "acquisition": (owner / "acquisition.sha256").read_text(encoding="ascii").strip(),
-                "publication": (owner / "publication.sha256").read_text(encoding="ascii").strip(),
+                "acquisition": acquisition,
+                "publication": publication,
                 "assets": assertions,
             },
             sort_keys=True,
         ).encode("utf-8")
         + b"\n"
     )
-    parse_transfer(payload)
+    require_draft_transfer(parse_transfer(payload))
     freeze(final, {"transfer.json": payload})
     return final / "transfer.json"
 
@@ -469,40 +570,34 @@ def stage(root: Path, owner: Path, selection: str, prepared_target: Path | None 
 def seal(root: Path, owner: Path, selection: str) -> Path:
     """Independently select the canonical attached asset before publication."""
     final = final_directory(owner, resolve_revision(root, "HEAD"), selection)
-    payload = (final / "transfer.json").read_bytes()
-    transfer = parse_transfer(payload)
+    transfer = require_draft_transfer(parse_transfer((final / "transfer.json").read_bytes()))
     release = revalidate_release_target(root, transfer.target, checkout=root)
-    name = f"la-stack-{transfer.target.tag}-criterion-baseline.tar.gz"
+    name = archive_name(transfer.target.tag)
     entry = next((item for item in release.assets if item[0] == name), None)
     if entry is None:
         message = "canonical accepted benchmark archive is not yet attached"
         raise ValueError(message)
-    digest = next(item[3] for item in transfer.assets if item[0] == "archive")
+    digest = transfer.assets.archive.sha256
+    publication = PublicationTransfer(transfer, AssetAssertion(name, entry[1], digest))
     with tempfile.TemporaryDirectory(prefix="la-stack-seal-") as temporary:
         download_release_asset(root, REPOSITORY, transfer.target.tag, name, Path(temporary) / "archive.tar.gz", expected_sha256=digest, allow_draft=True)
     if entry not in revalidate_release_target(root, transfer.target, checkout=root).assets:
         message = "attached archive identity changed during verification"
         raise ValueError(message)
-    data = json.loads(payload)
-    data["assets"]["attached"] = {"name": name, "id": entry[1], "sha256": digest}
-    sealed = json.dumps(data, sort_keys=True).encode("utf-8") + b"\n"
-    parse_transfer(sealed)
-    freeze(final, {"publication-transfer.json": sealed})
+    freeze(final, {"publication-transfer.json": serialize_transfer(publication)})
     return final / "publication-transfer.json"
 
 
-def record_path(root: Path, owner: Path, selection: str, role: str) -> Path:
+def record_path(root: Path, owner: Path, selection: str, role: Literal["transfer", "publication"]) -> Path:
     """Locate an already retained transfer for this exact clean release commit."""
     commit = resolve_revision(root, "HEAD")
     require_release_checkout(root, commit)
     filename = "transfer.json" if role == "transfer" else "publication-transfer.json"
     path = final_directory(owner, commit, selection) / filename
-    transfer = parse_transfer(path.read_bytes())
+    parsed = parse_transfer(path.read_bytes())
+    transfer = require_draft_transfer(parsed) if role == "transfer" else require_publication_transfer(parsed).original
     if (transfer.target.tag, transfer.target.commit) != (release_tag(root), commit):
         message = "saved transfer differs from the current release checkout"
-        raise ValueError(message)
-    if role == "publication" and "attached" not in {item[0] for item in transfer.assets}:
-        message = "publication requires the already captured canonical archive"
         raise ValueError(message)
     return path
 
@@ -514,7 +609,7 @@ def upload_dispatch(root: Path, owner: Path, selection: str, tag: str) -> None:
         raise ValueError(message)
     publication = record_path(root, owner, selection, "publication")
     transfer_bytes = publication.read_bytes()
-    transfer = parse_transfer(transfer_bytes)
+    transfer = require_publication_transfer(parse_transfer(transfer_bytes))
     accepted = publication.parent / "acceptance.json"
     expected = accepted.read_bytes()  # Missing review must never create a new selection.
     if verify_existing(root, owner, selection).read_bytes() != expected:
@@ -549,63 +644,77 @@ def upload_dispatch(root: Path, owner: Path, selection: str, tag: str) -> None:
         )
 
 
-def require_dispatch(transfer: Transfer, *, published: bool) -> None:
+def require_dispatch(transfer: Transfer) -> None:
     """Bind independent workflow input to the allowed operator, workflow and tag."""
-    workflow = "publish-crates.yml" if published else "release-benchmarks.yml"
+    if isinstance(transfer, PublicationTransfer):
+        workflow = "publish-crates.yml"
+        target = transfer.original.target
+    else:
+        workflow = "release-benchmarks.yml"
+        target = transfer.target
     expected = {
         "GITHUB_EVENT_NAME": "workflow_dispatch",
         "GITHUB_REPOSITORY": REPOSITORY,
-        "GITHUB_REF": f"refs/tags/{transfer.target.tag}",
-        "GITHUB_SHA": transfer.target.commit,
-        "GITHUB_WORKFLOW_REF": f"{REPOSITORY}/.github/workflows/{workflow}@refs/tags/{transfer.target.tag}",
+        "GITHUB_REF": f"refs/tags/{target.tag}",
+        "GITHUB_SHA": target.commit,
+        "GITHUB_WORKFLOW_REF": f"{REPOSITORY}/.github/workflows/{workflow}@refs/tags/{target.tag}",
         "GITHUB_ACTOR": "acgetchell",
         "GITHUB_TRIGGERING_ACTOR": "acgetchell",
-        "RELEASE_TAG": transfer.target.tag,
+        "RELEASE_TAG": target.tag,
     }
     if any(os.environ.get(key) != value for key, value in expected.items()):
         message = "candidate handoff requires the maintainer's exact workflow/tag dispatch"
         raise ValueError(message)
 
 
-def transfer_files(root: Path, transfer: Transfer, directory: Path, incoming: Path | None) -> dict[str, Path]:
-    """Read exact dispatch-selected bytes from published assets or inert transport."""
-    files: dict[str, Path] = {}
-    for role, name, _identifier, digest in transfer.assets:
-        path = directory / name
-        if incoming is None:
-            download_release_asset(root, REPOSITORY, transfer.target.tag, name, path, expected_sha256=digest)
-        else:
-            source = incoming / ("archive.tar.gz" if role == "archive" else f"{role}.json")
-            data = source.read_bytes()
-            if source.is_symlink() or hashlib.sha256(data).hexdigest() != digest:
-                message = "transported candidate bytes differ from independent dispatch assertions"
-                raise ValueError(message)
-            freeze(directory, {name: data})
-        files[role] = path
-    return files
+def transport_name(role: AssetRole) -> str:
+    """Use fixed local paths independent of provider asset names."""
+    return "archive.tar.gz" if role == "archive" else f"{role}.json"
 
 
-def check_published_transfer(root: Path, transfer: Transfer) -> None:
+def copy_draft_assets(transfer: DraftTransfer, directory: Path, incoming: Path) -> None:
+    """Check and retain the original inert transport bytes."""
+    for role, asset in transfer.assets.role_assertions():
+        name = transport_name(role)
+        source = incoming / name
+        if source.is_symlink():
+            message = "transported candidate bytes differ from independent dispatch assertions"
+            raise ValueError(message)
+        data = source.read_bytes()
+        if hashlib.sha256(data).hexdigest() != asset.sha256:
+            message = "transported candidate bytes differ from independent dispatch assertions"
+            raise ValueError(message)
+        freeze(directory, {name: data})
+
+
+def download_published_assets(root: Path, transfer: PublicationTransfer, directory: Path) -> None:
+    """Fetch the original and canonical assets into distinct role paths."""
+    for role, asset in transfer.role_assertions():
+        download_release_asset(root, REPOSITORY, transfer.original.target.tag, asset.name, directory / transport_name(role), expected_sha256=asset.sha256)
+
+
+def check_published_transfer(root: Path, transfer: PublicationTransfer) -> None:
     """Require the immutable release and exact original and canonical assets."""
+    target = transfer.original.target
     release = check_reviewed_release(
         load_config(root=root),
-        transfer.target.tag,
-        event=ReviewedRelease(transfer.target.tag, transfer.target.commit, transfer.target.release_id),
+        target.tag,
+        event=ReviewedRelease(target.tag, target.commit, target.release_id),
     )
     if not release.immutable:
         message = "published candidate release must be immutable"
         raise ValueError(message)
     if (release.repository, release.tag, release.identifier, release.title) != (
         REPOSITORY,
-        transfer.target.tag,
-        transfer.target.release_id,
-        transfer.target.expected_title,
+        target.tag,
+        target.release_id,
+        target.expected_title,
     ):
         message = "candidate release identity changed"
         raise ValueError(message)
-    for _role, name, identifier, digest in transfer.assets:
-        entry = next((item for item in release.assets if item[0] == name), None)
-        if entry is None or entry[1] != identifier or (entry[3] is not None and entry[3] != digest):
+    for _role, asset in transfer.role_assertions():
+        entry = next((item for item in release.assets if item[0] == asset.name), None)
+        if entry is None or entry[1] != asset.identifier or (entry[3] is not None and entry[3] != asset.sha256):
             message = "candidate asset identity changed"
             raise ValueError(message)
 
@@ -622,34 +731,60 @@ class ReviewedAcceptance:
         if re.fullmatch(r"[0-9a-f]{64}", self.sha256) is None:
             message = "publication requires the independently reviewed full acceptance SHA-256"
             raise ValueError(message)
-        if self.expected is not None and hashlib.sha256(self.expected).hexdigest() != self.sha256:
+        if self.expected is not None and (not isinstance(self.expected, bytes) or hashlib.sha256(self.expected).hexdigest() != self.sha256):
             message = "approval receipt differs from independently reviewed acceptance"
             raise ValueError(message)
 
 
+@dataclass(frozen=True, slots=True)
+class DraftHandoff:
+    """Verify an original selection using inert transport."""
+
+    transfer: DraftTransfer
+    incoming: Path
+
+
+@dataclass(frozen=True, slots=True)
+class PublicationHandoff:
+    """Verify the immutable published selection using independent owner approval."""
+
+    transfer: PublicationTransfer
+    review: ReviewedAcceptance
+
+
+def parse_handoff(payload: bytes, source: Path | ReviewedAcceptance) -> DraftHandoff | PublicationHandoff:
+    """Pair the transfer with its permitted source before authenticating the dispatch."""
+    transfer = parse_transfer(payload)
+    if isinstance(source, ReviewedAcceptance):
+        return PublicationHandoff(require_publication_transfer(transfer), source)
+    return DraftHandoff(require_draft_transfer(transfer), source)
+
+
 def receive(root: Path, destination: Path, payload: bytes, *, source: Path | ReviewedAcceptance) -> Path:
     """Read-only hosted acceptance, pinned to original bytes and reviewed CI."""
-    published = isinstance(source, ReviewedAcceptance)
-    transfer = parse_transfer(payload)
-    require_dispatch(transfer, published=published)
-    if published and "attached" not in {item[0] for item in transfer.assets}:
-        message = "publication requires the independently selected canonical archive"
-        raise ValueError(message)
+    handoff = parse_handoff(payload, source)
+    require_dispatch(handoff.transfer)
+    transfer = handoff.transfer.original if isinstance(handoff, PublicationHandoff) else handoff.transfer
     check_release_dependencies(root)
     destination = owner_directory(root, "", destination)
     destination.mkdir(parents=True, exist_ok=True)
 
     def release_identity() -> None:
-        if published:
-            check_published_transfer(root, transfer)
+        if isinstance(handoff, PublicationHandoff):
+            check_published_transfer(root, handoff.transfer)
 
     release_identity()
     with tempfile.TemporaryDirectory(prefix="la-stack-transfer-") as temporary:
-        files = transfer_files(root, transfer, Path(temporary), source if isinstance(source, Path) else None)
+        directory = Path(temporary)
+        if isinstance(handoff, PublicationHandoff):
+            download_published_assets(root, handoff.transfer, directory)
+        else:
+            copy_draft_assets(handoff.transfer, directory, handoff.incoming)
         release_identity()
-        policy = parse_candidate_policy(files["policy"].read_bytes())
-        accepted = files["acceptance"].read_bytes()
-        evidence = verify_candidate_archive(files["archive"], policy, accepted, target=transfer.target)
+        policy = parse_candidate_policy((directory / "policy.json").read_bytes())
+        accepted = (directory / "acceptance.json").read_bytes()
+        archive_path = directory / "archive.tar.gz"
+        evidence = verify_candidate_archive(archive_path, policy, accepted, target=transfer.target)
         actual = verify_candidate_release(
             root,
             evidence,
@@ -657,25 +792,25 @@ def receive(root: Path, destination: Path, payload: bytes, *, source: Path | Rev
             load_evidence_policy(root / "tooling/release-evidence.toml"),
             partial(api, repository=REPOSITORY),
             acquisition_sha256=transfer.acquisition,
-            publication_receipt=files["publication"].read_bytes(),
+            publication_receipt=(directory / "publication.json").read_bytes(),
             publication_sha256=transfer.publication,
             # A published release may need explicitly reviewed newer native CI.
             # Before approval, the independent owner digest authenticates the
             # newly verified result. After approval, pin those exact bytes.
-            expected=source.expected if isinstance(source, ReviewedAcceptance) else accepted,
+            expected=handoff.review.expected if isinstance(handoff, PublicationHandoff) else accepted,
         )
-        if isinstance(source, ReviewedAcceptance) and hashlib.sha256(actual).hexdigest() != source.sha256:
+        if isinstance(handoff, PublicationHandoff) and hashlib.sha256(actual).hexdigest() != handoff.review.sha256:
             message = "verified acceptance differs from the independently reviewed digest"
             raise ValueError(message)
         release_identity()
-        name = f"la-stack-{transfer.target.tag}-criterion-baseline.tar.gz"
+        name = archive_name(transfer.target.tag)
         freeze(
             destination,
             {
                 "transfer.json": payload,
                 "acceptance.json": actual,
                 "target.json": serialize_release_target(transfer.target),
-                name: files["archive"].read_bytes(),
+                name: archive_path.read_bytes(),
             },
         )
     return destination / name
@@ -746,8 +881,11 @@ def run_owner_operation(root: Path, options: argparse.Namespace) -> None:
         print(seal(root, owner, options.selection))
     elif options.operation == "record":
         print(record_path(root, owner, options.selection, options.role))
-    else:
+    elif options.operation == "upload":
         upload_dispatch(root, owner, options.selection, options.tag)
+    else:
+        message = f"unknown candidate owner operation: {options.operation}"
+        raise ValueError(message)
 
 
 def main() -> None:
