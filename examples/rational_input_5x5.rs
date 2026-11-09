@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
-//! Solve a rational 5×5 system that becomes singular after conversion to binary64.
+//! Solve a rational 5×5 system and evaluate an exact linear objective.
+//!
+//! The reconstructed binary64 system is singular.
 
 use la_stack::prelude::*;
 
@@ -33,6 +35,32 @@ fn main() -> Result<(), LaError> {
     println!("exact determinant: {}", matrix.det());
     println!("exact determinant sign: {:?}", matrix.det_sign());
     println!("exact solution: {:?}", exact_solution.as_array());
+
+    let objective = RationalVector::try_new([
+        BigRational::new(1.into(), 3.into()),
+        BigRational::new(1.into(), 2.into()),
+        BigRational::from_integer(0.into()),
+        BigRational::from_integer(0.into()),
+        BigRational::new(1.into(), 4.into()),
+    ])?;
+    // For the known solution [1, -1, 2, 3, 4], the objective is 1/3 - 1/2 + 1.
+    let expected = BigRational::new(5.into(), 6.into());
+    let value = objective.dot(&exact_solution);
+    assert_eq!(value, expected);
+
+    // Borrowed slices support runtime lengths and check shape and denominators.
+    let weights = objective.as_array().as_slice();
+    let values = exact_solution.as_array().as_slice();
+    assert_eq!(rational_dot(weights, values)?, expected);
+    assert!(matches!(
+        rational_dot(weights, &values[..4]),
+        Err(LaError::DimensionMismatch {
+            left: 5,
+            right: 4,
+            ..
+        })
+    ));
+    println!("exact objective: {value}");
 
     let epsilon_f64 = epsilon.try_to_f64()?;
     assert_eq!((1.0 + epsilon_f64).to_bits(), 1.0_f64.to_bits());

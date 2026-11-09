@@ -2,17 +2,19 @@
 
 //! Shared binary64 rounding primitives for certified arithmetic.
 //!
-//! Representation and rounding use the IEEE 754 model in `REFERENCES.md`
-//! \[9-10\]. The interval and reduction certificates share these primitives.
+//! The interval and reduction certificates share these primitives. They use
+//! IEEE 754 binary64 \[[9](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-9)\]
+//! with round-to-nearest, ties-to-even, and gradual underflow.
 
 /// Return the exact error in a rounded binary64 sum.
 ///
-/// This is `FastTwoSum` with operands ordered by magnitude. With IEEE-754
-/// round-to-nearest and gradual underflow, `rounded + error` equals the
-/// exact-real sum whenever the rounded sum is finite. Ordering prevents an
-/// intermediate overflow even at the finite range boundary; see
-/// `REFERENCES.md` \[17\], Theorem 5.1. Callers supply finite operands and their
-/// rounded sum.
+/// This uses magnitude-ordered `FastTwoSum`
+/// \[[17](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-17)\].
+/// With binary64 round-to-nearest, ties-to-even, and gradual underflow,
+/// `rounded + error` in exact arithmetic equals the real sum. Callers supply
+/// finite operands and their finite rounded sum. Magnitude ordering prevents
+/// intermediate overflow under this precondition (Theorem 5.1).
+/// See the [scalar rounding argument](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#scalar-arithmetic-and-finite-bounds).
 #[inline]
 pub(crate) const fn two_sum_error(left: f64, right: f64, rounded: f64) -> f64 {
     let (large, small) = if left.abs() >= right.abs() {
@@ -25,6 +27,9 @@ pub(crate) const fn two_sum_error(left: f64, right: f64, rounded: f64) -> f64 {
 }
 
 /// Decompose a nonzero finite binary64 magnitude as `significand × 2^exponent`.
+///
+/// The implicit leading bit is set only for normal numbers. See the binary64
+/// encoding in \[[9](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-9)\], §3.4.
 #[inline]
 pub(crate) const fn decompose_magnitude(value: f64) -> (u128, i64) {
     let magnitude_bits = value.to_bits() & 0x7fff_ffff_ffff_ffff;
@@ -42,6 +47,10 @@ pub(crate) const fn decompose_magnitude(value: f64) -> (u128, i64) {
 }
 
 /// Compare two positive values represented as `significand × 2^exponent`.
+///
+/// This integer comparison uses the binary64 decomposition above. Alignment
+/// is needed only when both highest set bits have the same exponent, so the
+/// aligned significands still fit in `u128`.
 #[inline]
 const fn compare_binary_magnitudes(
     left_significand: u128,
@@ -86,9 +95,12 @@ const fn compare_binary_magnitudes(
 /// Compare the exact-real product `left × right` with its rounded result.
 ///
 /// Nonzero finite operands contribute at most 53 significand bits each, so the
-/// exact product fits in `u128`. Above the residual-underflow threshold,
-/// `TwoProductFMA` gives its exact rounding error; see `REFERENCES.md` \[18\].
-/// Integer comparison handles smaller products, including rounding to zero.
+/// exact significand product fits in `u128`. For `|rounded| ≥ 2^-968`,
+/// `TwoProductFMA` \[[18](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-18)\]
+/// gives the exact rounding error. The crate's
+/// [residual threshold argument](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#scalar-arithmetic-and-finite-bounds)
+/// explains the bound and the integer comparison for smaller products,
+/// including rounding to zero.
 /// Callers supply nonzero finite operands and their finite rounded product.
 #[inline]
 pub(crate) const fn compare_product_with_rounded(left: f64, right: f64, rounded: f64) -> i8 {
@@ -146,10 +158,14 @@ const fn compare_product_with_rounded_integer(left: f64, right: f64, rounded: f6
     }
 }
 
-/// Compare the exact quotient with a finite rounded quotient, without relying
-/// on a floating residual that could underflow. The denominator is nonzero;
-/// all three arguments are finite. A 106-bit product suffices to compare
-/// `|rounded| * |denominator|` with `|numerator|` exactly.
+/// Compare the exact quotient with a finite rounded quotient using integers.
+///
+/// The denominator is nonzero and all three arguments are finite. A 106-bit
+/// significand product suffices to compare `|rounded| * |denominator|` with
+/// `|numerator|` exactly. The crate's
+/// [quotient comparison argument](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#division-and-reciprocals)
+/// uses binary64 decomposition and works even when a floating residual would
+/// underflow.
 #[inline]
 pub(crate) const fn compare_quotient_with_rounded(
     numerator: f64,

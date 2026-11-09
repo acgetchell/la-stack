@@ -2,13 +2,10 @@
 
 //! Outward-rounded intervals, fixed-size determinants, and solution enclosures.
 //!
-//! See `REFERENCES.md` \[17\] for `FastTwoSum`, \[9-11\] for the binary64 arithmetic
-//! model, and \[12\] for the Leibniz determinant identity. The column-subset
-//! evaluation is specialized to this crate's small dimensions. Reference
-//! \[14\] describes the broader interval standard; this module does not claim
-//! IEEE 1788 conformance. The
+//! The mathematical basis explains the
 //! [interval construction](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#outward-rounded-interval-expressions)
-//! explains outward endpoints and determinant enclosures.
+//! and the
+//! [solution enclosure proof](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#interval-linear-solves).
 
 use crate::rounding::{compare_product_with_rounded, compare_quotient_with_rounded, two_sum_error};
 use crate::{ArithmeticOperation, IntervalBound, IntervalOperand, LaError, Matrix};
@@ -29,8 +26,12 @@ pub const MAX_INTERVAL_MATRIX_DIM: usize = 7;
 /// zeros are accepted and canonicalized to `+0.0`; subnormal bounds are
 /// retained.
 ///
-/// This is a deliberately small proof-bearing surface, not a general-purpose
-/// interval arithmetic package. Division requires a zero-free divisor.
+/// Division requires a zero-free divisor. For background on interval inclusion,
+/// see \[[20](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-20)\]
+/// and the broader IEEE interval standard
+/// \[[14](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-14)\].
+/// The [interval construction](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#outward-rounded-interval-expressions)
+/// explains how this crate encloses results with finite binary64 endpoints.
 ///
 /// # Examples
 /// ```
@@ -78,6 +79,12 @@ pub enum IntervalDeterminantSign {
 /// [`solve`](Self::solve) uses interval Gaussian elimination with row pivoting
 /// and explicitly reports inconclusive pivots. It has no determinant dimension
 /// limit, uses O(D²) stack storage, and is intended for small systems.
+///
+/// The Leibniz identity \[[12](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-12)\]
+/// and interval matrix arithmetic \[[20](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-20)\]
+/// provide the background for the crate's
+/// [determinant enclosure](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#determinant-enclosures-and-sign-evidence)
+/// and [fixed-pivot solve proof](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#interval-linear-solves).
 ///
 /// # Examples
 /// ```
@@ -312,6 +319,9 @@ impl Interval {
     ///
     /// Unlike subtracting first and then calling [`point`](Self::point), this
     /// method preserves the rounding uncertainty introduced by the subtraction.
+    /// The outward endpoint uses a magnitude-ordered `FastTwoSum` residual
+    /// \[[17](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-17)\].
+    /// See the [scalar rounding argument](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#scalar-arithmetic-and-finite-bounds).
     ///
     /// # Examples
     /// ```
@@ -382,6 +392,10 @@ impl Interval {
 
     /// Add two intervals with outward rounding.
     ///
+    /// The endpoint sums use `FastTwoSum`
+    /// \[[17](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-17)\]
+    /// as described in the [scalar rounding argument](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#scalar-arithmetic-and-finite-bounds).
+    ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
@@ -407,6 +421,10 @@ impl Interval {
     /// For a square of the same represented value, prefer
     /// [`try_square`](Self::try_square), which can give a tighter enclosure.
     ///
+    /// See `TwoProductFMA` \[[18](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-18)\]
+    /// and the [product rounding argument](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#scalar-arithmetic-and-finite-bounds)
+    /// for the residual threshold and exact integer comparison near underflow.
+    ///
     /// # Examples
     /// ```
     /// use la_stack::prelude::*;
@@ -428,6 +446,10 @@ impl Interval {
     }
 
     /// Enclose `1 / x` for every real `x` in this interval.
+    ///
+    /// This uses the same outward quotient bounds as [`try_div`](Self::try_div).
+    /// See interval inclusion \[[20](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-20)\]
+    /// and the [reciprocal construction](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#division-and-reciprocals).
     ///
     /// # Examples
     /// ```
@@ -453,6 +475,9 @@ impl Interval {
     /// quotient does not require a representable reciprocal. Subnormal results
     /// retain their enclosure, including when ordinary division rounds to zero.
     /// Repeated operands are treated independently: `x / x` need not be `[1, 1]`.
+    ///
+    /// See interval inclusion \[[20](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-20)\]
+    /// and the [exact quotient comparison](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#division-and-reciprocals).
     ///
     /// # Examples
     /// ```
@@ -496,6 +521,11 @@ impl Interval {
     ///
     /// An interval spanning zero has exact lower bound zero. The upper bound is
     /// the outward-rounded square of the endpoint with greatest magnitude.
+    ///
+    /// The endpoint squares share the product rounding kernel, using `TwoProductFMA`
+    /// \[[18](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-18)\]
+    /// within the range justified by the
+    /// [scalar rounding argument](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#scalar-arithmetic-and-finite-bounds).
     ///
     /// # Examples
     /// ```
@@ -1001,9 +1031,11 @@ impl<const D: usize> IntervalMatrix<D> {
     ///
     /// Uses outward-rounded Gaussian elimination and back substitution, with
     /// row pivots maximizing their minimum distance from zero (first row wins
-    /// ties). No tolerance admits a zero-containing pivot. See `REFERENCES.md`
-    /// \[20\] and the
-    /// [enclosure proof](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#interval-linear-solves).
+    /// ties). Each accepted pivot excludes zero. For interval matrix arithmetic,
+    /// see \[[20](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-20)\].
+    /// The [fixed-pivot enclosure proof](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#interval-linear-solves)
+    /// explains why the same row permutation and interval updates cover every
+    /// admitted real system.
     ///
     /// Both shapes are fixed by `D`. All const dimensions are supported, with
     /// O(D³) work and O(D²) inline scratch space intended for small systems;
@@ -1106,12 +1138,13 @@ impl<const D: usize> IntervalMatrix<D> {
 
     /// Enclose the determinant with division-free subset dynamic programming.
     ///
-    /// For each column subset, the DP stores the determinant interval of the
-    /// leading rows and those columns. This evaluates the Leibniz expansion in
-    /// `D × 2^(D-1)` products and additions without choosing or dividing by a
-    /// pivot. The returned interval therefore encloses every exact-real
-    /// determinant represented by the input intervals, subject only to an
-    /// explicit range failure.
+    /// The crate's [subset recurrence](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#determinant-enclosures-and-sign-evidence)
+    /// stores the determinant interval of the leading rows and each column
+    /// subset. It evaluates the Leibniz expansion
+    /// \[[12](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-12)\]
+    /// in `D × 2^(D-1)` products and additions without choosing or dividing by
+    /// a pivot. On success the interval encloses every exact-real determinant
+    /// represented by the input intervals.
     ///
     /// The D=0 determinant follows the empty-product convention and is `[1, 1]`.
     ///
@@ -1204,6 +1237,11 @@ impl<const D: usize> IntervalMatrix<D> {
     /// An interval strictly on one side of zero proves that sign. Only the
     /// singleton interval `[0, 0]` proves `Zero`; every other overlap with zero
     /// is [`IntervalDeterminantSign::Inconclusive`].
+    ///
+    /// This classifies the outward enclosure of the Leibniz determinant
+    /// \[[12](https://github.com/acgetchell/la-stack/blob/main/REFERENCES.md#ref-12)\]
+    /// returned by [`det`](Self::det). See the
+    /// [sign evidence argument](https://github.com/acgetchell/la-stack/blob/main/docs/mathematical_basis.md#determinant-enclosures-and-sign-evidence).
     ///
     /// # Examples
     /// ```
