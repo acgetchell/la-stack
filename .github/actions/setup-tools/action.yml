@@ -30,6 +30,7 @@ runs:
     - name: Set up declared tools and development environment
       shell: bash
       env:
+        GH_TOKEN: ${{ github.token }}
         RESEARCH_REPO_TOOLS_HOME: ${{ runner.temp }}/rrt
         RESEARCH_REPO_TOOLS_CARGO_BUILD_HOME: ${{ runner.temp }}/rrt-cargo-build
       run: uv run --locked --managed-python --only-group tooling research-repo-tools setup

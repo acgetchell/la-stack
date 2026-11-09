@@ -4,13 +4,20 @@ import json
 import os
 import shlex
 import sys
+from email.message import Message
+from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from urllib.error import HTTPError
 
 import pytest
 import yaml
+from research_repo_tools import prebuilt_tools
 from research_repo_tools.just_inspect import inspect_justfile
 from research_repo_tools.process import run_command
+
+if TYPE_CHECKING:
+    from urllib.request import Request
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = {
@@ -120,7 +127,11 @@ def test_managed_cache_contains_compilation_only_and_release_jobs_disable_it() -
     assert all(name in cache["with"]["key"] for name in ("rust-toolchain.toml", "pyproject.toml", "uv.lock", "Cargo.lock"))
     assert "restore-keys" not in cache["with"]
     setup = next(step for step in steps if step.get("run", "").endswith("research-repo-tools setup"))
-    assert setup["env"] == {"RESEARCH_REPO_TOOLS_HOME": "${{ runner.temp }}/rrt", "RESEARCH_REPO_TOOLS_CARGO_BUILD_HOME": cache["with"]["path"]}
+    assert setup["env"] == {
+        "GH_TOKEN": "${{ github.token }}",
+        "RESEARCH_REPO_TOOLS_HOME": "${{ runner.temp }}/rrt",
+        "RESEARCH_REPO_TOOLS_CARGO_BUILD_HOME": cache["with"]["path"],
+    }
     for filename in ("ci.yml", "release-benchmarks.yml", "publish-crates.yml", "prepare-release.yml"):
         workflow = yaml.safe_load((ROOT / ".github/workflows" / filename).read_bytes())
         for name, job in workflow["jobs"].items():
@@ -130,3 +141,34 @@ def test_managed_cache_contains_compilation_only_and_release_jobs_disable_it() -
                 if step.get("uses") == "./.github/actions/setup-tools":
                     assert str(step["with"]["cache"]).lower() == "false"
                 assert not step.get("uses", "").startswith("actions/cache@")
+
+
+@pytest.mark.parametrize("authenticated", [False, True], ids=["rate-limited-anonymous", "authenticated-setup"])
+def test_setup_token_authenticates_installed_binary_release_lookup(monkeypatch: pytest.MonkeyPatch, authenticated: bool) -> None:
+    """Exercise the real client's credential boundary using the action's mapping."""
+    action = yaml.safe_load((ROOT / ".github/actions/setup-tools/action.yml").read_bytes())
+    setup = next(step for step in action["runs"]["steps"] if step.get("run", "").endswith("research-repo-tools setup"))
+    credential = next(name for name, value in setup["env"].items() if value == "${{ github.token }}")
+    for name in ("GH_TOKEN", "GITHUB_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    if authenticated:
+        monkeypatch.setenv(credential, "fixture-lookup-token")
+    observed: list[str | None] = []
+
+    def lookup(request: Request, *, timeout: float) -> BytesIO:
+        assert request.full_url == "https://api.github.com/repos/gitleaks/gitleaks/releases/tags/v8.30.1"
+        assert timeout == 30
+        authorization = request.get_header("Authorization")
+        observed.append(authorization)
+        if authorization != "Bearer fixture-lookup-token":
+            raise HTTPError(request.full_url, 403, "rate limit exceeded", Message(), None)
+        return BytesIO(json.dumps({"draft": False, "prerelease": False, "tag_name": "v8.30.1"}).encode())
+
+    monkeypatch.setattr(prebuilt_tools.urllib.request, "urlopen", lookup)
+    if authenticated:
+        assert prebuilt_tools.release_metadata("gitleaks", "v8.30.1")["tag_name"] == "v8.30.1"
+        assert observed == ["Bearer fixture-lookup-token"]
+    else:
+        with pytest.raises(RuntimeError, match="HTTP Error 403: rate limit exceeded"):
+            prebuilt_tools.release_metadata("gitleaks", "v8.30.1")
+        assert observed == [None]
