@@ -539,7 +539,7 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_bytes())
     jobs = workflow["jobs"]
     assert jobs["build"]["strategy"]["matrix"]["os"] == ["ubuntu-latest", "macos-latest", "windows-latest"]
-    assert jobs["build"]["timeout-minutes"] == 120
+    assert jobs["build"]["timeout-minutes"] == 150
     assert jobs["build"]["steps"][-2:] == [
         {"name": "Run CI checks", "run": "just ci"},
         {"name": "Verify native dependency provenance", "run": "just ci-dependencies"},

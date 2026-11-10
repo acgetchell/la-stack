@@ -28,9 +28,9 @@ env:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-    # Cold managed-tool compilation takes about 40 minutes on macOS/Windows;
-    # leave time for the complete CI suite and native provenance verification.
-    timeout-minutes: 120
+    # Cold Windows setup took 51 minutes and CI took 62 minutes;
+    # leave time for native provenance verification and cache upload too.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
