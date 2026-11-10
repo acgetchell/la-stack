@@ -135,9 +135,9 @@ network access, and Gitleaks requires a complete Git checkout. JSON/SARIF report
 are retained under `target/security`, with secret findings redacted. These gates
 run separately from `just ci`; the hosted RustSec audit remains in place.
 
-CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
-aligned with the local comprehensive validation path. Each native job also runs
-`just ci-dependencies` for release provenance: it prepares authenticated native
+CI runs the [staged validation graph](#validation-workflow) on Ubuntu, macOS, and
+Windows, covering the complete local `just ci` path. The dedicated
+`just ci-dependencies` stage prepares authenticated native
 dependency builds and verifies installed bytes when tooling is published.
 Verified development tooling remains eligible for ordinary checks; release
 evidence still requires a published supplier. See the

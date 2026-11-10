@@ -44,8 +44,9 @@ commands. `tooling/release-evidence.toml` declares the repository,
 package, workflow, native jobs/steps and signer policy. The guarantee is
 `signed-source`; it does not promise promotion of an identical Cargo archive.
 Protected `main` pushes produce signed evidence only with published tooling,
-after all three native `just ci` jobs and the default/exact Cargo packaging job
-succeed. A development Git pin passes ordinary validation but cannot produce
+after preparation and all four native validation stages succeed on each OS,
+the three `build` aggregate gates pass, and default/exact Cargo packaging
+succeeds. A development Git pin passes ordinary validation but cannot produce
 release evidence. CI verifies its development identity and skips signing and
 uploading the release-evidence artifact; ordinary validation still runs.
 The `release-evidence` job signs their exact commit, run, attempt, job IDs and
