@@ -18,7 +18,7 @@ jobs:
   verify:
     if: github.repository == 'acgetchell/la-stack'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     outputs:
       commit: ${{ steps.source.outputs.commit }}
       artifact-id: ${{ steps.handoff.outputs.artifact-id }}
@@ -30,12 +30,12 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Install trusted package runner
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Set up declared verification tools
+        uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
         with:
-          version: "0.13.7"
-          enable-cache: false
-          cache-python: false
+          cache: "false"
+      - name: Prepare native dependency provenance
+        run: just release-dependency-builds
       - name: Verify tagged source and freeze native evidence and notes
         id: source
         env:
@@ -52,7 +52,7 @@ jobs:
           mkdir "$RUNNER_TEMP/handoff"
           cp tooling/release-evidence.toml "$RUNNER_TEMP/handoff/evidence.toml"
           runtime=(uv run --no-config --no-project --isolated --no-cache --python 3.15
-            --with 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3'
+            --with 'research-repo-tools==0.2.8'
             python -I -c 'import sys; from research_repo_tools.cli import main; sys.exit(main())')
           "${runtime[@]}" --root "$GITHUB_WORKSPACE" release check "$RELEASE_TAG"
           "${runtime[@]}" --root "$GITHUB_WORKSPACE" release evidence verify \
@@ -97,7 +97,7 @@ jobs:
         # Run Python from the runner's script file, avoiding actionlint #651's stdin deadlock.
         shell: >-
           uv run --no-config --no-project --isolated --no-cache --python 3.15
-          --with "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3"
+          --with "research-repo-tools==0.2.8"
           python -I "{0}"
         run: |
           import os

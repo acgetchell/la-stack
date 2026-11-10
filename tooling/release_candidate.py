@@ -73,6 +73,7 @@ def selection_directory(root: Path) -> Path:
 
 def owner_directory(root: Path, checkpoint: str, selected: Path | None = None) -> Path:
     """Keep the operator's immutable record outside candidate-controlled files."""
+    root = root.resolve()
     identity = hashlib.sha256(str((root / checkpoint).resolve()).encode("utf-8")).hexdigest()
     directory = (selected if selected is not None else Path.home() / ".local/state/la-stack/acquisitions" / release_tag(root) / identity).expanduser().resolve()
     if directory.is_relative_to(root) or root.is_relative_to(directory):
@@ -389,6 +390,14 @@ class DraftTransfer:
     publication: str
     assets: OriginalAssets
 
+    def __post_init__(self) -> None:
+        """Preserve release identity and digest assertions on every construction."""
+        if self.target.repository != REPOSITORY or self.target.expected_title != self.target.tag:
+            message = "candidate transfer must select this repository and its exact release title"
+            raise ValueError(message)
+        transfer_digest(self.acquisition)
+        transfer_digest(self.publication)
+
 
 @dataclass(frozen=True, slots=True)
 class PublicationTransfer:
@@ -440,10 +449,6 @@ def parse_transfer(payload: bytes) -> Transfer:
         message = "invalid candidate transfer schema"
         raise ValueError(message)
     target = parse_release_target(json.dumps(data["target"]).encode("utf-8"))
-    if target.repository != REPOSITORY or target.expected_title != target.tag:
-        message = "candidate transfer must select this repository and its exact release title"
-        raise ValueError(message)
-
     raw_assets = data["assets"]
     if not isinstance(raw_assets, dict) or set(raw_assets) not in (set(ROLES), {*ROLES, "attached"}):
         message = "candidate transfer requires four original assets and an optional attached archive"
@@ -454,7 +459,7 @@ def parse_transfer(payload: bytes) -> Transfer:
         acceptance=transfer_asset(raw_assets["acceptance"]),
         archive=transfer_asset(raw_assets["archive"]),
     )
-    original = DraftTransfer(target, transfer_digest(data["acquisition"]), transfer_digest(data["publication"]), assets)
+    original = DraftTransfer(target, data["acquisition"], data["publication"], assets)
     if "attached" in raw_assets:
         return PublicationTransfer(original, transfer_asset(raw_assets["attached"]))
     return original

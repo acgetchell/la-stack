@@ -26,8 +26,10 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  build:
+  prepare:
     runs-on: ${{ matrix.os }}
+    # Populate managed compilation caches once before the native jobs fan out.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -51,8 +53,70 @@ jobs:
       - name: Set up declared tools
         uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
 
-      - name: Run CI checks
-        run: just ci
+      - name: Run CI policy checks
+        run: just ci-policy
+
+  native:
+    name: native-${{ matrix.stage }} (${{ matrix.os }})
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    # Fresh installations verify the shared compilation cache. A cache miss
+    # may still rebuild tools; it must never remove a validation stage.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        stage:
+          - rust
+          - python
+          - candidate
+          - dependencies
+    env:
+      LA_STACK_TEST_WORKERS: ${{ matrix.stage == 'candidate' && '1' || '4' }}
+    steps:
+      - name: Disable Git autocrlf on Windows
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up declared tools
+        uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
+      - name: Run native validation
+        shell: bash
+        env:
+          CI_STAGE: ${{ matrix.stage }}
+        run: just "ci-$CI_STAGE"
+
+  build:
+    # Preserve required-check names while requiring every native stage.
+    needs: [prepare, native]
+    # A skipped required check can permit merging, including after cancellation.
+    if: ${{ always() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require complete native validation
+        env:
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+        run: |
+          test "$PREPARE_RESULT" = success
+          test "$NATIVE_RESULT" = success
 
   release-package:
     runs-on: ubuntu-latest
@@ -66,13 +130,15 @@ jobs:
         with:
           cache: "false"
       - name: Verify default and exact Cargo packages
-        run: just publish-check
+        run: |
+          just ci-dependencies
+          just publish-check
 
   release-evidence:
     needs: [build, release-package]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'acgetchell/la-stack'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: read
@@ -82,18 +148,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
         with:
-          version-file: pyproject.toml
-          python-version-file: .python-version
-          enable-cache: false
+          cache: "false"
+      - name: Prepare native dependency provenance
+        run: just release-dependency-builds
       - name: Capture successful native validation identities
         id: evidence
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           uvx --python 3.15 \
-            --from 'research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3' \
+            --from 'research-repo-tools==0.2.8' \
             python -I - <<'PY'
           import os
           import sys

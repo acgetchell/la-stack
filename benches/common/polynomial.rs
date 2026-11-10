@@ -19,7 +19,14 @@ pub(crate) const BUDGET: PolynomialDeterminantBudget = PolynomialDeterminantBudg
 
 /// A fixture checked against independent permutation enumeration before timing.
 pub(crate) struct ValidatedPolynomialInput<const N: usize> {
-    pub(crate) matrix: [[SparsePolynomial; N]; N],
+    matrix: [[SparsePolynomial; N]; N],
+}
+
+impl<const N: usize> ValidatedPolynomialInput<N> {
+    /// Borrow the matrix whose determinant has been independently checked.
+    pub(crate) const fn matrix(&self) -> &[[SparsePolynomial; N]; N] {
+        &self.matrix
+    }
 }
 
 /// All unperturbed points are at the origin. A coordinate is `t^(3^variable)`,

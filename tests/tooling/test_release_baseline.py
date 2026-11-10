@@ -369,7 +369,8 @@ def test_workflow_reuses_original_acquisition_and_isolates_write_credentials() -
     assert attach[2]["with"]["artifact-ids"] == "${{ needs.verify.outputs.artifact-id }}"
     assert attach[1]["env"]["ARTIFACT_DIGEST"] == "${{ needs.verify.outputs.artifact-digest }}"
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert text.count(f"--from {shlex.quote(TOOLING_REQUIREMENT)}") == 2
+    runtime_requirements = [shlex.split(line.removesuffix("\\").strip()) for line in text.splitlines() if line.lstrip().startswith("--from ")]
+    assert runtime_requirements == [["--from", TOOLING_REQUIREMENT]] * 2
     for forbidden in ("bench-save-baseline", "measure-baseline", "cargo bench", "performance measure", "--clobber", "continue-on-error"):
         assert forbidden not in text
     assert "publish_release_asset(root, target.repository, target.tag, artifact, target=target)" in text

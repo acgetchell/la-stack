@@ -8,23 +8,83 @@ artifact-prefix = "release-evidence"
 guarantee = "signed-source"
 
 [[jobs]]
-name = "build (ubuntu-latest)"
-steps = [ "Run CI checks" ]
+name = "prepare (ubuntu-latest)"
+steps = [ "Set up declared tools", "Run CI policy checks" ]
 runner-labels = [ "ubuntu-latest" ]
 
 [[jobs]]
-name = "build (macos-latest)"
-steps = [ "Run CI checks" ]
+name = "prepare (macos-latest)"
+steps = [ "Set up declared tools", "Run CI policy checks" ]
 runner-labels = [ "macos-latest" ]
 
 [[jobs]]
-name = "build (windows-latest)"
-steps = [ "Run CI checks" ]
+name = "prepare (windows-latest)"
+steps = [ "Set up declared tools", "Run CI policy checks" ]
 runner-labels = [ "windows-latest" ]
 
 [[jobs]]
 name = "release-package"
 steps = [ "Verify default and exact Cargo packages" ]
+
+[[jobs]]
+name = "native-rust (ubuntu-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "ubuntu-latest" ]
+
+[[jobs]]
+name = "native-python (ubuntu-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "ubuntu-latest" ]
+
+[[jobs]]
+name = "native-candidate (ubuntu-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "ubuntu-latest" ]
+
+[[jobs]]
+name = "native-dependencies (ubuntu-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "ubuntu-latest" ]
+
+[[jobs]]
+name = "native-rust (macos-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "macos-latest" ]
+
+[[jobs]]
+name = "native-python (macos-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "macos-latest" ]
+
+[[jobs]]
+name = "native-candidate (macos-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "macos-latest" ]
+
+[[jobs]]
+name = "native-dependencies (macos-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "macos-latest" ]
+
+[[jobs]]
+name = "native-rust (windows-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "windows-latest" ]
+
+[[jobs]]
+name = "native-python (windows-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "windows-latest" ]
+
+[[jobs]]
+name = "native-candidate (windows-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "windows-latest" ]
+
+[[jobs]]
+name = "native-dependencies (windows-latest)"
+steps = [ "Set up declared tools", "Run native validation" ]
+runner-labels = [ "windows-latest" ]
 
 [signing-job]
 name = "release-evidence"

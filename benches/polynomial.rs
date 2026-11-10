@@ -20,7 +20,7 @@ fn register<const N: usize>(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group(format!("polynomial/coincident_lifted/order{N}"));
     group.bench_function("determinant", |bencher| {
         bencher.iter(|| {
-            let determinant = polynomial_determinant(black_box(&input.matrix), black_box(BUDGET))
+            let determinant = polynomial_determinant(black_box(input.matrix()), black_box(BUDGET))
                 .or_abort("validated fixture fits the consumer budget");
             black_box(determinant.leading_term());
             black_box(determinant)

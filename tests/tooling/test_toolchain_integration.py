@@ -2,6 +2,7 @@
 
 import json
 import os
+import runpy
 import shlex
 import shutil
 import sys
@@ -15,17 +16,37 @@ import pytest
 from packaging.requirements import Requirement
 from research_repo_tools.cli import main
 from research_repo_tools.dependency_policy import load_policy
-from research_repo_tools.dependency_provenance import check_development_dependency
+from research_repo_tools.dependency_provenance import DependencyIdentity, check_development_dependency
+from research_repo_tools.just_inspect import inspect_justfile
 from research_repo_tools.process import run_command
 from research_repo_tools.python_tools import TOOLS, versions as shared_tool_versions
+from research_repo_tools.toml_source import remove_value, set_value
 
 if TYPE_CHECKING:
     import subprocess
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TOOLING_REVISION = "cd8594f658b5bf3ade063a685834565cc62e0cb3"
-TOOLING_REPOSITORY = "https://github.com/acgetchell/research-repo-tools"
-TOOLING_REQUIREMENT = f"research-repo-tools @ git+{TOOLING_REPOSITORY}@{TOOLING_REVISION}"
+
+
+def tooling_requirement(root: Path) -> str:
+    """Select the declared supplier after RRT verifies any development source."""
+    document = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    (raw,) = document["dependency-groups"]["tooling"]
+    requirement = Requirement(raw)
+    (pin,) = requirement.specifier
+    assert requirement.name == "research-repo-tools"
+    assert requirement.url is None
+    assert requirement.marker is None
+    assert pin.operator == "=="
+    assert "*" not in pin.version
+    development = check_development_dependency(root, document=document)
+    if development is not None:
+        return f"{requirement.name} @ git+{development.source}@{development.revision}"
+    return f"{requirement.name}{requirement.specifier}"
+
+
+TOOLING_VERSION = version("research-repo-tools")
+TOOLING_REQUIREMENT = tooling_requirement(REPO_ROOT)
 CHECKED = ["run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--"]
 UPDATER = ["run", "--locked", "--only-group", "tooling", "--inexact", "research-repo-tools"]
 UV_UPDATE = ["run", "--no-config", "--no-sync", "--no-python-downloads", "research-repo-tools", "deps", "update-uv"]
@@ -49,9 +70,9 @@ WORKFLOWS = {
 }
 
 
-def test_tooling_commit_matches_manifest_lock_and_installation() -> None:
-    """Distinguish the reviewed upstream commit from its unchanged version label."""
-    expected_version = "0.2.6"
+def test_tooling_selection_matches_manifest_lock_and_installation() -> None:
+    """Require the declared registry release or verified immutable Git supplier."""
+    expected_version = TOOLING_VERSION
     manifest = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert manifest["project"]["dependencies"] == []
     assert manifest["tool"]["uv"]["package"] is False
@@ -60,25 +81,53 @@ def test_tooling_commit_matches_manifest_lock_and_installation() -> None:
     assert {"include-group": "tooling"} in manifest["dependency-groups"]["dev"]
     assert manifest["tool"]["research-repo-tools"]["toolchain"]["inherit-python-tools"] is True
     assert not {Requirement(item).name for item in manifest["dependency-groups"]["dev"] if isinstance(item, str)} & TOOLS
-    assert version("research-repo-tools") == expected_version
     lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
     package = next(item for item in lock["package"] if item["name"] == "research-repo-tools")
     assert package["version"] == expected_version
-    assert manifest["tool"]["uv"]["sources"]["research-repo-tools"] == {"git": TOOLING_REPOSITORY, "rev": TOOLING_REVISION}
-    assert package["source"] == {"git": f"{TOOLING_REPOSITORY}?rev={TOOLING_REVISION}#{TOOLING_REVISION}"}
-    # Distribution.read_text decodes UTF-8 internally and has no encoding argument.
-    installed = json.loads(
+    development = check_development_dependency(REPO_ROOT)
+    if development is None:
+        assert "research-repo-tools" not in manifest["tool"]["uv"].get("sources", {})
+        assert package["source"] == {"registry": "https://pypi.org/simple"}
+        assert package["sdist"]["hash"].startswith("sha256:")
+        assert package["wheels"]
+        assert all(wheel["hash"].startswith("sha256:") for wheel in package["wheels"])
+        # Distribution.read_text decodes UTF-8 internally and has no encoding argument.
         # nosemgrep: la-stack.python.explicit-path-text-encoding-in-tests
-        distribution("research-repo-tools").read_text("direct_url.json") or "{}"
-    )
-    assert installed["url"] == TOOLING_REPOSITORY
-    assert installed["vcs_info"] == {"vcs": "git", "commit_id": TOOLING_REVISION, "requested_revision": TOOLING_REVISION}
+        installed = distribution("research-repo-tools").read_text("direct_url.json")
+        assert installed is None
+    else:
+        # The shared checker binds declaration, lock and both installed runtimes.
+        assert development.version == expected_version
+        assert development.revision is not None
     locked = {item["name"]: item["version"] for item in lock["package"]}
     for name, expected in shared_tool_versions().items():
         assert locked[name] == version(name) == expected
-    identity = check_development_dependency(REPO_ROOT)
-    assert identity is not None
-    assert (identity.name, identity.version, identity.revision) == ("research-repo-tools", expected_version, TOOLING_REVISION)
+
+
+@pytest.mark.parametrize("source", ["registry", "git", "invalid"])
+def test_tooling_requirement_preserves_source_selection_and_verification(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[dependency-groups]\ntooling = ["research-repo-tools[python-tools,semgrep]==0.2.8"]\n', encoding="utf-8", newline="\n"
+    )
+    calls: list[Path] = []
+
+    def verify(root: Path, *, document: dict[str, object]) -> DependencyIdentity | None:
+        calls.append(root)
+        assert document == {"dependency-groups": {"tooling": ["research-repo-tools[python-tools,semgrep]==0.2.8"]}}
+        if source == "invalid":
+            message = "installed Git provenance differs"
+            raise ValueError(message)
+        return DependencyIdentity("research-repo-tools", "0.2.8", "https://github.com/acgetchell/research-repo-tools", "a" * 40) if source == "git" else None
+
+    monkeypatch.setattr(sys.modules[__name__], "check_development_dependency", verify)
+    if source == "invalid":
+        with pytest.raises(ValueError, match="installed Git provenance differs"):
+            tooling_requirement(tmp_path)
+    else:
+        git_requirement = "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@" + "a" * 40
+        expected = git_requirement if source == "git" else "research-repo-tools==0.2.8"
+        assert tooling_requirement(tmp_path) == expected
+    assert calls == [tmp_path]
 
 
 def test_release_dependency_policy_covers_tooling_and_private_comparison_workspace() -> None:
@@ -94,6 +143,76 @@ def test_release_dependency_policy_covers_tooling_and_private_comparison_workspa
     assert comparison["package"]["publish"] is False
 
 
+def test_source_build_policy_covers_native_dependencies_and_pinned_build_tools() -> None:
+    policy = load_policy(REPO_ROOT)
+    assert policy is not None
+    builds = policy.source_builds
+    assert builds is not None
+    assert builds.packages == ("actionlint-py", "pyyaml", "ruamel-yaml-clib")
+    assert builds.group == "build"
+    manifest = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    tools = {Requirement(item).name for item in manifest["dependency-groups"][builds.group]}
+    assert tools == {"cython", "hatchling", "requests", "semver", "setuptools", "wheel"}
+    assert {"include-group": "build"} not in manifest["dependency-groups"]["dev"]
+    lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
+    locked = {item["name"]: item for item in lock["package"]}
+    for item in manifest["dependency-groups"][builds.group]:
+        requirement = Requirement(item)
+        assert locked[requirement.name]["version"] in requirement.specifier
+        assert locked[requirement.name]["source"] == {"registry": "https://pypi.org/simple"}
+    assert {item.platform for item in builds.external} == {"darwin-arm64", "darwin-x86_64", "linux-arm64", "linux-x86_64", "win32-arm64", "win32-x86_64"}
+    for item in builds.external:
+        assert item.package == "actionlint-py"
+        assert item.wheel_member == f"actionlint_py-{locked['actionlint-py']['version']}.data/scripts/{item.member}"
+        assert item.member == ("actionlint.exe" if item.platform.startswith("win32-") else "actionlint")
+    (selection,) = policy.selections
+    assert selection.name == "tooling"
+    assert selection.source.package == "research-repo-tools"
+
+
+@pytest.mark.parametrize("outcome", ["development", "published", "invalid-pin", "build-failure", "proof-failure"])
+def test_ci_dependency_recipe_preserves_development_pins_and_propagates_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str) -> None:
+    recipe = inspect_justfile(REPO_ROOT).recipes["ci-dependencies"]
+    script = tmp_path / "native provenance.py"
+    script.write_text("\n".join("".join(line) for line in recipe["body"]), encoding="utf-8", newline="\n")
+    calls: list[list[str]] = []
+
+    def source(root: Path) -> DependencyIdentity | None:
+        assert root == REPO_ROOT
+        if outcome == "invalid-pin":
+            message = "development source identity differs"
+            raise ValueError(message)
+        return DependencyIdentity("research-repo-tools", TOOLING_VERSION, "git", "a" * 40) if outcome == "development" else None
+
+    def invoke(arguments: list[str]) -> int:
+        calls.append(arguments)
+        return 17 if (outcome, arguments[-1]) in {("build-failure", "dependency-builds"), ("proof-failure", "dependencies")} else 0
+
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr("research_repo_tools.dependency_provenance.check_development_dependency", source)
+    monkeypatch.setattr("research_repo_tools.cli.main", invoke)
+
+    def fetch(executable: str, arguments: list[str], *, cwd: Path, timeout: int) -> None:
+        assert cwd == REPO_ROOT
+        assert timeout == 600
+        calls.append([executable, *arguments])
+
+    monkeypatch.setattr("research_repo_tools.process.run_safe_command", fetch)
+    if outcome == "invalid-pin":
+        with pytest.raises(ValueError, match="development source identity differs"):
+            runpy.run_path(str(script))
+    elif outcome.endswith("-failure"):
+        with pytest.raises(SystemExit) as stopped:
+            runpy.run_path(str(script))
+        assert stopped.value.code == 17
+    else:
+        runpy.run_path(str(script))
+    expected = [] if outcome in {"development", "invalid-pin"} else [["cargo", "fetch", "--locked"], ["release", "dependency-builds"]]
+    if outcome in {"published", "proof-failure"}:
+        expected.append(["release", "dependencies"])
+    assert calls == expected
+
+
 @pytest.mark.parametrize(
     "command",
     [
@@ -106,6 +225,12 @@ def test_development_pin_cannot_enter_release_work(command: list[str], tmp_path:
     """The installed public gate rejects before reading plans or creating evidence."""
     for name in ("pyproject.toml", "uv.lock", "dependency-sources.toml"):
         shutil.copyfile(REPO_ROOT / name, tmp_path / name)
+    # Inject an explicit development override into this negative fixture even
+    # though the real consumer now uses the published supplier.
+    manifest = tmp_path / "pyproject.toml"
+    source = manifest.read_text(encoding="utf-8")
+    override = '{ git = "https://github.com/acgetchell/research-repo-tools", rev = "' + "a" * 40 + '" }'
+    manifest.write_text(set_value(source, "tool.uv.sources", "research-repo-tools", override), encoding="utf-8")
     before = {path.name: path.read_bytes() for path in tmp_path.iterdir()}
     assert main(["--root", str(tmp_path), *command]) == 1
     diagnostic = capsys.readouterr().err
@@ -114,22 +239,33 @@ def test_development_pin_cannot_enter_release_work(command: list[str], tmp_path:
     assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == before
 
 
-def test_isolated_release_runtime_uses_the_same_commit_outside_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_isolated_release_runtime_uses_the_same_selection_outside_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Exercise the actual trusted runtime on each native CI platform."""
-    expected = version("research-repo-tools")
+    expected = TOOLING_VERSION
     source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    assert source.count(f'[script("uvx", "--python", "3.15", "--from", "{TOOLING_REQUIREMENT}", "python", "-I")]') == 3
+    assert (
+        source.count(f'[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "{TOOLING_REQUIREMENT}", "python", "-I")]')
+        == 3
+    )
     (tmp_path / "research_repo_tools.py").write_text('raise RuntimeError("untrusted checkout import")\n', encoding="utf-8")
     (tmp_path / "tooling").mkdir()
+    for name in ("pyproject.toml", "uv.lock", ".python-version", "rust-toolchain.toml"):
+        (tmp_path / name).write_bytes((REPO_ROOT / name).read_bytes())
     (tmp_path / "justfile").write_bytes((REPO_ROOT / "justfile").read_bytes())
     (tmp_path / "tooling/release_candidate.py").write_text(
-        "import json, sys, research_repo_tools\nfrom importlib.metadata import distribution\n"
+        "import json, os, sys, research_repo_tools\nfrom importlib.metadata import distribution\nfrom pathlib import Path\n"
+        "from research_repo_tools.dependency_provenance import check_development_dependency\n"
+        "check_development_dependency(Path.cwd())\n"
         'd = distribution("research-repo-tools")\n'
-        'print(json.dumps([d.version, research_repo_tools.__file__, json.loads(d.read_text("direct_url.json")), sys.argv[1:]]))\n',
+        'print(json.dumps([d.version, research_repo_tools.__file__, d.read_text("direct_url.json"), sys.argv[1:], os.environ["PATH"], sys.flags.isolated]))\n',
         encoding="utf-8",
         newline="\n",
     )
     monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    outside = tmp_path.parent / "external tools with spaces"
+    outside.mkdir(exist_ok=True)
+    alias = tmp_path / "tooling" / ".."
+    monkeypatch.setenv("PATH", os.pathsep.join((os.environ["PATH"], str(tmp_path / ".venv" / "bin"), str(alias / "bin"), ".", "", str(outside))))
     result = run_command(
         "just",
         [
@@ -146,12 +282,23 @@ def test_isolated_release_runtime_uses_the_same_commit_outside_checkout(tmp_path
         timeout=180,
         cwd=tmp_path,
     )
-    installed_version, location, provenance, arguments = json.loads(result.stdout)
+    installed_version, location, provenance, arguments, search_path, isolated = json.loads(result.stdout)
     assert installed_version == expected
-    assert provenance["vcs_info"]["commit_id"] == TOOLING_REVISION
+    development = check_development_dependency(REPO_ROOT)
+    if development is None:
+        assert provenance is None
+    else:
+        assert json.loads(provenance) == {
+            "url": development.source,
+            "vcs_info": {"vcs": "git", "commit_id": development.revision, "requested_revision": development.revision},
+        }
     assert not Path(location).resolve().is_relative_to(REPO_ROOT)
     assert not Path(location).resolve().is_relative_to(tmp_path)
     assert arguments == ["receive", str(tmp_path / "output with spaces"), "--incoming", str(tmp_path / "input with spaces")]
+    assert isolated == 1
+    paths = search_path.split(os.pathsep)
+    assert str(outside.resolve()) in paths
+    assert all(Path(entry).is_absolute() and not Path(entry).resolve().is_relative_to(tmp_path.resolve()) for entry in paths)
 
 
 @pytest.fixture
@@ -196,6 +343,16 @@ def test_update_recipes_sequence_and_preserve_coupled_exclusions(consumer: Path,
     result, calls = invoke(consumer, recipe)
     assert result.returncode == 0, result.stderr
     assert calls == WORKFLOWS[recipe]
+
+
+@pytest.mark.parametrize("arguments", [[], ["--apply"]])
+def test_source_transition_recipe_previews_by_default_and_forwards_explicit_apply(consumer: Path, arguments: list[str]) -> None:
+    result = run_command(
+        "just", ["--justfile", str(consumer / "recipes.just"), "--working-directory", str(consumer), "dependency-source", "tooling", *arguments], cwd=consumer
+    )
+    assert result.returncode == 0, result.stderr
+    calls = [json.loads(line) for line in (consumer / "calls.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert calls == [[*CHECKED, "uv", "run", "--locked", "--no-sync", "research-repo-tools", "deps", "source", "tooling", *arguments]]
 
 
 @pytest.mark.parametrize("step", range(1, len(WORKFLOWS["update"]) + 1))
@@ -285,18 +442,18 @@ def test_python_update_preserves_shared_pin_and_tools_with_explicit_dev_sync(tmp
     registry = tmp_path / "wheels"
     registry.mkdir()
     original = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    # This fixture tests registry updates against inert local wheels. The
-    # development Git source has separate identity coverage above and cannot
-    # resolve in the fixture's deliberately empty offline cache.
-    override = f'[tool.uv.sources]\nresearch-repo-tools = {{ git = "{TOOLING_REPOSITORY}", rev = "{TOOLING_REVISION}" }}\n'
-    assert original.count(override) == 1
-    source = original.replace(override, "").replace("package = false", "package = false\ndefault-groups = []")
+    # This offline updater fixture supplies registry wheels; actual Git identity
+    # is checked above against the real installed supplier and isolated runtime.
+    if "research-repo-tools" in tomllib.loads(original)["tool"]["uv"].get("sources", {}):
+        original = remove_value(original, "tool.uv.sources", "research-repo-tools")
+    source = original.replace("package = false", "package = false\ndefault-groups = []")
     manifest = root / "pyproject.toml"
     manifest.write_text(source, encoding="utf-8")
     before = tomllib.loads(source)
     groups = before["dependency-groups"]
     shared = shared_tool_versions()
     for requirement in [
+        *groups["build"],
         *groups["tooling"],
         *(entry for entry in groups["dev"] if isinstance(entry, str)),
         *(f"{tool}=={expected}" for tool, expected in shared.items()),
@@ -323,6 +480,7 @@ def test_python_update_preserves_shared_pin_and_tools_with_explicit_dev_sync(tmp
     after = tomllib.loads(manifest.read_text(encoding="utf-8"))
     assert "yamllint==99.0.0" in after["dependency-groups"]["dev"]
     assert after["dependency-groups"]["tooling"] == groups["tooling"]
+    assert after["dependency-groups"]["build"] == groups["build"]
     assert after["tool"]["research-repo-tools"] == before["tool"]["research-repo-tools"]
     assert after["tool"]["uv"] == before["tool"]["uv"]
     run_command("uv", ["lock", "--upgrade"], cwd=root)

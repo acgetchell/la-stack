@@ -17,6 +17,7 @@ from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
 
 from tests.tooling.test_release_evidence import COMMIT, POLICY, REPOSITORY, EvidenceProvider
+from tests.tooling.test_toolchain_integration import TOOLING_REQUIREMENT
 
 ROOT = Path(__file__).resolve().parents[2]
 TAG = "v0.5.42"
@@ -245,7 +246,7 @@ def test_draft_workflow_keeps_the_writer_isolated_and_recovery_explicit() -> Non
     # Custom shells use .NET argument parsing; single quotes are not delimiters.
     command = shlex.split(step["shell"], posix=False)
     assert command[:9] == ["uv", "run", "--no-config", "--no-project", "--isolated", "--no-cache", "--python", "3.15", "--with"]
-    assert command[9].startswith('"research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@')
+    assert command[9] == f'"{TOOLING_REQUIREMENT}"'
     assert command[9].endswith('"')
     assert command[10:] == ["python", "-I", '"{0}"']
     assert step["working-directory"] == "${{ runner.temp }}"

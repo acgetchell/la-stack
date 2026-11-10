@@ -231,7 +231,15 @@ def test_routine_ci_validates_benchmarks_without_acquiring_timings() -> None:
     build = ci["jobs"]["build"]
     platforms = build["strategy"]["matrix"]["os"]
     assert set(platforms) == {"ubuntu-latest", "macos-latest", "windows-latest"}
-    assert {"name": "Run CI checks", "run": "just ci"} in build["steps"]
+    assert build["needs"] == ["prepare", "native"]
+    native = ci["jobs"]["native"]
+    assert "rust" in native["strategy"]["matrix"]["stage"]
+    assert {
+        "name": "Run native validation",
+        "shell": "bash",
+        "env": {"CI_STAGE": "${{ matrix.stage }}"},
+        "run": 'just "ci-$CI_STAGE"',
+    } in native["steps"]
     ruleset = json.loads((ROOT / ".github/settings/main-ruleset.json").read_bytes())
     required = next(rule["parameters"]["required_status_checks"] for rule in ruleset["rules"] if rule["type"] == "required_status_checks")
     contexts = {check["context"] for check in required}
@@ -245,6 +253,7 @@ def test_routine_ci_validates_benchmarks_without_acquiring_timings() -> None:
     assert any("--no-run --features bench,exact --bench exact" in line for line in compile_commands)
     assert [line for line in bench_commands if line not in compile_commands] == ['--locked --features bench,exact --bench exact -- "$@"']
     recipes = inspect_justfile(ROOT).recipes
+    assert "_ci-rust" in {dep["recipe"] for dep in recipes["ci-rust"]["dependencies"]}
     assert {"test-bench-exact", "bench-compile", "test-rust-ci"} <= {dep["recipe"] for dep in recipes["_ci-rust"]["dependencies"]}
     smoke = recipes["test-bench-exact"]["dependencies"]
     assert [(dep["recipe"], dep["arguments"]) for dep in smoke] == [("bench-exact", ["--test"])]
@@ -719,6 +728,7 @@ def identities(root: Path) -> list[str]:
     return cast("list[str]", json.loads((root / "fixture-identities.json").read_text(encoding="utf-8")))
 
 
+@pytest.mark.release_candidate
 def test_local_candidate_capture_and_final_acceptance_reuse_original_bytes(
     complete_run: tuple[Path, Evidence],
     tmp_path: Path,

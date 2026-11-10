@@ -1587,7 +1587,9 @@ impl<const D: usize> Matrix<D> {
     /// [`det_exact`](Self::det_exact), then rounds the exact value to a finite
     /// binary64 value using IEEE 754 round-to-nearest, ties-to-even. Unlike
     /// [`det_exact_f64`](Self::det_exact_f64), this method is intentionally lossy
-    /// and may round non-dyadic or underflowing nonzero exact determinants.
+    /// and may round dyadic determinants that exceed binary64 precision or
+    /// underflow its range. Determinants of finite binary64 entries are always
+    /// dyadic, but need not themselves be representable in binary64.
     ///
     /// # Examples
     /// ```

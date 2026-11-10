@@ -68,7 +68,7 @@ evidence being validated.
 
 ## CI validation and manual timings
 
-The native `build` jobs run `just ci` on Linux, macOS, and Windows for PRs
+The `native-rust` jobs run `just ci-rust` on Linux, macOS, and Windows for PRs
 and pushes to `main`. They cover the correctness checks previously exercised
 by the automatic benchmark job.
 
@@ -80,7 +80,7 @@ by the automatic benchmark job.
 | Execute the full exact harness and its fixture checks | `test-bench-exact` runs every exact case in Criterion's `--test` mode without timing samples. |
 | Save or download a main baseline, sample a PR, and report cross-runner regressions | The manual workflow collects one exploratory run. Accepted release evidence is attached through [Releasing](RELEASING.md#6-attach-accepted-benchmarks-and-review-the-draft). |
 
-The three native build status checks still cover benchmark validation.
+The three `build` aggregate status checks require these native jobs to pass.
 The optional [Benchmarks workflow](https://github.com/acgetchell/la-stack/actions/workflows/benchmarks.yml)
 runs only when a maintainer selects a reviewed branch or tag:
 
@@ -215,7 +215,7 @@ diagnostics. Captured logs need no TTY. Counts advance only after phase validati
 partial output files do not count. ETA stays unknown for unseen work, and neither
 an estimate nor the nominal budget is a timeout. Scheduled progress reports
 trial, suite and phase state, with eight nominal seconds per case.
-The current development pin fixes the gate-failure event defect recorded in the
+The published v0.2.7 tooling fixes the gate-failure event defect recorded in the
 review. Preserve the command's nonzero exit and runtime record when diagnosing
 failure.
 

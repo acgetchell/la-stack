@@ -44,8 +44,9 @@ commands. `tooling/release-evidence.toml` declares the repository,
 package, workflow, native jobs/steps and signer policy. The guarantee is
 `signed-source`; it does not promise promotion of an identical Cargo archive.
 Protected `main` pushes produce signed evidence only with published tooling,
-after all three native `just ci` jobs and the default/exact Cargo packaging job
-succeed. A development Git pin passes ordinary validation but cannot produce
+after preparation and all four native validation stages succeed on each OS,
+the three `build` aggregate gates pass, and default/exact Cargo packaging
+succeeds. A development Git pin passes ordinary validation but cannot produce
 release evidence. CI verifies its development identity and skips signing and
 uploading the release-evidence artifact; ordinary validation still runs.
 The `release-evidence` job signs their exact commit, run, attempt, job IDs and
@@ -111,11 +112,11 @@ constraints used by the installed verifier. See GitHub's
 ## Release command alignment
 
 The common Step 1/Step 2 flow follows the
-[research-repo-tools v0.2.6 guide](https://github.com/acgetchell/research-repo-tools/blob/eb7e3eaf158024a045a6711898a8af199729131b/docs/RELEASING.md).
+[research-repo-tools v0.2.8 guide](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/docs/RELEASING.md).
 Draft preparation uses the public capability from upstream
-[PR #207](https://github.com/acgetchell/research-repo-tools/pull/207), rehearsed here at
-`cd8594f658b5bf3ade063a685834565cc62e0cb3`, including receipt retrieval from
-[PR #209](https://github.com/acgetchell/research-repo-tools/pull/209). Published-package and final native adoption
+[PR #207](https://github.com/acgetchell/research-repo-tools/pull/207), supplied in
+v0.2.7 along with receipt retrieval from
+[PR #209](https://github.com/acgetchell/research-repo-tools/pull/209). Published-package release checks and final native adoption
 remain required by [#333](https://github.com/acgetchell/la-stack/issues/333).
 
 | Command | Common behavior and la-stack declaration |
@@ -145,7 +146,17 @@ approval are the remaining registry and scientific-asset differences.
 Replace any development tooling pin with its supplying published release and
 reconcile the manifest, lock and isolated runtime pins as described in
 [Shared capability adoption](../tooling/README.md#shared-capability-adoption).
-Before release acquisition, run `just release-dependencies`. This shared gate
+Normal `just update` preserves the exact shared-tooling pin and development
+source overrides. Use the target release's adoption command for a published
+pin upgrade, or the shared explicit promotion flow for an eligible Git pin;
+neither transition happens automatically when a supplying release appears.
+Before release acquisition, run `just release-dependency-builds`, then
+`just release-dependencies`. Preparation rebuilds the declared source-only/native
+Python dependencies and authenticates the installed wheels on this machine.
+Rerun preparation after manifest, lock, policy, interpreter, or builder changes;
+receipts and signing keys stay outside the checkout and are never transferred
+between machines. Fresh release jobs prepare their own dependency receipts.
+This shared gate
 rejects Git sources even when their version label matches a published package;
 release evidence and publication repeat the check. Retain development results
 as rehearsal evidence and revalidate the final published-pin inputs.
@@ -182,6 +193,13 @@ creating the release branch:
 
 ```bash
 just update
+```
+
+After the final dependency changes, prepare and verify native provenance:
+
+```bash
+just release-dependency-builds
+just release-dependencies
 ```
 
 Review any tracked changes and land them separately before continuing with the
@@ -481,8 +499,10 @@ and checks eligible evidence automatically; pending results stop it with a retry
 diagnostic. Use GitHub's Actions page or the
 [manual inspection commands](#manual-context-and-inspection) when troubleshooting.
 
-Require the complete run: all three native `build` jobs, default/exact Cargo
-packaging in `release-package`, and signed `release-evidence`. A development
+Require the complete run: preparation and all four native validation stages on
+each OS, the three `build` aggregate gates, default/exact Cargo packaging in
+`release-package`, and signed `release-evidence`. The evidence policy checks
+the actual native jobs and runner labels, not just the aggregate gates. A development
 supplier pin skips signing and cannot provide eligible release evidence.
 Inspect the independent SARIF checks for this exact commit too:
 
@@ -749,7 +769,7 @@ permission to create a replacement.
 Recover the exact original artifacts by independently recorded immutable IDs,
 verify their ZIP digests and producer run/attempts, and retain the original policy,
 selection, notes and receipt. Follow the supplying package's
-[recovery](https://github.com/acgetchell/research-repo-tools/blob/cd8594f658b5bf3ade063a685834565cc62e0cb3/docs/PREPARING_DRAFTS.md#retry-and-recovery).
+[recovery](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/docs/PREPARING_DRAFTS.md#retry-and-recovery).
 After independent provider/audit review, its `release assets prepare` CLI accepts
 `--recover-release-id REVIEWED_ID` with the original pending receipt and frozen
 inputs; recovery performs no POST. A captured ID cannot be replaced. This is an

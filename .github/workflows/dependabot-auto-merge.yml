@@ -22,7 +22,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: acgetchell/research-repo-tools/.github/workflows/dependabot-approve.yml@b972cbfd717319abaa68d9b1373711ad6f163294 # reviewed 2026-10-01
+    uses: acgetchell/research-repo-tools/.github/workflows/dependabot-approve.yml@4a8f53f684dee2abb7c5b8a4beab40ef29212b4c # v0.2.7
     with:
       repository: acgetchell/la-stack
       policy: >-

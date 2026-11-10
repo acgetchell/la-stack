@@ -44,7 +44,11 @@ exit alone also accepts a broken import or shell. When quiet mode hides
 diagnostics, retain the verifier's arguments, exit status and diagnostic in a
 fixture-owned result file.
 
-The candidate and native evidence recipes use Just's isolated uvx/Python script interpreter.
+The candidate and native evidence recipes use Just's isolated uvx/Python script interpreter
+and the shared `isolated_release_runtime` context manager. Asset operations use
+the shared `release --isolated-runtime` CLI. The supplier owns managed-tool
+selection, checkout-path exclusion, and environment restoration; local recipes
+only pass release arguments or invoke the candidate controller.
 MSYS applies shell-like argument expansion when started by a native Windows
 program, which can corrupt JSON passed as Bash positional arguments; see
 [MSYS2 #522](https://github.com/msys2/MSYS2-packages/issues/522). The integration
@@ -66,27 +70,79 @@ Other platforms resolve Semgrep 1.184.0 or newer within the shared range.
 
 ## Shared capability adoption
 
-This development branch tests upstream commit
-`cd8594f658b5bf3ade063a685834565cc62e0cb3` through an exact uv Git source override.
-The package metadata still says 0.2.6; integration checks verify the manifest,
-lock and installed commit, including the isolated `uvx --python 3.15` runtimes.
-Advance the full commit deliberately after upstream changes; do not float on
-`main`. Before an actual release, replace the override and isolated runtime pins
-with the supplying published version, resolve/sync the lock and revalidate all
-affected evidence. The configured `release.published-dependencies` policy uses
+The tooling group and isolated `uvx --python 3.15` runtimes use the published
+`research-repo-tools==0.2.8` package. Integration checks verify the manifest,
+registry lock artifacts and installed version, including the isolated runtimes.
+For development rehearsal, an exact full-commit uv Git source override remains
+supported; keep the isolated runtime pins aligned and do not float on `main`.
+Consumer identity tests derive the selected requirement from the manifest and
+use RRT to verify Git declarations against the lock and installed provenance.
+Both registry and verified Git selections can run full `just ci`; only the
+published selection is eligible for release evidence and publication.
+Before an actual release, replace any override and isolated Git pins with the
+supplying published version, resolve/sync the lock and revalidate affected
+evidence. The configured `release.published-dependencies` policy uses
 the shared implementation from
 [research-repo-tools#193](https://github.com/acgetchell/research-repo-tools/issues/193).
 `just release-dependencies` checks that transition before release work. It
-deliberately rejects this development pin; ordinary checks and bounded
-acquisition remain available. Release evidence and publication enforce the
+rejects development pins; ordinary checks and bounded acquisition remain
+available during rehearsal. Release evidence and publication enforce the
 same policy again, including the actual isolated runtime.
+
+The source-built dependencies `actionlint-py`, `pyyaml`, and `ruamel-yaml-clib`
+require native preparation with `just release-dependency-builds` before
+`just release-dependencies`. The separate locked `build` group supplies their
+build tools without adding those tools to `dev`. `dependency-sources.toml`
+also pins actionlint's downloaded executable archives for each supported
+platform; update those hashes and wheel member paths with `actionlint-py`.
+The shared builder verifies the published sources and build tools, builds and
+installs native wheels, then verifies the complete installed environment.
+
+Receipts and wheels remain outside the checkout in
+`~/.research-repo-tools/source-builds`. Each machine prepares its own receipts;
+never copy their signing keys into CI artifacts or caches. Changed manifests,
+locks, source policy, interpreter, or builder invalidate them. Rebuild before
+the next release check after such changes. These receipts establish observed
+source/build provenance, not reproducible builds or publisher-signed wheels.
+See the supplier's [source-build contract](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/README.md#source-built-python-dependencies).
+
+Native CI runs `just ci-dependencies` in the `dependencies` stage of the `native`
+job alongside the Rust, Python, and candidate-acceptance stages after shared policy checks. Signed release evidence
+requires every native stage. A verified exact development
+tooling pin skips this release-only preparation; invalid pins and failed builds
+or verification still fail. Release jobs with fresh project environments prepare
+their own receipts before acquisition/acceptance verification. Local `just ci`
+retains its ordinary validation scope.
 
 Normal `just update` uses the supplier's exact Git-source support from
 [research-repo-tools#201](https://github.com/acgetchell/research-repo-tools/pull/201),
 which fixes [#200](https://github.com/acgetchell/research-repo-tools/issues/200).
-The updater preserves the included tooling group, immutable source commit and
-inherited tool versions while updating unrelated dependencies. Keep the source
-mapping throughout maintenance; release operations still require publication.
+The updater preserves the included tooling group's exact supplier pin, any
+immutable source commit and inherited tool versions while updating unrelated
+dependencies. Upgrading a published supplier uses the target release's adopter
+outside the old project environment. For the current release:
+
+```bash
+uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.2.8 research-repo-tools toolchain adopt --dry-run
+uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.2.8 research-repo-tools toolchain adopt --apply
+```
+
+The adopter reconciles requirements, lock and environment. Align the declared
+source in `dependency-sources.toml`, isolated recipe/workflow pins and consumer
+identity tests with that target, then run the normal checks. `just update` does
+not perform this supplier migration, including when run by v0.2.8.
+For an exact Git development pin, v0.2.8 also supports explicit attested
+[promotion](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/docs/UPDATING_DEPENDENCIES.md#promoting-an-exact-development-pin);
+ordinary updates continue to preserve the pin.
+
+For a deliberate source transition, edit `[sources.tooling]` in
+`dependency-sources.toml`, then run `just dependency-source tooling` to preview
+the shared resolver's manifest/lock changes. Add `--apply` only to apply that
+selection. A published source uses `version`; a development source uses
+`github`, a full `commit`, and `directory` instead. The helper supports both
+Python and Cargo selections. After applying, sync the environment and reconcile
+isolated runtime pins and identity tests; the helper does not rewrite workflows
+or automatically promote a development pin when a release appears.
 
 The root `dependency-sources.toml` declares both dependency graphs for the
 shared source-policy validation introduced by
@@ -97,7 +153,7 @@ come from their registries for release. The file is retained in source exports
 and both benchmark harness declarations, so policy changes invalidate evidence.
 
 The capability inventory below uses the pinned CLI and
-its [exact-commit contracts](https://github.com/acgetchell/research-repo-tools/blob/cd8594f658b5bf3ade063a685834565cc62e0cb3/README.md#common-workflows).
+its [v0.2.8 contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/README.md#common-workflows).
 The shared updater installs and verifies candidate Cargo tools before publishing
 new pins; no local updater implementation is needed.
 Native Rust algorithms, assertions, benchmark selection and release decisions
@@ -205,7 +261,7 @@ The full declaration now uses inclusive `since = "v0.5.2"` suite bounds.
 The normally installed 0.2.6 interface was checked against the consumer's peer
 comparison contract. Astra recommends retaining its cross-phase different-ID
 restriction and migrating to paired LU suites with current-phase peer ratios.
-The current development pin fixes the gate-status defect tracked in
+The published v0.2.7 supplier fixes the gate-status defect tracked in
 [research-repo-tools#191](https://github.com/acgetchell/research-repo-tools/issues/191);
 the preserved schema-2 and schema-5 regressions pass against it.
 No permanent baseline exclusion remains; supported missing cases or failed
@@ -330,11 +386,10 @@ requires final metadata; ordinary CI retains a private nonfinal metadata check.
 There are no `docs-version-check` or `release-package` recipe aliases.
 
 `tests/tooling/test_toolchain_integration.py` owns the package-identity check:
-manifest source, exact Git lock and installed commit for this rehearsal.
-Dependency updates and release tests derive their requirement from the
-manifest. The shared package pin advances deliberately with its lockfile;
-no sibling checkout supplies runtime code. A published release will replace the
-temporary source override before consumer publication.
+manifest requirement, registry lock and installed published version, including
+the isolated runtime. Negative fixtures retain the development-source rejection
+at release boundaries. The shared package pin advances deliberately with its
+lockfile and isolated requirements; no sibling checkout supplies runtime code.
 
 Setup, managed execution, dependency updates, Markdown checks, Semgrep,
 security scans and opt-in CodeRabbit review also use shared commands.

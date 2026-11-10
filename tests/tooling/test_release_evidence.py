@@ -26,17 +26,26 @@ RUNS_ENDPOINT = f"actions/workflows/9/runs?event=push&branch=main&head_sha={COMM
 INVOCATION = f"https://github.com/{REPOSITORY}/actions/runs/101/attempts/2"
 POLICY = load_evidence_policy(REPO_ROOT / "tooling/release-evidence.toml")
 NATIVE_GATES = (
-    ("build (ubuntu-latest)", "Run CI checks", 201),
-    ("build (macos-latest)", "Run CI checks", 202),
-    ("build (windows-latest)", "Run CI checks", 203),
-    ("release-package", "Verify default and exact Cargo packages", 204),
+    ("prepare (ubuntu-latest)", ("Set up declared tools", "Run CI policy checks"), 201),
+    ("prepare (macos-latest)", ("Set up declared tools", "Run CI policy checks"), 202),
+    ("prepare (windows-latest)", ("Set up declared tools", "Run CI policy checks"), 203),
+    ("release-package", ("Verify default and exact Cargo packages",), 204),
+    *(
+        (f"native-{stage} ({platform})", ("Set up declared tools", "Run native validation"), 206 + platform_index * 4 + stage_index)
+        for platform_index, platform in enumerate(("ubuntu-latest", "macos-latest", "windows-latest"))
+        for stage_index, stage in enumerate(("rust", "python", "candidate", "dependencies"))
+    ),
 )
+NATIVE_RUNNERS = {name: [name.rsplit(" (", 1)[1].removesuffix(")")] for name, _, _ in NATIVE_GATES if name != "release-package"}
 SIGNING_STEPS = (
     "Capture successful native validation identities",
     "Sign original main validation evidence",
     "Upload signed validation evidence",
 )
-REQUIRED_STEPS = (*((index, 0) for index in range(4)), *((4, index) for index in range(3)))
+REQUIRED_STEPS = (
+    *((index, step) for index, (_, steps, _) in enumerate(NATIVE_GATES) for step in range(len(steps))),
+    *((len(NATIVE_GATES), index) for index in range(3)),
+)
 
 
 def install_clean_checkout(patch: pytest.MonkeyPatch, checkout: Path, commit: str) -> None:
@@ -82,7 +91,7 @@ class EvidenceProvider:
             "status": "completed",
             "conclusion": "success",
         }
-        gates = [*((name, (step,), identifier) for name, step, identifier in NATIVE_GATES), ("release-evidence", SIGNING_STEPS, 205)]
+        gates = [*NATIVE_GATES, ("release-evidence", SIGNING_STEPS, 205)]
         self.jobs: list[dict[str, Any]] = [
             {
                 "id": identifier,
@@ -93,7 +102,7 @@ class EvidenceProvider:
                 "head_sha": COMMIT,
                 "status": "completed",
                 "conclusion": "success",
-                "labels": [name.removeprefix("build (").removesuffix(")")] if name.startswith("build (") else ["ubuntu-latest"],
+                "labels": NATIVE_RUNNERS.get(name, ["ubuntu-latest"]),
                 "steps": [{"number": number, "name": step, "status": "completed", "conclusion": "success"} for number, step in enumerate(steps, 1)],
             }
             for name, steps, identifier in gates
@@ -114,8 +123,8 @@ class EvidenceProvider:
                 "workflow_name": "CI",
                 "ref": "refs/heads/main",
                 "event": "push",
-                "required_steps": {name: [step] for name, step, _ in NATIVE_GATES},
-                "runner_labels": {name: [name.removeprefix("build (").removesuffix(")")] for name, _, _ in NATIVE_GATES[:3]},
+                "required_steps": {name: list(steps) for name, steps, _ in NATIVE_GATES},
+                "runner_labels": deepcopy(NATIVE_RUNNERS),
                 "artifact_prefix": "release-evidence",
                 "guarantee": "signed-source",
                 "signing_job": {"release-evidence": list(SIGNING_STEPS)},
@@ -535,7 +544,7 @@ def test_pinned_digest_cannot_be_replaced_by_another_valid_digest(provider: Evid
         (("run", "run_attempt"), 1),
         (("run", "repository_id"), 12),
         (("package", "version"), "0.5.41"),
-        (("jobs", "build (ubuntu-latest)"), 999),
+        (("jobs", "prepare (ubuntu-latest)"), 999),
     ],
 )
 def test_signed_manifest_must_equal_current_package_and_native_identities(provider: EvidenceProvider, path: tuple[str, ...], value: Any) -> None:

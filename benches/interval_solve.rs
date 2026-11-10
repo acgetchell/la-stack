@@ -16,7 +16,7 @@ mod interval_solve;
 
 fn solve_benchmarks<const D: usize>(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group(format!("interval_solve_d{D}"));
-    for family in interval_solve::FAMILIES {
+    for family in interval_solve::Family::ALL {
         let inputs: Vec<_> = (0..interval_solve::CASES)
             .map(|index| interval_solve::input::<D>(family, index))
             .collect();
@@ -27,11 +27,12 @@ fn solve_benchmarks<const D: usize>(criterion: &mut Criterion) {
             .iter()
             .filter(|input| input.expected == interval_solve::Outcome::Enclosed)
             .count();
+        let name = family.name();
         eprintln!(
-            "interval_solve_d{D}/{family}: {successes}/{} certified",
+            "interval_solve_d{D}/{name}: {successes}/{} certified",
             inputs.len()
         );
-        group.bench_function(family, |b| {
+        group.bench_function(name, |b| {
             b.iter(|| {
                 for input in &inputs {
                     let _ = black_box(black_box(&input.matrix).solve(black_box(&input.rhs)));

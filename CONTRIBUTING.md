@@ -53,7 +53,7 @@ change files. Run bare `just` for the complete generated command list, including
 arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
 owns recipe naming and documentation placement.
 
-Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.6` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.8` package,
 locked in the `tooling` dependency group and included by `dev`. Its `python-tools`
 extra owns the pytest, Ruff and Ty versions.
 `toolchain.inherit-python-tools` checks those versions against the lock and
@@ -61,10 +61,10 @@ selected executables. Keep repository lint policy local and omit duplicate
 version pins for these tools from `dev`.
 
 Normal setup and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
-checkout is unnecessary. To upgrade it deliberately, review the exact
-`tooling` and project runtime requirements and refresh `uv.lock` together, then run the consumer
-integration tests and `just ci`. See the [Tooling guide](tooling/README.md#changelog-and-release-tooling)
-for the retained changelog policy and ownership boundary.
+checkout is unnecessary. To upgrade it deliberately, use the published target's
+adoption command and reconcile isolated pins as described in
+[Shared capability adoption](tooling/README.md#shared-capability-adoption), then
+run the consumer integration tests and `just ci`.
 
 The shared setup contract requires an existing uv and does not generate bootstrap
 installers. `.python-version` selects Python; `rust-toolchain.toml` selects Rust
@@ -135,8 +135,13 @@ network access, and Gitleaks requires a complete Git checkout. JSON/SARIF report
 are retained under `target/security`, with secret findings redacted. These gates
 run separately from `just ci`; the hosted RustSec audit remains in place.
 
-CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
-aligned with the local comprehensive validation path.
+CI runs the [staged validation graph](#validation-workflow) on Ubuntu, macOS, and
+Windows, covering the complete local `just ci` path. The dedicated
+`just ci-dependencies` stage prepares authenticated native
+dependency builds and verifies installed bytes when tooling is published.
+Verified development tooling remains eligible for ordinary checks; release
+evidence still requires a published supplier. See the
+[source-build adoption contract](tooling/README.md#shared-capability-adoption).
 
 ### CodeRabbit review
 
@@ -303,15 +308,23 @@ because nextest does not execute them. The test, example, and benchmark buckets
 retain their execution or compile-contract roles because ordinary compilation
 does not execute Clippy lints.
 
-Native CI retains the same `build (OS)` and `Run CI checks` identities. Ordinary
-setup caches only managed Cargo compilation by OS, architecture and exact tool
-declarations; exact-version tool installations are freshly verified. GitHub's
+Hosted CI prepares each native OS and runs `just ci-policy`, then starts separate
+`just ci-rust`, `just ci-python`, `just ci-candidate`, and `just ci-dependencies`
+jobs. The two Python jobs partition the complete suite: candidate capture and
+acceptance has a dedicated runner, and every other test runs in `ci-python`.
+The existing `build (OS)` required-check names are aggregate gates: each requires
+every preparation and native job to succeed. Release evidence records the actual
+native jobs, their validation steps, and their OS labels.
+
+Preparation populates the managed compilation cache before the native jobs start.
+Ordinary setup caches only managed Cargo compilation by OS, architecture and exact
+tool declarations; exact-version tool installations are freshly verified. GitHub's
 cache ref scopes separate PR entries from protected main. Release packaging and
 publication keep caches disabled. The shared local build cache defaults to the
 tooling home's `cargo-build/<host>/<Rust version>`; an absolute
 `RESEARCH_REPO_TOOLS_CARGO_BUILD_HOME` selects separate compilation storage.
 This cache does not replace project builds or validation. See the
-[integration record](docs/dev/release-flow-integration.md) for graph ownership,
+[integration record](docs/dev/release-flow-integration.md#hosted-ci-stages) for graph ownership,
 baseline timings and remaining native/published-package evidence.
 
 `la-stack` intentionally has no notebook validation bucket: the repository has

@@ -114,6 +114,8 @@ impl<const D: usize> RationalMatrix<D> {
     /// Try to create an exact matrix by evaluating a function at every cell.
     ///
     /// The function is evaluated once per cell in row-major order.
+    /// All cells are generated before validation and canonicalization, as
+    /// in [`try_from_rows`](Self::try_from_rows).
     ///
     /// # Examples
     /// ```
