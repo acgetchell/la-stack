@@ -556,7 +556,8 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
         "run": 'just "ci-$CI_STAGE"',
     }
     assert jobs["build"]["needs"] == ["prepare", "native"]
-    assert jobs["build"]["if"] == "${{ !cancelled() }}"
+    # Required checks must execute and reject cancellation, rather than skip.
+    assert jobs["build"]["if"] == "${{ always() }}"
     assert jobs["build"]["runs-on"] == "ubuntu-latest"
     assert jobs["build"]["timeout-minutes"] == 5
     package = jobs["release-package"]

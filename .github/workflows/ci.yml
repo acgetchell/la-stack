@@ -98,7 +98,8 @@ jobs:
   build:
     # Preserve required-check names while requiring every native stage.
     needs: [prepare, native]
-    if: ${{ !cancelled() }}
+    # A skipped required check can permit merging, including after cancellation.
+    if: ${{ always() }}
     strategy:
       fail-fast: false
       matrix:
