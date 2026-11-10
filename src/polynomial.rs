@@ -52,6 +52,26 @@ impl SparsePolynomial {
     /// removal, so even `0/0` is rejected. The iterator is consumed only up to
     /// the first invalid coefficient; this constructor has no work budget.
     ///
+    /// # Examples
+    /// ```
+    /// use la_stack::prelude::*;
+    ///
+    /// # fn main() -> Result<(), LaError> {
+    /// let polynomial = SparsePolynomial::try_from_terms([
+    ///     (3, BigRational::new_raw(2.into(), 4.into())),
+    ///     (1, BigRational::from_integer(2.into())),
+    ///     (1, BigRational::from_integer((-2).into())),
+    /// ])?;
+    /// // Equal exponents cancel, and the remaining coefficient is reduced.
+    /// assert_eq!(polynomial.terms().len(), 1);
+    /// assert_eq!(
+    ///     polynomial.leading_term(),
+    ///     Some((3, &BigRational::new(1.into(), 2.into()))),
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     /// Returns [`LaError::NonFinite`] with input origin and a
     /// [`NonFiniteLocation::PolynomialTerm`] for a zero denominator.

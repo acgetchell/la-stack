@@ -25,25 +25,50 @@ pub(crate) struct Input<const D: usize> {
     pub(crate) expected: Outcome,
 }
 
-pub(crate) const FAMILIES: [&str; 5] = [
-    "dense",
-    "uncertain_dense",
-    "near_singular",
-    "singular",
-    "range_exhausted",
-];
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Family {
+    Dense,
+    UncertainDense,
+    NearSingular,
+    Singular,
+    RangeExhausted,
+}
+
+impl Family {
+    pub(crate) const ALL: [Self; 5] = [
+        Self::Dense,
+        Self::UncertainDense,
+        Self::NearSingular,
+        Self::Singular,
+        Self::RangeExhausted,
+    ];
+
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::Dense => "dense",
+            Self::UncertainDense => "uncertain_dense",
+            Self::NearSingular => "near_singular",
+            Self::Singular => "singular",
+            Self::RangeExhausted => "range_exhausted",
+        }
+    }
+}
 
 fn point(value: f64) -> Interval {
     Interval::point(value).or_abort("finite benchmark coefficient")
 }
 
-pub(crate) fn input<const D: usize>(family: &str, index: usize) -> Input<D> {
-    assert!((1..=6).contains(&D) && index < CASES);
+pub(crate) fn input<const D: usize>(family: Family, index: usize) -> Input<D> {
+    assert!(
+        (1..=6).contains(&D) && index < CASES,
+        "{} requires dimension 1..=6 and a corpus index below {CASES}",
+        family.name(),
+    );
     let known_solution = from_fn(|i| if i.is_multiple_of(2) { 1.0 } else { -1.0 });
     let mut centers = [[0.0; D]; D];
     let mut radii = [[0.0; D]; D];
     let expected = match family {
-        "dense" | "uncertain_dense" => {
+        Family::Dense | Family::UncertainDense => {
             for (i, row) in centers.iter_mut().enumerate() {
                 for (j, value) in row.iter_mut().enumerate() {
                     *value = if (i + 1) % D == j {
@@ -55,14 +80,14 @@ pub(crate) fn input<const D: usize>(family: &str, index: usize) -> Input<D> {
                                 - 4,
                         ) / 8.0
                     };
-                    if family == "uncertain_dense" {
+                    if family == Family::UncertainDense {
                         radii[i][j] = 2.0_f64.powi(-30);
                     }
                 }
             }
             Outcome::Enclosed
         }
-        "near_singular" => {
+        Family::NearSingular => {
             for (i, row) in centers.iter_mut().enumerate() {
                 row[i] = 1.0;
             }
@@ -82,18 +107,17 @@ pub(crate) fn input<const D: usize>(family: &str, index: usize) -> Input<D> {
                 Outcome::Inconclusive
             }
         }
-        "singular" | "range_exhausted" => {
+        Family::Singular | Family::RangeExhausted => {
             for (i, row) in centers.iter_mut().enumerate().take(D - 1) {
                 row[i] = 1.0;
             }
-            if family == "singular" {
+            if family == Family::Singular {
                 Outcome::Inconclusive
             } else {
                 centers[D - 1][D - 1] = f64::from_bits(1);
                 Outcome::RangeExhausted
             }
         }
-        _ => panic!("unknown interval solve family"),
     };
     // These small dyadic sums are exact in binary64; the range fixture replaces
     // its last RHS and deliberately has no finite enclosure.

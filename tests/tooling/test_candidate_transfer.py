@@ -177,6 +177,21 @@ def test_transfer_variants_keep_wire_schema(transfer: dict[str, Any]) -> None:
     assert json.loads(candidate.serialize_transfer(publication)) == data
 
 
+@pytest.mark.parametrize("field", ["acquisition", "publication"])
+def test_transfer_replacement_preserves_digest_invariants(transfer: dict[str, Any], field: str) -> None:
+    draft = candidate.require_draft_transfer(candidate.parse_transfer(json.dumps(transfer["data"]).encode()))
+    with pytest.raises(ValueError, match="full SHA-256 assertions"):
+        replace(draft, **{field: "not-a-digest"})
+
+
+@pytest.mark.parametrize("field", ["repository", "expected_title"])
+def test_transfer_replacement_preserves_release_identity(transfer: dict[str, Any], field: str) -> None:
+    draft = candidate.require_draft_transfer(candidate.parse_transfer(json.dumps(transfer["data"]).encode()))
+    target = replace(draft.target, **{field: "acgetchell/other" if field == "repository" else "Other release"})
+    with pytest.raises(ValueError, match="this repository and its exact release title"):
+        replace(draft, target=target)
+
+
 @pytest.mark.parametrize("key", ["GITHUB_ACTOR", "GITHUB_TRIGGERING_ACTOR", "GITHUB_EVENT_NAME", "GITHUB_WORKFLOW_REF", "GITHUB_SHA", "GITHUB_REF"])
 def test_dispatch_authentication_precedes_provider_access(transfer: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, key: str) -> None:
     monkeypatch.setenv(key, "untrusted")

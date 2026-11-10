@@ -18,11 +18,12 @@ macro_rules! lifted_test {
         paste! {
             #[test]
             fn [<coincident_lifted_order_ $n>]() {
-                let mut input = coincident_lifted::<$n>();
+                let input = coincident_lifted::<$n>();
+                let mut matrix = input.matrix().clone();
                 // Repeating a complete polynomial row must cancel every term.
-                let (first, rest) = input.matrix.split_at_mut(1);
+                let (first, rest) = matrix.split_at_mut(1);
                 rest[0].clone_from(&first[0]);
-                assert!(polynomial_determinant(&input.matrix, BUDGET).unwrap().is_zero());
+                assert!(polynomial_determinant(&matrix, BUDGET).unwrap().is_zero());
             }
         }
     };

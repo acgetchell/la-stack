@@ -35,7 +35,10 @@ impl DeterminantWithErrorBound {
     /// Return the certified absolute error bound.
     ///
     /// The exact determinant lies in
-    /// `[determinant - bound, determinant + bound]`.
+    /// `[determinant - bound, determinant + bound]` in real arithmetic.
+    /// Computing those endpoints with ordinary `f64` subtraction/addition may
+    /// round inward or overflow; use outward-rounded arithmetic when a
+    /// floating-point enclosure is required.
     #[inline]
     #[must_use]
     pub const fn absolute_error_bound(self) -> f64 {

@@ -25,6 +25,24 @@ TAG = "v0.5.42"
 SHA = "a" * 40
 
 
+@pytest.mark.parametrize("selection", ["checkout", "inside", "parent"])
+def test_owner_directory_rejects_overlap_through_checkout_alias(tmp_path: Path, selection: str) -> None:
+    root = tmp_path / "checkout"
+    (root / "nested").mkdir(parents=True)
+    alias = root / "nested" / ".."
+    selected = {"checkout": root, "inside": root / "owner", "parent": tmp_path}[selection]
+    with pytest.raises(ValueError, match="separate from the checkout"):
+        candidate.owner_directory(alias, "", selected)
+
+
+def test_owner_directory_accepts_canonical_external_selection(tmp_path: Path) -> None:
+    root = tmp_path / "checkout"
+    (root / "nested").mkdir(parents=True)
+    owner = tmp_path / "external owner"
+    owner.mkdir()
+    assert candidate.owner_directory(root / "nested" / "..", "", owner / ".." / owner.name) == owner.resolve()
+
+
 @pytest.fixture
 def owner_record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
     root, owner = tmp_path / "checkout", tmp_path / "original owner"

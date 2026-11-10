@@ -16,6 +16,9 @@ use crate::{ArithmeticOperation, FactorizationKind, LaError, Tolerance};
 
 /// LU decomposition (PA = LU) with partial pivoting.
 ///
+/// Construct this through [`Matrix::lu`], then reuse the factors for
+/// [`solve`](Self::solve) or [`det`](Self::det) without repeating elimination.
+///
 /// `Lu<0>` represents the empty factorization. Its determinant is the empty
 /// product `1.0`, and solving against [`Vector<0>`] returns [`Vector<0>`].
 /// Numerical solves and determinants remain subject to binary64 rounding and

@@ -228,7 +228,7 @@ mod solve_fixtures;
 mod bench_utils;
 
 fn benchmark_fixtures<const D: usize>() {
-    for family in solve_fixtures::FAMILIES {
+    for family in solve_fixtures::Family::ALL {
         for index in 0..solve_fixtures::CASES {
             let input = solve_fixtures::input::<D>(family, index);
             solve_fixtures::validate(&input);
@@ -241,11 +241,11 @@ fn benchmark_fixtures<const D: usize>() {
                 let rows = input.matrix.into_rows().map(|r| r.map(midpoint));
                 let rhs = input.rhs.map(midpoint);
                 let exact_solution = exact_solve(rows, rhs);
-                if family == "singular" {
+                if family == solve_fixtures::Family::Singular {
                     assert!(exact_solution.is_none());
                 } else {
                     let exact_solution = exact_solution.unwrap();
-                    if family == "range_exhausted" {
+                    if family == solve_fixtures::Family::RangeExhausted {
                         assert!(exact_solution[D - 1].abs() > exact(f64::MAX));
                     } else {
                         assert_eq!(exact_solution, input.known_solution.map(exact));
