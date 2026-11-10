@@ -75,6 +75,10 @@ The tooling group and isolated `uvx --python 3.15` runtimes use the published
 registry lock artifacts and installed version, including the isolated runtimes.
 For development rehearsal, an exact full-commit uv Git source override remains
 supported; keep the isolated runtime pins aligned and do not float on `main`.
+Consumer identity tests derive the selected requirement from the manifest and
+use RRT to verify Git declarations against the lock and installed provenance.
+Both registry and verified Git selections can run full `just ci`; only the
+published selection is eligible for release evidence and publication.
 Before an actual release, replace any override and isolated Git pins with the
 supplying published version, resolve/sync the lock and revalidate affected
 evidence. The configured `release.published-dependencies` policy uses

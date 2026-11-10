@@ -20,6 +20,7 @@ from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
 
 from tests.tooling.test_release_evidence import PIN_JSON, EvidenceProvider, install_clean_checkout
+from tests.tooling.test_toolchain_integration import TOOLING_REQUIREMENT
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/publish-crates.yml"
@@ -271,7 +272,7 @@ def run_evidence_fixture() -> int:
 def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep real workflow shell, Just, uv, Python, verifier and output writer."""
     source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    runtime = '[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.8", "python", "-I")]'
+    runtime = f'[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "{TOOLING_REQUIREMENT}", "python", "-I")]'
     assert source.count(runtime) == 3
     # Run the exact recipe body/argument transport with the locked test runtime.
     # The separate isolated-runtime smoke and pin test own uvx installation.
@@ -538,7 +539,7 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_bytes())
     jobs = workflow["jobs"]
     assert jobs["build"]["strategy"]["matrix"]["os"] == ["ubuntu-latest", "macos-latest", "windows-latest"]
-    assert jobs["build"]["timeout-minutes"] == 60
+    assert jobs["build"]["timeout-minutes"] == 120
     assert jobs["build"]["steps"][-2:] == [
         {"name": "Run CI checks", "run": "just ci"},
         {"name": "Verify native dependency provenance", "run": "just ci-dependencies"},
@@ -560,7 +561,7 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
         "--python",
         "3.15",
         "--from",
-        "research-repo-tools==0.2.8",
+        TOOLING_REQUIREMENT,
         "python",
         "-I",
         "-",

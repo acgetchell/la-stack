@@ -20,13 +20,33 @@ from research_repo_tools.dependency_provenance import DependencyIdentity, check_
 from research_repo_tools.just_inspect import inspect_justfile
 from research_repo_tools.process import run_command
 from research_repo_tools.python_tools import TOOLS, versions as shared_tool_versions
+from research_repo_tools.toml_source import remove_value, set_value
 
 if TYPE_CHECKING:
     import subprocess
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TOOLING_VERSION = "0.2.8"
-TOOLING_REQUIREMENT = f"research-repo-tools=={TOOLING_VERSION}"
+
+
+def tooling_requirement(root: Path) -> str:
+    """Select the declared supplier after RRT verifies any development source."""
+    document = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    (raw,) = document["dependency-groups"]["tooling"]
+    requirement = Requirement(raw)
+    (pin,) = requirement.specifier
+    assert requirement.name == "research-repo-tools"
+    assert requirement.url is None
+    assert requirement.marker is None
+    assert pin.operator == "=="
+    assert "*" not in pin.version
+    development = check_development_dependency(root, document=document)
+    if development is not None:
+        return f"{requirement.name} @ git+{development.source}@{development.revision}"
+    return f"{requirement.name}{requirement.specifier}"
+
+
+TOOLING_VERSION = version("research-repo-tools")
+TOOLING_REQUIREMENT = tooling_requirement(REPO_ROOT)
 CHECKED = ["run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--"]
 UPDATER = ["run", "--locked", "--only-group", "tooling", "--inexact", "research-repo-tools"]
 UV_UPDATE = ["run", "--no-config", "--no-sync", "--no-python-downloads", "research-repo-tools", "deps", "update-uv"]
@@ -50,8 +70,8 @@ WORKFLOWS = {
 }
 
 
-def test_tooling_release_matches_manifest_lock_and_installation() -> None:
-    """Require the published supplier throughout the normal installed consumer."""
+def test_tooling_selection_matches_manifest_lock_and_installation() -> None:
+    """Require the declared registry release or verified immutable Git supplier."""
     expected_version = TOOLING_VERSION
     manifest = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert manifest["project"]["dependencies"] == []
@@ -61,23 +81,53 @@ def test_tooling_release_matches_manifest_lock_and_installation() -> None:
     assert {"include-group": "tooling"} in manifest["dependency-groups"]["dev"]
     assert manifest["tool"]["research-repo-tools"]["toolchain"]["inherit-python-tools"] is True
     assert not {Requirement(item).name for item in manifest["dependency-groups"]["dev"] if isinstance(item, str)} & TOOLS
-    assert version("research-repo-tools") == expected_version
     lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
     package = next(item for item in lock["package"] if item["name"] == "research-repo-tools")
     assert package["version"] == expected_version
-    assert "research-repo-tools" not in manifest["tool"]["uv"].get("sources", {})
-    assert package["source"] == {"registry": "https://pypi.org/simple"}
-    assert package["sdist"]["hash"].startswith("sha256:")
-    assert package["wheels"]
-    assert all(wheel["hash"].startswith("sha256:") for wheel in package["wheels"])
-    # Distribution.read_text decodes UTF-8 internally and has no encoding argument.
-    # nosemgrep: la-stack.python.explicit-path-text-encoding-in-tests
-    installed = distribution("research-repo-tools").read_text("direct_url.json")
-    assert installed is None
+    development = check_development_dependency(REPO_ROOT)
+    if development is None:
+        assert "research-repo-tools" not in manifest["tool"]["uv"].get("sources", {})
+        assert package["source"] == {"registry": "https://pypi.org/simple"}
+        assert package["sdist"]["hash"].startswith("sha256:")
+        assert package["wheels"]
+        assert all(wheel["hash"].startswith("sha256:") for wheel in package["wheels"])
+        # Distribution.read_text decodes UTF-8 internally and has no encoding argument.
+        # nosemgrep: la-stack.python.explicit-path-text-encoding-in-tests
+        installed = distribution("research-repo-tools").read_text("direct_url.json")
+        assert installed is None
+    else:
+        # The shared checker binds declaration, lock and both installed runtimes.
+        assert development.version == expected_version
+        assert development.revision is not None
     locked = {item["name"]: item["version"] for item in lock["package"]}
     for name, expected in shared_tool_versions().items():
         assert locked[name] == version(name) == expected
-    assert check_development_dependency(REPO_ROOT) is None
+
+
+@pytest.mark.parametrize("source", ["registry", "git", "invalid"])
+def test_tooling_requirement_preserves_source_selection_and_verification(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[dependency-groups]\ntooling = ["research-repo-tools[python-tools,semgrep]==0.2.8"]\n', encoding="utf-8", newline="\n"
+    )
+    calls: list[Path] = []
+
+    def verify(root: Path, *, document: dict[str, object]) -> DependencyIdentity | None:
+        calls.append(root)
+        assert document == {"dependency-groups": {"tooling": ["research-repo-tools[python-tools,semgrep]==0.2.8"]}}
+        if source == "invalid":
+            message = "installed Git provenance differs"
+            raise ValueError(message)
+        return DependencyIdentity("research-repo-tools", "0.2.8", "https://github.com/acgetchell/research-repo-tools", "a" * 40) if source == "git" else None
+
+    monkeypatch.setattr(sys.modules[__name__], "check_development_dependency", verify)
+    if source == "invalid":
+        with pytest.raises(ValueError, match="installed Git provenance differs"):
+            tooling_requirement(tmp_path)
+    else:
+        git_requirement = "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@" + "a" * 40
+        expected = git_requirement if source == "git" else "research-repo-tools==0.2.8"
+        assert tooling_requirement(tmp_path) == expected
+    assert calls == [tmp_path]
 
 
 def test_release_dependency_policy_covers_tooling_and_private_comparison_workspace() -> None:
@@ -181,10 +231,8 @@ def test_development_pin_cannot_enter_release_work(command: list[str], tmp_path:
     # though the real consumer now uses the published supplier.
     manifest = tmp_path / "pyproject.toml"
     source = manifest.read_text(encoding="utf-8")
-    manifest.write_text(
-        source + '\n[tool.uv.sources]\nresearch-repo-tools = { git = "https://github.com/acgetchell/research-repo-tools", rev = "' + "a" * 40 + '" }\n',
-        encoding="utf-8",
-    )
+    override = '{ git = "https://github.com/acgetchell/research-repo-tools", rev = "' + "a" * 40 + '" }'
+    manifest.write_text(set_value(source, "tool.uv.sources", "research-repo-tools", override), encoding="utf-8")
     before = {path.name: path.read_bytes() for path in tmp_path.iterdir()}
     assert main(["--root", str(tmp_path), *command]) == 1
     diagnostic = capsys.readouterr().err
@@ -193,7 +241,7 @@ def test_development_pin_cannot_enter_release_work(command: list[str], tmp_path:
     assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == before
 
 
-def test_isolated_release_runtime_uses_the_same_release_outside_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_isolated_release_runtime_uses_the_same_selection_outside_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Exercise the actual trusted runtime on each native CI platform."""
     expected = TOOLING_VERSION
     source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
@@ -207,7 +255,9 @@ def test_isolated_release_runtime_uses_the_same_release_outside_checkout(tmp_pat
         (tmp_path / name).write_bytes((REPO_ROOT / name).read_bytes())
     (tmp_path / "justfile").write_bytes((REPO_ROOT / "justfile").read_bytes())
     (tmp_path / "tooling/release_candidate.py").write_text(
-        "import json, os, sys, research_repo_tools\nfrom importlib.metadata import distribution\n"
+        "import json, os, sys, research_repo_tools\nfrom importlib.metadata import distribution\nfrom pathlib import Path\n"
+        "from research_repo_tools.dependency_provenance import check_development_dependency\n"
+        "check_development_dependency(Path.cwd())\n"
         'd = distribution("research-repo-tools")\n'
         'print(json.dumps([d.version, research_repo_tools.__file__, d.read_text("direct_url.json"), sys.argv[1:], os.environ["PATH"], sys.flags.isolated]))\n',
         encoding="utf-8",
@@ -236,7 +286,14 @@ def test_isolated_release_runtime_uses_the_same_release_outside_checkout(tmp_pat
     )
     installed_version, location, provenance, arguments, search_path, isolated = json.loads(result.stdout)
     assert installed_version == expected
-    assert provenance is None
+    development = check_development_dependency(REPO_ROOT)
+    if development is None:
+        assert provenance is None
+    else:
+        assert json.loads(provenance) == {
+            "url": development.source,
+            "vcs_info": {"vcs": "git", "commit_id": development.revision, "requested_revision": development.revision},
+        }
     assert not Path(location).resolve().is_relative_to(REPO_ROOT)
     assert not Path(location).resolve().is_relative_to(tmp_path)
     assert arguments == ["receive", str(tmp_path / "output with spaces"), "--incoming", str(tmp_path / "input with spaces")]
@@ -387,6 +444,10 @@ def test_python_update_preserves_shared_pin_and_tools_with_explicit_dev_sync(tmp
     registry = tmp_path / "wheels"
     registry.mkdir()
     original = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    # This offline updater fixture supplies registry wheels; actual Git identity
+    # is checked above against the real installed supplier and isolated runtime.
+    if "research-repo-tools" in tomllib.loads(original)["tool"]["uv"].get("sources", {}):
+        original = remove_value(original, "tool.uv.sources", "research-repo-tools")
     source = original.replace("package = false", "package = false\ndefault-groups = []")
     manifest = root / "pyproject.toml"
     manifest.write_text(source, encoding="utf-8")
