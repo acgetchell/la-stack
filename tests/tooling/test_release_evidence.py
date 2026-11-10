@@ -26,17 +26,17 @@ RUNS_ENDPOINT = f"actions/workflows/9/runs?event=push&branch=main&head_sha={COMM
 INVOCATION = f"https://github.com/{REPOSITORY}/actions/runs/101/attempts/2"
 POLICY = load_evidence_policy(REPO_ROOT / "tooling/release-evidence.toml")
 NATIVE_GATES = (
-    ("build (ubuntu-latest)", "Run CI checks", 201),
-    ("build (macos-latest)", "Run CI checks", 202),
-    ("build (windows-latest)", "Run CI checks", 203),
-    ("release-package", "Verify default and exact Cargo packages", 204),
+    ("build (ubuntu-latest)", ("Run CI checks", "Verify native dependency provenance"), 201),
+    ("build (macos-latest)", ("Run CI checks", "Verify native dependency provenance"), 202),
+    ("build (windows-latest)", ("Run CI checks", "Verify native dependency provenance"), 203),
+    ("release-package", ("Verify default and exact Cargo packages",), 204),
 )
 SIGNING_STEPS = (
     "Capture successful native validation identities",
     "Sign original main validation evidence",
     "Upload signed validation evidence",
 )
-REQUIRED_STEPS = (*((index, 0) for index in range(4)), *((4, index) for index in range(3)))
+REQUIRED_STEPS = (*((index, step) for index, (_, steps, _) in enumerate(NATIVE_GATES) for step in range(len(steps))), *((4, index) for index in range(3)))
 
 
 def install_clean_checkout(patch: pytest.MonkeyPatch, checkout: Path, commit: str) -> None:
@@ -82,7 +82,7 @@ class EvidenceProvider:
             "status": "completed",
             "conclusion": "success",
         }
-        gates = [*((name, (step,), identifier) for name, step, identifier in NATIVE_GATES), ("release-evidence", SIGNING_STEPS, 205)]
+        gates = [*NATIVE_GATES, ("release-evidence", SIGNING_STEPS, 205)]
         self.jobs: list[dict[str, Any]] = [
             {
                 "id": identifier,
@@ -114,7 +114,7 @@ class EvidenceProvider:
                 "workflow_name": "CI",
                 "ref": "refs/heads/main",
                 "event": "push",
-                "required_steps": {name: [step] for name, step, _ in NATIVE_GATES},
+                "required_steps": {name: list(steps) for name, steps, _ in NATIVE_GATES},
                 "runner_labels": {name: [name.removeprefix("build (").removesuffix(")")] for name, _, _ in NATIVE_GATES[:3]},
                 "artifact_prefix": "release-evidence",
                 "guarantee": "signed-source",

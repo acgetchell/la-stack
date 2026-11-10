@@ -63,6 +63,7 @@ jobs:
           CANDIDATE_ACCEPTANCE: ${{ inputs.acceptance }}
         run: |
           set -euo pipefail
+          just release-dependency-builds
           just release-receive "$RUNNER_TEMP/accepted-candidate" --published
           just _release-notes-check "$RELEASE_TAG"
 
@@ -127,6 +128,7 @@ jobs:
           CANDIDATE_ACCEPTANCE: ${{ inputs.acceptance }}
         run: |
           set -euo pipefail
+          just release-dependency-builds
           just release-receive "$RUNNER_TEMP/accepted-candidate" --published --expected "$RUNNER_TEMP/approved-acceptance/acceptance.json"
           just _release-notes-check "$RELEASE_TAG"
           uv run --locked --no-sync research-repo-tools release registry "$RELEASE_TAG" --expect absent

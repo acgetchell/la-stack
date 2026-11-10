@@ -53,7 +53,7 @@ change files. Run bare `just` for the complete generated command list, including
 arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
 owns recipe naming and documentation placement.
 
-Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.6` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.8` package,
 locked in the `tooling` dependency group and included by `dev`. Its `python-tools`
 extra owns the pytest, Ruff and Ty versions.
 `toolchain.inherit-python-tools` checks those versions against the lock and
@@ -61,10 +61,10 @@ selected executables. Keep repository lint policy local and omit duplicate
 version pins for these tools from `dev`.
 
 Normal setup and CI install it from PyPI through `uv sync --locked --group dev`; a sibling
-checkout is unnecessary. To upgrade it deliberately, review the exact
-`tooling` and project runtime requirements and refresh `uv.lock` together, then run the consumer
-integration tests and `just ci`. See the [Tooling guide](tooling/README.md#changelog-and-release-tooling)
-for the retained changelog policy and ownership boundary.
+checkout is unnecessary. To upgrade it deliberately, use the published target's
+adoption command and reconcile isolated pins as described in
+[Shared capability adoption](tooling/README.md#shared-capability-adoption), then
+run the consumer integration tests and `just ci`.
 
 The shared setup contract requires an existing uv and does not generate bootstrap
 installers. `.python-version` selects Python; `rust-toolchain.toml` selects Rust
@@ -136,7 +136,12 @@ are retained under `target/security`, with secret findings redacted. These gates
 run separately from `just ci`; the hosted RustSec audit remains in place.
 
 CI runs `just ci` on Ubuntu, macOS, and Windows to keep platform coverage
-aligned with the local comprehensive validation path.
+aligned with the local comprehensive validation path. Each native job also runs
+`just ci-dependencies` for release provenance: it prepares authenticated native
+dependency builds and verifies installed bytes when tooling is published.
+Verified development tooling remains eligible for ordinary checks; release
+evidence still requires a published supplier. See the
+[source-build adoption contract](tooling/README.md#shared-capability-adoption).
 
 ### CodeRabbit review
 

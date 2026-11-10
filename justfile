@@ -70,11 +70,15 @@ _ensure-yamllint: _ensure-uv
 # Isolate the supplier runtime from the observed candidate checkout.
 [positional-arguments]
 [private]
-[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3", "python", "-I")]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.8", "python", "-I")]
 _release-candidate *args:
     import runpy
     from pathlib import Path
-    runpy.run_path(str(Path.cwd() / "tooling/release_candidate.py"), run_name="__main__")
+    from research_repo_tools.config import load
+    from research_repo_tools.release_runtime import isolated_release_runtime
+    root = Path.cwd().resolve()
+    with isolated_release_runtime(load(root=root)):
+        runpy.run_path(str(root / "tooling/release_candidate.py"), run_name="__main__")
 
 # Require the GitHub release title and body to match the generated notes.
 [private]
@@ -263,6 +267,23 @@ check-fast:
 ci: python-sync tools-check _ci-policy _ci-execution
     @echo "🎯 CI checks complete!"
 
+# Prepare native release provenance in CI; verified development tooling keeps ordinary checks available.
+[script("uv", "run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--", "python", "-I")]
+ci-dependencies: python-sync
+    import sys
+    from pathlib import Path
+    from research_repo_tools.cli import main
+    from research_repo_tools.dependency_provenance import check_development_dependency
+    if check_development_dependency(Path.cwd()) is not None:
+        print("Verified development tooling pin; release provenance requires a published supplier.")
+    else:
+        from research_repo_tools.process import run_safe_command
+        run_safe_command("cargo", ["fetch", "--locked"], cwd=Path.cwd(), timeout=600)
+        for action in ("dependency-builds", "dependencies"):
+            status = main(["release", action])
+            if status:
+                sys.exit(status)
+
 # Validate CITATION.cff against the Citation File Format schema.
 citation-check: _ensure-uv
     uvx --from cffconvert==2.0.0 cffconvert --validate -i CITATION.cff
@@ -307,6 +328,11 @@ coverage-ci: tools-check
 # Summarize an existing Cobertura report without rerunning coverage.
 coverage-report report="coverage/cobertura.xml": python-sync
     uv run --locked research-repo-tools coverage report --report {{ quote(report) }}
+
+# Preview a configured Python/Cargo source transition; pass --apply to publish manifests and locks.
+[positional-arguments]
+dependency-source name *args:
+    {{ _run }} uv run --locked --no-sync research-repo-tools deps source "$@"
 
 # Documentation build checks for the default and exact-feature public APIs.
 doc-check:
@@ -470,11 +496,11 @@ release-archive owner="" selection="reviewed": (_release-candidate "archive" own
 
 # Use explicit shared asset/recovery operations with an isolated trusted runtime.
 [positional-arguments]
-[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3", "python", "-I")]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.8", "python", "-I")]
 release-assets +args:
     import sys
     from research_repo_tools.cli import main
-    sys.exit(main(["release", "assets", *sys.argv[1:]]))
+    sys.exit(main(["release", "--isolated-runtime", "assets", *sys.argv[1:]]))
 
 # Dispatch retained benchmark attachment using the original Step 1 owner selection.
 release-benchmarks tag: _ensure-gh _ensure-jq
@@ -489,7 +515,12 @@ release-benchmarks tag: _ensure-gh _ensure-jq
 
 # Verify upstream tooling publication before release preparation or acquisition.
 release-dependencies:
-    uv run --locked --no-sync research-repo-tools release dependencies
+    {{ _run }} uv run --locked --no-sync research-repo-tools release dependencies
+
+# Rebuild declared registry sources and authenticate this machine's installed wheels.
+release-dependency-builds: python-sync
+    {{ _run }} cargo fetch --locked
+    {{ _run }} uv run --locked --no-sync research-repo-tools release dependency-builds
 
 # Bind the original local acquisition to clean HEAD and signed native CI.
 release-evidence owner="" selection="reviewed": (_release-candidate "verify" owner "--selection" selection)
@@ -502,17 +533,19 @@ release-gate tag:
 
 # Verify signed native/Cargo evidence; accept --expected PATH and --github-output PATH.
 [positional-arguments]
-[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3", "python", "-I")]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.8", "python", "-I")]
 release-native-evidence *args:
     import sys
     import tempfile
     from pathlib import Path
     from research_repo_tools.cli import main
+    from research_repo_tools.config import load
     from research_repo_tools.process import run_git_command
     from research_repo_tools.release_metadata import read_package_info
-    root = Path.cwd()
-    commit = run_git_command(["--no-pager", "rev-parse", "HEAD"], cwd=root, timeout=30).stdout.strip()
-    with tempfile.TemporaryDirectory(prefix="la-stack-release-evidence-") as temporary:
+    from research_repo_tools.release_runtime import isolated_release_runtime
+    root = Path.cwd().resolve()
+    with isolated_release_runtime(load(root=root)), tempfile.TemporaryDirectory(prefix="la-stack-release-evidence-") as temporary:
+        commit = run_git_command(["--no-pager", "rev-parse", "HEAD"], cwd=root, timeout=30).stdout.strip()
         sys.exit(main(["release", "evidence", "verify", "tooling/release-evidence.toml", "--checkout", str(root), "--commit", commit, "--version", read_package_info(root).version, "--output", str(Path(temporary).resolve() / "selection.json"), *sys.argv[1:]]))
 
 # Print release notes from the root changelog or a completed minor archive.

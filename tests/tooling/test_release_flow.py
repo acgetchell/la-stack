@@ -245,7 +245,7 @@ def test_draft_workflow_keeps_the_writer_isolated_and_recovery_explicit() -> Non
     # Custom shells use .NET argument parsing; single quotes are not delimiters.
     command = shlex.split(step["shell"], posix=False)
     assert command[:9] == ["uv", "run", "--no-config", "--no-project", "--isolated", "--no-cache", "--python", "3.15", "--with"]
-    assert command[9].startswith('"research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@')
+    assert command[9] == '"research-repo-tools==0.2.8"'
     assert command[9].endswith('"')
     assert command[10:] == ["python", "-I", '"{0}"']
     assert step["working-directory"] == "${{ runner.temp }}"

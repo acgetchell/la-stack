@@ -215,7 +215,7 @@ diagnostics. Captured logs need no TTY. Counts advance only after phase validati
 partial output files do not count. ETA stays unknown for unseen work, and neither
 an estimate nor the nominal budget is a timeout. Scheduled progress reports
 trial, suite and phase state, with eight nominal seconds per case.
-The current development pin fixes the gate-failure event defect recorded in the
+The published v0.2.7 tooling fixes the gate-failure event defect recorded in the
 review. Preserve the command's nonzero exit and runtime record when diagnosing
 failure.
 

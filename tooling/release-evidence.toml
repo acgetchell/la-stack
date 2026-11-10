@@ -9,17 +9,17 @@ guarantee = "signed-source"
 
 [[jobs]]
 name = "build (ubuntu-latest)"
-steps = [ "Run CI checks" ]
+steps = [ "Run CI checks", "Verify native dependency provenance" ]
 runner-labels = [ "ubuntu-latest" ]
 
 [[jobs]]
 name = "build (macos-latest)"
-steps = [ "Run CI checks" ]
+steps = [ "Run CI checks", "Verify native dependency provenance" ]
 runner-labels = [ "macos-latest" ]
 
 [[jobs]]
 name = "build (windows-latest)"
-steps = [ "Run CI checks" ]
+steps = [ "Run CI checks", "Verify native dependency provenance" ]
 runner-labels = [ "windows-latest" ]
 
 [[jobs]]

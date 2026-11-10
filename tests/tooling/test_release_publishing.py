@@ -78,7 +78,7 @@ def release_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
     def published(root: Path, *, packages: tuple[str, ...] | None = None) -> tuple[dependency_provenance.DependencyIdentity, ...]:
         assert root == REPO_ROOT
         assert packages == ("research-repo-tools",)
-        return (dependency_provenance.DependencyIdentity("research-repo-tools", "0.2.6", "https://pypi.org/simple"),)
+        return (dependency_provenance.DependencyIdentity("research-repo-tools", "0.2.8", "https://pypi.org/simple"),)
 
     monkeypatch.setattr(dependency_provenance, "check_release_dependencies", published)
     install_clean_checkout(monkeypatch, REPO_ROOT, SHA)
@@ -247,6 +247,10 @@ def run_evidence_fixture() -> int:
     with pytest.MonkeyPatch.context() as patch:
         provider.install(patch)
         patch.setattr(process, "run_git_command", provider.git)
+        # The uv launcher needs the real test environment; provenance observes
+        # only the dependency-free release fixture after process startup.
+        patch.delenv("UV_PROJECT", raising=False)
+        patch.delenv("UV_PROJECT_ENVIRONMENT", raising=False)
         with redirect_stderr(diagnostic):
             try:
                 sys.argv[:] = [script, *arguments]
@@ -267,15 +271,19 @@ def run_evidence_fixture() -> int:
 def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep real workflow shell, Just, uv, Python, verifier and output writer."""
     source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    runtime = (
-        '[script("uvx", "--python", "3.15", "--from", "research-repo-tools @ '
-        'git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3", "python", "-I")]'
-    )
+    runtime = '[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.8", "python", "-I")]'
     assert source.count(runtime) == 3
     # Run the exact recipe body/argument transport with the locked test runtime.
     # The separate isolated-runtime smoke and pin test own uvx installation.
-    source = source.replace(runtime, '[script("uv", "run", "--locked", "--no-sync", "python", "fixture-bootstrap.py")]')
+    source = source.replace(runtime, '[script("uv", "run", "--locked", "--no-sync", "python", "-I", "fixture-bootstrap.py")]')
     (tmp_path / "justfile").write_text(source, encoding="utf-8", newline="\n")
+    uv_pin = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["uv"]["required-version"]
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "release-fixture"\nversion = "0.0.0"\nrequires-python = ">=3.15"\ndependencies = []\n[tool.uv]\nrequired-version = "{uv_pin}"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / ".python-version").write_bytes((REPO_ROOT / ".python-version").read_bytes())
     (tmp_path / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.5.42"\n', encoding="utf-8")
     (tmp_path / "tooling").mkdir()
     (tmp_path / "tooling/release-evidence.toml").write_bytes((REPO_ROOT / "tooling/release-evidence.toml").read_bytes())
@@ -283,11 +291,12 @@ def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("FIXTURE_ROOT", str(tmp_path))
     monkeypatch.setenv("FIXTURE_REPO_ROOT", str(REPO_ROOT))
+    monkeypatch.setenv("FIXTURE_MODULE_ROOT", str(REPO_ROOT))
     monkeypatch.setenv("RUNNER_TEMP", tmp_path.as_posix())
     monkeypatch.setenv("UV_PROJECT", str(REPO_ROOT))
     monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", sys.prefix)
     (tmp_path / "fixture-bootstrap.py").write_text(
-        'import os, sys\nsys.path.insert(0, os.environ["FIXTURE_REPO_ROOT"])\n'
+        'import os, sys\nsys.path[:0] = [os.environ["FIXTURE_REPO_ROOT"], os.environ["FIXTURE_MODULE_ROOT"]]\n'
         "from tests.tooling.test_release_publishing import run_evidence_fixture\nsys.exit(run_evidence_fixture())\n",
         encoding="utf-8",
         newline="\n",
@@ -369,8 +378,8 @@ def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capt
 def test_evidence_bootstrap_keeps_windows_import_paths_as_environment_data(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, import_root: str, newline: str
 ) -> None:
-    # Exercise literal Windows path data on every host. PYTHONPATH supplies the
-    # real module after the intentionally nonexistent path inserted by bootstrap.
+    # Exercise literal Windows path data on every host. The explicit harness
+    # root follows this nonexistent path because isolated Python ignores PYTHONPATH.
     monkeypatch.setenv("FIXTURE_REPO_ROOT", import_root)
     monkeypatch.setenv("PYTHONPATH", str(REPO_ROOT))
     monkeypatch.setenv("FIXTURE_DIAGNOSTIC_NEWLINE", newline)
@@ -462,7 +471,9 @@ def test_explicit_empty_identity_cannot_select_fresh_evidence(tmp_path: Path, mo
     assert output.read_bytes() == original
 
 
-@pytest.mark.parametrize(("failure", "expected_exit"), [("none", 0), ("evidence", 1), ("candidate", 1), ("present", 1), ("unavailable", 2)])
+@pytest.mark.parametrize(
+    ("failure", "expected_exit"), [("none", 0), ("dependency-builds", 1), ("evidence", 1), ("candidate", 1), ("present", 1), ("unavailable", 2)]
+)
 def test_actual_preupload_shell_requires_evidence_and_proven_absence(tmp_path: Path, failure: str, expected_exit: int) -> None:
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
     script = next(
@@ -470,6 +481,8 @@ def test_actual_preupload_shell_requires_evidence_and_proven_absence(tmp_path: P
     )
     marker = tmp_path / "upload-reached"
     gate = "just() { return 1; }" if failure == "evidence" else "just() { return 0; }"
+    if failure == "dependency-builds":
+        gate = 'just() { [[ "$1" != release-dependency-builds ]]; }'
     if failure == "candidate":
         gate = 'just() { [[ "$1" != release-receive ]]; }'
     registry_exit = expected_exit if failure in {"present", "unavailable"} else 0
@@ -525,10 +538,14 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_bytes())
     jobs = workflow["jobs"]
     assert jobs["build"]["strategy"]["matrix"]["os"] == ["ubuntu-latest", "macos-latest", "windows-latest"]
-    assert jobs["build"]["steps"][-1] == {"name": "Run CI checks", "run": "just ci"}
+    assert jobs["build"]["timeout-minutes"] == 60
+    assert jobs["build"]["steps"][-2:] == [
+        {"name": "Run CI checks", "run": "just ci"},
+        {"name": "Verify native dependency provenance", "run": "just ci-dependencies"},
+    ]
     package = jobs["release-package"]
     assert package["steps"][1]["with"]["cache"] == "false"
-    assert package["steps"][-1] == {"name": "Verify default and exact Cargo packages", "run": "just publish-check"}
+    assert package["steps"][-1] == {"name": "Verify default and exact Cargo packages", "run": "just ci-dependencies\njust publish-check\n"}
     evidence = jobs["release-evidence"]
     assert evidence["needs"] == ["build", "release-package"]
     assert evidence["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'acgetchell/la-stack'"
@@ -543,7 +560,7 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
         "--python",
         "3.15",
         "--from",
-        "research-repo-tools @ git+https://github.com/acgetchell/research-repo-tools@cd8594f658b5bf3ade063a685834565cc62e0cb3",
+        "research-repo-tools==0.2.8",
         "python",
         "-I",
         "-",
@@ -572,7 +589,7 @@ def test_main_ci_creates_no_release_evidence_for_development_pins(tmp_path: Path
     output.write_bytes(original)
     for key, value in {"GITHUB_OUTPUT": str(output), "GITHUB_SHA": SHA, "GITHUB_RUN_ID": "11", "GITHUB_RUN_ATTEMPT": "1"}.items():
         monkeypatch.setenv(key, value)
-    pin = dependency_provenance.DependencyIdentity("research-repo-tools", "0.2.6", "git", "a" * 40) if source == "development" else None
+    pin = dependency_provenance.DependencyIdentity("research-repo-tools", "0.2.8", "git", "a" * 40) if source == "development" else None
     monkeypatch.setattr(dependency_provenance, "check_development_dependency", lambda _root: pin)
     calls: list[list[str]] = []
 
