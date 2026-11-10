@@ -191,12 +191,11 @@ def test_ci_dependency_recipe_preserves_development_pins_and_propagates_failures
     monkeypatch.chdir(REPO_ROOT)
     monkeypatch.setattr("research_repo_tools.dependency_provenance.check_development_dependency", source)
     monkeypatch.setattr("research_repo_tools.cli.main", invoke)
-    fetches: list[tuple[str, list[str]]] = []
 
     def fetch(executable: str, arguments: list[str], *, cwd: Path, timeout: int) -> None:
         assert cwd == REPO_ROOT
         assert timeout == 600
-        fetches.append((executable, arguments))
+        calls.append([executable, *arguments])
 
     monkeypatch.setattr("research_repo_tools.process.run_safe_command", fetch)
     if outcome == "invalid-pin":
@@ -208,11 +207,10 @@ def test_ci_dependency_recipe_preserves_development_pins_and_propagates_failures
         assert stopped.value.code == 17
     else:
         runpy.run_path(str(script))
-    expected = [] if outcome in {"development", "invalid-pin"} else [["release", "dependency-builds"]]
+    expected = [] if outcome in {"development", "invalid-pin"} else [["cargo", "fetch", "--locked"], ["release", "dependency-builds"]]
     if outcome in {"published", "proof-failure"}:
         expected.append(["release", "dependencies"])
     assert calls == expected
-    assert fetches == ([] if outcome in {"development", "invalid-pin"} else [("cargo", ["fetch", "--locked"])])
 
 
 @pytest.mark.parametrize(
