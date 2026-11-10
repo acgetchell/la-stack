@@ -85,8 +85,8 @@ def graph(tmp_path: Path) -> tuple[Path, set[str]]:
     overrides = []
     for name in sorted(selected):
         recipe = recipes[name]
-        parameters = " *args" if name in {"bench-exact", "zizmor"} else ""
-        assert not recipe["parameters"] or name in {"bench-exact", "zizmor"}
+        parameters = " *args" if name in {"bench-exact", "zizmor", "test-python"} else ""
+        assert not recipe["parameters"] or name in {"bench-exact", "zizmor", "test-python"}
         dependencies = " ".join(
             "(" + item["recipe"] + " " + " ".join(json.dumps(arg) for arg in item["arguments"]) + ")" if item["arguments"] else item["recipe"]
             for item in recipe["dependencies"]
@@ -135,12 +135,35 @@ def test_managed_cache_contains_compilation_only_and_release_jobs_disable_it() -
     for filename in ("ci.yml", "release-benchmarks.yml", "publish-crates.yml", "prepare-release.yml"):
         workflow = yaml.safe_load((ROOT / ".github/workflows" / filename).read_bytes())
         for name, job in workflow["jobs"].items():
-            if filename == "ci.yml" and name == "build":
+            if filename == "ci.yml" and name in {"prepare", "native", "build"}:
                 continue
             for step in job["steps"]:
                 if step.get("uses") == "./.github/actions/setup-tools":
                     assert str(step["with"]["cache"]).lower() == "false"
                 assert not step.get("uses", "").startswith("actions/cache@")
+
+
+def test_hosted_python_jobs_partition_the_complete_collection() -> None:
+    """Exercise pytest's actual marker selection without executing the slow suite."""
+    recipes = inspect_justfile(ROOT).recipes
+    assert "_ci-policy" in {item["recipe"] for item in recipes["ci-policy"]["dependencies"]}
+    assert "_ci-rust" in {item["recipe"] for item in recipes["ci-rust"]["dependencies"]}
+    selections: dict[str, set[str]] = {}
+    for name in ("test-python", "ci-python", "ci-candidate"):
+        arguments = [] if name == "test-python" else recipes[name]["dependencies"][0]["arguments"]
+        if name != "test-python":
+            assert [item["recipe"] for item in recipes[name]["dependencies"]] == ["test-python"]
+        result = run_command(
+            "uv",
+            ["run", "--locked", "--no-sync", "pytest", "--collect-only", "-q", "--color=no", "-n", "0", *arguments],
+            cwd=ROOT,
+            timeout=90,
+        )
+        selections[name] = {line for line in result.stdout.splitlines() if line.startswith("tests/") and "::" in line}
+        assert selections[name], result.stdout
+    assert selections["ci-candidate"] == {"tests/tooling/test_performance_workflow.py::test_local_candidate_capture_and_final_acceptance_reuse_original_bytes"}
+    assert selections["ci-python"].isdisjoint(selections["ci-candidate"])
+    assert selections["ci-python"] | selections["ci-candidate"] == selections["test-python"]
 
 
 @pytest.mark.parametrize("authenticated", [False, True], ids=["rate-limited-anonymous", "authenticated-setup"])

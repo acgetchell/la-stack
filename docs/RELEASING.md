@@ -498,8 +498,10 @@ and checks eligible evidence automatically; pending results stop it with a retry
 diagnostic. Use GitHub's Actions page or the
 [manual inspection commands](#manual-context-and-inspection) when troubleshooting.
 
-Require the complete run: all three native `build` jobs, default/exact Cargo
-packaging in `release-package`, and signed `release-evidence`. A development
+Require the complete run: preparation and all four native validation stages on
+each OS, the three `build` aggregate gates, default/exact Cargo packaging in
+`release-package`, and signed `release-evidence`. The evidence policy checks
+the actual native jobs and runner labels, not just the aggregate gates. A development
 supplier pin skips signing and cannot provide eligible release evidence.
 Inspect the independent SARIF checks for this exact commit too:
 

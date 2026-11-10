@@ -538,12 +538,27 @@ def test_actual_approval_artifact_guard_rejects_drift(tmp_path: Path, failure: s
 def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_bytes())
     jobs = workflow["jobs"]
-    assert jobs["build"]["strategy"]["matrix"]["os"] == ["ubuntu-latest", "macos-latest", "windows-latest"]
-    assert jobs["build"]["timeout-minutes"] == 150
-    assert jobs["build"]["steps"][-2:] == [
-        {"name": "Run CI checks", "run": "just ci"},
-        {"name": "Verify native dependency provenance", "run": "just ci-dependencies"},
-    ]
+    platforms = ["ubuntu-latest", "macos-latest", "windows-latest"]
+    for job in ("prepare", "native", "build"):
+        assert jobs[job]["strategy"]["matrix"]["os"] == platforms
+        assert jobs[job]["strategy"]["fail-fast"] is False
+    assert jobs["prepare"]["runs-on"] == jobs["native"]["runs-on"] == "${{ matrix.os }}"
+    assert jobs["prepare"]["timeout-minutes"] == 90
+    assert jobs["prepare"]["steps"][-1] == {"name": "Run CI policy checks", "run": "just ci-policy"}
+    assert jobs["native"]["needs"] == "prepare"
+    assert jobs["native"]["name"] == "native-${{ matrix.stage }} (${{ matrix.os }})"
+    assert jobs["native"]["strategy"]["matrix"]["stage"] == ["rust", "python", "candidate", "dependencies"]
+    assert jobs["native"]["timeout-minutes"] == 120
+    assert jobs["native"]["steps"][-1] == {
+        "name": "Run native validation",
+        "shell": "bash",
+        "env": {"CI_STAGE": "${{ matrix.stage }}"},
+        "run": 'just "ci-$CI_STAGE"',
+    }
+    assert jobs["build"]["needs"] == ["prepare", "native"]
+    assert jobs["build"]["if"] == "${{ !cancelled() }}"
+    assert jobs["build"]["runs-on"] == "ubuntu-latest"
+    assert jobs["build"]["timeout-minutes"] == 5
     package = jobs["release-package"]
     assert package["steps"][1]["with"]["cache"] == "false"
     assert package["steps"][-1] == {"name": "Verify default and exact Cargo packages", "run": "just ci-dependencies\njust publish-check\n"}
@@ -576,6 +591,17 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
         "if-no-files-found": "error",
         "retention-days": 30,
     }
+
+
+@pytest.mark.parametrize("stage", ["prepare", "native"])
+@pytest.mark.parametrize("result", ["success", "failure", "skipped", "cancelled", ""])
+def test_main_ci_required_checks_reject_incomplete_native_stages(stage: str, result: str) -> None:
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_bytes())
+    step = workflow["jobs"]["build"]["steps"][0]
+    assert step["env"] == {"PREPARE_RESULT": "${{ needs.prepare.result }}", "NATIVE_RESULT": "${{ needs.native.result }}"}
+    environment = {**os.environ, "PREPARE_RESULT": "success", "NATIVE_RESULT": "success", f"{stage.upper()}_RESULT": result}
+    completed = run_command("bash", ["--noprofile", "--norc", "-euc", step["run"]], env=environment, check=False)
+    assert completed.returncode == (0 if result == "success" else 1), completed.stderr
 
 
 @pytest.mark.parametrize("source", ["development", "published", "rejected"])

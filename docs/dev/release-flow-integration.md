@@ -1,12 +1,15 @@
 # Release and validation integration
 
-Implementation record for [#326](https://github.com/acgetchell/la-stack/issues/326),
+Historical implementation record for [#326](https://github.com/acgetchell/la-stack/issues/326),
 [#330](https://github.com/acgetchell/la-stack/issues/330)
 and [#338](https://github.com/acgetchell/la-stack/issues/338). The starting source
 is `7c3a3625220773369c089e64e568a979abc0bb7f`. The authorized supplying revision is
 research-repo-tools `cd8594f658b5bf3ade063a685834565cc62e0cb3` (PRs #207 and #209).
 Its installed metadata remains 0.2.6; the Git commit, manifest, lock and isolated
 runtime assertions distinguish this development rehearsal from publication.
+The [hosted CI stages](#hosted-ci-stages) section records the subsequent published
+v0.2.8 integration and workflow split in PR #343; earlier timings retain their
+original source and supplier identities.
 
 ## Workstream readiness
 
@@ -85,6 +88,44 @@ provider boundaries. This is compilation reuse, not validation reuse.
 Release packaging, preparation, evidence signing, benchmark attachment and Cargo
 publication keep caches disabled. No compiler flags, scientific inputs or
 benchmark directories change.
+
+## Hosted CI stages
+
+PR #343 separates hosted validation while retaining the complete local `just ci`
+graph. Each preparation job installs the declared tools through RRT and completes
+the same policy validators. Its successful completion saves managed compilation
+outputs. After all three preparation jobs succeed, native jobs start independently
+and install verified tools using that compilation cache. Installation homes,
+project outputs and validation results are never shared between these jobs.
+A cache miss may rebuild tools; it cannot skip checks or satisfy provenance.
+
+| Hosted owner, on each native OS | Canonical command and complete responsibility |
+| --- | --- |
+| `prepare (OS)` | RRT setup, then `just ci-policy`: every `_ci-policy` validator and shared setup check listed above |
+| `native-rust (OS)` | `just ci-rust`: the complete sequential `_ci-rust` lane, including compilation, tests, docs, examples and benchmark validation |
+| `native-python (OS)` | `just ci-python`: every Python test without the `release_candidate` marker, using four workers |
+| `native-candidate (OS)` | `just ci-candidate`: the complete candidate capture/acceptance regression, using one worker on a dedicated runner |
+| `native-dependencies (OS)` | `just ci-dependencies`: locked Cargo fetch, native build receipts and dependency-provenance verification |
+| `build (OS)` | Required-check name preserved on a lightweight Linux gate; rejects any failed, skipped, cancelled or absent preparation/native result |
+| `release-package` | Independent uncached dependency verification and default/exact Cargo package validation |
+| `release-evidence` | Protected main-push signer; requires all aggregate gates and packaging, then verifies every actual native job, required step and OS label |
+
+`tests/tooling/test_validation_graph.py` collects the real pytest suite under both
+hosted selections and requires a disjoint, complete partition. Local `just ci`
+still selects the full Python suite once. Gate regressions execute the workflow's
+actual shell with success, failure, skipped, cancelled and missing results.
+Release-evidence regressions reject incomplete steps in every native stage.
+Scientific fixtures, assertions and benchmark sampling policy are unchanged.
+
+The preceding monolithic run at `1548f59`,
+[42858660611](https://github.com/acgetchell/la-stack/actions/runs/42858660611),
+passed Linux, macOS and uncached packaging. Windows spent about 51 minutes in
+setup and 62 minutes in `just ci`, including 465 passing Python tests, before
+its two-hour limit interrupted Cargo provenance verification. Python tests took
+3,632.39 seconds; candidate acceptance alone took 1,783.31 seconds plus its fixture
+setup. These observations motivate resource separation; they do not establish a
+speedup. Native timing and cache-hit evidence for the split workflow must be
+reconciled on its final source revision.
 
 ## Timing evidence and limits
 

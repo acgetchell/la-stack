@@ -267,6 +267,9 @@ check-fast:
 ci: python-sync tools-check _ci-policy _ci-execution
     @echo "🎯 CI checks complete!"
 
+# Exercise candidate acceptance separately on a dedicated native CI runner.
+ci-candidate: (test-python "-m" "release_candidate")
+
 # Prepare native release provenance in CI; verified development tooling keeps ordinary checks available.
 [script("uv", "run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--", "python", "-I")]
 ci-dependencies: python-sync
@@ -283,6 +286,15 @@ ci-dependencies: python-sync
             status = main(["release", action])
             if status:
                 sys.exit(status)
+
+# Complete shared policy checks before hosted CI starts independent native jobs.
+ci-policy: python-sync tools-check _ci-policy
+
+# Run every Python consumer test outside the separate candidate-acceptance job.
+ci-python: (test-python "-m" "not release_candidate")
+
+# Keep Cargo compilation, tests, docs, examples, and benchmark checks on one runner.
+ci-rust: python-sync tools-check _ci-rust
 
 # Validate CITATION.cff against the Citation File Format schema.
 citation-check: _ensure-uv
@@ -670,8 +682,9 @@ test-integration-compile: tools-check
     {{ _run }} cargo nextest run --all-features --tests --no-run
 
 # Run Python consumer integration and benchmark-policy tests.
-test-python: tools-check python-sync
-    {{ semgrep_stack_limit }} {{ _run }} uv run --locked --no-sync pytest -q {{ _pytest_parallel }} --durations=20
+[positional-arguments]
+test-python *args: tools-check python-sync
+    {{ semgrep_stack_limit }} {{ _run }} uv run --locked --no-sync pytest -q {{ _pytest_parallel }} --durations=20 "$@"
 
 # Run all runnable Rust tests and both doctest configurations.
 test-rust: test-rust-ci test-doc test-doc-exact

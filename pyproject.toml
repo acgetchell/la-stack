@@ -67,6 +67,7 @@ testpaths = [ "tests/tooling" ]
 python_files = [ "test_*.py", "*_test.py" ]
 python_classes = [ "Test*" ]
 python_functions = [ "test_*" ]
+markers = [ "release_candidate: complete candidate capture and acceptance on a dedicated CI runner" ]
 
 [tool.rumdl]
 line-length = 160

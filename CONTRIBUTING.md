@@ -308,15 +308,23 @@ because nextest does not execute them. The test, example, and benchmark buckets
 retain their execution or compile-contract roles because ordinary compilation
 does not execute Clippy lints.
 
-Native CI retains the same `build (OS)` and `Run CI checks` identities. Ordinary
-setup caches only managed Cargo compilation by OS, architecture and exact tool
-declarations; exact-version tool installations are freshly verified. GitHub's
+Hosted CI prepares each native OS and runs `just ci-policy`, then starts separate
+`just ci-rust`, `just ci-python`, `just ci-candidate`, and `just ci-dependencies`
+jobs. The two Python jobs partition the complete suite: candidate capture and
+acceptance has a dedicated runner, and every other test runs in `ci-python`.
+The existing `build (OS)` required-check names are aggregate gates: each requires
+every preparation and native job to succeed. Release evidence records the actual
+native jobs, their validation steps, and their OS labels.
+
+Preparation populates the managed compilation cache before the native jobs start.
+Ordinary setup caches only managed Cargo compilation by OS, architecture and exact
+tool declarations; exact-version tool installations are freshly verified. GitHub's
 cache ref scopes separate PR entries from protected main. Release packaging and
 publication keep caches disabled. The shared local build cache defaults to the
 tooling home's `cargo-build/<host>/<Rust version>`; an absolute
 `RESEARCH_REPO_TOOLS_CARGO_BUILD_HOME` selects separate compilation storage.
 This cache does not replace project builds or validation. See the
-[integration record](docs/dev/release-flow-integration.md) for graph ownership,
+[integration record](docs/dev/release-flow-integration.md#hosted-ci-stages) for graph ownership,
 baseline timings and remaining native/published-package evidence.
 
 `la-stack` intentionally has no notebook validation bucket: the repository has
