@@ -113,7 +113,7 @@ A cache miss may rebuild tools; it cannot skip checks or satisfy provenance.
 `tests/tooling/test_validation_graph.py` collects the real pytest suite under both
 hosted selections and requires a disjoint, complete partition. Local `just ci`
 still selects the full Python suite once. Gate regressions execute the workflow's
-actual shell with success, failure, skipped, cancelled and missing results.
+actual shell for success, failure, skipped, cancelled and missing results.
 Release-evidence regressions reject incomplete steps in every native stage.
 Scientific fixtures, assertions and benchmark sampling policy are unchanged.
 

@@ -106,8 +106,8 @@ the next release check after such changes. These receipts establish observed
 source/build provenance, not reproducible builds or publisher-signed wheels.
 See the supplier's [source-build contract](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/README.md#source-built-python-dependencies).
 
-Native CI runs `just ci-dependencies` in its own job alongside the Rust, Python,
-and candidate-acceptance jobs after shared policy checks. Signed release evidence
+Native CI runs `just ci-dependencies` in the `dependencies` stage of the `native`
+job alongside the Rust, Python, and candidate-acceptance stages after shared policy checks. Signed release evidence
 requires every native stage. A verified exact development
 tooling pin skips this release-only preparation; invalid pins and failed builds
 or verification still fail. Release jobs with fresh project environments prepare
