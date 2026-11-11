@@ -5,6 +5,173 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-11-11
+
+### Merged Pull Requests
+
+- Adopt research-repo-tools v0.2.8 and parallelize native CI [#343](https://github.com/acgetchell/la-stack/pull/343)
+- Enforce release state invariants and macro hygiene [#342](https://github.com/acgetchell/la-stack/pull/342)
+- Resume and reuse verified release benchmark acquisitions [#335](https://github.com/acgetchell/la-stack/pull/335)
+- Separate benchmark timing from routine CI [#334](https://github.com/acgetchell/la-stack/pull/334)
+- Bump the github-actions group with 5 updates [#332](https://github.com/acgetchell/la-stack/pull/332)
+
+### Added
+
+- Resume and reuse verified release benchmark acquisitions [#335](https://github.com/acgetchell/la-stack/pull/335)
+  [`7c3a362`](https://github.com/acgetchell/la-stack/commit/7c3a3625220773369c089e64e568a979abc0bb7f)
+
+#### feat: resume and reuse verified release benchmark acquisitions
+
+- Adopt declared API availability and shared progress while retaining the full
+  scientific workload catalog and paired LU peer context.
+- Add explicit checkpoint recovery and independent owner records so reports,
+  README publication, and release archives reuse the original acquisition.
+- Require owner-selected candidate evidence before tagging and preserve its
+  full acceptance across hosted attachment and Cargo deployment approval.
+- Allow explicitly reviewed native-CI renewal without replacing immutable
+  benchmark assets, and keep README outside current compiler inputs.
+- Pin research-repo-tools at 055353c630604b1ae3438c1eaf534ba85e067a7e for
+  downstream rehearsal while enforcing published tooling at release gates.
+- Automate release evidence reuse and parallelize CI [`4f57700`](https://github.com/acgetchell/la-stack/commit/4f577007e9753f3b0624a48525e70f05f21717be)
+
+  - Discover the original acquisition owner and authenticated tag-push draft
+    receipt automatically while retaining explicit recovery inputs.
+  - Align release commands and documentation around pre-tag evidence review,
+    automatic draft preparation, and retained-evidence publication dispatch.
+  - Require an existing reviewed acceptance before tagging, staging, or
+    publishing, and preserve exact release and artifact identities on retries.
+  - Overlap independent Rust and Python validation after policy checks, retain
+    a serial fallback, and cache managed Cargo compilation separately from
+    verified tool installations.
+  - Adopt research-repo-tools at the authorized cd8594f development revision.
+
+### Changed
+
+- Separate benchmark timing from routine CI [#334](https://github.com/acgetchell/la-stack/pull/334)
+  [`f520e2f`](https://github.com/acgetchell/la-stack/commit/f520e2f59574774454a739c7dfa810f3d1845420)
+
+  - Run full exact Criterion timing on demand and retain untimed benchmark
+    validation in routine CI.
+  - Use research-repo-tools v0.2.6 for setup, Semgrep fixtures, and release
+    tooling, and remove the temporary scanner adapter.
+  - Refresh the managed tools and dependency locks while retaining the
+    Intel macOS Semgrep wheel.
+
+### Dependencies
+
+- Bump the github-actions group with 5 updates [#332](https://github.com/acgetchell/la-stack/pull/332)
+  [`ab3b8a0`](https://github.com/acgetchell/la-stack/commit/ab3b8a0f0381e239b5c89f69664584e6a0c5c217)
+
+#### chore(deps): bump the github-actions group with 5 updates
+
+  Bumps the github-actions group with 5 updates:
+
+  | Package | From | To |
+  | --- | --- | --- |
+  | [github/codeql-action/upload-sarif](https://github.com/github/codeql-action) | `4.39.0` | `4.39.1` |
+  | [astral-sh/setup-uv](https://github.com/astral-sh/setup-uv) | `10.3.0` | `10.3.2` |
+  | [github/codeql-action/init](https://github.com/github/codeql-action) | `4.39.0` | `4.39.1` |
+  | [github/codeql-action/analyze](https://github.com/github/codeql-action) | `4.39.0` | `4.39.1` |
+  | [rust-lang/crates-io-auth-action](https://github.com/rust-lang/crates-io-auth-action) | `1.0.5` | `1.0.6` |
+
+  Updates `github/codeql-action/upload-sarif` from 4.39.0 to 4.39.1
+
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee...9b3254085494b55a0f7c4c2b3d2d52cc712ce370)
+
+Updates `astral-sh/setup-uv` from 10.3.0 to 10.3.2
+
+- [Release notes](https://github.com/astral-sh/setup-uv/releases)
+- [Commits](https://github.com/astral-sh/setup-uv/compare/1c37ad07a6a961277cf70c0d37d6f313000f5884...07a047e608db84b3d8c06cd9a7c7dcc9c355c18e)
+
+Updates `github/codeql-action/init` from 4.39.0 to 4.39.1
+
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee...9b3254085494b55a0f7c4c2b3d2d52cc712ce370)
+
+Updates `github/codeql-action/analyze` from 4.39.0 to 4.39.1
+
+- [Release notes](https://github.com/github/codeql-action/releases)
+- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+- [Commits](https://github.com/github/codeql-action/compare/6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee...9b3254085494b55a0f7c4c2b3d2d52cc712ce370)
+
+Updates `rust-lang/crates-io-auth-action` from 1.0.5 to 1.0.6
+
+- [Release notes](https://github.com/rust-lang/crates-io-auth-action/releases)
+- [Commits](https://github.com/rust-lang/crates-io-auth-action/compare/c6f97d42243bad5fab37ca0427f495c86d5b1a18...3268eb413133e2960fa4ae0e963ca76380c54cd9)
+- Bump the github-actions group with 2 updates [`3323040`](https://github.com/acgetchell/la-stack/commit/3323040a8d9125ad0c8cd72b2a4a91f8bfef1411)
+
+  Bumps the github-actions group with 2 updates: [actions-rust-lang/setup-rust-toolchain](https://github.com/actions-rust-lang/setup-rust-toolchain) and
+  [astral-sh/setup-uv](https://github.com/astral-sh/setup-uv).
+
+  Updates `actions-rust-lang/setup-rust-toolchain` from 2.0.0 to 2.0.1
+
+  - [Release notes](https://github.com/actions-rust-lang/setup-rust-toolchain/releases)
+  - [Changelog](https://github.com/actions-rust-lang/setup-rust-toolchain/blob/main/CHANGELOG.md)
+  - [Commits](https://github.com/actions-rust-lang/setup-rust-toolchain/compare/ecabd13d1c56bd1345c230e542e9144811ad706f...a188e68d0fd2bd36ad51dccb2b07ba6e75105f30)
+
+  Updates `astral-sh/setup-uv` from 10.3.2 to 10.3.3
+  - [Release notes](https://github.com/astral-sh/setup-uv/releases)
+  - [Commits](https://github.com/astral-sh/setup-uv/compare/07a047e608db84b3d8c06cd9a7c7dcc9c355c18e...68559e99cc807c1eb7e9238fd43a15bba460eec2)
+
+### Documentation
+
+- Assign release validation to the release tracker [`6cb4fbc`](https://github.com/acgetchell/la-stack/commit/6cb4fbca6fa4429b0a45d90b53403a774fc80ef5)
+
+  - Close the completed release-flow and validation-graph implementation issues
+    on merge and keep remaining release validation and readiness under #333.
+- Add runnable examples and link interval proofs [`647184f`](https://github.com/acgetchell/la-stack/commit/647184f5782575620f1d8128b36fd6ee2cfc2248)
+
+  - Show provisional column selection, interval solution enclosures and
+    fallback, and exact rational objective evaluation in runnable examples.
+  - Link interval and rounding rustdoc to the scientific references and
+    proofs, and update the README link inventory.
+  - Include the staged itoa 1.0.19 lockfile refresh.
+
+### Fixed
+
+- Avoid Windows actionlint deadlock in release preparation [`6d77e15`](https://github.com/acgetchell/la-stack/commit/6d77e15be3eb3e2b3281baaf98cf56d8837037fa)
+
+  - Execute the draft writer from a runner-owned script through isolated Python,
+    preserving the exact tag, attempt, artifact and draft identity checks.
+  - Parse workflow scripts as Bash only for the applicable shell steps while
+    retaining managed Zizmor execution enforcement.
+  - Document automatic owner-record transfer selection and the completed
+    workstream handoff to the release-validation tracker.
+  - Refresh the locked bracex dependency to 3.2.2.
+- Authenticate tool setup and allow Zizmor cleanup [`261bee3`](https://github.com/acgetchell/la-stack/commit/261bee3b5a8b7db2f9fff8820066a669b0e4031d)
+
+  - Use the job token for managed binary release lookups so cold setup
+    can finish when the anonymous GitHub API quota is exhausted.
+  - Give Zizmor 45 minutes for cold tool installation, scanning and cache
+    cleanup while preserving the existing findings gate.
+- Enforce release state invariants and macro hygiene [#342](https://github.com/acgetchell/la-stack/pull/342)
+  [`88d2d25`](https://github.com/acgetchell/la-stack/commit/88d2d257c185a5f1cdeb1dae06b5a0b3c8fd9c7c)
+
+  - Represent scaled determinant products with explicit empty, nonzero,
+    zero, and non-finite states while preserving arithmetic order.
+  - Parse release handoffs into draft and publication variants with
+    validated asset identities and fixed local transport paths.
+  - Reject mismatched handoffs and malformed owner digests before effects.
+  - Keep matrix dispatch error arms independent of caller-defined names.
+  - Consolidate Rust imports and shorten repeated implementation paths.
+- Adopt research-repo-tools v0.2.8 and parallelize native CI [#343](https://github.com/acgetchell/la-stack/pull/343)
+  [`be9277b`](https://github.com/acgetchell/la-stack/commit/be9277bf04400dccbe1115da69c7fda2141c4a39)
+
+#### fix: unblock release provenance with research-repo-tools v0.2.8
+
+- Adopt the published supplier in the manifest, lockfile, source policy,
+  isolated recipes, and release workflows; remove the development Git pin.
+- Prepare authenticated native dependency builds and require their
+  provenance in CI, signed release evidence, and publication workflows.
+- Delegate release runtime isolation to shared RRT APIs while preserving
+  consumer-owned benchmark acquisition and approval records.
+- Expose the shared dependency-source transition command and document
+  deliberate supplier adoption, pin-preserving updates, and release setup.
+- Refresh managed tool, GitHub Action, and Cargo dependency pins.
+
 ## [0.5.2] - 2026-10-29
 
 ### Merged Pull Requests
@@ -112,6 +279,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - [Release notes](https://github.com/github/codeql-action/releases)
   - [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
   - [Commits](https://github.com/github/codeql-action/compare/24c54180a607b1449ed407dd24f251e4e9147c8d...6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee)
+
+### Documentation
+
+- Clarify measured working-tree provenance [`95d66b9`](https://github.com/acgetchell/la-stack/commit/95d66b9220b76f1a7d88055e8a25f2fa833e245f)
+
+  Identify the v0.5.2 measurement as a working-tree snapshot based on b5156e2 and retain its measured source SHA-256.
 
 ### Fixed
 
@@ -777,6 +950,7 @@ Older releases are archived by minor series:
 - [0.2.x](docs/archives/changelog/0.2.md)
 - [0.1.x](docs/archives/changelog/0.1.md)
 
+[0.5.3]: https://github.com/acgetchell/la-stack/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/acgetchell/la-stack/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/acgetchell/la-stack/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/acgetchell/la-stack/compare/v0.4.6...v0.5.0

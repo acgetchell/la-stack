@@ -215,7 +215,8 @@ def test_fresh_acquisition_preserves_unrelated_directory_creation_error(consumer
 
 def test_release_prepares_before_measurement_and_readme_remains_separate() -> None:
     preparation = dry_run(ROOT, "performance-prepare").stderr
-    assert 'performance prepare tooling/performance-release.toml "$@"' in preparation
+    runner = "uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain run -- "
+    assert f'{runner}uv run --locked --no-sync research-repo-tools performance prepare tooling/performance-release.toml "$@"' in preparation
     assert "git fetch" not in preparation
     measurement = dry_run(ROOT, "performance-release").stderr
     assert measurement.count("performance prepare tooling/performance-release.toml --fetch-tags --allow-git-mutations") == 1
@@ -269,6 +270,9 @@ def test_release_recipe_stops_on_failure_without_publishing_readme(tmp_path: Pat
         check=False,
     )
     commands = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    # Preparation and acquisition must observe the same managed Cargo cache.
+    for command in commands:
+        assert command[:9] == ["run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--", "uv"]
     phases = [
         command[command.index("performance") + 1 :] if "performance" in command else command[command.index("tooling/release_candidate.py") + 1 :]
         for command in commands

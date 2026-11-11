@@ -84,9 +84,11 @@ that acceptance and supply its reviewed digest to a fresh Cargo dispatch;
 the original release assets and publication selection remain unchanged.
 Existing records are never replaced.
 
-These recipes launch the pinned supplier through `uvx` outside the observed
-checkout. Step 2 does not measure, discover, rebuild or mutate Git. It writes
-only requested receipts outside the checkout. `release-native-evidence`
+The candidate verification and archive recipes launch the pinned supplier through
+`uvx` outside the observed checkout. They do not measure, discover, rebuild the
+Rust package or mutate Git. They write only requested receipts outside the
+checkout. Hosted Step 2 jobs prepare their own native Python dependency
+provenance before verification. `release-native-evidence`
 remains a focused native-CI diagnostic; it does not establish candidate reuse.
 
 The independently retained `transfer.json` selects the exact draft release
@@ -575,7 +577,9 @@ Retain the handoff and separate draft-receipt artifact IDs, ZIP digests and
 producer run/attempts in independent release review notes. Preserve the captured
 release ID in `target.json`. An existing exact matching draft is unchanged;
 conflicting notes, title, lifecycle, moved tags or missing evidence stop work.
-No tests, package builds, signing or benchmark acquisition run during preparation.
+Preparation builds the declared native Python dependencies for provenance;
+it runs no tests, Rust package builds, release-evidence signing or benchmark
+acquisition.
 
 Keep the release title identical to the tag, including its leading `v`.
 Leave it as a stable draft: publishing now would make the release immutable
@@ -616,7 +620,9 @@ downloads the selected bytes. A separate read-only checkout job verifies
 acquisition, final binding and full frozen native acceptance. The no-checkout
 attachment job receives an immutable artifact by exact ID, digest and current
 attempt, rechecks the draft and original assertions, then attaches
-`la-stack-$TAG-criterion-baseline.tar.gz`. No job measures or builds.
+`la-stack-$TAG-criterion-baseline.tar.gz`. The verification job prepares native
+Python dependency provenance; no job measures benchmarks or rebuilds the Rust
+package.
 
 The archive retains original evidence, current Criterion files and a separate
 final-release binding. Local ownership, measured revisions, hosts, sessions and
@@ -854,11 +860,11 @@ administrator bypass disabled, and selected deployment tags matching `v*` only
 to approve their own deployment; self-review prevention needs another eligible
 reviewer. `.github/settings/crates-io-tags.json` declares the tag restriction.
 The stable-tag and reviewed-commit
-gates still apply after deployment approval. Add only the pinned
-`rust-lang/crates-io-auth-action` entry from `.github/settings/actions-selected.json`
-to the live selected-action allowlist, preserving newer entries. This reviewed
-v1.0.5 pin comes from the shared consumer template; update it through a reviewed
-dependency PR and reconcile the allowlist together. Both the publishing workflow
+gates still apply after deployment approval. Add the `rust-lang/crates-io-auth-action`
+commit pin used by [`publish-crates.yml`](../.github/workflows/publish-crates.yml)
+from `.github/settings/actions-selected.json` to the live selected-action
+allowlist, preserving newer entries. Update the pin through a reviewed dependency
+PR and reconcile the allowlist together. Both the publishing workflow
 and the CI workflow that signs reusable evidence are excluded from Dependabot
 automatic approval so these changes require maintainer
 review. Do not add a long-lived

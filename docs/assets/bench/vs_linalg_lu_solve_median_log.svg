@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="656" viewBox="0 0 960 656" role="img" aria-labelledby="title description" data-run-id="5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="656" viewBox="0 0 960 656" role="img" aria-labelledby="title description" data-run-id="86e075e0edc375bfe6e42aaf5c97d8085a0407bdcadc75531fc7abf8a19de0c9">
 <title id="title">LU solve (factor + solve): median time vs dimension</title>
-<desc id="description">Run 5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652. median timing (ns). Recorded marginal timing intervals; no ratio interval or significance claim. la-stack v0.5.2: current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41. nalgebra 0.35.0: baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e. faer 0.24.4: baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e.</desc>
+<desc id="description">Run 86e075e0edc375bfe6e42aaf5c97d8085a0407bdcadc75531fc7abf8a19de0c9. median timing (ns). Recorded marginal timing intervals; no ratio interval or significance claim. la-stack v0.5.3: current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32. nalgebra 0.35.0: current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32. faer 0.24.4: current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32.</desc>
 <rect width="960" height="656" fill="#ffffff"/>
 <g font-family="sans-serif" font-size="13" fill="#222222">
 <text x="80" y="28">LU solve (factor + solve): median time vs dimension</text>
@@ -16,94 +16,94 @@
 <text x="476.774194" y="444" text-anchor="middle">32</text>
 <text x="900.000000" y="444" text-anchor="middle">64</text>
 <path d="M 80 420.000000 H 900" stroke="#dddddd"/>
-<text x="72" y="420.000000" text-anchor="end">2.04953</text>
+<text x="72" y="420.000000" text-anchor="end">2.0664</text>
 <path d="M 80 60.000000 H 900" stroke="#dddddd"/>
-<text x="72" y="60.000000" text-anchor="end">17749.8</text>
-<g stroke="#267394" fill="#267394" stroke-dasharray="2 2" data-series="la-stack current">
-<path d="M 80.000000 420.000000 V 419.141631 M 76.000000 420.000000 H 84.000000 M 76.000000 419.141631 H 84.000000" stroke-dasharray="none"/>
-<circle cx="80.000000" cy="419.748310" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 2, x=2.0: 2.06256 ns [2.04953, 2.09431] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
-<path d="M 80.000000 419.748310 L 93.225806 357.134509" fill="none"/>
-<path d="M 93.225806 357.214079 V 357.033276 M 89.225806 357.214079 H 97.225806 M 89.225806 357.033276 H 97.225806" stroke-dasharray="none"/>
-<circle cx="93.225806" cy="357.134509" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 3, x=3.0: 9.98278 ns [9.96279, 10.0083] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
-<path d="M 93.225806 357.134509 L 106.451613 322.744203" fill="none"/>
-<path d="M 106.451613 322.819660 V 322.669774 M 102.451613 322.819660 H 110.451613 M 102.451613 322.669774 H 110.451613" stroke-dasharray="none"/>
-<circle cx="106.451613" cy="322.744203" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 4, x=4.0: 23.7355 ns [23.6905, 23.7801] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
-<path d="M 106.451613 322.744203 L 119.677419 295.589696" fill="none"/>
-<path d="M 119.677419 295.667549 V 295.390789 M 115.677419 295.667549 H 123.677419 M 115.677419 295.390789 H 123.677419" stroke-dasharray="none"/>
-<circle cx="119.677419" cy="295.589696" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 5, x=5.0: 47.0332 ns [46.9411, 47.2694] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
-<path d="M 119.677419 295.589696 L 159.354839 254.585846" fill="none"/>
-<path d="M 159.354839 254.653758 V 254.460760 M 155.354839 254.653758 H 163.354839 M 155.354839 254.460760 H 163.354839" stroke-dasharray="none"/>
-<circle cx="159.354839" cy="254.585846" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 8, x=8.0: 132.096 ns [131.87, 132.513] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
-<path d="M 159.354839 254.585846 L 265.161290 192.436998" fill="none"/>
-<path d="M 265.161290 192.633721 V 192.044349 M 261.161290 192.633721 H 269.161290 M 261.161290 192.044349 H 269.161290" stroke-dasharray="none"/>
-<circle cx="265.161290" cy="192.436998" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 16, x=16.0: 631.9 ns [628.777, 638.18] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
-<path d="M 265.161290 192.436998 L 476.774194 133.726290" fill="none"/>
-<path d="M 476.774194 133.799088 V 133.618515 M 472.774194 133.799088 H 480.774194 M 472.774194 133.618515 H 480.774194" stroke-dasharray="none"/>
-<circle cx="476.774194" cy="133.726290" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 32, x=32.0: 2772.06 ns [2766.99, 2779.6] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
-<path d="M 476.774194 133.726290 L 900.000000 60.550039" fill="none"/>
-<path d="M 900.000000 61.103184 V 60.000000 M 896.000000 61.103184 H 904.000000 M 896.000000 60.000000 H 904.000000" stroke-dasharray="none"/>
-<circle cx="900.000000" cy="60.550039" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.2, 64, x=64.0: 17505.6 ns [17263.4, 17749.8] (0.95 confidence); current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</title></circle>
+<text x="72" y="60.000000" text-anchor="end">18106.7</text>
+<g stroke="#267394" fill="#267394" stroke-dasharray="2 2" data-series="lu-solve/la-stack current">
+<path d="M 80.000000 420.000000 V 419.841792 M 76.000000 420.000000 H 84.000000 M 76.000000 419.841792 H 84.000000" stroke-dasharray="none"/>
+<circle cx="80.000000" cy="419.953337" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.3, 2, x=2.0: 2.06884 ns [2.0664, 2.07466] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 80.000000 419.953337 L 93.225806 357.041100" fill="none"/>
+<path d="M 93.225806 357.219010 V 356.940570 M 89.225806 357.219010 H 97.225806 M 89.225806 356.940570 H 97.225806" stroke-dasharray="none"/>
+<circle cx="93.225806" cy="357.041100" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.3, 3, x=3.0: 10.1094 ns [10.0641, 10.135] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 93.225806 357.041100 L 106.451613 322.733464" fill="none"/>
+<path d="M 106.451613 322.747559 V 322.696283 M 102.451613 322.747559 H 110.451613 M 102.451613 322.696283 H 110.451613" stroke-dasharray="none"/>
+<circle cx="106.451613" cy="322.733464" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.3, 4, x=4.0: 24.0133 ns [24.0048, 24.0359] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 106.451613 322.733464 L 119.677419 295.374154" fill="none"/>
+<path d="M 119.677419 295.543285 V 295.128635 M 115.677419 295.543285 H 123.677419 M 115.677419 295.128635 H 123.677419" stroke-dasharray="none"/>
+<circle cx="119.677419" cy="295.374154" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.3, 5, x=5.0: 47.8723 ns [47.6686, 48.1696] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 119.677419 295.374154 L 159.354839 254.777529" fill="none"/>
+<path d="M 159.354839 254.809651 V 254.709177 M 155.354839 254.809651 H 163.354839 M 155.354839 254.709177 H 163.354839" stroke-dasharray="none"/>
+<circle cx="159.354839" cy="254.777529" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.3, 8, x=8.0: 133.256 ns [133.148, 133.486] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 159.354839 254.777529 L 265.161290 193.107131" fill="none"/>
+<path d="M 265.161290 193.310934 V 192.782589 M 261.161290 193.310934 H 269.161290 M 261.161290 192.782589 H 269.161290" stroke-dasharray="none"/>
+<circle cx="265.161290" cy="193.107131" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.3, 16, x=16.0: 631.082 ns [627.847, 636.268] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 265.161290 193.107131 L 476.774194 134.195470" fill="none"/>
+<path d="M 476.774194 134.279815 V 134.130357 M 472.774194 134.279815 H 480.774194 M 472.774194 134.130357 H 480.774194" stroke-dasharray="none"/>
+<circle cx="476.774194" cy="134.195470" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.3, 32, x=32.0: 2787.86 ns [2781.93, 2792.44] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 476.774194 134.195470 L 900.000000 60.094449" fill="none"/>
+<path d="M 900.000000 60.153668 V 60.000000 M 896.000000 60.153668 H 904.000000 M 896.000000 60.000000 H 904.000000" stroke-dasharray="none"/>
+<circle cx="900.000000" cy="60.094449" r="4" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>la-stack v0.5.3, 64, x=64.0: 18063.6 ns [18036.7, 18106.7] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
 <path d="M 55 500 H 72" fill="none"/>
-<text x="80" y="505" stroke="none">la-stack v0.5.2 — current phase, v0.5.2, revision b5156e222add90fc62191db55dcccb40875a5e41</text>
+<text x="80" y="505" stroke="none">la-stack v0.5.3 — current phase, v0.5.3 working tree based on be9277bf0440</text>
 <text x="80" y="522" stroke="none">8 selected; 0 unavailable rows</text>
 </g>
-<g stroke="#9c4420" fill="#9c4420" stroke-dasharray="3 2" data-series="nalgebra">
-<path d="M 80.000000 388.617262 V 388.484769 M 76.000000 388.617262 H 84.000000 M 76.000000 388.484769 H 84.000000" stroke-dasharray="none"/>
-<circle cx="80.000000" cy="388.537720" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 2, x=2.0: 4.52663 ns [4.51758, 4.53267] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 80.000000 388.537720 L 93.225806 310.258720" fill="none"/>
-<path d="M 93.225806 310.394416 V 310.114881 M 89.225806 310.394416 H 97.225806 M 89.225806 310.114881 H 97.225806" stroke-dasharray="none"/>
-<circle cx="93.225806" cy="310.258720" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 3, x=3.0: 32.5058 ns [32.3949, 32.6237] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 93.225806 310.258720 L 106.451613 290.970232" fill="none"/>
-<path d="M 106.451613 291.062333 V 290.850032 M 102.451613 291.062333 H 110.451613 M 102.451613 290.850032 H 110.451613" stroke-dasharray="none"/>
-<circle cx="106.451613" cy="290.970232" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 4, x=4.0: 52.8361 ns [52.7137, 52.9963] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 106.451613 290.970232 L 119.677419 277.395968" fill="none"/>
-<path d="M 119.677419 277.517772 V 277.179842 M 115.677419 277.517772 H 123.677419 M 115.677419 277.179842 H 123.677419" stroke-dasharray="none"/>
-<circle cx="119.677419" cy="277.395968" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 5, x=5.0: 74.3705 ns [74.1427, 74.7764] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 119.677419 277.395968 L 159.354839 245.323499" fill="none"/>
-<path d="M 159.354839 245.395611 V 245.221333 M 155.354839 245.395611 H 163.354839 M 155.354839 245.221333 H 163.354839" stroke-dasharray="none"/>
-<circle cx="159.354839" cy="245.323499" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 8, x=8.0: 166.8 ns [166.498, 167.23] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 159.354839 245.323499 L 265.161290 195.163478" fill="none"/>
-<path d="M 265.161290 195.259879 V 195.066752 M 261.161290 195.259879 H 269.161290 M 261.161290 195.066752 H 269.161290" stroke-dasharray="none"/>
-<circle cx="265.161290" cy="195.163478" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 16, x=16.0: 589.967 ns [588.536, 591.405] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 265.161290 195.163478 L 476.774194 137.833711" fill="none"/>
-<path d="M 476.774194 137.934738 V 137.726264 M 472.774194 137.934738 H 480.774194 M 472.774194 137.726264 H 480.774194" stroke-dasharray="none"/>
-<circle cx="476.774194" cy="137.833711" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 32, x=32.0: 2499.64 ns [2493.29, 2506.42] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 476.774194 137.833711 L 900.000000 68.041606" fill="none"/>
-<path d="M 900.000000 68.081751 V 67.976600 M 896.000000 68.081751 H 904.000000 M 896.000000 67.976600 H 904.000000" stroke-dasharray="none"/>
-<circle cx="900.000000" cy="68.041606" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 64, x=64.0: 14495.6 ns [14481, 14519.4] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<g stroke="#9c4420" fill="#9c4420" stroke-dasharray="3 2" data-series="lu-solve/nalgebra">
+<path d="M 80.000000 388.363875 V 388.292518 M 76.000000 388.363875 H 84.000000 M 76.000000 388.292518 H 84.000000" stroke-dasharray="none"/>
+<circle cx="80.000000" cy="388.336730" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 2, x=2.0: 4.5918 ns [4.58866, 4.59692] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 80.000000 388.336730 L 93.225806 307.741185" fill="none"/>
+<path d="M 93.225806 307.782664 V 307.644232 M 89.225806 307.782664 H 97.225806 M 89.225806 307.644232 H 97.225806" stroke-dasharray="none"/>
+<circle cx="93.225806" cy="307.741185" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 3, x=3.0: 35.0464 ns [35.0098, 35.1322] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 93.225806 307.741185 L 106.451613 289.551893" fill="none"/>
+<path d="M 106.451613 289.720544 V 289.434675 M 102.451613 289.720544 H 110.451613 M 102.451613 289.434675 H 110.451613" stroke-dasharray="none"/>
+<circle cx="106.451613" cy="289.551893" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 4, x=4.0: 55.4432 ns [55.2079, 55.6073] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 106.451613 289.551893 L 119.677419 275.945580" fill="none"/>
+<path d="M 119.677419 276.056000 V 275.786540 M 115.677419 276.056000 H 123.677419 M 115.677419 275.786540 H 123.677419" stroke-dasharray="none"/>
+<circle cx="119.677419" cy="275.945580" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 5, x=5.0: 78.1378 ns [77.9205, 78.4518] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 119.677419 275.945580 L 159.354839 245.519372" fill="none"/>
+<path d="M 159.354839 245.568834 V 245.383672 M 155.354839 245.568834 H 163.354839 M 155.354839 245.383672 H 163.354839" stroke-dasharray="none"/>
+<circle cx="159.354839" cy="245.519372" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 8, x=8.0: 168.299 ns [168.089, 168.876] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 159.354839 245.519372 L 265.161290 196.368803" fill="none"/>
+<path d="M 265.161290 196.435759 V 196.296771 M 261.161290 196.435759 H 269.161290 M 261.161290 196.296771 H 269.161290" stroke-dasharray="none"/>
+<circle cx="265.161290" cy="196.368803" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 16, x=16.0: 581.252 ns [580.272, 582.309] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 265.161290 196.368803 L 476.774194 135.030383" fill="none"/>
+<path d="M 476.774194 135.079538 V 135.000472 M 472.774194 135.079538 H 480.774194 M 472.774194 135.000472 H 480.774194" stroke-dasharray="none"/>
+<circle cx="476.774194" cy="135.030383" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 32, x=32.0: 2729.77 ns [2726.39, 2731.83] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 476.774194 135.030383 L 900.000000 69.238930" fill="none"/>
+<path d="M 900.000000 69.268625 V 69.188702 M 896.000000 69.268625 H 904.000000 M 896.000000 69.188702 H 904.000000" stroke-dasharray="none"/>
+<circle cx="900.000000" cy="69.238930" r="5" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>nalgebra 0.35.0, 64, x=64.0: 14343.6 ns [14332.8, 14361.8] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
 <path d="M 55 542 H 72" fill="none"/>
-<text x="80" y="547" stroke="none">nalgebra 0.35.0 — baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</text>
+<text x="80" y="547" stroke="none">nalgebra 0.35.0 — current phase, v0.5.3 working tree based on be9277bf0440</text>
 <text x="80" y="564" stroke="none">8 selected; 0 unavailable rows</text>
 </g>
-<g stroke="#527a28" fill="#527a28" stroke-dasharray="4 2" data-series="faer">
-<path d="M 80.000000 256.009143 V 255.667616 M 76.000000 256.009143 H 84.000000 M 76.000000 255.667616 H 84.000000" stroke-dasharray="none"/>
-<circle cx="80.000000" cy="255.797753" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 2, x=2.0: 128.125 ns [127.445, 128.545] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 80.000000 255.797753 L 93.225806 247.841481" fill="none"/>
-<path d="M 93.225806 247.931928 V 247.704190 M 89.225806 247.931928 H 97.225806 M 89.225806 247.704190 H 97.225806" stroke-dasharray="none"/>
-<circle cx="93.225806" cy="247.841481" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 3, x=3.0: 156.551 ns [156.195, 157.093] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 93.225806 247.841481 L 106.451613 241.623679" fill="none"/>
-<path d="M 106.451613 241.734416 V 241.534205 M 102.451613 241.734416 H 110.451613 M 102.451613 241.534205 H 110.451613" stroke-dasharray="none"/>
-<circle cx="106.451613" cy="241.623679" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 4, x=4.0: 183.09 ns [182.58, 183.503] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 106.451613 241.623679 L 119.677419 229.126270" fill="none"/>
-<path d="M 119.677419 229.185555 V 229.059032 M 115.677419 229.185555 H 123.677419 M 115.677419 229.059032 H 123.677419" stroke-dasharray="none"/>
-<circle cx="119.677419" cy="229.126270" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 5, x=5.0: 250.816 ns [250.442, 251.241] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 119.677419 229.126270 L 159.354839 216.758049" fill="none"/>
-<path d="M 159.354839 216.965506 V 216.608633 M 155.354839 216.965506 H 163.354839 M 155.354839 216.608633 H 163.354839" stroke-dasharray="none"/>
-<circle cx="159.354839" cy="216.758049" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 8, x=8.0: 342.479 ns [340.695, 343.771] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 159.354839 216.758049 L 265.161290 178.361371" fill="none"/>
-<path d="M 265.161290 178.526387 V 178.263412 M 261.161290 178.526387 H 269.161290 M 261.161290 178.263412 H 269.161290" stroke-dasharray="none"/>
-<circle cx="265.161290" cy="178.361371" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 16, x=16.0: 900.746 ns [897.01, 902.971] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 265.161290 178.361371 L 476.774194 130.603063" fill="none"/>
-<path d="M 476.774194 130.651435 V 130.548881 M 472.774194 130.651435 H 480.774194 M 472.774194 130.548881 H 480.774194" stroke-dasharray="none"/>
-<circle cx="476.774194" cy="130.603063" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 32, x=32.0: 2998.91 ns [2995.26, 3003.01] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
-<path d="M 476.774194 130.603063 L 900.000000 72.856592" fill="none"/>
-<path d="M 900.000000 72.892471 V 72.727770 M 896.000000 72.892471 H 904.000000 M 896.000000 72.727770 H 904.000000" stroke-dasharray="none"/>
-<circle cx="900.000000" cy="72.856592" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 64, x=64.0: 12840.2 ns [12828.6, 12881.9] (0.95 confidence); baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</title></circle>
+<g stroke="#527a28" fill="#527a28" stroke-dasharray="4 2" data-series="lu-solve/faer">
+<path d="M 80.000000 255.625816 V 255.312927 M 76.000000 255.625816 H 84.000000 M 76.000000 255.312927 H 84.000000" stroke-dasharray="none"/>
+<circle cx="80.000000" cy="255.486039" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 2, x=2.0: 130.897 ns [130.436, 131.469] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 80.000000 255.486039 L 93.225806 246.676238" fill="none"/>
+<path d="M 93.225806 246.807952 V 246.413897 M 89.225806 246.807952 H 97.225806 M 89.225806 246.413897 H 97.225806" stroke-dasharray="none"/>
+<circle cx="93.225806" cy="246.676238" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 3, x=3.0: 163.46 ns [162.918, 164.545] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 93.225806 246.676238 L 106.451613 240.850046" fill="none"/>
+<path d="M 106.451613 240.889700 V 240.757817 M 102.451613 240.889700 H 110.451613 M 102.451613 240.757817 H 110.451613" stroke-dasharray="none"/>
+<circle cx="106.451613" cy="240.850046" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 4, x=4.0: 189.329 ns [189.14, 189.77] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 106.451613 240.850046 L 119.677419 229.392687" fill="none"/>
+<path d="M 119.677419 229.458031 V 229.303973 M 115.677419 229.458031 H 123.677419 M 115.677419 229.303973 H 123.677419" stroke-dasharray="none"/>
+<circle cx="119.677419" cy="229.392687" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 5, x=5.0: 252.753 ns [252.337, 253.319] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 119.677419 229.392687 L 159.354839 217.845059" fill="none"/>
+<path d="M 159.354839 217.967770 V 217.759869 M 155.354839 217.967770 H 163.354839 M 155.354839 217.759869 H 163.354839" stroke-dasharray="none"/>
+<circle cx="159.354839" cy="217.845059" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 8, x=8.0: 338.191 ns [337.146, 338.919] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 159.354839 217.845059 L 265.161290 179.508607" fill="none"/>
+<path d="M 265.161290 179.654088 V 179.294330 M 261.161290 179.654088 H 269.161290 M 261.161290 179.294330 H 269.161290" stroke-dasharray="none"/>
+<circle cx="265.161290" cy="179.508607" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 16, x=16.0: 889.228 ns [885.972, 894.046] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 265.161290 179.508607 L 476.774194 131.621461" fill="none"/>
+<path d="M 476.774194 131.694628 V 131.563974 M 472.774194 131.694628 H 480.774194 M 472.774194 131.563974 H 480.774194" stroke-dasharray="none"/>
+<circle cx="476.774194" cy="131.621461" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 32, x=32.0: 2974.82 ns [2969.33, 2979.13] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
+<path d="M 476.774194 131.621461 L 900.000000 73.086290" fill="none"/>
+<path d="M 900.000000 73.264659 V 73.020486 M 896.000000 73.264659 H 904.000000 M 896.000000 73.020486 H 904.000000" stroke-dasharray="none"/>
+<circle cx="900.000000" cy="73.086290" r="6" fill="none" stroke-width="1.5" stroke-dasharray="none"><title>faer 0.24.4, 64, x=64.0: 13017.3 ns [12958.9, 13039] (0.95 confidence); current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256 793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32</title></circle>
 <path d="M 55 584 H 72" fill="none"/>
-<text x="80" y="589" stroke="none">faer 0.24.4 — baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e</text>
+<text x="80" y="589" stroke="none">faer 0.24.4 — current phase, v0.5.3 working tree based on be9277bf0440</text>
 <text x="80" y="606" stroke="none">8 selected; 0 unavailable rows</text>
 </g>
 <text x="80" y="628">Statistic: median; recorded marginal timing intervals; no significance test.</text>
-<text x="80" y="645" font-size="11">Run: 5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652</text>
+<text x="80" y="645" font-size="11">Run: 86e075e0edc375bfe6e42aaf5c97d8085a0407bdcadc75531fc7abf8a19de0c9</text>
 </g>
 </svg>
