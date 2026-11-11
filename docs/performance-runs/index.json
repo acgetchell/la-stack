@@ -7,6 +7,12 @@
       "report_renderer": 2
     },
     {
+      "baseline": "v0.5.2",
+      "current": "v0.5.3",
+      "id": "2e55909621d0aacbfa7670f678574ae750311ba29353e6e9ebb11461414876a2",
+      "report_renderer": 3
+    },
+    {
       "baseline": "v0.5.1",
       "current": "v0.5.2",
       "id": "5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652",

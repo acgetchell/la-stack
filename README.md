@@ -119,7 +119,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-la-stack = "0.5.2"
+la-stack = "0.5.3"
 ```
 
 ### Solve a 5×5 system
@@ -298,7 +298,7 @@ Enable exact determinant signs, determinant values, and solves:
 
 ```toml
 [dependencies]
-la-stack = { version = "0.5.2", features = ["exact"] }
+la-stack = { version = "0.5.3", features = ["exact"] }
 ```
 
 `Matrix` / `Vector` exact methods preserve stored `f64` values;
@@ -506,41 +506,50 @@ cargo run --locked --example vector_angles
 
 <!-- BENCHMARKS:BEGIN -->
 
-![LU solve (factor + solve): median time vs dimension](https://raw.githubusercontent.com/acgetchell/la-stack/v0.5.2/docs/assets/bench/vs_linalg_lu_solve_median_log.svg)
+![LU solve (factor + solve): median time vs dimension][rrt-performance-link-3]
 
-Run: `5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652`. Statistic: median. Unit: ns. Confidence level: 95%.
+Trial 1 (separate trial; no pooled significance claim).
 
-- la-stack v0.5.2: current phase, v0.5.2 working-tree snapshot based on commit
-  `b5156e222add90fc62191db55dcccb40875a5e41`; measured source SHA-256
-  `80e684f9e40f0b89417aa4a8317b22e37e0f594aef8043b250656f2c6cb3990f`.
-- nalgebra 0.35.0: baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e.
-- faer 0.24.4: baseline phase, v0.5.1, revision 80a67d598b8f5788c2c8ffc12a0e8677c306909e.
+Run: `86e075e0edc375bfe6e42aaf5c97d8085a0407bdcadc75531fc7abf8a19de0c9`. Statistic: median. Unit: ns. Confidence level: 95%.
 
-| Dimension | la-stack v0.5.2 | nalgebra 0.35.0 | faer 0.24.4 | Speedup vs nalgebra | Speedup vs faer |
+- la-stack v0.5.3: current phase, v0.5.3, revision be9277bf04400dccbe1115da69c7fda2141c4a39.
+- nalgebra 0.35.0: current phase, v0.5.3, revision be9277bf04400dccbe1115da69c7fda2141c4a39.
+- faer 0.24.4: current phase, v0.5.3, revision be9277bf04400dccbe1115da69c7fda2141c4a39.
+
+| Dimension | la-stack v0.5.3 | nalgebra 0.35.0 | faer 0.24.4 | Speedup vs nalgebra | Speedup vs faer |
 | --- | --- | --- | --- | --- | --- |
-| 2 | 2.06256<br>[2.04953, 2.09431] | 4.52663<br>[4.51758, 4.53267] | 128.125<br>[127.445, 128.545] | 2.19467× | 62.1194× |
-| 3 | 9.98278<br>[9.96279, 10.0083] | 32.5058<br>[32.3949, 32.6237] | 156.551<br>[156.195, 157.093] | 3.25619× | 15.6821× |
-| 4 | 23.7355<br>[23.6905, 23.7801] | 52.8361<br>[52.7137, 52.9963] | 183.09<br>[182.58, 183.503] | 2.22603× | 7.71373× |
-| 5 | 47.0332<br>[46.9411, 47.2694] | 74.3705<br>[74.1427, 74.7764] | 250.816<br>[250.442, 251.241] | 1.58123× | 5.33275× |
-| 8 | 132.096<br>[131.87, 132.513] | 166.8<br>[166.498, 167.23] | 342.479<br>[340.695, 343.771] | 1.26272× | 2.59266× |
-| 16 | 631.9<br>[628.777, 638.18] | 589.967<br>[588.536, 591.405] | 900.746<br>[897.01, 902.971] | 0.933639× | 1.42546× |
-| 32 | 2772.06<br>[2766.99, 2779.6] | 2499.64<br>[2493.29, 2506.42] | 2998.91<br>[2995.26, 3003.01] | 0.901726× | 1.08183× |
-| 64 | 17505.6<br>[17263.4, 17749.8] | 14495.6<br>[14481, 14519.4] | 12840.2<br>[12828.6, 12881.9] | 0.828057× | 0.733493× |
+| 2 | 2.06884<br>[2.0664, 2.07466] | 4.5918<br>[4.58866, 4.59692] | 130.897<br>[130.436, 131.469] | 2.21951× | 63.2706× |
+| 3 | 10.1094<br>[10.0641, 10.135] | 35.0464<br>[35.0098, 35.1322] | 163.46<br>[162.918, 164.545] | 3.46673× | 16.1691× |
+| 4 | 24.0133<br>[24.0048, 24.0359] | 55.4432<br>[55.2079, 55.6073] | 189.329<br>[189.14, 189.77] | 2.30885× | 7.88434× |
+| 5 | 47.8723<br>[47.6686, 48.1696] | 78.1378<br>[77.9205, 78.4518] | 252.753<br>[252.337, 253.319] | 1.63221× | 5.27973× |
+| 8 | 133.256<br>[133.148, 133.486] | 168.299<br>[168.089, 168.876] | 338.191<br>[337.146, 338.919] | 1.26297× | 2.5379× |
+| 16 | 631.082<br>[627.847, 636.268] | 581.252<br>[580.272, 582.309] | 889.228<br>[885.972, 894.046] | 0.921041× | 1.40905× |
+| 32 | 2787.86<br>[2781.93, 2792.44] | 2729.77<br>[2726.39, 2731.83] | 2974.82<br>[2969.33, 2979.13] | 0.979166× | 1.06706× |
+| 64 | 18063.6<br>[18036.7, 18106.7] | 14343.6<br>[14332.8, 14361.8] | 13017.3<br>[12958.9, 13039] | 0.794058× | 0.720637× |
 
 Intervals are recorded marginal timing intervals; ratios are point estimates, with no ratio intervals or significance claims.
 Ratio is numerator time / denominator time; greater than one means less denominator time.
 
-- Speedup vs nalgebra: ratio; numerator = nalgebra 0.35.0; denominator = la-stack v0.5.2.
-- Speedup vs faer: ratio; numerator = faer 0.24.4; denominator = la-stack v0.5.2.
+- Speedup vs nalgebra: ratio; numerator = nalgebra 0.35.0; denominator = la-stack v0.5.3.
+- Speedup vs faer: ratio; numerator = faer 0.24.4; denominator = la-stack v0.5.3.
 
 Selection coverage:
 
-- la-stack v0.5.2: 8 selected; 0 unavailable rows; 1395 phase cases omitted. Complete evidence is retained independently.
-- nalgebra 0.35.0: 8 selected; 0 unavailable rows; 1262 phase cases omitted. Complete evidence is retained independently.
-- faer 0.24.4: 8 selected; 0 unavailable rows; 1262 phase cases omitted. Complete evidence is retained independently.
-- [Complete run evidence](https://github.com/acgetchell/la-stack/blob/v0.5.2/docs/performance-runs/runs/5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652/run.json)
-- [Evidence envelope](https://github.com/acgetchell/la-stack/blob/v0.5.2/docs/performance-runs/runs/5af2e5bf8a3aa22f12f45efad18280cebd2b4be31a0612901374306d4a7eb652/evidence.json)
-- [Selected timings CSV](https://github.com/acgetchell/la-stack/blob/v0.5.2/docs/assets/bench/vs_linalg_lu_solve_median_log.csv)
+- la-stack v0.5.3: 8 selected; 0 unavailable rows; 1411 phase cases omitted. Complete evidence is retained independently.
+- nalgebra 0.35.0: 8 selected; 0 unavailable rows; 1411 phase cases omitted. Complete evidence is retained independently.
+- faer 0.24.4: 8 selected; 0 unavailable rows; 1411 phase cases omitted. Complete evidence is retained independently.
+- [Complete run evidence][rrt-performance-link-1]
+- [Evidence envelope][rrt-performance-link-2]
+- [Selected timings CSV](https://github.com/acgetchell/la-stack/blob/v0.5.3/docs/assets/bench/vs_linalg_lu_solve_median_log.csv)
+
+[rrt-performance-link-1]:
+  <https://github.com/acgetchell/la-stack/blob/v0.5.3/docs/performance-runs/runs/2e55909621d0aacbfa7670f678574ae750311ba29353e6e9ebb11461414876a2/run.json>
+
+[rrt-performance-link-2]:
+  <https://github.com/acgetchell/la-stack/blob/v0.5.3/docs/performance-runs/runs/2e55909621d0aacbfa7670f678574ae750311ba29353e6e9ebb11461414876a2/evidence.json>
+
+[rrt-performance-link-3]:
+  <https://raw.githubusercontent.com/acgetchell/la-stack/v0.5.3/docs/assets/bench/vs_linalg_lu_solve_median_log.svg>
 
 <!-- BENCHMARKS:END -->
 

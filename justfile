@@ -428,7 +428,7 @@ performance-measure current_tag baseline_tag view="full": python-sync
 performance-prepare *args: _ensure-gh python-sync
     #!/usr/bin/env bash
     set -euo pipefail
-    uv run --locked --no-sync research-repo-tools performance prepare tooling/performance-release.toml "$@"
+    {{ _run }} uv run --locked --no-sync research-repo-tools performance prepare tooling/performance-release.toml "$@"
 
 # Promote the explicitly selected full scratch run; missing inputs never fall back.
 performance-promote: python-sync
@@ -452,7 +452,7 @@ performance-release progress="human" cadence="300" checkpoint="target/bench-repo
                 echo "Checkpoint exists; use performance-resume or select a new checkpoint." >&2
                 exit 2
             fi
-            uv run --locked --no-sync research-repo-tools performance prepare tooling/performance-release.toml --fetch-tags --allow-git-mutations --release-intent
+            {{ _run }} uv run --locked --no-sync research-repo-tools performance prepare tooling/performance-release.toml --fetch-tags --allow-git-mutations --release-intent
             ;;
         resume) args+=(--resume) ;;
         *) echo "mode must be fresh or resume" >&2; exit 2 ;;
