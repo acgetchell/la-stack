@@ -508,13 +508,18 @@ cargo run --locked --example vector_angles
 
 ![LU solve (factor + solve): median time vs dimension][rrt-performance-link-3]
 
-Trial 1 (separate trial; no pooled significance claim).
+Complete run: `2e55909621d0aacbfa7670f678574ae750311ba29353e6e9ebb11461414876a2`.
 
-Run: `86e075e0edc375bfe6e42aaf5c97d8085a0407bdcadc75531fc7abf8a19de0c9`. Statistic: median. Unit: ns. Confidence level: 95%.
+Trial 1 of this complete run (separate trial; no pooled significance claim).
 
-- la-stack v0.5.3: current phase, v0.5.3, revision be9277bf04400dccbe1115da69c7fda2141c4a39.
-- nalgebra 0.35.0: current phase, v0.5.3, revision be9277bf04400dccbe1115da69c7fda2141c4a39.
-- faer 0.24.4: current phase, v0.5.3, revision be9277bf04400dccbe1115da69c7fda2141c4a39.
+Selected trial run (CSV/plot identity): `86e075e0edc375bfe6e42aaf5c97d8085a0407bdcadc75531fc7abf8a19de0c9`. Statistic: median. Unit: ns. Confidence level: 95%.
+
+- la-stack v0.5.3: current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256
+  793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32.
+- nalgebra 0.35.0: current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256
+  793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32.
+- faer 0.24.4: current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256
+  793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32.
 
 | Dimension | la-stack v0.5.3 | nalgebra 0.35.0 | faer 0.24.4 | Speedup vs nalgebra | Speedup vs faer |
 | --- | --- | --- | --- | --- | --- |
