@@ -115,11 +115,8 @@ constraints used by the installed verifier. See GitHub's
 
 The common Step 1/Step 2 flow follows the
 [research-repo-tools v0.2.8 guide](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/docs/RELEASING.md).
-Draft preparation uses the public capability from upstream
-[PR #207](https://github.com/acgetchell/research-repo-tools/pull/207), supplied in
-v0.2.7 along with receipt retrieval from
-[PR #209](https://github.com/acgetchell/research-repo-tools/pull/209). Published-package release checks and final native adoption
-remain required by [#333](https://github.com/acgetchell/la-stack/issues/333).
+Draft preparation and authenticated receipt retrieval use the installed shared
+API. Release boundaries require published tooling and successful native evidence.
 
 | Command | Common behavior and la-stack declaration |
 | --- | --- |
@@ -319,7 +316,7 @@ These commands acquire measurements. Shared status reports the active native
 stage, validated counts, elapsed time and an ETA only when its observations
 support one. Five-minute heartbeats do not limit native command runtime.
 The [benchmark guide](BENCHMARKING.md#release-acquisition-policy) explains
-unknown budgets/estimates and the pinned supplier's gate-failure event limitation.
+unknown budgets and estimates.
 The shell runtime record still retains the final duration and exit status.
 After acquisition succeeds, retry report promotion with `just performance-promote`
 and README publication separately; neither retry performs measurements.
@@ -330,10 +327,9 @@ to refresh tags explicitly. This separate command remains useful for inspecting
 inputs before acquisition. Restore a lost original preparation from its
 independent owner record; never derive replacement assertions from a candidate.
 The shared preparation record also binds the package version and measurement
-declaration. If you have an old adapter-format `release-inputs.json`, remove
-that ignored scratch file once and prepare again. It is deliberately not
-converted from measurement evidence. Moved refs or changed package/declaration
-inputs require a new preparation before measurement or README publication.
+declaration. Moved refs or changed package/declaration inputs require a new
+preparation before measurement or README publication. Preserve the original
+owner record and retained evidence when diagnosing a later release-stage failure.
 Fresh acquisition refuses an existing checkpoint before preparation.
 Resume explicitly reuses the original preparation and checkpoint:
 
@@ -354,10 +350,8 @@ explicitly use `just performance-capture "$OWNER" --retained-scratch` while
 you still control the original acquisition. Then retry promotion and README
 rendering directly. Never treat incoming candidate files as owner assertions.
 
-No shell variables or exports are needed. `performance-prepare` does not set
-`PREVIOUS_TAG`, `CURRENT_COMMIT`, or `PREVIOUS_COMMIT` in your shell; those
-variables may remain unset. Do not run the old manual `git rev-parse`
-assignments or pass those variables to the ordinary README step below.
+The ordinary README step consumes the retained preparation; no additional
+source-selection shell variables or exports are needed.
 
 Review `docs/performance.md` and the complete
 new run and index changes under `docs/performance-runs/`. Its current/baseline
@@ -538,12 +532,10 @@ If main-push evidence needs renewal, rerun every job in the original run and
 explicitly review a new selection. Manual CI dispatch cannot supply release
 evidence. Pending, failed, cancelled or expired evidence blocks publication.
 
-### 3. Create and verify the annotated tag
+### 3. Create the annotated tag
 
 ```bash
 just tag "$TAG"
-git --no-pager tag -l --format='%(contents)' "$TAG"
-test "$(git --no-pager rev-parse "$TAG^{commit}")" = "$(git --no-pager rev-parse HEAD)"
 ```
 
 `just tag` first runs `release-version-check` and revalidates the existing reviewed
@@ -553,7 +545,7 @@ section. For a changelog larger than 125 kB, it links that section.
 
 ### 4. Push the tag
 
-Only after evidence verification and tag inspection succeed, push the tag.
+After `just tag` succeeds, push the tag.
 This starts `Prepare GitHub release`; pushing does not wait for or verify CI.
 
 ```bash
@@ -703,8 +695,10 @@ cargo check --locked --manifest-path "$CONSUMER/Cargo.toml"
 
 Use a disposable shell for this check. Preserve the output and record the tag,
 commit, benchmark run, publishing run, registry URL/checksum and consumer results
-in the current release's tracking issue or merged release PR. Keep any release
-tracking issue open until publication and consumer verification succeed.
+in the current release's tracking issue or merged release PR. Close the release
+tracker when its agreed validation boundary is satisfied. If a maintainer accepts
+an unresolved verification failure, record the failed or unperformed check and
+link its follow-up issue explicitly; do not mark it passed or silently drop it.
 
 Hosted jobs restore no dependency caches. The checkout verifier has read-only
 repository permissions. Draft retrieval and attachment require write access
@@ -757,6 +751,22 @@ and `-f acceptance=REVIEWED_FULL_ACCEPTANCE_SHA256`. The explicit selection must
 be the same original owner record; do not copy a digest from incoming assets.
 
 ### Recovering a failed run
+
+A failed draft, attachment, or upload step does not invalidate completed
+benchmark measurements. Preserve the external owner record, preparation,
+checkpoint, archive, transfer files, and workflow receipts. Do not run
+`just clean` or restart acquisition to troubleshoot those later phases.
+
+The pinned tooling can still spend substantial time installing tools and
+rechecking dependency and candidate evidence. Targeted follow-ups are tracked in
+research-repo-tools [#225](https://github.com/acgetchell/research-repo-tools/issues/225),
+[#232](https://github.com/acgetchell/research-repo-tools/issues/232),
+[#233](https://github.com/acgetchell/research-repo-tools/issues/233),
+[#234](https://github.com/acgetchell/research-repo-tools/issues/234), and
+[#235](https://github.com/acgetchell/research-repo-tools/issues/235).
+These are not capabilities supplied by the current pin. Inspect the failed stage
+and its retained records before choosing the specific recovery below. An
+unconfirmed write outcome requires provider inspection before retrying.
 
 If HEAD changes, return to Step 2's synchronization and exact-commit verification.
 If a native run/attempt changes, explicitly review a new named selection as
@@ -870,9 +880,7 @@ automatic approval so these changes require maintainer
 review. Do not add a long-lived
 `CARGO_REGISTRY_TOKEN` secret.
 
-Workflow YAML and settings payloads do not apply account configuration. The initial
-Trusted Publishing rollout and verified v0.5.0 publication are recorded in
-[#259](https://github.com/acgetchell/la-stack/issues/259). Before each release,
+Workflow YAML and settings payloads do not apply account configuration. Before each release,
 verify the actual crates.io publisher identity and GitHub environment reviewers/tag
 policy, allowlist and permissions. Record that evidence in the current release's
 tracking issue or release PR. Re-read live settings before changing them.

@@ -10,6 +10,9 @@ reviews:
   # Repository-owned checks validate deliberately invalid static-analysis fixtures.
   path_filters:
     - "!tests/semgrep/**"
+    - "!docs/performance.md"
+    - "!docs/performance-runs/runs/*/report.md"
+    - "!docs/performance-runs/runs/*/run.json"
   pre_merge_checks:
     # Ruff owns docstring policy without treating fixtures as public APIs.
     docstrings:

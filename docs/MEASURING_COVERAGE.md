@@ -53,7 +53,7 @@ reports, uploads the Cobertura and JUnit files to Codecov, and archives each
 report directory as a workflow artifact. Local setup via `just setup-tools`
 installs the same Rust component and cargo subcommands.
 
-## Migration Notes
+## Coverage policy
 
 - Keep `just coverage-ci` as the single source of truth for CI coverage
   arguments; workflows should install tools and upload artifacts, not duplicate

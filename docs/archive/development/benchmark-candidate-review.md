@@ -1,5 +1,9 @@
 # Benchmark candidate and resume review
 
+Historical architecture and validation evidence. Adoption status and remaining
+work below describe the reviewed revisions. The current operational procedure
+belongs to [Releasing](../../RELEASING.md).
+
 Independent Astra architecture checkpoint on 2026-11-07 for
 [#325](https://github.com/acgetchell/la-stack/issues/325) and
 [#323](https://github.com/acgetchell/la-stack/issues/323), requested by the
@@ -164,7 +168,7 @@ and example validation, native gates and final package evidence.
 ## Release ordering and trust
 
 The following is the reviewed target design; it is not yet executable guidance.
-The [release guide](../RELEASING.md) remains the operational owner.
+The [release guide](../../RELEASING.md) remains the operational owner.
 
 1. Finish versions, dependency pins, lockfiles, source, harness, commands and
    output declarations before Step 1. Any subsequent non-output tree change

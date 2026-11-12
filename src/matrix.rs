@@ -900,7 +900,7 @@ impl<const D: usize> Matrix<D> {
     ///
     /// Returns `Ok(Some(det))` for `D` ∈ {0, 1, 2, 3, 4}, `Ok(None)` for D ≥ 5.
     /// `D = 0` returns `Ok(Some(1.0))` (empty product).
-    /// This is a `const fn` (Rust 1.94+) and uses fused multiply-add (`mul_add`)
+    /// This is a `const fn` and uses fused multiply-add (`mul_add`)
     /// for improved accuracy and performance.
     ///
     /// For a determinant that works for any dimension (falling back to LU for D ≥ 5),
@@ -1252,44 +1252,10 @@ impl<const D: usize> Matrix<D> {
     /// ```
     ///
     /// # Adaptive precision pattern (requires `exact` feature)
-    /// ```ignore
-    /// use la_stack::prelude::*;
-    ///
-    /// fn adaptive_det_sign<const D: usize>(
-    ///     matrix: &Matrix<D>,
-    /// ) -> DeterminantSign {
-    ///     if let Ok(Some(estimate)) = matrix.det_direct_with_errbound() {
-    ///         if estimate.determinant().abs() > estimate.absolute_error_bound() {
-    ///             return if estimate.determinant() > 0.0 {
-    ///                 DeterminantSign::Positive
-    ///             } else {
-    ///                 DeterminantSign::Negative
-    ///             };
-    ///         }
-    ///     }
-    ///
-    ///     matrix.det_sign_exact()
-    /// }
-    ///
-    /// fn main() -> Result<(), LaError> {
-    ///     assert_eq!(
-    ///         adaptive_det_sign(&Matrix::<3>::identity()),
-    ///         DeterminantSign::Positive
-    ///     );
-    ///
-    ///     let big = f64::MAX / 2.0;
-    ///     let overflowing = Matrix::<3>::try_from_rows([
-    ///         [0.0, 0.0, 1.0],
-    ///         [big, 0.0, 1.0],
-    ///         [0.0, big, 1.0],
-    ///     ])?;
-    ///     assert_eq!(
-    ///         adaptive_det_sign(&overflowing),
-    ///         DeterminantSign::Positive
-    ///     );
-    ///     Ok(())
-    /// }
-    /// ```
+    /// See the [executable adaptive-filtering guide](https://docs.rs/la-stack/latest/la_stack/guide/exact/index.html#adaptive-determinant-filtering)
+    /// for positive, singular, and overflowing filter cases. The guide shows how
+    /// to retain the paired estimate and fall back to `det_sign_exact()` when
+    /// the floating-point bound is unavailable or inconclusive.
     ///
     /// # Errors
     /// Propagates [`LaError::NonFinite`] from

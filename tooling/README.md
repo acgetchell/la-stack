@@ -81,9 +81,8 @@ Both registry and verified Git selections can run full `just ci`; only the
 published selection is eligible for release evidence and publication.
 Before an actual release, replace any override and isolated Git pins with the
 supplying published version, resolve/sync the lock and revalidate affected
-evidence. The configured `release.published-dependencies` policy uses
-the shared implementation from
-[research-repo-tools#193](https://github.com/acgetchell/research-repo-tools/issues/193).
+evidence. The configured `release.published-dependencies` policy requires a
+published supplier at each release boundary.
 `just release-dependencies` checks that transition before release work. It
 rejects development pins; ordinary checks and bounded acquisition remain
 available during rehearsal. Release evidence and publication enforce the
@@ -114,10 +113,7 @@ or verification still fail. Release jobs with fresh project environments prepare
 their own receipts before acquisition/acceptance verification. Local `just ci`
 retains its ordinary validation scope.
 
-Normal `just update` uses the supplier's exact Git-source support from
-[research-repo-tools#201](https://github.com/acgetchell/research-repo-tools/pull/201),
-which fixes [#200](https://github.com/acgetchell/research-repo-tools/issues/200).
-The updater preserves the included tooling group's exact supplier pin, any
+Normal `just update` preserves the included tooling group's exact supplier pin, any
 immutable source commit and inherited tool versions while updating unrelated
 dependencies. Upgrading a published supplier uses the target release's adopter
 outside the old project environment. For the current release:
@@ -144,9 +140,8 @@ Python and Cargo selections. After applying, sync the environment and reconcile
 isolated runtime pins and identity tests; the helper does not rewrite workflows
 or automatically promote a development pin when a release appears.
 
-The root `dependency-sources.toml` declares both dependency graphs for the
-shared source-policy validation introduced by
-[research-repo-tools#198](https://github.com/acgetchell/research-repo-tools/pull/198).
+The root `dependency-sources.toml` declares both dependency graphs for shared
+source-policy validation.
 Cargo release ownership includes `la-stack` and its private comparison member;
 the Python project is the private tooling environment. Other dependencies must
 come from their registries for release. The file is retained in source exports
@@ -232,7 +227,7 @@ suites run their column-basis, rational-dot, interval-solve or polynomial gate
 on every supported revision. The non-exact diagnostic retains its original gate
 and baseline-phase reference libraries.
 
-The expanded #301 policy measures all public la-stack workflows at the current
+The release policy measures all public la-stack workflows at the current
 revision and on supported baselines. Older baselines retain 1,254 shared library
 cases; the 149 cases introduced in v0.5.2 become required automatically at that
 boundary. The paired LU suite acquires 16 peer cases on each phase alongside
@@ -249,40 +244,20 @@ coverage decisions, feature configurations and runtime estimates.
 to the installed reporter, defaulting to `human` and `300` seconds. JSON status
 and `none` are supported without a local progress engine. Consumer fixtures
 exercise validated totals, unknown ETA, captured logs and early failure; report
-and README recipes retain their measurement-free retry boundaries. The
-[workload review](../docs/dev/benchmark-workload-review.md) records the availability
-decision, preserved coverage and supplier's corrected gate-failure event.
+and README recipes retain their measurement-free retry boundaries.
+The full declaration uses inclusive `since = "v0.5.2"` suite bounds;
+supported missing cases or failed compilation remain errors.
 
-General workload availability across API revisions is tracked in
-[research-repo-tools#166](https://github.com/acgetchell/research-repo-tools/issues/166)
-for v0.2.5, with published-package adoption in
-[la-stack#320](https://github.com/acgetchell/la-stack/issues/320) for v0.5.3.
-The full declaration now uses inclusive `since = "v0.5.2"` suite bounds.
-The normally installed 0.2.6 interface was checked against the consumer's peer
-comparison contract. Astra recommends retaining its cross-phase different-ID
-restriction and migrating to paired LU suites with current-phase peer ratios.
-The published v0.2.7 supplier fixes the gate-status defect tracked in
-[research-repo-tools#191](https://github.com/acgetchell/research-repo-tools/issues/191);
-the preserved schema-2 and schema-5 regressions pass against it.
-No permanent baseline exclusion remains; supported missing cases or failed
-compilation remain errors.
-
-The current pin also supplies schema-6 interrupted-trial recovery and
-phase-specific sources from [PR #205](https://github.com/acgetchell/research-repo-tools/pull/205).
+Schema-6 interrupted-trial recovery retains phase-specific sources.
 Baseline sources declare historical README compiler input; current gates prove
 README is excluded from ordinary debug/release compilation. Current README is
 one of the precise generated outputs. Historical current revisions that still
 compile it are rejected by the full candidate plan.
 
-Earlier adopted fixes for
-[research-repo-tools#196](https://github.com/acgetchell/research-repo-tools/issues/196)
-and [#197](https://github.com/acgetchell/research-repo-tools/issues/197) arrived through
-[PR #199](https://github.com/acgetchell/research-repo-tools/pull/199).
 The paired-suite publisher resolves dependency-version labels from the owning suite
 observation; preparation checks each available suite's minimum release before
-saving a source pair. The preserved public-API reproducers pass without changing
-their assertions. The [workload review](../docs/dev/benchmark-workload-review.md#validation-evidence)
-records downstream validation and the remaining publication/platform boundary.
+saving a source pair. Historical design and validation evidence belongs in the
+[workload review](../docs/archive/development/benchmark-workload-review.md).
 
 Working-tree measurements include tracked changes and nonignored untracked
 regular files. Scratch outputs belong under ignored `target/`.
@@ -352,7 +327,7 @@ and scientific checks on the exact commit, and requires the durable Criterion
 release asset. `release-gate`, `release-publish` and `release-verify`
 use the shared release contract; `publish-check` owns native default/exact
 Cargo dry-runs. Main CI signs those packaging and native validation identities;
-`release-evidence <owner>` binds the original acquisition, precise publisher
+`just release-evidence [OWNER] [SELECTION]` binds the original acquisition, precise publisher
 receipt, final clean commit and signed native acceptance. Named review records
 are immutable; selecting a later native attempt requires an explicit new name.
 `release-evidence.toml` owns the package, workflow, native job and signer policy;
@@ -383,7 +358,6 @@ need no `OWNER` or `RELEASE_COMMIT` shell variables. `release-upload` dispatches
 the existing reviewed publication selection without approving deployment.
 `release-version-check`
 requires final metadata; ordinary CI retains a private nonfinal metadata check.
-There are no `docs-version-check` or `release-package` recipe aliases.
 
 `tests/tooling/test_toolchain_integration.py` owns the package-identity check:
 manifest requirement, registry lock and installed published version, including
@@ -393,5 +367,3 @@ lockfile and isolated requirements; no sibling checkout supplies runtime code.
 
 Setup, managed execution, dependency updates, Markdown checks, Semgrep,
 security scans and opt-in CodeRabbit review also use shared commands.
-See the [adoption record](../docs/dev/performance-tooling-adoption.md) for
-deletion dispositions and release validation evidence.

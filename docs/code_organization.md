@@ -155,7 +155,7 @@ construction, prepared solves, and full runtime-dispatch adapter costs;
 `benches/interval_solve.rs` measures 32-system batches and reports certification counts
 outside timing. Division and solve rows belong to default-feature release
 acquisition, with `tests/interval_solve.rs` providing the independent rational gate.
-`benches/column_basis.rs` and `benches/rational_dot.rs` own the new rectangular
+`benches/column_basis.rs` and `benches/rational_dot.rs` own the rectangular
 selection and exact reduction benchmarks, with analytical fixture checks before
 timing. Both targets belong to release acquisition in their respective feature selections.
 `benches/polynomial.rs` measures exact sparse determinants for coincident lifted
@@ -188,7 +188,7 @@ The [justfile](../justfile) owns executable development workflows.
 Shared complete-inventory Python and file runners own discovery and bounded
 execution; repository lint policy and archive exclusions stay in the recipes
 and native tool configuration. The [capability inventory](../tooling/README.md#shared-capability-adoption)
-records the v0.2.6 development and release-command dependency. The installed
+records the shared package's development and release responsibilities. The installed
 CLI verifies the Semgrep scanner in the locked Python 3.15 environment.
 
 `osv-scanner.toml` owns temporary advisory-specific dependency exceptions, and
@@ -206,7 +206,7 @@ package and exports verified paths for CI. Release callers disable its caches.
 `.github/actions-allowlist.json` owns approved action identities for local
 validation and updates. Historical payloads under `.github/settings/` describe
 live GitHub settings separately; consult the
-[rollout guide](dev/MANAGING_CHANGES.md#dependabot-approval-rollout) before applying them.
+[configuration guide](dev/MANAGING_CHANGES.md#dependabot-approval-configuration) before applying them.
 
 Release metadata, version checks, Markdown line checks, and Semgrep fixture
 validation also belong to the shared CLI. Consumer policy stays in
@@ -225,7 +225,7 @@ Performance consumers use shared Criterion parsing and estimate/comparison
 validation, digest verification, archive extraction, byte-preserving document
 sections, and multi-file transactions. Shared rendering produces complete-run
 reports, coordinate SVG, timing CSV and document tables. Historical artifact
-bytes and fingerprint framing remain frozen and readable directly. Published v0.2.2
+bytes and fingerprint framing remain frozen and readable directly. The shared package
 owns common-harness orchestration, completeness, worktrees, complete run retention,
 validated latest selection, and transactional report publication.
 Its `RunTableStyle` API owns compact README table formatting; the consumer selects
@@ -235,7 +235,7 @@ Generic parsing, staging, and rollback tests belong upstream; local
 tests verify the scientific and retained-artifact integration boundaries.
 
 Hosted Dependabot approvals use the pinned shared
-GitHub workflow; the [rollout guide](dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
+GitHub workflow; the [configuration guide](dev/MANAGING_CHANGES.md#dependabot-approval-configuration)
 owns settings and deployment verification.
 
 `tooling/criterion-inventory.toml` declares optional saved-baseline list commands and
@@ -259,10 +259,10 @@ README ratios; the non-exact diagnostic retains broader baseline peers.
 Runtime commands consume the shared schemas.
 The root `dependency-sources.toml` declares Python/Cargo release ownership for
 shared dependency validation and is included in benchmark harness inputs.
-The [workload review](dev/benchmark-workload-review.md) records the scientific
-selection argument, supplier contract findings and remaining adoption evidence;
+The [archived workload review](archive/development/benchmark-workload-review.md) records the scientific
+selection argument and historical supplier contract findings;
 it does not replace the independent case catalog.
-The [candidate review](dev/benchmark-candidate-review.md) records the independent
+The [archived candidate review](archive/development/benchmark-candidate-review.md) records the independent
 release-ordering and trust review for resume and acquisition reuse. The
 release guide owns the implemented operational procedure.
 
@@ -277,9 +277,8 @@ All views require explicit input ownership.
 `tooling/performance-release.toml` declares independent preparation storage and
 the measurement, report and README policies. Installed `performance prepare`,
 `release` and `readme` commands own those separately retriable phases.
-The former measurement/publication implementations and root `scripts/` directory are retired.
 Shared public APIs own acquisition, validation and publication transactions.
-`tooling/release_candidate.py` owns thin repository orchestration: immutable
+`tooling/release_candidate.py` owns repository orchestration: immutable
 owner records outside the checkout, pre-promotion capture, named final acceptance,
 original archive derivation, exact draft staging and authenticated transfer.
 It does not implement a comparison engine, archive parser or CI verifier.
@@ -291,11 +290,9 @@ checks parallel/serial validator ownership, shared setup, failure propagation
 and the managed compilation-cache boundary.
 `tests/tooling/test_release_context.py` owns automatic external owner selection,
 authenticated original draft-receipt retrieval and reviewed publication dispatch.
-Working-tree measurements now include nonignored untracked regular files.
+Working-tree measurements include nonignored untracked regular files.
 `tests/tooling/test_performance_workflow.py` exercises actual recipes and
-scientific policy. Shared failure matrices remain upstream. The
-[adoption record](dev/performance-tooling-adoption.md) records replacement
-ownership and native validation gates.
+scientific policy. Shared failure matrices remain upstream.
 
 Original artifacts, including the v0.5.0/v0.4.6 complete run, remain frozen
 without regeneration or invented acquisition records. New complete runs
@@ -326,8 +323,8 @@ evidence inspection and isolated draft creation. Its authenticated inert handoff
 and durable journal use the installed draft API; no local creation engine exists.
 `tooling/draft-receipt.toml` declares the original tag-push workflow and required
 receipt-producing jobs/steps for the installed retrieval API.
-The [integration record](dev/release-flow-integration.md) maps command/validation
-ownership and records baseline timings and remaining adoption evidence.
+The [integration reference](dev/release-flow-integration.md) maps command/validation
+ownership, cache boundaries, and release handoffs.
 `.github/workflows/publish-crates.yml` consumes a second maintainer dispatch with
 independent canonical-asset and full acceptance assertions. It owns approval,
 the immutable approval receipt, explicit native-evidence renewal, revalidation
@@ -350,8 +347,9 @@ live in `docs/dev/`; human setup and validation guidance lives in
 [Measuring coverage](MEASURING_COVERAGE.md) owns local and CI coverage execution.
 The generated [performance report](performance.md) records measured results;
 [Benchmarking](BENCHMARKING.md) owns the commands that produce and compare them.
-[Local benchmark summaries](performance/README.md) owns complete versioned local
-datasets. Completed optimization studies belong under
+The [legacy benchmark index](performance/README.md) lists frozen local
+datasets. Historical tooling decisions belong in the
+[development review archive](archive/development/README.md). Completed optimization studies belong under
 [archived performance studies](archive/performance/studies/README.md).
 The [Rust 1.99 study](archive/performance/studies/rust-1.99.md) owns the compiler
 migration baseline and its retained measurements; it is separate from generated

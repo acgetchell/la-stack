@@ -56,7 +56,7 @@ jobs:
             python -I -c 'import sys; from research_repo_tools.cli import main; sys.exit(main())')
           "${runtime[@]}" --root "$GITHUB_WORKSPACE" release check "$RELEASE_TAG"
           "${runtime[@]}" --root "$GITHUB_WORKSPACE" release evidence verify \
-            "$RUNNER_TEMP/handoff/evidence.toml" --checkout "$GITHUB_WORKSPACE" \
+            tooling/release-evidence.toml --checkout "$GITHUB_WORKSPACE" \
             --commit "$commit" --version "${RELEASE_TAG#v}" \
             --output "$RUNNER_TEMP/handoff/selection.json"
           "${runtime[@]}" --root "$GITHUB_WORKSPACE" changelog notes "$RELEASE_TAG" > "$RUNNER_TEMP/handoff/notes.md"

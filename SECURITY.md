@@ -123,17 +123,15 @@ and compatibility overrides live in `pyproject.toml`; `uv.lock` retains patched
 PyJWT 2.15.1 with its crypto dependencies and Base64URL padding fix. Validate
 native Semgrep scans when changing the scanner or lock.
 
-Semgrep 1.182.1 pins MCP 1.29.0, which is affected by
+The Intel macOS Semgrep pin, 1.182.1, requires MCP 1.29.0, which is affected by
 [GHSA-84m7-p3x7-pcfv](https://github.com/advisories/GHSA-84m7-p3x7-pcfv).
 The root environment overrides that pin with `mcp==1.30.0`, retaining
 the patched 1.x API. Remove the override when a released Semgrep dependency
 accepts a patched MCP version. Matching OpenTelemetry API, SDK, exporter and
 instrumentation overrides retain the patched API without breaking scanner startup.
 
-`just audit` and Dependabot use the root Python lockfile.
-The [observed dependency graph job](https://github.com/acgetchell/la-stack/actions/runs/38871146224)
-rejected Python 3.15, so dependency alerts can be stale; use
-`just audit` to check the current inventory until upstream supports Python 3.15.
+`just audit` checks the root Python lockfile directly, independently of GitHub's
+dependency-graph ingestion and alert state.
 The root overrides select Python 3.15 Windows wheels. Local and hosted scans cap
 an unlimited Linux stack until [Semgrep #11979](https://github.com/semgrep/semgrep/issues/11979)
 is fixed.
@@ -145,18 +143,15 @@ potentially sensitive data. Here, `Matrix::certified_error_bound` and the
 benchmark helper's `certified_bound` refer to numerical rounding-error bounds.
 They contain no credentials, cryptographic certificates, or personal information.
 
-Alerts #171–#178 were reviewed against commit
-`bd80cc05df3ebf409d8db9a471b671a5737bf0c4`: their sinks are assertion or panic
-diagnostics for deterministic test and benchmark fixtures. These individual
-alerts were dismissed as false positives with that rationale. Keep the query
-enabled and preserve diagnostic values needed to investigate numerical failures.
+Assertion and panic diagnostics for deterministic numerical fixtures can
+therefore produce false positives. Keep the query enabled and preserve
+diagnostic values needed to investigate numerical failures.
 Review new alerts on their own data flow.
 
 ### Benchmark dependency maintenance
 
-As of October 16, 2026, `paste` 1.0.15 enters through the development dependency
-`faer` 0.24.4, via `gemm` 0.19.0 and `pulp` 0.22.3. Those are the latest
-published upstream versions checked on that date. Repository-owned Rust code
+In `Cargo.lock`, `paste` 1.0.15 enters through the development dependency
+`faer` 0.24.4, via `gemm` 0.19.0 and `pulp` 0.22.3. Repository-owned Rust code
 already uses `pastey`; changing that direct dependency cannot replace upstream
 uses of `paste`.
 

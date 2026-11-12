@@ -110,7 +110,7 @@ for diagnostics.
 
 ### Release acquisition policy
 
-The `public-release-and-paired-lu-peers-v4` policy extends #301 with column bases,
+The `public-release-and-paired-lu-peers-v4` policy includes column bases,
 interval division/solves, rational dot products, and polynomial determinants.
 The full la-stack selection has 736 default-feature and 667 exact-feature cases.
 Local `performance-release`, `performance-local`, and full `performance-measure`
@@ -177,7 +177,7 @@ implementation diagnostics and exponent-spread studies remain opt-in. Use
 Routine release acquisition excludes them. The README retains its existing
 eight-dimension LU graph; no additional performance page or graph is produced.
 
-The [v0.5.3 workload review](dev/benchmark-workload-review.md) maps required,
+The [archived workload review](archive/development/benchmark-workload-review.md) maps required,
 optional and excluded measurements to caller costs, numerical regimes and
 oracles. Astra accepted its no-removal conclusion and recommended a paired LU
 suite with current-phase peer comparisons for the availability migration.
@@ -194,10 +194,8 @@ status in ignored `target/bench-reports/full/runtime.txt`, including failures.
 The timer starts after Just's prerequisite checks. Use `time just performance-release`
 to include those checks in an end-to-end command measurement. Keep these records and
 the terminal log with the exact command, revisions, toolchain, dependencies and
-host when comparing actual before/after runtime. The former 1,422-case run had
-a nominal 189.6-minute budget; that calculation supplies no observed elapsed
-time. Expanded public coverage means removing peers alone establishes no overall
-speedup. No end-to-end acquisition has been timed for the expanded policy.
+host when comparing actual before/after runtime. Nominal budgets are not observed
+elapsed times; changing the selection alone establishes no measured speedup.
 
 `performance-release` uses the installed shared progress reporter. Its optional
 arguments select output mode and heartbeat seconds:
@@ -215,9 +213,8 @@ diagnostics. Captured logs need no TTY. Counts advance only after phase validati
 partial output files do not count. ETA stays unknown for unseen work, and neither
 an estimate nor the nominal budget is a timeout. Scheduled progress reports
 trial, suite and phase state, with eight nominal seconds per case.
-The published v0.2.7 tooling fixes the gate-failure event defect recorded in the
-review. Preserve the command's nonzero exit and runtime record when diagnosing
-failure.
+Preserve the command's nonzero exit, captured logs, and runtime record when
+diagnosing failure.
 
 Retry a failed report promotion with `just performance-promote`, or README
 publication with `just performance-readme`. Neither reacquires samples.
@@ -385,8 +382,8 @@ just performance-local
 
 This compares the current working tree with the latest stable GitHub release.
 The shared snapshot includes tracked changes and nonignored untracked regular
-files, and rechecks them before publishing measurement outputs. This replaces
-the former tracked-only snapshot policy. Keep generated files under ignored
+files, and rechecks them before publishing measurement outputs. Keep generated
+files under ignored
 `target/`; symlinks, junctions and submodules are outside this snapshot contract.
 
 Both sources use the captured current harness, dependency lock and toolchain.
@@ -437,10 +434,8 @@ just performance-measure "$CURRENT_TAG" "$PREVIOUS_TAG" non-exact
 ```
 
 Use `performance-local*` for working-tree changes against the latest release.
-The old positional labels on `performance-local-non-exact` and the local
-`--suite`/`--scope` adapter flags are retired. Full and non-exact selection now
-uses named declarations. To include an open-ended report selection, maintain a
-named measurement declaration using the shared `series.select` contract;
+Full and non-exact selection uses named declarations. To include an open-ended
+report selection, maintain a named declaration using the shared `series.select` contract;
 selection never weakens complete sampling or the independent required inventory.
 
 ### Iterate Against A Local Saved Baseline
@@ -519,8 +514,7 @@ The optional non-exact diagnostic supports 32 views: `det_from_lu`,
 `solve_from_lu`, declared under `tooling/plots/non-exact/`. Scratch views consume
 the full scratch pair; retained views work after scratch cleanup. Non-exact
 views consume the non-exact scratch pair and use separate
-`vs_linalg_non_exact_*` output paths. The old separate metric/statistic,
-`sample=new` and boolean log arguments are replaced by this named view.
+`vs_linalg_non_exact_*` output paths.
 There is no implicit input fallback.
 
 Plots preserve scientific coordinates, nanoseconds, the selected statistic
@@ -574,20 +568,17 @@ fails `performance-promote`; it never triggers a retained-history fallback.
 
 The completed v0.5.1/v0.5.0 run used the former broad-peer declaration. It stays
 frozen under that identity and needs no rerun. Current renderers reject it as
-input to the new acquisition policy; they become available for new matching
-complete runs after acquisition and promotion. Removing scratch evidence never
+input to the current acquisition policy; rendering requires a matching complete
+run after acquisition and promotion. Removing scratch evidence never
 selects or relabels a historical run automatically.
 
 Historical reports, plots, CSV/JSON, indexes and immutable complete runs keep
-their original bytes and links during this migration. The existing
-v0.5.0/v0.4.6 comparison lacks the newer acquisition declaration and is now a
+their original bytes and links. The v0.5.0/v0.4.6 comparison lacks the newer
+acquisition declaration and is a
 frozen record, with no regeneration requirement. Current publication checks
 must not be relaxed and missing provenance must not be invented to replay it.
-Future runs acquired with the current declarations support offline rendering.
-
-The metadata-free `performance-github-assets` command and historical benchmark
-execution compatibility remain retired. Published release assets remain
-downloadable as original records.
+Runs acquired with the current declarations support offline rendering.
+Published release assets remain downloadable as original records.
 
 ## Output Locations
 
@@ -758,11 +749,10 @@ The [solve finalization decision](archive/performance/studies/solve-finalization
 why #234 retained the existing result construction after testing all eight
 README dimensions. It links the regression tests and current benchmark command.
 
-Release-signal reports compare latest la-stack measurements against a saved
-la-stack baseline, and show saved nalgebra/faer baseline timings as context
-where a matching peer benchmark exists. That keeps iteration cheap while still
-making the release signal auditable. The full `vs_linalg` run remains the source
-of README plots and crate-to-crate comparison tables.
+Optional saved-baseline reports compare local la-stack measurements against
+saved samples and can show saved peer timings as context. They do not satisfy
+release acquisition. README plots and comparison tables consume the complete
+release plan's paired LU suite, using current-phase nalgebra/faer observations.
 
 ## Exact-Arithmetic Notes
 
@@ -839,20 +829,6 @@ cargo test --locked --release --features bench,exact \
 
 The counting allocator is not linked into Criterion timing executables.
 
-The local performance audit on 2026-09-05 retained two exact-arithmetic
-optimizations: strict conversion uses the existing proof that rational vectors
-are canonical, and dense exact D=4 determinants share six lower-row minors.
-Matching before/after runs supported both changes. LU loop-expansion and
-combined-check prototypes were removed after failing performance acceptance
-across the required dimensions.
-
-Those experiments used Rust 1.98.0 on an Apple M4 Max / AArch64 with Criterion
-0.8.2, 50 samples, one-second warm-up, and three-second measurement. Correctness
-gates ran before timing. The benchmarks above remain runnable with the current
-toolchain; historical timing estimates, source fingerprints, and discarded
-prototypes are optional local analysis artifacts rather than prerequisites for
-building, testing, or benchmarking the crate.
-
 The f64-input random-corpus and adversarial groups run the same exact-arithmetic
 benches (`det_sign_exact`, `det_exact`, `solve_exact`,
 `solve_exact_f64_result`, `solve_exact_rounded_f64`) so tables are comparable
@@ -907,8 +883,7 @@ not have comparable full-corpus rows, so those rows appear once both sides of a
 comparison provide the stable group.
 
 For a current snapshot without a saved baseline, use Criterion’s native reports
-under `target/criterion/`. The retired `bench-compare --snapshot` command is no
-longer provided.
+under `target/criterion/`.
 
 ## Release Notes
 

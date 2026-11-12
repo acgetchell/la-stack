@@ -1,5 +1,10 @@
 # Release benchmark workload review
 
+Historical review and development-pin validation evidence. Pending work and
+supplier limitations below describe the reviewed revisions. For current commands
+and policy, use [Benchmarking](../../BENCHMARKING.md) and
+[Releasing](../../RELEASING.md).
+
 Consumer review for [#322](https://github.com/acgetchell/la-stack/issues/322),
 with availability and progress integration findings for
 [#320](https://github.com/acgetchell/la-stack/issues/320) and
@@ -24,7 +29,7 @@ Initial review on 2026-11-05 at source
 
 Retain all 1,403 current library cases: 736 default and 667 exact. No workload
 removal or sampling reduction is proposed. The exact required IDs remain in
-[`performance-policy.toml`](../../tooling/performance-policy.toml); this review
+[`performance-policy.toml`](../../../tooling/performance-policy.toml); this review
 explains their coverage rather than introducing another selection mechanism.
 The full native catalog remains available for explicit diagnostics.
 
@@ -40,7 +45,7 @@ That review accepts scientific coverage, not minimality or measured runtime.
 Each row below is required in the current release selection. Construction and
 conversion stay timed when they are part of the named public operation. Fixture
 generation and independent oracle evaluation stay outside timing. The native
-targets and filters are owned by [`performance.just`](../../tooling/performance.just).
+targets and filters are owned by [`performance.just`](../../../tooling/performance.just).
 
 | Native family / feature | Cases | Calling forms, algorithm regimes and dimensions | Independent correctness evidence |
 | --- | ---: | --- | --- |
@@ -116,7 +121,7 @@ The initial review used **research-repo-tools 0.2.6**, resolved from PyPI.
 The development branch now tests exact upstream commit
 `055353c630604b1ae3438c1eaf534ba85e067a7e`; its unchanged 0.2.6 version label is
 not a published-artifact identity. Follow the
-[development pin policy](../../tooling/README.md#shared-capability-adoption)
+[development pin policy](../../../tooling/README.md#shared-capability-adoption)
 before release. On 2026-11-05 the
 [exact-version registry metadata](https://pypi.org/pypi/research-repo-tools/0.2.6/json)
 reported non-yanked wheel and source artifacts whose SHA-256 hashes match
@@ -237,7 +242,7 @@ the preserved prepared-pair and baseline/current schema-5 regressions pass.
 Keep those regressions and adopt the supplying published release before final
 publication; do not add consumer event rewriting or relax gate acceptance.
 
-See [the benchmark guide](../BENCHMARKING.md#release-acquisition-policy) for
+See [the benchmark guide](../../BENCHMARKING.md#release-acquisition-policy) for
 commands and retry boundaries. Report/README retries consume retained evidence
 without measurement. Heartbeats, nominal budgets and estimates never replace
 raw-file, sampling, correctness or freshness validation.
