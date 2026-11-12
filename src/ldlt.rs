@@ -263,8 +263,8 @@ impl<const D: usize> Ldlt<D> {
     ///
     /// Diagonal pivots are multiplied directly while each non-zero running
     /// product remains finite and normal. If direct accumulation detects range
-    /// loss, all pivots are recomputed with power-of-two scaling before a
-    /// premature overflow or underflow can affect the returned determinant.
+    /// loss, the product is recomputed from the stored pivots with power-of-two
+    /// scaling; the factorization itself is not repeated.
     /// The final product is rounded to `f64`; a non-zero magnitude below the
     /// binary64 range may round to zero. No certified absolute error bound is
     /// provided.

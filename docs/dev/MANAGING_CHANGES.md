@@ -9,7 +9,7 @@ Operational details for the Git rules in [AGENTS.md](../../AGENTS.md).
 - [GitHub CLI](#github-cli)
 - [Issue planning](#issue-planning)
 - [Issue dependencies](#issue-dependencies)
-- [Dependabot approval rollout](#dependabot-approval-rollout)
+- [Dependabot approval configuration](#dependabot-approval-configuration)
 
 ## Git operations and branch names
 
@@ -118,60 +118,36 @@ gh api repos/acgetchell/la-stack/issues/217/dependencies/blocked_by \
 Use `-F` so the resolved numeric ID is encoded as an integer. Keep independent
 tasks related without inventing a blocking dependency.
 
-## Dependabot approval rollout
+## Dependabot approval configuration
 
-The caller in `.github/workflows/dependabot-auto-merge.yml` pins the reviewed
-research-repo-tools approval workflow at
-[`b972cbf`](https://github.com/acgetchell/research-repo-tools/commit/b972cbfd717319abaa68d9b1373711ad6f163294).
-It replaces the owner-issued CodeRabbit request that left bot PRs without an
-approving review (#258). A successful CodeRabbit status on a skipped review does
-not supply approval; the provider's underlying failure to process owner commands
-remains unconfirmed. The new workflow removes that approval dependency.
+The [caller workflow](../../.github/workflows/dependabot-auto-merge.yml) owns the
+reviewed research-repo-tools workflow pin and exact ecosystem/file allowlists.
+The shared workflow verifies signed Dependabot metadata, commits, base merges,
+complete file inventories, and the current head before approving. It never
+checks out PR code or uses personal tokens.
+[Dependency configuration](../../.github/dependabot.yml) owns update eligibility.
 
-The trusted base branch supplies exact ecosystem/file allowlists, including the
-comparison workspace manifest. Signed Dependabot metadata, verified commits and
-base merges, complete file inventories, current-head checks, and approval
-deduplication belong to the shared workflow. It never checks out PR code or uses
-personal tokens. `.github/dependabot.yml` continues to own dependency eligibility.
-See the [shared approval contract][shared-approval].
+GitHub must allow Actions to approve PRs and permit the caller's pinned action
+and reusable workflow. Required reviews, status checks, resolved threads, and
+stale-review dismissal still gate native auto-merge. A successful CodeRabbit
+status on a skipped review does not itself supply an approving review.
+Installing the Python package does not deploy or configure this workflow.
 
-[shared-approval]: https://github.com/acgetchell/research-repo-tools/blob/b972cbfd717319abaa68d9b1373711ad6f163294/docs/AUTOMATING_DEPENDABOT.md
+The payloads under `.github/settings/` are historical snapshots, not live state.
+Before applying settings, reread the repository's workflow permissions, selected
+actions, and active branch rulesets. Reconcile the intended change against those
+live responses; preserve newer required checks, allowlist entries, and review
+policy. Do not replay a snapshot against a hardcoded ruleset ID.
 
-The settings payloads under `.github/settings/` capture the October 1, 2026
-rollout. They enable Actions approvals with read-only default permissions, add
-only the metadata action and reusable workflow to the existing selected-action
-allowlist, and enable stale-review dismissal in ruleset `11113227`. All six
-required checks, one required approval, resolved threads, strict checks, merge
-methods, and the existing bypass actor are preserved. Auto-merge and squash
-merging are already enabled. Actions approval is an intentional change from the
-old #258 criterion, matching the maintainer's requested MCMC approach.
-
-Before applying payloads later, reread current settings and reconcile intervening
-changes; do not overwrite newer checks or allowlist entries with this snapshot.
-The settings can then be applied with:
-
-```bash
-gh api repos/acgetchell/la-stack/actions/permissions/workflow \
-  --method PUT --input .github/settings/actions-workflow.json
-gh api repos/acgetchell/la-stack/actions/permissions/selected-actions \
-  --method PUT --input .github/settings/actions-selected.json
-gh api repos/acgetchell/la-stack/rulesets/11113227 \
-  --method PUT --input .github/settings/main-ruleset.json
-```
-
-Merge the caller to `main` before expecting `pull_request_target` to use it.
-An old workflow rerun retains its original definition; exercise a new eligible
-Dependabot event after deployment. Verify an actual `github-actions[bot]`
-approval whose commit ID is the current PR head, native squash merge only after
-required checks and threads pass, and continued manual review for ineligible
-updates. Record PR, head, approval, workflow-run, and merge links. Installing the
-Python package does not deploy or configure this GitHub workflow.
+After a workflow change reaches `main`, exercise a new eligible Dependabot
+event. Rerunning an old job retains its original workflow definition. Verify an
+actual `github-actions[bot]` approval at the current PR head and a merge only
+after required checks and threads pass. Ineligible updates retain manual review.
+Record the PR, head, approval, workflow-run, and merge links.
 
 Merges using `GITHUB_TOKEN` may not trigger push workflows. A manual `ci.yml`
 dispatch against `main` can diagnose the merged commit, but cannot produce
 release-eligible signed evidence. Before selecting a release commit, require a
 successful main-push run as described in [Releasing](../RELEASING.md#reusable-ci-evidence).
 The CI signer and crates.io publishing workflows require manual dependency review.
-Remove `CODERABBIT_REVIEW_TOKEN` from Actions
-and Dependabot secrets only after the old caller has been replaced and no other
-workflow consumes it. Local opt-in CodeRabbit CLI review remains separate.
+Local opt-in CodeRabbit CLI review remains separate.

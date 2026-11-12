@@ -341,11 +341,7 @@ when the norm is finite. Both results remain approximate, without a certified
 error bound.
 [Worked example and range contracts][guide-norms].
 
-**v0.4.6 migration:** `Vector::norm2_sq()` is renamed to `Vector::norm_squared()`,
-the unreleased `Vector::norm2()` API is named `Vector::norm()`, and
-`Matrix::inf_norm()` is renamed to `Matrix::norm_inf()`. The old method names
-are removed; their numerical behavior and error contracts are unchanged by
-the renames. `Matrix::norm_inf()` remains the maximum absolute row sum.
+`Matrix::norm_inf()` computes the maximum absolute row sum.
 
 ### Unsigned vector angles
 
@@ -580,12 +576,12 @@ construction, and release-comparison workflow details, see
 [docs/BENCHMARKING.md](https://github.com/acgetchell/la-stack/blob/main/docs/BENCHMARKING.md).
 For the current release-to-release performance snapshot, see
 [docs/performance.md](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md).
-The exact release suite includes the already-exact rational-input groups for
-D=2 through D=8. Those rows report `RationalMatrix::det_sign`, `det`, and
-`solve` alongside straightforward `BigRational` Gaussian determinant and solve
-references. Releases produced with the rational-input harness include Criterion
-point estimates and confidence intervals for these rows; comparisons against a
-pre-API baseline retain them as explicit current-only measurements.
+The exact release selection includes rational-input groups for D=2 through D=8,
+covering `RationalMatrix::det_sign`, `det`, and `solve` with Criterion point
+estimates and confidence intervals. Comparisons against a pre-API baseline retain
+supported new workloads as explicit current-only measurements. The benchmark
+target also provides `BigRational` Gaussian references for optional diagnostics;
+those reference timings are excluded from required release acquisition.
 
 The focused `interval` Criterion suite covers conclusive and inconclusive
 relative-coordinate lifted determinant signs at D=4 and the maximum supported

@@ -20,9 +20,8 @@ clarity, and the fixed-dimension stack-allocation model.
 
 ## Getting Started
 
-Reusable Python development tooling has moved into
-[`research-repo-tools`](https://github.com/acgetchell/research-repo-tools).
-It is a development dependency for this repository's setup, validation,
+[`research-repo-tools`](https://github.com/acgetchell/research-repo-tools)
+is the shared development dependency for this repository's setup, validation,
 maintenance, benchmark reporting, and release workflows. Static declarations
 and native correctness gates retain la-stack's scientific policy; see the
 [Tooling guide](tooling/README.md) for the ownership boundary.
@@ -77,8 +76,7 @@ an unrelated system installation cannot satisfy a managed Cargo pin.
 Use `just update` for deliberate maintenance. It runs `just update-tools` first:
 upgrade uv through its installation owner, upgrade declared managed Cargo tools,
 publish their verified pins, and synchronize setup. Just follows the shared
-package's `rust-just` pin. Managed upgrades replace `cargo-update` and the old
-Just-variable reconciler; unrelated user-global Cargo installations stay outside
+package's `rust-just` pin. Unrelated user-global Cargo installations stay outside
 this workflow.
 
 Then `just update-dependencies` upgrades Cargo requirements and refreshes Cargo's
@@ -184,9 +182,8 @@ before a deduplicated `github-actions[bot]` approval. Native squash auto-merge
 still requires the configured approvals, strict checks (including CodeRabbit's
 status), resolved threads, and dismissal of stale approvals.
 
-This replaces owner-authored CodeRabbit requests and their personal token.
 CodeRabbit's successful status on a skipped bot review is not an approval.
-The [rollout guide](docs/dev/MANAGING_CHANGES.md#dependabot-approval-rollout)
+The [configuration guide](docs/dev/MANAGING_CHANGES.md#dependabot-approval-configuration)
 owns GitHub settings and post-merge verification. The workflow never executes
 PR code; dependency eligibility remains in `.github/dependabot.yml`.
 Dependabot monitors Semgrep through the root Python manifest and lockfile,
@@ -200,10 +197,9 @@ global `RUSTFLAGS='-D warnings'`, this denies lint warnings only for local
 packages without changing rustc arguments and creating separate cache
 artifacts. Rustdoc has a separate warning contract, so `doc-check` continues to
 set `RUSTDOCFLAGS='-D warnings'` for the default and `exact` documentation
-surfaces. See the [Rust 1.98 release notes](https://doc.rust-lang.org/stable/releases.html#version-1980-2026-08-20)
-and [Cargo configuration reference](https://doc.rust-lang.org/cargo/reference/config.html#buildwarnings).
+surfaces. See the [Cargo configuration reference](https://doc.rust-lang.org/cargo/reference/config.html#buildwarnings).
 
-Rust 1.98's `f32`/`f64::algebraic_{add,sub,mul,div,rem}` operations are
+The `f32`/`f64::algebraic_{add,sub,mul,div,rem}` operations are
 forbidden in `src/`, examples, and benchmark implementations. They permit
 real-number transformations such as reassociation with unspecified precision,
 which can invalidate the crate's documented error bounds and deterministic
@@ -222,13 +218,9 @@ manifests and `clippy.toml` match `rust-toolchain.toml`; CI, coverage, and relea
 setup consume that declaration. Run `just setup-tools` after changing it:
 managed Cargo tools are installed separately for each compiler version.
 
-The [Rust 1.99 migration study](docs/archive/performance/studies/rust-1.99.md)
-records the final release-note audit, numerical validation, and paired LLVM
-22/23 measurements. New Clippy diagnostics are addressed with `#[must_use]`,
-integer `bit_width`, and diagnostic empty-array assertions. The existing
-Linux, macOS, and Windows MSVC CI matrix and strict floating-point policy remain
-the support contract. New allocation, raw-pointer, and collection APIs do not
-serve an existing library requirement.
+The Linux, macOS, and Windows MSVC CI matrix and strict floating-point policy
+define the support contract. Historical compiler measurements and migration
+evidence belong in the [Rust 1.99 study](docs/archive/performance/studies/rust-1.99.md).
 
 ## Contributor Workflow
 
@@ -252,8 +244,9 @@ git switch -c doc/329-branch-guidance
 Keep each change scoped to one coherent purpose. Update tests and documentation
 with the behavior they support, avoid unrelated formatting churn, and cite
 relevant literature for numerical or algorithmic work. Automation and AI
-assistants must stop before version-control mutations and release operations; a
-human contributor performs and reviews commits, pushes, tags, and releases.
+assistants need explicit maintainer authorization for version-control mutations
+and release operations. Authorization remains valid within its agreed scope;
+required checks and reviews still gate merge and publication.
 
 ### Validation Workflow
 
@@ -324,8 +317,8 @@ publication keep caches disabled. The shared local build cache defaults to the
 tooling home's `cargo-build/<host>/<Rust version>`; an absolute
 `RESEARCH_REPO_TOOLS_CARGO_BUILD_HOME` selects separate compilation storage.
 This cache does not replace project builds or validation. See the
-[integration record](docs/dev/release-flow-integration.md#hosted-ci-stages) for graph ownership,
-baseline timings and remaining native/published-package evidence.
+[integration reference](docs/dev/release-flow-integration.md#hosted-ci-stages)
+for graph ownership and release-evidence boundaries.
 
 `la-stack` intentionally has no notebook validation bucket: the repository has
 no notebooks or supported Python binding surface. Add notebook tooling only
@@ -450,10 +443,9 @@ section of [`REFERENCES.md`](REFERENCES.md).
 Releases are deliberate, maintainer-driven work. Ordinary feature, fix,
 review, and hygiene changes must not update package versions, version-pinned
 dependency snippets, citation release dates, generated changelogs, checked-in
-release benchmark reports, tags, or other release artifacts. The maintainer
-performs every version bump and release manually by
-following [`docs/RELEASING.md`](docs/RELEASING.md). Do not substitute an
-automated or abbreviated release path.
+release benchmark reports, tags, or other release artifacts. Follow
+[`docs/RELEASING.md`](docs/RELEASING.md) for explicitly authorized release work,
+including its automated workflows, approval boundaries, and recovery procedure.
 
 ## Getting Help
 

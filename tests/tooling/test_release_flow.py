@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 import yaml
 from research_repo_tools import release_assets, release_drafts, release_evidence, release_validation
+from research_repo_tools.cli import main as shared_main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
 
@@ -22,6 +23,64 @@ from tests.tooling.test_toolchain_integration import TOOLING_REQUIREMENT
 ROOT = Path(__file__).resolve().parents[2]
 TAG = "v0.5.42"
 WORKFLOW = ROOT / ".github/workflows/prepare-release.yml"
+
+
+def test_draft_verification_handoff_uses_the_installed_cli_path_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run the workflow shell, then replay its evidence call with the real parser."""
+    checkout, runner = tmp_path / "checkout with spaces", tmp_path / "runner temp"
+    (checkout / "tooling").mkdir(parents=True)
+    runner.mkdir()
+    (checkout / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.5.42"\n', encoding="utf-8", newline="\n")
+    policy = (ROOT / "tooling/release-evidence.toml").read_bytes()
+    (checkout / "tooling/release-evidence.toml").write_bytes(policy)
+    calls = tmp_path / "calls.jsonl"
+    recorder = tmp_path / "record.py"
+    recorder.write_text(
+        "import json, os, pathlib, sys\n"
+        'with pathlib.Path(os.environ["FIXTURE_CALLS"]).open("a", encoding="utf-8", newline="\\n") as stream:\n'
+        '    stream.write(json.dumps(sys.argv[1:]) + "\\n")\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    workflow = yaml.safe_load(WORKFLOW.read_bytes())
+    step = next(step for step in workflow["jobs"]["verify"]["steps"] if step.get("id") == "source")
+    shell = (
+        'git() { if [[ "$2" == rev-parse ]]; then printf "%s\\n" "$GITHUB_SHA"; '
+        'else [[ "$2" == merge-base && "$3" == --is-ancestor ]]; fi; }\n'
+        f'uv() {{ {shlex.quote(Path(sys.executable).as_posix())} {shlex.quote(recorder.as_posix())} "$@"; }}\n' + step["run"]
+    )
+    output = runner / "github-output"
+    result = run_command(
+        "bash",
+        ["--noprofile", "--norc", "-euc", shell],
+        cwd=checkout,
+        env={
+            **{key: value for key, value in os.environ.items() if key not in {"BASH_ENV", "SHELLOPTS", "BASHOPTS"}},
+            "GITHUB_WORKSPACE": checkout.as_posix(),
+            "RUNNER_TEMP": runner.as_posix(),
+            "RELEASE_TAG": TAG,
+            "GITHUB_EVENT_NAME": "push",
+            "GITHUB_REF": f"refs/tags/{TAG}",
+            "GITHUB_SHA": COMMIT,
+            "GITHUB_OUTPUT": output.as_posix(),
+            "FIXTURE_CALLS": calls.as_posix(),
+        },
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert output.read_bytes() == f"commit={COMMIT}\n".encode()
+    assert (runner / "handoff/evidence.toml").read_bytes() == policy
+    invocations = [json.loads(line) for line in calls.read_text(encoding="utf-8").splitlines()]
+    evidence = [args for args in invocations if "evidence" in args]
+    assert len(invocations) == 3
+    assert len(evidence) == 1
+    arguments = evidence[0][evidence[0].index("--root") :]
+    provider = EvidenceProvider(checkout)
+    provider.install(monkeypatch)
+    assert shared_main(arguments) == 0
+    selected = json.loads((runner / "handoff/selection.json").read_bytes())
+    assert selected["run"]["id"] == 101
+    assert selected["run"]["head_sha"] == COMMIT
 
 
 @pytest.mark.parametrize("outcome", ["success", "automatic", "dispatch-failure", "missing", "wrong-tag", "malformed"])
