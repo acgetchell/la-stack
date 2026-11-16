@@ -30,7 +30,7 @@ from research_repo_tools.process import run_command, run_command_live
 from research_repo_tools.publication import publish_publication
 from research_repo_tools.release_assets import GitHubRelease, ReleaseTarget, serialize_release_target
 from research_repo_tools.release_pairs import ReleasePair
-from research_repo_tools.scheduled_runs import ScheduledRun, select_trial
+from research_repo_tools.scheduled_runs import select_trial
 from research_repo_tools.suite_measurement import SuiteMeasurementPlan
 from research_repo_tools.suite_runs import comparison_incompatibilities, parse_suite_run
 from research_repo_tools.worktrees import capture_snapshot
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from research_repo_tools.evidence import Evidence
 
 ROOT = Path(__file__).resolve().parents[2]
-PAIR = ReleasePair("v0.5.2", "v0.5.1")
+PAIR = ReleasePair("v0.5.3", "v0.5.2")
 DRIVER = """import json, os, sys
 from pathlib import Path
 phase, suite, action = sys.argv[1:]
@@ -103,23 +103,6 @@ def scientific_ids(view: str = "full") -> tuple[set[str], set[str]]:
     return library, peers
 
 
-def baseline_ids(view: str = "full", release: str = PAIR.baseline) -> set[str]:
-    """Derive historical expectations from the independent scientific API catalog."""
-    library, _peers = scientific_ids(view)
-    if view != "full":
-        return library
-    catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
-    version = tuple(map(int, release.removeprefix("v").split(".")))
-    return {
-        name
-        for name in library
-        if not any(
-            fnmatch.fnmatchcase(name, pattern) and version < tuple(map(int, since.removeprefix("v").split(".")))
-            for pattern, since in catalog["availability"].items()
-        )
-    }
-
-
 def suite_ids() -> dict[str, set[str]]:
     """Partition the scientific catalog independently of the acquisition declaration."""
     catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
@@ -148,7 +131,7 @@ def synthetic_timings() -> dict[str, dict[str, dict[str, float]]]:
     }
 
 
-@pytest.mark.parametrize("release", ["v0.5.0", "v0.5.1", "v0.5.2", "v0.5.3"])
+@pytest.mark.parametrize("release", ["v0.5.2", "v0.5.3"])
 def test_declared_scientific_sampling_coverage_and_original_peer_phases(release: str) -> None:
     plan = declaration(ROOT)
     assert isinstance(plan, SuiteMeasurementPlan)
@@ -158,8 +141,10 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(release:
     assert len(peers) == 16
     assert set().union(*expected.values()) == library | peers
     assert sum(map(len, expected.values())) == len(library | peers)
-    available: set[str] = set()
     for suite in plan.suites:
+        assert suite.since is None
+        assert suite.before is None
+        assert suite.decision(release, "{}")["state"] == "available"
         assert suite.nominal_seconds_per_case == 8
         assert suite.measurement.baseline.command == suite.measurement.current.command
         assert suite.measurement.current.gate == (*suite.measurement.baseline.gate[:-1], suite.measurement.baseline.gate[-1] + "-current")
@@ -178,10 +163,7 @@ def test_declared_scientific_sampling_coverage_and_original_peer_phases(release:
             assert environment["CARGO_TARGET_DIR"] == "target/build"
             assert environment["CARGO_BUILD_BUILD_DIR"] == "target/build/intermediates"
             assert environment["RUSTUP_TOOLCHAIN"] == tomllib.loads((ROOT / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]["channel"]
-        if suite.decision(release, "{}")["state"] == "available":
-            available.update(expected[suite.name])
         assert {"context.os", "context.architecture", "context.cpu", "harness_sha256"} <= set(suite.measurement.measurement.compatible)
-    assert available == baseline_ids(release=release) | peers
     lu = next(suite for suite in plan.suites if suite.name == "lu-solve")
     assert {item.name: item.phase for item in lu.measurement.series} == {
         "la-stack baseline": "baseline",
@@ -273,12 +255,10 @@ def test_routine_ci_validates_benchmarks_without_acquiring_timings() -> None:
     ("pattern", "count"),
     [("column_basis/*", 55), ("interval_division/*", 5), ("interval_solve_d*/*", 30), ("polynomial/*", 5), ("rational_dot/*", 54)],
 )
-def test_new_api_coverage_is_complete_without_inventing_baseline_timings(pattern: str, count: int) -> None:
+def test_public_api_family_coverage_is_complete(pattern: str, count: int) -> None:
     library, _peers = scientific_ids()
     current = {name for name in library if fnmatch.fnmatchcase(name, pattern)}
     assert len(current) == count
-    assert current.isdisjoint(baseline_ids(release="v0.5.1"))
-    assert current <= baseline_ids(release="v0.5.2")
 
 
 def test_named_views_keep_every_metric_statistic_axis_and_explicit_input_choice() -> None:
@@ -450,7 +430,7 @@ def test_native_recipes_preserve_scientific_gates_and_peer_reuse() -> None:
                     measured_targets.add(target["name"])
         gate = dry_run(ROOT, suite.measurement.current.gate[-1], justfile=justfile).stderr
         assert "cargo test --locked" in gate
-        if suite.since:
+        if suite.name in {"column-basis", "interval-solve", "polynomial", "rational-dot"}:
             assert suite.name.replace("-", "_") in gate or "polynomial_bench_inputs" in gate
     targets = {
         bench["name"]
@@ -475,11 +455,10 @@ def test_native_recipes_preserve_scientific_gates_and_peer_reuse() -> None:
 
 def prepared(tmp_path: Path, pair: ReleasePair = PAIR) -> tuple[Path, Path]:
     """Replace only native timing/gates with a bounded fixture, retaining real policy."""
-    _library, peers = scientific_ids()
     diagnostic_library, diagnostic_peers = scientific_ids("non-exact")
     ids = {
         side: {
-            **{name: sorted(cases) for name, cases in suite_ids().items() if side == "current" or cases <= baseline_ids(release=pair.baseline) | peers},
+            **{name: sorted(cases) for name, cases in suite_ids().items()},
             "all": [],
             "vs_linalg": sorted(diagnostic_library | (diagnostic_peers if side == "baseline" else set())),
         }
@@ -591,10 +570,8 @@ def test_shared_progress_reports_validated_inventory_and_unknown_eta(measured_ru
     events = json.loads((root / "target/progress.json").read_text(encoding="utf-8"))
     budget = next(event for event in events if event["event"] == "budget")
     library, peers = scientific_ids()
-    baseline = baseline_ids() | peers
-    total = len(baseline) + len(library)
-    total += len(peers)
-    assert total == 2689
+    total = 2 * len(library | peers)
+    assert total == 2838
     assert budget["total"] == budget["remaining"] == budget["unknown_cases"] == total
     assert budget["completed"] == 0
     assert budget["eta_seconds"] is None
@@ -621,45 +598,26 @@ def test_shared_progress_reports_validated_inventory_and_unknown_eta(measured_ru
             assert comparison_incompatibilities(trial, ("current", f"d{dimension}/{peer}_lu_solve"), ("current", library_id)) == ()
 
 
-@pytest.mark.parametrize("baseline", ["v0.5.0", "v0.5.2", "v0.5.3"])
-def test_api_availability_uses_original_source_receipts(tmp_path: Path, baseline: str) -> None:
-    """The common harness must not change which original revision supports an API."""
-    pair = ReleasePair("v0.5.4", baseline)
-    _baseline, current = prepared(tmp_path, pair)
-    plan = declaration(current)
-    assert isinstance(plan, SuiteMeasurementPlan)
-    # Shared suites have complete-inventory coverage above. Isolate all four
-    # introduction boundaries here while retaining every one of their 149 cases.
-    selected = replace(plan, suites=tuple(suite for suite in plan.suites if suite.since))
-    evidence = measure_pair(current, selected, pair, working_tree=True, progress=ProgressReporter(mode="none"))
-    run = validate_run_policy(evidence, selected)
-    assert isinstance(run, ScheduledRun)
-    phases = dict(parse_suite_run(select_trial(evidence, 1)).phases)
-    introduced = scientific_ids()[0] - baseline_ids(release="v0.5.1")
-    assert len(introduced) == 149
-    assert set(phases["current"].policy.expected) == introduced
-    assert set(phases["baseline"].policy.expected) == (set() if baseline == "v0.5.0" else introduced)
-
-
+@pytest.mark.parametrize("release", ["v0.4.6", "v0.5.0", "v0.5.1"])
 @pytest.mark.parametrize("phase", ["baseline", "current"])
-def test_full_plan_rejects_unsupported_release_before_native_commands(tmp_path: Path, phase: str) -> None:
-    """Schema 5 captures source receipts before enforcing the native release floor."""
-    pair = ReleasePair("v0.4.6" if phase == "current" else PAIR.current, "v0.4.6" if phase == "baseline" else PAIR.baseline)
+def test_full_plan_rejects_unsupported_release_before_native_commands(tmp_path: Path, phase: str, release: str) -> None:
+    """Reject retired releases before discovery, correctness gates or timing."""
+    pair = ReleasePair(release if phase == "current" else PAIR.current, release if phase == "baseline" else PAIR.baseline)
     _baseline, current = prepared(tmp_path, pair)
     events: list[dict[str, object]] = []
-    with pytest.raises(ValueError, match=r"requires v0\.5\.0 or newer"):
+    with pytest.raises(ValueError, match=r"requires v0\.5\.2 or newer"):
         measure_pair(current, declaration(current), pair, working_tree=True, progress=ProgressReporter(mode="none", observer=events.append))
     assert not any(event["state"] in {"discovery", "gate", "acquisition"} for event in events)
 
 
-def test_supported_new_api_discovery_failure_is_not_treated_as_unavailable(tmp_path: Path) -> None:
-    """Once column bases exist, failed native compilation cannot remove coverage."""
+def test_supported_api_discovery_failure_is_not_treated_as_unavailable(tmp_path: Path) -> None:
+    """Failed native compilation cannot remove required column-basis coverage."""
     pair = ReleasePair("v0.5.3", "v0.5.2")
     _baseline, current = prepared(tmp_path, pair)
     plan = declaration(current)
     assert isinstance(plan, SuiteMeasurementPlan)
     suite = next(item for item in plan.suites if item.name == "column-basis")
-    assert suite.since == pair.baseline == "v0.5.2"
+    assert suite.since is None
     policy = suite.measurement.baseline.policy
     assert isinstance(policy, DiscoveryPolicy)
     assert len(policy.discovery.required) == 55
@@ -1053,7 +1011,7 @@ def test_actual_retention_offline_plot_and_readme_recipes(complete_run: tuple[Pa
     assert "Speedup vs faer" in document
     assert "Complete run evidence" in document
     assert "Evidence envelope" in document
-    assert "la-stack v0.5.2" in document
+    assert f"la-stack {PAIR.current}" in document
     assert "Statistic: median. Unit: ns." in document
     catalog = tomllib.loads((ROOT / "tooling/performance-policy.toml").read_text(encoding="utf-8"))
     rows = [
@@ -1146,8 +1104,10 @@ def test_publication_boundaries_leave_all_outputs_unchanged(
         assert {path: path.read_bytes() for path in retained} == retained
 
 
+@pytest.mark.parametrize("release", ["v0.4.6", "v0.5.0", "v0.5.1"])
+@pytest.mark.parametrize("view", ["full", "non-exact"])
 @pytest.mark.parametrize("phase", ["baseline", "current"])
-def test_actual_measurement_recipe_rejects_old_releases_before_git(phase: str, tmp_path: Path) -> None:
+def test_actual_measurement_recipe_rejects_old_releases_before_git(phase: str, view: str, release: str, tmp_path: Path) -> None:
     root = tmp_path / "consumer"
     root.mkdir()
     for name in ("pyproject.toml", "uv.lock", ".python-version", "Cargo.toml", "rust-toolchain.toml"):
@@ -1159,11 +1119,9 @@ def test_actual_measurement_recipe_rejects_old_releases_before_git(phase: str, t
             shutil.copyfile(source, destination)
     (root / "src").mkdir()
     (root / "src/lib.rs").write_text("// fixture\n", encoding="utf-8", newline="\n")
-    result = recipe(
-        root, "performance-measure", "v0.4.6" if phase == "current" else PAIR.current, "v0.4.6" if phase == "baseline" else PAIR.baseline, "non-exact"
-    )
+    result = recipe(root, "performance-measure", release if phase == "current" else PAIR.current, release if phase == "baseline" else PAIR.baseline, view)
     assert result.returncode != 0
-    assert "requires v0.5.0 or newer" in result.stderr
+    assert "requires v0.5.2 or newer" in result.stderr
     assert not (root / ".git").exists()
     assert not (root / "target").exists()
 

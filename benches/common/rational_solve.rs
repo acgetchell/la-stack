@@ -200,10 +200,6 @@ pub fn solve_input<const D: usize>(structure: Structure, dyadic: bool) -> Valida
 /// `src/geometry/matrix.rs`, lines 215–256. Arithmetic, cloning, and zero skips
 /// are retained; only the function name and visibility differ.
 #[must_use]
-#[expect(
-    clippy::needless_range_loop,
-    reason = "preserve the captured legacy control"
-)]
 pub fn legacy_solve(
     mut matrix: Vec<Vec<BigRational>>,
     mut rhs: Vec<BigRational>,

@@ -26,7 +26,7 @@ INPUTS = "target/bench-reports/release-inputs.json"
 def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "consumer with spaces"
     root.mkdir()
-    (root / "Cargo.toml").write_text('[package]\nname = "fixture"\nversion = "0.5.2"\n', encoding="utf-8")
+    (root / "Cargo.toml").write_text('[package]\nname = "fixture"\nversion = "0.5.4"\n', encoding="utf-8")
     (root / ".gitignore").write_bytes(b"/target/\n")
     for name in ("tooling/measurements/full.toml", "tooling/performance-release.toml"):
         path = root / name
@@ -35,8 +35,8 @@ def consumer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "absent-gitconfig"))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     run_git_command(["--no-pager", "init", "--quiet"], cwd=root)
-    for tag in ("v0.4.6", "v0.5.0", "v0.5.1", "head"):
-        release = "0.5.2" if tag == "head" else tag.removeprefix("v")
+    for tag in ("v0.5.1", "v0.5.2", "v0.5.3", "head"):
+        release = "0.5.4" if tag == "head" else tag.removeprefix("v")
         (root / "Cargo.toml").write_text(f'[package]\nname = "fixture"\nversion = "{release}"\n', encoding="utf-8", newline="\n")
         run_git_command(["--no-pager", "add", "Cargo.toml"], cwd=root)
         run_git_command(
@@ -75,16 +75,16 @@ def releases(monkeypatch: pytest.MonkeyPatch, *tags: str) -> None:
 def test_preparation_resolves_prospective_head_or_publication_order(
     consumer: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], published: bool
 ) -> None:
-    current = "v0.5.1" if published else "v0.5.2"
+    current = "v0.5.3" if published else "v0.5.4"
     (consumer / "Cargo.toml").write_text(f'[package]\nname = "fixture"\nversion = "{current[1:]}"\n', encoding="utf-8")
-    releases(monkeypatch, *(("v0.5.0", "v0.5.1") if published else ("v0.5.1", "v0.5.0")))
+    releases(monkeypatch, *(("v0.5.2", "v0.5.3") if published else ("v0.5.3", "v0.5.2")))
     before = run_git_command(["--no-pager", "show-ref"], cwd=consumer).stdout
     assert main(["performance", "prepare", "tooling/performance-release.toml"]) == 0
     assert f"Saved preparation: {INPUTS}" in capsys.readouterr().out
     record = performance_release.load_preparation(consumer, settings(consumer))
     assert record.identities == {
-        "current": (current, run_git_command(["--no-pager", "rev-parse", "v0.5.1" if published else "HEAD"], cwd=consumer).stdout.strip()),
-        "baseline": ("v0.5.0", run_git_command(["--no-pager", "rev-parse", "v0.5.0"], cwd=consumer).stdout.strip()),
+        "current": (current, run_git_command(["--no-pager", "rev-parse", "v0.5.3" if published else "HEAD"], cwd=consumer).stdout.strip()),
+        "baseline": ("v0.5.2", run_git_command(["--no-pager", "rev-parse", "v0.5.2"], cwd=consumer).stdout.strip()),
     }
     assert run_git_command(["--no-pager", "show-ref"], cwd=consumer).stdout == before
     assert not (consumer / "target/bench-reports/full").exists()
@@ -92,11 +92,11 @@ def test_preparation_resolves_prospective_head_or_publication_order(
 
 def test_explicit_pair_skips_provider_and_failed_preparation_preserves_record(consumer: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(performance_release, "published_releases", lambda *_args, **_kwargs: pytest.fail("explicit pairs need no provider"))
-    plan = replace(settings(consumer), mode="explicit", current="v0.5.1", baseline="v0.5.0")
+    plan = replace(settings(consumer), mode="explicit", current="v0.5.3", baseline="v0.5.2")
     performance_release.prepare_performance(consumer, plan)
     original = (consumer / INPUTS).read_bytes()
     with pytest.raises(subprocess.CalledProcessError):
-        performance_release.prepare_performance(consumer, replace(plan, current="v0.5.2"))
+        performance_release.prepare_performance(consumer, replace(plan, current="v0.5.4"))
     assert (consumer / INPUTS).read_bytes() == original
 
 
@@ -104,9 +104,9 @@ def test_explicit_pair_skips_provider_and_failed_preparation_preserves_record(co
 def test_failed_preparation_never_writes_partial_assertions(
     consumer: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], failure: str
 ) -> None:
-    releases(monkeypatch, *(() if failure == "empty-history" else ("v0.4.6" if failure == "old-release" else "v0.5.1",)))
+    releases(monkeypatch, *(() if failure == "empty-history" else ("v0.5.1" if failure == "old-release" else "v0.5.3",)))
     if failure == "missing-tag":
-        run_git_command(["--no-pager", "tag", "-d", "v0.5.1"], cwd=consumer)
+        run_git_command(["--no-pager", "tag", "-d", "v0.5.3"], cwd=consumer)
     if failure == "provider":
 
         def unavailable(*_args: object, **_kwargs: object) -> tuple[PublishedRelease, ...]:
@@ -118,15 +118,15 @@ def test_failed_preparation_never_writes_partial_assertions(
     expected = {
         "empty-history": "a published stable release is required",
         "provider": "provider unavailable",
-        "missing-tag": "refs/tags/v0.5.1^{commit}",
-        "old-release": "requires v0.5.0 or newer",
+        "missing-tag": "refs/tags/v0.5.3^{commit}",
+        "old-release": "requires v0.5.2 or newer",
     }
     assert expected[failure] in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("changed", ["head", "baseline", "declaration", "package"])
 def test_readme_rejects_stale_preparation_before_publication(consumer: Path, monkeypatch: pytest.MonkeyPatch, changed: str) -> None:
-    releases(monkeypatch, "v0.5.1")
+    releases(monkeypatch, "v0.5.3")
     performance_release.prepare_performance(consumer, settings(consumer))
     if changed == "head":
         run_git_command(
@@ -147,12 +147,12 @@ def test_readme_rejects_stale_preparation_before_publication(consumer: Path, mon
             cwd=consumer,
         )
     elif changed == "baseline":
-        run_git_command(["--no-pager", "tag", "--force", "v0.5.1", "HEAD"], cwd=consumer)
+        run_git_command(["--no-pager", "tag", "--force", "v0.5.3", "HEAD"], cwd=consumer)
     elif changed == "declaration":
         path = consumer / "tooling/measurements/full.toml"
         path.write_bytes(path.read_bytes() + b"\n# changed\n")
     else:
-        (consumer / "Cargo.toml").write_bytes(b'[package]\nname="fixture"\nversion="0.5.3"\n')
+        (consumer / "Cargo.toml").write_bytes(b'[package]\nname="fixture"\nversion="0.5.5"\n')
     monkeypatch.setattr(performance_release, "published_releases", lambda *_args, **_kwargs: pytest.fail("README must not rediscover"))
     with pytest.raises(ValueError, match="stale preparation"):
         performance_release.load_readme_plan(consumer, settings(consumer))
@@ -171,7 +171,7 @@ def test_missing_or_legacy_preparation_stops_before_readme_and_measurement(consu
 
 @pytest.mark.parametrize("owner_kind", ["directory", "file"])
 def test_fresh_acquisition_preserves_existing_owner_with_recovery_guidance(consumer: Path, monkeypatch: pytest.MonkeyPatch, owner_kind: str) -> None:
-    releases(monkeypatch, "v0.5.1")
+    releases(monkeypatch, "v0.5.3")
     performance_release.prepare_performance(consumer, settings(consumer))
     owner = consumer.parent / "independent owner"
     if owner_kind == "directory":
@@ -196,7 +196,7 @@ def test_fresh_acquisition_preserves_existing_owner_with_recovery_guidance(consu
 
 
 def test_fresh_acquisition_preserves_unrelated_directory_creation_error(consumer: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    releases(monkeypatch, "v0.5.1")
+    releases(monkeypatch, "v0.5.3")
     performance_release.prepare_performance(consumer, settings(consumer))
     owner = consumer.parent / "independent owner"
     failure = FileExistsError("unrelated directory creation failure")

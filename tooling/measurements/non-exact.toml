@@ -1,6 +1,6 @@
 # Scientific measurement policy consumed directly by research-repo-tools.
 schema = 2
-minimum-release = "v0.5.0"
+minimum-release = "v0.5.2"
 sources = [ "src/**/*.rs", "Cargo.toml", "README.md" ]
 harness = [
     "benches/**/*.rs",
@@ -53,7 +53,7 @@ faer = "Cargo.lock"
 command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "baseline-vs_linalg" ]
 gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate" ]
 # Fixed code-generation settings are recorded for both phases.
-environment = { CARGO_TARGET_DIR = "target", CRITERION_HOME = "target/criterion", RUSTUP_TOOLCHAIN = "1.99.1", RUSTFLAGS = "--cap-lints=warn", CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn", RUSTC = "rustc", RUSTC_WRAPPER = "", RUSTC_WORKSPACE_WRAPPER = "" }
+environment = { CARGO_TARGET_DIR = "target", CRITERION_HOME = "target/criterion", RUSTUP_TOOLCHAIN = "1.100.0", RUSTFLAGS = "--cap-lints=warn", CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn", RUSTC = "rustc", RUSTC_WRAPPER = "", RUSTC_WORKSPACE_WRAPPER = "" }
 
 [phases.baseline.discovery]
 required = [
@@ -369,7 +369,7 @@ timeout = 14400
 command = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "current-vs_linalg" ]
 gate = [ "just", "--justfile", "tooling/performance.just", "--working-directory", ".", "gate" ]
 # Fixed code-generation settings are recorded for both phases.
-environment = { CARGO_TARGET_DIR = "target", CRITERION_HOME = "target/criterion", RUSTUP_TOOLCHAIN = "1.99.1", RUSTFLAGS = "--cap-lints=warn", CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn", RUSTC = "rustc", RUSTC_WRAPPER = "", RUSTC_WORKSPACE_WRAPPER = "" }
+environment = { CARGO_TARGET_DIR = "target", CRITERION_HOME = "target/criterion", RUSTUP_TOOLCHAIN = "1.100.0", RUSTFLAGS = "--cap-lints=warn", CARGO_ENCODED_RUSTFLAGS = "--cap-lints=warn", RUSTC = "rustc", RUSTC_WRAPPER = "", RUSTC_WORKSPACE_WRAPPER = "" }
 
 [phases.current.discovery]
 required = [

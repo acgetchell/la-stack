@@ -875,10 +875,10 @@ impl<const D: usize> Matrix<D> {
         // gradual-underflow discrepancy avoided by the direct path above.
         let mut eps = rel_tol;
 
-        for r in 0..D {
+        for (r, row) in self.rows.iter().enumerate() {
             let mut row_eps = 0.0;
-            for c in 0..D {
-                row_eps = rel_tol.mul_add(self.rows[r][c].abs(), row_eps);
+            for (c, value) in row.iter().enumerate() {
+                row_eps = rel_tol.mul_add(value.abs(), row_eps);
                 if !row_eps.is_finite() {
                     cold_path();
                     return Err(LaError::non_finite_computation_matrix(
