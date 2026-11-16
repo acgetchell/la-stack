@@ -218,19 +218,18 @@ There is no runtime configuration generator.
 | `performance-readme.toml` | Canonical README selection, formatter, source freshness and tagged links |
 | `plots/{non-exact,retained,scratch}/*.toml` | Named metric/statistic/axis selections with explicit input ownership |
 
-Both labels of a new measurement must be v0.5.0 or newer. The full and
+Both labels of a new measurement must be v0.5.2 or newer. The full and
 non-exact declarations require 100 samples, mean and median estimates,
 95% intervals and nanoseconds. Each phase runs its native correctness gate before
-timing. Schema-6 availability resolves each suite before compilation, inside one
-sequential trial. README and LU plots select trial 1. New-API
+timing. Every suite runs on both revisions inside one sequential trial;
+older releases are rejected before native compilation. README and LU plots select trial 1. The dedicated
 suites run their column-basis, rational-dot, interval-solve or polynomial gate
 on every supported revision. The non-exact diagnostic retains its original gate
 and baseline-phase reference libraries.
 
-The release policy measures all public la-stack workflows at the current
-revision and on supported baselines. Older baselines retain 1,254 shared library
-cases; the 149 cases introduced in v0.5.2 become required automatically at that
-boundary. The paired LU suite acquires 16 peer cases on each phase alongside
+The release policy measures all 1,403 public la-stack cases at both the current
+revision and the baseline, including every API introduced in v0.5.2.
+The paired LU suite acquires 16 peer cases on each phase alongside
 the matching library cases; README ratios use current-phase observations. Hosted
 release jobs reuse the accepted local acquisition without collecting timings. The full scratch/retained plot selections
 therefore expose only LU solve; broad peer plots remain in the explicitly
@@ -245,11 +244,11 @@ to the installed reporter, defaulting to `human` and `300` seconds. JSON status
 and `none` are supported without a local progress engine. Consumer fixtures
 exercise validated totals, unknown ETA, captured logs and early failure; report
 and README recipes retain their measurement-free retry boundaries.
-The full declaration uses inclusive `since = "v0.5.2"` suite bounds;
-supported missing cases or failed compilation remain errors.
+The full declaration requires every suite on both phases; missing cases or
+failed compilation remain errors.
 
 Schema-6 interrupted-trial recovery retains phase-specific sources.
-Baseline sources declare historical README compiler input; current gates prove
+Baseline sources declare v0.5.2's README compiler input; current gates prove
 README is excluded from ordinary debug/release compilation. Current README is
 one of the precise generated outputs. Historical current revisions that still
 compile it are rejected by the full candidate plan.

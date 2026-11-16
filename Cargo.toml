@@ -2,14 +2,13 @@
 name = "la-stack"
 version = "0.5.3"
 edition = "2024"
-rust-version = "1.99.1"
+rust-version = "1.100.0"
 autobenches = false
 license = "BSD-3-Clause"
 description = "Fast, stack-allocated linear algebra for fixed dimensions"
 readme = "README.md"
 documentation = "https://docs.rs/la-stack"
 repository = "https://github.com/acgetchell/la-stack"
-homepage = "https://github.com/acgetchell/la-stack"
 categories = [ "mathematics", "science" ]
 keywords = [ "linear-algebra", "geometry", "const-generics", "exact-arithmetic", "robust-predicates" ]
 include = [
@@ -145,6 +144,14 @@ resolver = "3"
 
 [lints]
 workspace = true
+
+[workspace.lints.cargo]
+missing_lints_inheritance = "deny"
+redundant_homepage = "deny"
+unknown_lints = "deny"
+unused_dependencies = "deny"
+unused_workspace_dependencies = "deny"
+unused_workspace_package_fields = "deny"
 
 [workspace.lints.rust]
 warnings = { level = "deny", priority = -1 }

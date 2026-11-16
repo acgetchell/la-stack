@@ -138,10 +138,6 @@ impl<const D: usize> Ldlt<D> {
                         let l_i = rows[i][j];
                         let l_i_d = l_i * d;
 
-                        #[expect(
-                            clippy::needless_range_loop,
-                            reason = "the triangular column index coordinates multiplier reads with in-place trailing-row writes"
-                        )]
                         for k in (j + 1)..=i {
                             let l_k = rows[k][j];
                             let new_val = (-l_i_d).mul_add(l_k, rows[i][k]);
@@ -165,10 +161,6 @@ impl<const D: usize> Ldlt<D> {
 
                         let l_i_d = l_i * d;
 
-                        #[expect(
-                            clippy::needless_range_loop,
-                            reason = "the triangular column index coordinates normalized-column reads with the fused in-place update"
-                        )]
                         for k in (j + 1)..=i {
                             let l_k = rows[k][j];
                             let new_val = (-l_i_d).mul_add(l_k, rows[i][k]);

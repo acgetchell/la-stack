@@ -1,7 +1,7 @@
 # la-stack scientific selections; generic execution and rendering are shared.
 schema = 1
 dimensions = [ 2, 3, 4, 5, 8, 16, 32, 64 ]
-minimum-release = [ 0, 5, 0 ]
+minimum-release = [ 0, 5, 2 ]
 library-benchmarks = [ "la_stack_det", "la_stack_det_from_ldlt", "la_stack_det_from_lu", "la_stack_det_via_lu", "la_stack_dot", "la_stack_inf_norm", "la_stack_ldlt", "la_stack_ldlt_solve", "la_stack_lu", "la_stack_lu_solve", "la_stack_norm2_sq", "la_stack_solve_from_ldlt", "la_stack_solve_from_lu" ]
 
 [exact]
@@ -75,14 +75,7 @@ title = "Matrix infinity norm (max abs row sum)"
 benchmarks = [ "la_stack_inf_norm", "nalgebra_inf_norm", "faer_inf_norm" ]
 
 # Independent release case catalog. Native discovery must agree with these IDs.
-# Independently assert introduction versions on both sides of every comparison.
-[availability]
-"column_basis/*" = "v0.5.2"
-"interval_division/*" = "v0.5.2"
-"interval_solve_d*/*" = "v0.5.2"
-"polynomial/*" = "v0.5.2"
-"rational_dot/*" = "v0.5.2"
-
+# Every supported revision must provide the complete catalog.
 [release]
 default = [
     "angle_d3/dense/borrowed_slice",

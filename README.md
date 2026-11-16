@@ -113,7 +113,7 @@ values and sparse polynomials use heap allocation.
 
 ## 🚀 Quickstart
 
-The minimum supported Rust version (MSRV) is 1.99.1.
+The minimum supported Rust version (MSRV) is 1.100.0.
 
 Add this to your `Cargo.toml`:
 
@@ -578,10 +578,12 @@ For the current release-to-release performance snapshot, see
 [docs/performance.md](https://github.com/acgetchell/la-stack/blob/main/docs/performance.md).
 The exact release selection includes rational-input groups for D=2 through D=8,
 covering `RationalMatrix::det_sign`, `det`, and `solve` with Criterion point
-estimates and confidence intervals. Comparisons against a pre-API baseline retain
-supported new workloads as explicit current-only measurements. The benchmark
-target also provides `BigRational` Gaussian references for optional diagnostics;
-those reference timings are excluded from required release acquisition.
+estimates and confidence intervals. New exact comparisons require these groups
+in both baseline and current phases. Only frozen historical reports whose
+baseline predates the rational-input API may retain current-only rows, with a
+coverage note and no cross-release ratio. The benchmark target also provides
+`BigRational` Gaussian references for optional diagnostics; those reference
+timings are excluded from required release acquisition.
 
 The focused `interval` Criterion suite covers conclusive and inconclusive
 relative-coordinate lifted determinant signs at D=4 and the maximum supported

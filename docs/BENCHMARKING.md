@@ -29,7 +29,7 @@ For a release comparison, `just performance-release` fetches tags and prepares
 independent source assertions before measurement. For preparation alone,
 `just performance-prepare` uses local tags; add `--fetch-tags --allow-git-mutations`
 to fetch them. Fetching and measurement recipes' temporary worktrees require
-authorization. Both labels of new measurements must be v0.5.0 or newer.
+authorization. Both labels of new measurements must be v0.5.2 or newer.
 Preparation also saves independent release tags and commits for a later
 `just performance-readme` invocation in ignored
 `target/bench-reports/release-inputs.json`. For an explicit prepared pair, set
@@ -114,14 +114,11 @@ The `public-release-and-paired-lu-peers-v4` policy includes column bases,
 interval division/solves, rational dot products, and polynomial determinants.
 The full la-stack selection has 736 default-feature and 667 exact-feature cases.
 Local `performance-release`, `performance-local`, and full `performance-measure`
-measure all 1,403 cases at the current revision under one captured harness.
-Baselines before v0.5.2 measure 1,254 shared library cases: 646 default-feature
-and 608 exact-feature cases. Column bases, interval division/solves, rational dot
-products and polynomial determinants were introduced in v0.5.2. Their 149 cases
-are required on each supported revision and unavailable on older revisions.
-The independent catalog's `[availability]` table and the schema-6 suite bounds
-declare this boundary. Resolution uses the original source receipt before
-overlaying the current harness; a supported compile failure remains an error.
+measure all 1,403 cases on both revisions under one captured harness.
+Every supported release provides column bases, interval division/solves, rational
+dot products and polynomial determinants. The full and non-exact declarations
+reject releases before v0.5.2 before native compilation. Every suite is required
+on both phases; discovery or compilation failures remain errors.
 Both phases also measure the 16 native nalgebra/faer LU factorization-plus-one-solve
 cases at D=2, 3, 4, 5, 8, 16, 32 and 64. Each phase's eight matching la-stack
 cases and 16 peers share one `lu-solve` acquisition unit. The README uses
@@ -138,7 +135,7 @@ retains the observed inventory and rejects missing required cases.
 The installed engine rejects duplicate semantic IDs and incomplete raw samples.
 
 The full plan uses one sequential trial; README and LU plots explicitly select
-trial 1. Baseline selectors include README because historical compilers read it.
+trial 1. Baseline selectors include README because v0.5.2 compilation reads it.
 Current source includes README only during rustdoc; current native gates verify
 that both debug and release dependency files exclude it before timing. Full
 comparison with an older current revision that still compiles README is rejected.
@@ -185,10 +182,8 @@ The paired-suite migration implements that decision within the current schema-6
 schedule; historical acquisitions retain their original policy and bytes.
 
 The shared reporter prints the discovered case count and nominal timing budget
-before samples are acquired. With a pre-v0.5.2 baseline, the plan has 2,689
-measurements and a nominal 358.5-minute warmup-plus-measurement budget. A baseline
-at v0.5.2 or later requires 2,838 measurements and 378.4 nominal minutes.
-Both budgets exclude compilation, gates and analysis.
+before samples are acquired. The plan requires 2,838 measurements and a nominal
+378.4-minute warmup-plus-measurement budget, excluding compilation, gates and analysis.
 `performance-release` records preparation, measurement and promotion elapsed seconds and exit
 status in ignored `target/bench-reports/full/runtime.txt`, including failures.
 The timer starts after Just's prerequisite checks. Use `time just performance-release`
@@ -219,10 +214,10 @@ diagnosing failure.
 Retry a failed report promotion with `just performance-promote`, or README
 publication with `just performance-readme`. Neither reacquires samples.
 
-Each suite compares revisions only when both implement its API. Earlier baselines
-retain explicit unavailable cells for new APIs; supported discovery failures
-remain errors. Existing retained reports remain historical and do not satisfy
-the expanded inventory; changing this plan does not rewrite them.
+Every suite compares the same required APIs on both revisions. Existing retained
+reports may contain unavailable cells from earlier release comparisons; they
+remain historical and do not satisfy the current inventory. Changing this plan
+does not rewrite them.
 
 **`public_api`** (`benches/public_api.rs`) owns construction, access, mutation,
 symmetry, direct determinant certificates, interval determinant queries, and
@@ -869,7 +864,7 @@ that the D=2–4 headline fixtures resolve through the floating-point filter, so
 those rows continue to measure the intended common path. Use a current
 shared-harness comparison between supported releases before attributing timing
 changes to the library implementation. v0.4.3 and older cannot be rerun with the
-current workflow.
+current workflow, which requires v0.5.2 or newer.
 
 Archived reports may show rows such as `det_exact_rounded_f64 (vs det_exact_f64)`
 or `det_exact_f64_result (vs det_exact_f64)`. Those used the historical lossy
@@ -932,7 +927,7 @@ release state stop publication.
 
 There is no hosted measurement budget. Local sampling remains 100 samples,
 100,000 resamples, 95% confidence, 3-second warmup and 5-second measurement.
-With v0.5.2-or-later baseline availability, 2,838 case observations imply 378.4
+The 2,838 case observations imply 378.4
 minutes of nominal warmup/measurement plus setup; this is a planning estimate,
 not measured runtime or an upper bound. Resume retains completed suite pairs
 inside the single scheduled trial without discarding original provenance.

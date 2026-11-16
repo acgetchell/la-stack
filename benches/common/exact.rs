@@ -103,7 +103,7 @@ impl SplitMix64 {
             clippy::cast_possible_truncation,
             reason = "an inclusive i16 range has width at most 65,536, so its modulo offset fits i32"
         )]
-        let offset = (self.next_u64() % range.width.get()) as i32;
+        let offset = (self.next_u64() % range.width) as i32;
         let value_i32 = i32::from(range.min) + offset;
         #[expect(
             clippy::cast_possible_truncation,

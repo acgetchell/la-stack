@@ -1192,7 +1192,7 @@ fn bareiss_forward_eliminate<const D: usize>(
                     if let Some(r) = &mut rhs {
                         r.swap(k, i);
                     }
-                    odd_swaps = !odd_swaps;
+                    odd_swaps.toggle();
                     found = true;
                     break;
                 }

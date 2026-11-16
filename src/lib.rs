@@ -1119,7 +1119,7 @@ const EPS: f64 = f64::EPSILON; // 2^-52
 /// # Ok(())
 /// # }
 /// ```
-pub const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
+pub const ERR_COEFF_2: f64 = (16.0 * EPS).mul_add(EPS, 3.0 * EPS);
 
 /// Absolute error coefficient for [`Matrix::<3>::det_direct`](crate::Matrix::det_direct).
 ///
@@ -1146,7 +1146,7 @@ pub const ERR_COEFF_2: f64 = 3.0 * EPS + 16.0 * EPS * EPS;
 /// [`Matrix::det_direct_with_errbound`](crate::Matrix::det_direct_with_errbound)
 /// over this constant for typical use; see [`ERR_COEFF_2`] for a worked
 /// example.
-pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
+pub const ERR_COEFF_3: f64 = (64.0 * EPS).mul_add(EPS, 8.0 * EPS);
 
 /// Absolute error coefficient for [`Matrix::<4>::det_direct`](crate::Matrix::det_direct).
 ///
@@ -1174,7 +1174,7 @@ pub const ERR_COEFF_3: f64 = 8.0 * EPS + 64.0 * EPS * EPS;
 /// [`Matrix::det_direct_with_errbound`](crate::Matrix::det_direct_with_errbound)
 /// over this constant for typical use; see [`ERR_COEFF_2`] for a worked
 /// example.
-pub const ERR_COEFF_4: f64 = 12.0 * EPS + 128.0 * EPS * EPS;
+pub const ERR_COEFF_4: f64 = (128.0 * EPS).mul_add(EPS, 12.0 * EPS);
 
 /// Largest dimension supported by [`try_with_stack_matrix!`].
 ///

@@ -106,10 +106,8 @@ impl<const D: usize> RowPermutation<D> {
     /// Apply one row swap and update parity atomically.
     const fn swap(&mut self, left: usize, right: usize) {
         if left != right {
-            let source_row = self.source_rows[left];
-            self.source_rows[left] = self.source_rows[right];
-            self.source_rows[right] = source_row;
-            self.odd = !self.odd;
+            self.source_rows.swap(left, right);
+            self.odd.toggle();
         }
     }
 
@@ -197,10 +195,6 @@ impl<const D: usize> Lu<D> {
                     let mult = rows[r][k] / pivot;
                     rows[r][k] = mult;
 
-                    #[expect(
-                        clippy::needless_range_loop,
-                        reason = "the column index pairs pivot-row reads with eliminated-row writes in the in-place update"
-                    )]
                     for c in (k + 1)..D {
                         let updated = (-mult).mul_add(rows[k][c], rows[r][c]);
                         rows[r][c] = updated;
