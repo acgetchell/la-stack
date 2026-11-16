@@ -375,7 +375,7 @@ def test_publish_recipe_requires_review_before_reaching_publication(tmp_path: Pa
     )
     marker = root / "published"
     overrides = (
-        "\n_release-notes-check tag:\n    @true\n\n[positional-arguments]\n_release-candidate *args:\n    "
+        "\n[positional-arguments]\n_release-candidate *args:\n    "
         f'{shlex.quote(Path(sys.executable).as_posix())} -I {shlex.quote(bootstrap.as_posix())} "$@"\n\n'
         + header
         + f"\n    touch {shlex.quote(marker.as_posix())}\n"

@@ -1,5 +1,7 @@
 """Exercise release command transport and the installed retained-draft handoff."""
 
+import base64
+import hashlib
 import json
 import os
 import runpy
@@ -12,13 +14,14 @@ from typing import Any
 
 import pytest
 import yaml
-from research_repo_tools import release_assets, release_drafts, release_evidence, release_validation
+from research_repo_tools import draft_workflow, release_assets, release_drafts, release_evidence, release_publishing, release_validation
 from research_repo_tools.cli import main as shared_main
+from research_repo_tools.evidence import deterministic_json
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
 
-from tests.tooling.test_release_evidence import COMMIT, POLICY, REPOSITORY, EvidenceProvider
-from tests.tooling.test_toolchain_integration import TOOLING_REQUIREMENT
+from tests.tooling.support_evidence import COMMIT, POLICY, REPOSITORY, EvidenceProvider
+from tests.tooling.support_toolchain import TOOLING_REQUIREMENT
 
 ROOT = Path(__file__).resolve().parents[2]
 TAG = "v0.5.42"
@@ -31,6 +34,12 @@ def test_draft_verification_handoff_uses_the_installed_cli_path_contract(tmp_pat
     (checkout / "tooling").mkdir(parents=True)
     runner.mkdir()
     (checkout / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.5.42"\n', encoding="utf-8", newline="\n")
+    (checkout / "pyproject.toml").write_text(
+        '[tool.research-repo-tools.publishing]\nregistry = "crates-io"\npackage = "la-stack"\nrepository = "acgetchell/la-stack"\n'
+        'required-checks = [{name = "build", app-id = 15368}]\n',
+        encoding="utf-8",
+        newline="\n",
+    )
     policy = (ROOT / "tooling/release-evidence.toml").read_bytes()
     (checkout / "tooling/release-evidence.toml").write_bytes(policy)
     calls = tmp_path / "calls.jsonl"
@@ -50,6 +59,7 @@ def test_draft_verification_handoff_uses_the_installed_cli_path_contract(tmp_pat
         f'uv() {{ {shlex.quote(Path(sys.executable).as_posix())} {shlex.quote(recorder.as_posix())} "$@"; }}\n' + step["run"]
     )
     output = runner / "github-output"
+    output.touch()
     result = run_command(
         "bash",
         ["--noprofile", "--norc", "-euc", shell],
@@ -62,23 +72,36 @@ def test_draft_verification_handoff_uses_the_installed_cli_path_contract(tmp_pat
             "GITHUB_EVENT_NAME": "push",
             "GITHUB_REF": f"refs/tags/{TAG}",
             "GITHUB_SHA": COMMIT,
+            "GITHUB_REPOSITORY": REPOSITORY,
             "GITHUB_OUTPUT": output.as_posix(),
             "FIXTURE_CALLS": calls.as_posix(),
         },
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert output.read_bytes() == f"commit={COMMIT}\n".encode()
-    assert (runner / "handoff/evidence.toml").read_bytes() == policy
     invocations = [json.loads(line) for line in calls.read_text(encoding="utf-8").splitlines()]
-    evidence = [args for args in invocations if "evidence" in args]
-    assert len(invocations) == 3
-    assert len(evidence) == 1
-    arguments = evidence[0][evidence[0].index("--root") :]
+    assert len(invocations) == 1
+    arguments = invocations[0][invocations[0].index("--root") :]
+    assert arguments[2:5] == ["release", "assets", "plan"]
     provider = EvidenceProvider(checkout)
     provider.install(monkeypatch)
+    monkeypatch.setattr(draft_workflow, "api", provider.api)
+
+    # Source/check gates have separate installed-CLI tests. Keep the planner,
+    # signed native selection and durable output transaction real here.
+    def source(settings: object, tag: str, *, commit: str) -> str:
+        assert tag == TAG
+        assert commit == COMMIT
+        return commit
+
+    monkeypatch.setattr(draft_workflow, "check_release_source", source)
+    monkeypatch.setattr(draft_workflow, "notes", lambda *_args: ("Original generated notes\r\n", "fixture"))
     assert shared_main(arguments) == 0
-    selected = json.loads((runner / "handoff/selection.json").read_bytes())
+    assert output.read_bytes() == f"commit={COMMIT}\n".encode()
+    handoff = json.loads((runner / "handoff/handoff.json").read_bytes())
+    assert handoff["evidence_policy"].encode() == policy
+    assert handoff["notes"] == "Original generated notes\r\n"
+    selected = handoff["selection"]
     assert selected["run"]["id"] == 101
     assert selected["run"]["head_sha"] == COMMIT
 
@@ -188,13 +211,20 @@ def draft_handoff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
         "head_branch": TAG,
         "head_sha": COMMIT,
         "path": ".github/workflows/prepare-release.yml",
+        "name": "Prepare GitHub release",
+        "pull_requests": [],
+        "repository": {"id": 11, "full_name": REPOSITORY},
+        "head_repository": {"id": 11, "full_name": REPOSITORY},
+        "status": "in_progress",
+        "conclusion": None,
     }
     artifact = {
         "id": 88,
         "expired": False,
         "name": "draft-handoff-77-1",
         "digest": "sha256:" + "d" * 64,
-        "workflow_run": {"id": 77, "head_sha": COMMIT},
+        "size_in_bytes": 512,
+        "workflow_run": {"id": 77, "head_branch": TAG, "head_sha": COMMIT, "repository_id": 11, "head_repository_id": 11},
     }
     state: dict[str, Any] = {"release": None, "posts": [], "current": current, "artifact": artifact, "history": [deepcopy(current)], "selection": selection}
     for key, value in {
@@ -212,31 +242,89 @@ def draft_handoff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
     }.items():
         monkeypatch.setenv(key, value)
     monkeypatch.chdir(tmp_path)
+    workflow_bytes = WORKFLOW.read_bytes()
+    workflow_source = {
+        "type": "file",
+        "path": ".github/workflows/prepare-release.yml",
+        "encoding": "base64",
+        "size": len(workflow_bytes),
+        "sha": hashlib.sha1(b"blob " + str(len(workflow_bytes)).encode() + b"\0" + workflow_bytes, usedforsecurity=False).hexdigest(),
+        "content": base64.b64encode(workflow_bytes).decode(),
+    }
+    job = {
+        "id": 91,
+        "name": "verify",
+        "run_id": 77,
+        "run_attempt": 1,
+        "head_branch": TAG,
+        "head_sha": COMMIT,
+        "status": "completed",
+        "conclusion": "success",
+        "labels": ["ubuntu-latest"],
+        "steps": [{"name": "Verify tagged source and freeze native evidence and notes", "number": 1, "status": "completed", "conclusion": "success"}],
+    }
+
+    responses = {
+        "actions/artifacts/88": artifact,
+        "actions/runs/77": current,
+        "actions/workflows/9/runs?per_page=100&page=1": {"workflow_runs": state["history"]},
+        "actions/workflows/prepare-release.yml": {
+            "id": 9,
+            "path": ".github/workflows/prepare-release.yml",
+            "name": "Prepare GitHub release",
+            "state": "active",
+        },
+        f"contents/.github/workflows/prepare-release.yml?ref={COMMIT}": workflow_source,
+        "actions/runs/77/attempts/1/jobs?per_page=100&page=1": {"jobs": [job]},
+    }
 
     def api(endpoint: str, *, repository: str) -> Any:
         assert repository == REPOSITORY
-        if endpoint == "actions/artifacts/88":
-            return deepcopy(artifact)
-        if endpoint == "actions/runs/77":
-            return deepcopy(current)
-        if endpoint == "actions/workflows/9/runs?per_page=100&page=1":
-            return {"workflow_runs": deepcopy(state["history"])}
-        return provider.api(endpoint, repository=repository)
+        return deepcopy(responses[endpoint]) if endpoint in responses else provider.api(endpoint, repository=repository)
 
-    def download(repository: str, _artifact: object, destination: Path, names: tuple[str, ...]) -> None:
+    def download(repository: str, _artifact: object, destination: Path, names: tuple[str, ...], **_bounds: int) -> None:
         assert repository == REPOSITORY
-        assert names == ("evidence.toml", "selection.json", "notes.md")
+        assert names == ("handoff.json",)
         destination.mkdir(exist_ok=True)
-        (destination / "evidence.toml").write_bytes((ROOT / "tooling/release-evidence.toml").read_bytes())
-        (destination / "selection.json").write_bytes(selection)
-        (destination / "notes.md").write_bytes(notes)
+        (destination / "handoff.json").write_bytes(
+            deterministic_json(
+                {
+                    "schema": "research-repo-tools/draft-handoff/v1",
+                    "repository": REPOSITORY,
+                    "source": {"ref": f"refs/tags/{TAG}", "commit": COMMIT},
+                    "event": "push",
+                    "title": TAG,
+                    "notes": notes.decode(),
+                    "evidence_policy": (ROOT / "tooling/release-evidence.toml").read_text(encoding="utf-8"),
+                    "selection": json.loads(selection),
+                    "checks": [{"name": "build", "app_id": 15368}],
+                }
+            )
+        )
 
     def gh(_root: Path, args: list[str]) -> bytes:
         return draft_provider(state, args)
 
     monkeypatch.setattr(release_validation, "api", api)
     monkeypatch.setattr(release_drafts, "api", api)
-    monkeypatch.setattr(release_validation, "download_artifact", download)
+    monkeypatch.setattr(draft_workflow, "api", api)
+    monkeypatch.setattr(draft_workflow, "download_artifact", download)
+    source_responses = {
+        "": {"full_name": REPOSITORY, "default_branch": "main"},
+        "branches/main": {"name": "main", "protected": True},
+        f"compare/{COMMIT}...main": {"status": "identical"},
+        f"commits/{COMMIT}/check-runs?filter=latest&per_page=100": [
+            {
+                "total_count": 1,
+                "check_runs": [
+                    {"id": 17, "name": "build", "head_sha": COMMIT, "app": {"id": 15368}, "status": "completed", "conclusion": "success"},
+                ],
+            }
+        ],
+    }
+    monkeypatch.setattr(release_publishing, "_api", lambda _root, _repo, endpoint, **_kwargs: source_responses[endpoint])
+    monkeypatch.setattr(release_drafts, "_api", lambda _root, _repo, endpoint, **_kwargs: source_responses[endpoint])
+    monkeypatch.setattr(release_publishing, "_remote_commit", lambda *_args: COMMIT)
     monkeypatch.setattr(release_assets, "_gh", gh)
     monkeypatch.setattr(release_drafts, "_gh", gh)
     # Step 2 must never launch builds, tests or acquisition, even on retries.
@@ -253,11 +341,12 @@ def test_actual_writer_creates_once_and_retains_exact_draft(draft_handoff: dict[
     draft_handoff["current"]["path"] += suffix
     script = draft_handoff["script"]
     runpy.run_path(str(script), run_name="__main__")
-    original = (tmp_path / "draft-receipt.json").read_bytes()
+    original = (tmp_path / "draft-state/draft-receipt.json").read_bytes()
     runpy.run_path(str(script), run_name="__main__")
     assert len(draft_handoff["posts"]) == 1
-    assert (tmp_path / "draft-receipt.json").read_bytes() == original
-    target = release_assets.parse_release_target((tmp_path / "target.json").read_bytes())
+    assert (tmp_path / "draft-state/draft-receipt.json").read_bytes() == original
+    assert {path.name for path in (tmp_path / "draft-state").iterdir()} == {"producer.json", "handoff.json", "draft-receipt.json", "target.json"}
+    target = release_assets.parse_release_target((tmp_path / "draft-state/target.json").read_bytes())
     assert (target.tag, target.commit, target.release_id, target.expected_title) == (TAG, COMMIT, 42, TAG)
 
 
@@ -285,12 +374,12 @@ def test_writer_rejects_changed_handoff_without_creating_a_draft(
     diagnostic = (
         "original exact tag push"
         if failure in {"ref", "commit", "attempt", "attempt-spelling", "validated-attempt"}
-        else "handoff|preparation intent|did not succeed"
+        else "handoff|original tag-push|artifact|workflow|did not succeed"
     )
     with pytest.raises(ValueError, match=diagnostic):
         runpy.run_path(str(draft_handoff["script"]), run_name="__main__")
     assert draft_handoff["posts"] == []
-    assert not (tmp_path / "draft-receipt.json").exists()
+    assert not (tmp_path / "draft-state").exists()
 
 
 def test_draft_workflow_keeps_the_writer_isolated_and_recovery_explicit() -> None:
@@ -310,7 +399,8 @@ def test_draft_workflow_keeps_the_writer_isolated_and_recovery_explicit() -> Non
     assert command[10:] == ["python", "-I", '"{0}"']
     assert step["working-directory"] == "${{ runner.temp }}"
     assert writer["steps"][-1]["if"] == "always()"
-    assert "draft-receipt.json" in writer["steps"][-1]["with"]["path"]
+    assert "draft-state/*" in writer["steps"][-1]["with"]["path"]
+    assert "draft-state/draft-receipt.json" in writer["steps"][-2]["with"]["path"]
     assert all(step.get("with", {}).get("enable-cache", False) is False for step in writer["steps"])
 
 

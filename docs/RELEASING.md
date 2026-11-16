@@ -114,7 +114,7 @@ constraints used by the installed verifier. See GitHub's
 ## Release command alignment
 
 The common Step 1/Step 2 flow follows the
-[research-repo-tools v0.2.8 guide](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/docs/RELEASING.md).
+[research-repo-tools v0.2.9 guide](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/docs/RELEASING.md).
 Draft preparation and authenticated receipt retrieval use the installed shared
 API. Release boundaries require published tooling and successful native evidence.
 
@@ -563,12 +563,15 @@ The read-only job checks the exact tagged source, main ancestry, final metadata
 and retained signed native evidence, then freezes that selection and generated
 notes. An isolated pinned writer with no checkout authenticates the handoff by
 immutable artifact ID, digest, run and attempt, revalidates the same native
-selection and creates the unpublished draft through the shared API.
+selection and creates the unpublished draft through the shared authenticated API.
 
 Retain the handoff and separate draft-receipt artifact IDs, ZIP digests and
 producer run/attempts in independent release review notes. Preserve the captured
 release ID in `target.json`. An existing exact matching draft is unchanged;
 conflicting notes, title, lifecycle, moved tags or missing evidence stop work.
+Retain the separate `draft-state-RUN_ID-ATTEMPT` artifact as well. It contains
+the original `producer.json`, `handoff.json`, `draft-receipt.json` and captured
+`target.json`; recovery must restore that complete state before retrying.
 Preparation builds the declared native Python dependencies for provenance;
 it runs no tests, Rust package builds, release-evidence signing or benchmark
 acquisition.
@@ -785,7 +788,7 @@ permission to create a replacement.
 Recover the exact original artifacts by independently recorded immutable IDs,
 verify their ZIP digests and producer run/attempts, and retain the original policy,
 selection, notes and receipt. Follow the supplying package's
-[recovery](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/docs/PREPARING_DRAFTS.md#retry-and-recovery).
+[recovery](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/docs/PREPARING_DRAFTS.md#retry-and-recovery).
 After independent provider/audit review, its `release assets prepare` CLI accepts
 `--recover-release-id REVIEWED_ID` with the original pending receipt and frozen
 inputs; recovery performs no POST. A captured ID cannot be replaced. This is an

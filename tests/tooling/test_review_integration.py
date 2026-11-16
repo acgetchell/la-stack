@@ -45,9 +45,15 @@ def stub(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     script = directory / "stub.py"
     script.write_text(
         "import json, os, sys\n"
-        "print(json.dumps(sys.argv[1:]))\n"
+        "if sys.argv[1:] == ['--version']:\n"
+        "    print('0.7.7')\n"
+        "    sys.exit(0)\n"
+        "print(json.dumps({'type': 'fixture_arguments', 'arguments': sys.argv[1:]}))\n"
         "print('fixture diagnostic', file=sys.stderr)\n"
-        "sys.exit(int(os.environ.get('REVIEW_STUB_STATUS', '0')))\n",
+        "status = int(os.environ.get('REVIEW_STUB_STATUS', '0'))\n"
+        "if status == 0 and os.environ.get('REVIEW_STUB_COMPLETE', '1') == '1':\n"
+        "    print(json.dumps({'type': 'complete', 'status': 'review_completed', 'findings': 0, 'reviewedFiles': ['AGENTS.md']}))\n"
+        "sys.exit(status)\n",
         encoding="utf-8",
     )
     if os.name == "nt":
@@ -81,7 +87,9 @@ def test_actual_recipes_forward_scopes_and_consumer_instructions(consumer: Path,
     before = run_command("git", ["--no-pager", "show-ref"], cwd=consumer).stdout
     result = recipe(consumer, *args)
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == [
+    arguments, completion, outcome = [json.loads(line) for line in result.stdout.splitlines()]
+    assert arguments["type"] == "fixture_arguments"
+    assert arguments["arguments"] == [
         "review",
         "--agent",
         "--include-untracked",
@@ -90,6 +98,16 @@ def test_actual_recipes_forward_scopes_and_consumer_instructions(consumer: Path,
         str(consumer / "AGENTS.md"),
         str(consumer / ".coderabbit.yaml"),
     ]
+    assert completion == {"type": "complete", "status": "review_completed", "findings": 0, "reviewedFiles": ["AGENTS.md"]}
+    assert outcome == {
+        "type": "rrt_review_result",
+        "schema": "research-repo-tools/review-result/v1",
+        "status": "completed",
+        "findings": 0,
+        "reviewed_files": ["AGENTS.md"],
+        "reused": False,
+        "skipped": False,
+    }
     assert "fixture diagnostic" in result.stderr
     assert run_command("git", ["--no-pager", "show-ref"], cwd=consumer).stdout == before
 
@@ -101,6 +119,21 @@ def test_service_failures_and_interruption_status_reach_just(consumer: Path, stu
     assert result.returncode == status
     assert f"exit code {status}" in result.stderr
     assert "fixture diagnostic" in result.stderr
+
+
+def test_successful_exit_without_completion_is_rejected(consumer: Path, stub: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REVIEW_STUB_COMPLETE", "0")
+    result = recipe(consumer, "review-uncommitted")
+    assert result.returncode == 1
+    arguments, outcome = [json.loads(line) for line in result.stdout.splitlines()]
+    assert arguments["type"] == "fixture_arguments"
+    assert outcome == {
+        "type": "rrt_review_result",
+        "schema": "research-repo-tools/review-result/v1",
+        "status": "failed",
+        "reason": "CodeRabbit exited without a completion event",
+    }
+    assert outcome["reason"] in result.stderr
 
 
 def test_shell_metacharacters_are_passed_as_one_rejected_base(consumer: Path, stub: Path) -> None:

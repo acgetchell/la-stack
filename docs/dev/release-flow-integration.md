@@ -69,8 +69,11 @@ selection per checkout and tag. Final acceptance binds that original evidence
 to the reviewed candidate. Routine commands recover the registered owner;
 explicit owner, target, and transfer inputs support recovery.
 
-Tag-triggered preparation verifies native evidence before passing inert notes
-and evidence through an authenticated artifact to an isolated draft writer.
+Tag-triggered preparation uses RRT's draft planner before passing its inert
+`handoff.json` through an authenticated artifact to the shared isolated writer.
+The complete `draft-state` directory retains original producer, handoff, journal
+and target records for recovery. Asset staging uses the shared durable batch
+journal while preserving la-stack's transfer format.
 Durable receipts identify the original provider run, attempt, artifact, and
 draft target. Initial staging uses that target and never discovers a replacement
 draft. Attachment consumes retained measurements without collecting new ones.
@@ -79,6 +82,10 @@ Publication is a separate maintainer-approved operation. Its workflow rechecks
 the candidate and canonical assets, retains an approval receipt, and performs
 nonbuilding Cargo upload using authenticated native validation. Published
 supplier tooling is required at release boundaries.
+The crates.io jobs select minimal Rust/Cargo through RRT's managed tool APIs;
+the locked Python environment still supplies Just and provenance dependencies.
+Title, generated-notes and published immutability checks live in the shared
+publishing configuration, alongside the native checks and required assets.
 
 Generic verification, draft lifecycle, and retry primitives belong to
 research-repo-tools. Scientific selection, repository orchestration, and

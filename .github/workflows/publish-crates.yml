@@ -54,6 +54,7 @@ jobs:
         uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
         with:
           cache: "false"
+          tool: cargo
 
       - name: Verify the independently reviewed acceptance
         env:
@@ -65,7 +66,6 @@ jobs:
           set -euo pipefail
           just release-dependency-builds
           just release-receive "$RUNNER_TEMP/accepted-candidate" --published
-          just _release-notes-check "$RELEASE_TAG"
 
       - name: Freeze the full acceptance before approval
         id: approval
@@ -97,6 +97,7 @@ jobs:
         uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
         with:
           cache: "false"
+          tool: cargo
 
       - name: Require this exact approval receipt
         env:
@@ -130,7 +131,6 @@ jobs:
           set -euo pipefail
           just release-dependency-builds
           just release-receive "$RUNNER_TEMP/accepted-candidate" --published --expected "$RUNNER_TEMP/approved-acceptance/acceptance.json"
-          just _release-notes-check "$RELEASE_TAG"
           uv run --locked --no-sync research-repo-tools release registry "$RELEASE_TAG" --expect absent
 
       - name: Obtain a short-lived crates.io token
@@ -142,7 +142,9 @@ jobs:
       - name: Package and upload verified source without building
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: uv run --locked --no-sync research-repo-tools toolchain run -- cargo publish --locked --package la-stack --registry crates-io --no-verify
+        run: >-
+          uv run --locked --no-sync research-repo-tools toolchain run --tool cargo --
+          cargo publish --locked --package la-stack --registry crates-io --no-verify
 
       - name: Check visibility even after a Cargo upload timeout
         if: ${{ !cancelled() && steps.auth.outcome == 'success' }}

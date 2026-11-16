@@ -10,6 +10,9 @@ _run := "uv run --locked --no-sync --no-python-downloads research-repo-tools too
 
 _pytest_parallel := "-n " + quote(env("LA_STACK_TEST_WORKERS", "4")) + " --dist worksteal --max-worker-restart 0"
 
+# Check and update every workflow and composite through the same explicit scope.
+_actions_inputs := quote(".github/workflows") + " " + quote(".github/actions")
+
 # Semgrep misreads Python 3.15's positive RLIM_INFINITY on Linux.
 # Keep its inherited stack finite until semgrep/semgrep#11979 is fixed.
 semgrep_stack_limit := if os() == "linux" { 'if [[ "$(ulimit -Hs)" == unlimited ]]; then ulimit -s 1048576; fi;' } else { "" }
@@ -31,7 +34,7 @@ _ci-execution: _ci-rust test-python
 
 # Cheap policy failures stop before either execution lane starts.
 [private]
-_ci-policy: action-lint workflow-allowlist-check zizmor markdown-check spell-check _version-check changelog-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-check cargo-lock-check fmt-check semgrep semgrep-test unused-deps shell-check
+_ci-policy: action-lint actions-check workflow-allowlist-check zizmor markdown-check spell-check _version-check changelog-check toml-parse-check toml-fmt-check toml-lint yaml-fmt-check yaml-lint citation-check validate-json justfile-fmt-check python-check cargo-lock-check fmt-check semgrep semgrep-test unused-deps shell-check
 
 # Keep root Cargo outputs and compilation reuse in one sequential lane.
 [private]
@@ -70,7 +73,7 @@ _ensure-yamllint: _ensure-uv
 # Isolate the supplier runtime from the observed candidate checkout.
 [positional-arguments]
 [private]
-[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.8", "python", "-I")]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.9", "python", "-I")]
 _release-candidate *args:
     import runpy
     from pathlib import Path
@@ -80,18 +83,6 @@ _release-candidate *args:
     with isolated_release_runtime(load(root=root)):
         runpy.run_path(str(root / "tooling/release_candidate.py"), run_name="__main__")
 
-# Require the GitHub release title and body to match the generated notes.
-[private]
-_release-notes-check tag:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    tag={{ quote(tag) }}
-    notes="$(mktemp)"
-    trap 'rm -f "$notes"' EXIT
-    uv run --locked --no-sync research-repo-tools changelog notes "$tag" > "$notes"
-    gh release view "$tag" --repo acgetchell/la-stack --json tagName,name,body |
-        jq -e --arg tag "$tag" --rawfile notes "$notes" '.tagName == $tag and .name == $tag and ((.body | gsub("\r\n"; "\n") | rtrimstr("\n")) == ($notes | rtrimstr("\n")))' >/dev/null
-
 # Ordinary checks accept unreleased history; final release validation is stricter.
 [private]
 _version-check: python-sync
@@ -100,6 +91,10 @@ _version-check: python-sync
 # GitHub Actions workflow validation
 action-lint: _ensure-actionlint
     uv run --locked research-repo-tools files run --include '.github/workflows/*.yml' --include '.github/workflows/*.yaml' -- actionlint
+
+# Check coupled Actions pins offline in the provisioned environment without syncing.
+actions-check:
+    uv run --locked --no-sync --no-python-downloads --offline research-repo-tools actions check --policy .github/action-updates.toml {{ _actions_inputs }}
 
 # Audit the repository's Python and Rust lockfiles with the managed OSV scanner.
 audit:
@@ -368,7 +363,7 @@ fmt-check:
     {{ _run }} cargo fmt --all -- --check
 
 # Check workflow syntax and security findings.
-github-actions-check: action-lint workflow-allowlist-check zizmor
+github-actions-check: action-lint actions-check workflow-allowlist-check zizmor
     @echo "✅ GitHub Actions checks complete!"
 
 # File validation
@@ -508,7 +503,7 @@ release-archive owner="" selection="reviewed": (_release-candidate "archive" own
 
 # Use explicit shared asset/recovery operations with an isolated trusted runtime.
 [positional-arguments]
-[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.8", "python", "-I")]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.9", "python", "-I")]
 release-assets +args:
     import sys
     from research_repo_tools.cli import main
@@ -531,8 +526,8 @@ release-dependencies:
 
 # Rebuild declared registry sources and authenticate this machine's installed wheels.
 release-dependency-builds: python-sync
-    {{ _run }} cargo fetch --locked
-    {{ _run }} uv run --locked --no-sync research-repo-tools release dependency-builds
+    uv run --locked --no-sync research-repo-tools toolchain run --tool cargo -- cargo fetch --locked
+    uv run --locked --no-sync research-repo-tools toolchain run --tool cargo -- uv run --locked --no-sync research-repo-tools release dependency-builds
 
 # Bind the original local acquisition to clean HEAD and signed native CI.
 release-evidence owner="" selection="reviewed": (_release-candidate "verify" owner "--selection" selection)
@@ -540,12 +535,10 @@ release-evidence owner="" selection="reviewed": (_release-candidate "verify" own
 # Require the release event, reviewed commit, native checks, assets, and notes.
 release-gate tag:
     uv run --locked --no-sync research-repo-tools release gate {{ quote(tag) }}
-    gh api "repos/acgetchell/la-stack/releases/$(jq -er '.release.id' "$GITHUB_EVENT_PATH")" | jq -e '.immutable == true' >/dev/null
-    just _release-notes-check {{ quote(tag) }}
 
 # Verify signed native/Cargo evidence; accept --expected PATH and --github-output PATH.
 [positional-arguments]
-[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.8", "python", "-I")]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.9", "python", "-I")]
 release-native-evidence *args:
     import sys
     import tempfile
@@ -568,7 +561,7 @@ release-notes tag: python-sync
 release-publication owner="" selection="reviewed": (_release-candidate "seal" owner "--selection" selection)
 
 # Approve the benchmark-equipped draft as the authenticated maintainer.
-release-publish tag owner="" selection="reviewed": (_release-notes-check tag) (_release-candidate "reviewed" owner "--selection" selection) (release-publication owner selection)
+release-publish tag owner="" selection="reviewed": (_release-candidate "reviewed" owner "--selection" selection) (release-publication owner selection)
     uv run --locked --no-sync research-repo-tools release publish {{ quote(tag) }} --approve
 
 # Verify the maintainer's dispatch input; never acquire timings or build packages.
@@ -718,8 +711,9 @@ toml-parse-check: python-sync
     uv run --locked research-repo-tools files run --include '*.toml' -- uv run --locked python -c 'import pathlib, sys, tomllib; [tomllib.loads(pathlib.Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:]]'
 
 # Check installed tools without synchronization, downloads, or installation.
-tools-check:
-    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain check
+[positional-arguments]
+tools-check *args:
+    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain check "$@"
 
 # Preview obsolete managed installations; pass --apply for explicit removal.
 [positional-arguments]
@@ -727,8 +721,19 @@ tools-clean *args:
     uv run --locked --no-sync research-repo-tools toolchain clean "$@"
 
 # Export verified managed paths to GITHUB_ENV in hosted workflows.
-tools-export:
-    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain export
+[positional-arguments]
+tools-export *args:
+    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain export "$@"
+
+# Run a command with verified tools; optional --tool selections precede --.
+[positional-arguments]
+tools-run +args:
+    uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain run "$@"
+
+# Install selected declared tools, or the complete catalog when no selection is given.
+[positional-arguments]
+tools-sync *args:
+    uv run --locked --managed-python --only-group tooling research-repo-tools toolchain sync "$@"
 
 # Check for unused direct Cargo dependencies.
 unused-deps: tools-check
@@ -740,8 +745,8 @@ update: update-tools update-dependencies
 
 # Update explicitly selected Actions pins; --dry-run and --check only preview.
 [positional-arguments]
-update-actions +args:
-    uv run --locked research-repo-tools actions update --policy .github/actions-allowlist.json "$@"
+update-actions *args:
+    uv run --locked --only-group tooling --inexact research-repo-tools actions update --policy .github/action-updates.toml {{ _actions_inputs }} "$@"
 
 # num-bigint and num-rational share public types and must advance together.
 update-cargo-dependencies:

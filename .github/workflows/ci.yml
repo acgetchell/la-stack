@@ -159,7 +159,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           uvx --python 3.15 \
-            --from 'research-repo-tools==0.2.8' \
+            --from 'research-repo-tools==0.2.9' \
             python -I - <<'PY'
           import os
           import sys

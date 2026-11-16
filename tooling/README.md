@@ -71,7 +71,7 @@ Other platforms resolve Semgrep 1.184.0 or newer within the shared range.
 ## Shared capability adoption
 
 The tooling group and isolated `uvx --python 3.15` runtimes use the published
-`research-repo-tools==0.2.8` package. Integration checks verify the manifest,
+`research-repo-tools==0.2.9` package. Integration checks verify the manifest,
 registry lock artifacts and installed version, including the isolated runtimes.
 For development rehearsal, an exact full-commit uv Git source override remains
 supported; keep the isolated runtime pins aligned and do not float on `main`.
@@ -103,7 +103,7 @@ never copy their signing keys into CI artifacts or caches. Changed manifests,
 locks, source policy, interpreter, or builder invalidate them. Rebuild before
 the next release check after such changes. These receipts establish observed
 source/build provenance, not reproducible builds or publisher-signed wheels.
-See the supplier's [source-build contract](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/README.md#source-built-python-dependencies).
+See the supplier's [source-build contract](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/README.md#source-built-python-dependencies).
 
 Native CI runs `just ci-dependencies` in the `dependencies` stage of the `native`
 job alongside the Rust, Python, and candidate-acceptance stages after shared policy checks. Signed release evidence
@@ -119,16 +119,16 @@ dependencies. Upgrading a published supplier uses the target release's adopter
 outside the old project environment. For the current release:
 
 ```bash
-uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.2.8 research-repo-tools toolchain adopt --dry-run
-uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.2.8 research-repo-tools toolchain adopt --apply
+uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.2.9 research-repo-tools toolchain adopt --dry-run
+uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.2.9 research-repo-tools toolchain adopt --apply
 ```
 
 The adopter reconciles requirements, lock and environment. Align the declared
 source in `dependency-sources.toml`, isolated recipe/workflow pins and consumer
 identity tests with that target, then run the normal checks. `just update` does
-not perform this supplier migration, including when run by v0.2.8.
-For an exact Git development pin, v0.2.8 also supports explicit attested
-[promotion](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/docs/UPDATING_DEPENDENCIES.md#promoting-an-exact-development-pin);
+not perform this supplier migration, including when run by v0.2.9.
+For an exact Git development pin, v0.2.9 also supports explicit attested
+[promotion](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/docs/UPDATING_DEPENDENCIES.md#promoting-an-exact-development-pin);
 ordinary updates continue to preserve the pin.
 
 For a deliberate source transition, edit `[sources.tooling]` in
@@ -148,7 +148,7 @@ come from their registries for release. The file is retained in source exports
 and both benchmark harness declarations, so policy changes invalidate evidence.
 
 The capability inventory below uses the pinned CLI and
-its [v0.2.8 contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.2.8/README.md#common-workflows).
+its [v0.2.9 contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/README.md#common-workflows).
 The shared updater installs and verifies candidate Cargo tools before publishing
 new pins; no local updater implementation is needed.
 Native Rust algorithms, assertions, benchmark selection and release decisions
@@ -156,9 +156,9 @@ remain owned here.
 
 | Capability | Consumer use |
 | --- | --- |
-| Actions | `workflow-allowlist-check` gates external workflow dependencies; `update-actions` updates explicitly selected workflow pins |
+| Actions | Offline `actions-check` catches partial coupled bumps; `update-actions` uses the same workflow/composite scope and separate update policy |
 | Changelog and release | Shared generation, archives, metadata rules, registry gates and verification; the Cargo adapter reuses signed native/package evidence |
-| CI environment and toolchain | Shared setup/check/run/export and verified cached installations; `tools-clean` previews obsolete managed tools separately from Cargo `clean` |
+| CI environment and toolchain | Shared setup/check/run/export, selected-tool recipes and verified cached installations; `tools-clean` previews obsolete managed tools separately from Cargo `clean` |
 | Coverage | Native `cargo llvm-cov` acquisition; `coverage-report` summarizes its existing Cobertura output |
 | Dependencies | Shared uv/tool upgrades and `deps update-python --all-projects`; consumer Python dependencies share the root environment and lock |
 | Documentation and files | Shared tracked/nonignored selection and bounded argument batches for formatting, lint, spelling and syntax checks; one active Markdown policy preserves archives |
@@ -186,13 +186,33 @@ Use `just --list` for arguments. Actions updates and managed-tool removal are
 explicit maintenance operations; checking their wiring does not run them.
 
 `.github/actions-allowlist.json` owns exact action identities accepted by local
-validation and the updater. Workflows retain full commit pins. This source policy
+validation. Workflows retain full commit pins. This source policy
 is separate from the historical GitHub settings payloads under `.github/settings/`,
 which also constrain the publishing action to a specific commit. Reconcile live
 settings before deploying a pin update; the local updater does not change them.
 The allowlist recipe remains scoped to workflows. Semgrep rules check
 composite actions under `.github/actions/`, including their
 external dependencies and commit pins.
+
+`.github/action-updates.toml` separately owns update targets and offline pin
+consistency. `actions-check` and `update-actions` share both `.github/workflows`
+and `.github/actions`; the check runs in `github-actions-check` and hosted
+`ci-policy`. It uses the provisioned environment without syncing or network
+lookups. The maintainer owns coupled `astral-sh/setup-uv` and CodeQL bumps through
+`just update-actions --dry-run`, then `just update-actions`. Advance all three
+CodeQL target tags together before that command; the explicit common release
+also catches a partial sub-action version bump. The offline check verifies
+declared comments and repeated identities, not the remote tag-to-SHA mapping.
+The updater resolves that mapping. Dependabot excludes these two groups and
+continues proposing other Actions updates under the existing approval policy.
+Neither command changes the selected-actions allowlist or approval requirements.
+
+`tools-sync`, `tools-check`, `tools-export` and `tools-run` accept RRT's repeatable
+`--tool` selection. The crates.io workflow follows the supplying
+[publication template](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/src/research_repo_tools/templates/publish-crates.yml)
+by selecting only minimal Rust/Cargo. Locked `dev` still supplies Just and the
+native Python dependency provenance requirements. Cargo owns upload; the shared
+release gates enforce the configured evidence and registry policy.
 
 ## Performance ownership
 
@@ -214,7 +234,7 @@ There is no runtime configuration generator.
 | `criterion-saved.toml` | Required IDs, canonical paths, 100 samples and exact saved raw JSON bytes |
 | `performance-report.toml` | Independent release eligibility, current report and immutable run history |
 | `performance-release.toml` | Preparation storage, publication chronology and separate phase declarations |
-| `release_candidate.py` | Owner-controlled capture, final acceptance and exact hosted handoffs using public shared APIs |
+| `release_candidate.py` | Repository owner selection, recovery and transfer protocol around shared capture, atomic acceptance and asset staging |
 | `performance-readme.toml` | Canonical README selection, formatter, source freshness and tagged links |
 | `plots/{non-exact,retained,scratch}/*.toml` | Named metric/statistic/axis selections with explicit input ownership |
 
@@ -265,8 +285,10 @@ before measurement and report promotion. It stops if preparation fails;
 `performance-readme` remains a separate publication step. `performance-resume`
 reuses the same preparation and checkpoint; it preserves completed suite pairs
 inside an interrupted trial. A fresh acquisition refuses an existing checkpoint.
-The owner record lives outside the checkout and freezes original bytes/digests
-before promotion. Explicit capture retries never start measurements.
+The owner record lives outside the checkout. RRT's `capture_candidate_handoff`
+freezes the original bytes/digests before promotion. The local callback preserves
+la-stack's pre-acquisition preparation and checkpoint/owner registration contract;
+explicit capture retries never start measurements.
 For preparation alone, `just performance-prepare` uses local tags;
 `--fetch-tags --allow-git-mutations` explicitly enables fetching.
 Measurement recipes create temporary
@@ -328,15 +350,19 @@ use the shared release contract; `publish-check` owns native default/exact
 Cargo dry-runs. Main CI signs those packaging and native validation identities;
 `just release-evidence [OWNER] [SELECTION]` binds the original acquisition, precise publisher
 receipt, final clean commit and signed native acceptance. Named review records
-are immutable; selecting a later native attempt requires an explicit new name.
+are immutable; RRT retains the final policy and acceptance in one transaction.
+Selecting a later native attempt requires an explicit new name.
 `release-evidence.toml` owns the package, workflow, native job and signer policy;
 `release-assets.toml` owns the draft-target policy. Evidence recipes use the pinned
 installed runtime outside the observed checkout. The [release guide](../docs/RELEASING.md#reusable-ci-evidence)
 owns the independent owner selection and frozen approval contract.
 Tag-triggered `prepare-release.yml` reuses signed native evidence and generated
-notes through the installed draft API. Its isolated writer retains the original
-journal and captured target. `release-stage` retrieves that original target through
+notes through `release assets plan` and `prepare_authenticated_draft`. Its isolated
+writer retains the complete `draft-state` directory: producer assertions,
+authenticated handoff, original journal and captured target. `release-stage` retrieves that original target through
 the installed tag-aware receipt verifier and freezes its ID before upload;
+RRT's `stage_release_assets` owns the per-asset journal and exact-byte retries.
+Retain `staging.json` and `staged-assets.json` alongside the original transfer;
 `release-publication` adds
 canonical archive ID/hash assertions. Two maintainer dispatches use those
 independent records. Write-scope hosted jobs execute no checkout code;

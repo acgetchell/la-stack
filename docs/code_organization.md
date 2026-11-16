@@ -111,6 +111,9 @@ The [Cargo manifest](../Cargo.toml) owns feature and dependency declarations.
   runnable API examples.
 - Python tests live under `tests/tooling/` and run with pytest through
   `just test-python` or the aggregate validation workflows.
+  `support_evidence.py` owns shared provider fixtures and the subprocess verifier
+  bootstrap; `support_toolchain.py` owns fixture supplier selection. Tests import
+  these support modules rather than other test modules.
 - `examples/` contains complete runnable workflows. README mirrors and public
   guide doctests live in `src/lib.rs`.
 - `tooling/examples.toml` owns the Cargo example package, feature overrides and
@@ -204,7 +207,9 @@ alongside actual recipe sequencing and native managed execution. The
 package and exports verified paths for CI. Release callers disable its caches.
 
 `.github/actions-allowlist.json` owns approved action identities for local
-validation and updates. Historical payloads under `.github/settings/` describe
+validation. `.github/action-updates.toml` separately owns coupled update targets
+and offline pin consistency across workflows and composites.
+Historical payloads under `.github/settings/` describe
 live GitHub settings separately; consult the
 [configuration guide](dev/MANAGING_CHANGES.md#dependabot-approval-configuration) before applying them.
 
@@ -279,9 +284,10 @@ the measurement, report and README policies. Installed `performance prepare`,
 `release` and `readme` commands own those separately retriable phases.
 Shared public APIs own acquisition, validation and publication transactions.
 `tooling/release_candidate.py` owns repository orchestration: immutable
-owner records outside the checkout, pre-promotion capture, named final acceptance,
-original archive derivation, exact draft staging and authenticated transfer.
-It does not implement a comparison engine, archive parser or CI verifier.
+owner selection outside the checkout, recovery, named review slots and the
+repository transfer protocol. RRT owns pre-promotion capture, atomic final
+policy/acceptance retention, archive derivation and journaled asset staging.
+The adapter does not implement a comparison engine, archive parser or CI verifier.
 `tests/tooling/test_candidate_transfer.py` exercises actual privileged workflow
 blocks and exact selection/credential boundaries.
 `tests/tooling/test_release_flow.py` exercises canonical dispatch and automated

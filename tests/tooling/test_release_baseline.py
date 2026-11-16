@@ -10,7 +10,6 @@ import sys
 import tarfile
 import tomllib
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import pytest
 import yaml
@@ -18,7 +17,7 @@ from research_repo_tools.criterion_inventory import CriterionInventory, load_dis
 from research_repo_tools.host_metadata import HostMetadata, serialize_host
 from research_repo_tools.process import run_command
 
-from tests.tooling.test_toolchain_integration import TOOLING_REQUIREMENT
+from tests.tooling.support_toolchain import TOOLING_REQUIREMENT
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/release-benchmarks.yml"
@@ -93,12 +92,6 @@ def run_shell(script: str, cwd: Path, extra_env: dict[str, str], *, timeout: int
         check=False,
         timeout=timeout,
     )
-
-
-def installed_runner() -> str:
-    """Keep workflow package assertions while using the installed locked CLI."""
-    command = f"{shlex.quote(sys.executable)} -I -X utf8 -m research_repo_tools"
-    return f'uvx() {{ [[ "$1 $2 $3 $4 $5" == "--python 3.15 --from {TOOLING_REQUIREMENT} research-repo-tools" ]] || return 90; shift 5; {command} "$@"; }}\n'
 
 
 def package_suites(root: Path, manifest: Path, criterion: Path) -> None:
@@ -386,105 +379,3 @@ def test_retry_requires_current_retrieval(tmp_path: Path, validated_attempt: str
         {"VALIDATED_ATTEMPT": validated_attempt, "GITHUB_RUN_ATTEMPT": "2"},
     )
     assert result.returncode == (0 if validated_attempt == "2" else 1)
-
-
-GH_FIXTURE = r"""import hashlib, json, os, sys
-from pathlib import Path
-from urllib.parse import urlsplit
-args = sys.argv[1:]
-root = Path(os.environ["RELEASE_FIXTURE"])
-tag = os.environ["RELEASE_TAG"]
-asset = os.environ["RELEASE_ASSET"]
-with (root / "api-calls").open("a", encoding="utf-8") as stream:
-    stream.write(json.dumps(args) + "\n")
-metadata = {"id": 7, "name": asset, "size": len((root / asset).read_bytes()),
-            "digest": "sha256:" + hashlib.sha256((root / asset).read_bytes()).hexdigest(), "state": "uploaded"}
-assets = [metadata] if (root / "uploaded").exists() else []
-release = {"id": 42, "url": "https://api.github.com/repos/owner/repo/releases/42", "tag_name": tag,
-           "name": tag, "draft": True, "prerelease": False, "immutable": False, "assets": assets}
-if any(item.endswith("/releases?per_page=100") for item in args):
-    value = [[release]]
-elif args[0] == "release":
-    value = {"databaseId": 42, "tagName": tag}
-elif any(urlsplit(item).hostname == "uploads.github.com" for item in args):
-    (root / "uploaded").touch()
-    value = {}
-elif "PATCH" in args:
-    (root / "published").touch()
-    value = dict(release, draft=False, immutable=True)
-elif args[1].endswith("/releases/assets/7"):
-    sys.stdout.buffer.write((root / asset).read_bytes())
-    raise SystemExit(0)
-elif "/git/ref/tags/" in args[1]:
-    value = {"ref": "refs/tags/" + tag, "object": {"type": "commit", "sha": os.environ.get("REMOTE_COMMIT", "a" * 40)}}
-elif any("/assets?" in item for item in args):
-    value = [assets]
-else:
-    value = release
-print(json.dumps(value))
-"""
-
-
-def test_installed_cli_binds_trusted_target_and_leaves_draft_for_review(tmp_path: Path) -> None:
-    """Exercise actual preflight and writer shell with the pinned installed CLI."""
-    fixture = tmp_path / "provider with spaces"
-    fixture.mkdir()
-    program = fixture / "gh_fixture.py"
-    program.write_text(GH_FIXTURE, encoding="utf-8")
-    if os.name == "nt":
-        executable = fixture / "gh.cmd"
-        executable.write_text(f'@"{sys.executable}" "%~dp0gh_fixture.py" %*\r\n', encoding="utf-8", newline="")
-    else:
-        executable = fixture / "gh"
-        executable.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(program))} "$@"\n', encoding="utf-8")
-        executable.chmod(0o755)
-    asset = f"la-stack-{BASELINE}-criterion-baseline.tar.gz"
-    (fixture / asset).write_bytes(b"raw archive\r\n\xff")
-    output = fixture / "outputs"
-    env = {
-        "PATH": str(fixture) + os.pathsep + os.environ["PATH"],
-        "RELEASE_FIXTURE": str(fixture),
-        "RELEASE_TAG": BASELINE,
-        "RELEASE_ASSET": asset,
-        "GH_REPO": "owner/repo",
-        "GITHUB_REF": f"refs/tags/{BASELINE}",
-        "GITHUB_SHA": "a" * 40,
-        "GITHUB_OUTPUT": output.as_posix(),
-        "RUNNER_TEMP": fixture.as_posix(),
-        "GITHUB_WORKSPACE": fixture.as_posix(),
-    }
-    # Substitute only uvx's environment acquisition; retain its exact package
-    # arguments and execute the already locked package in a real child process.
-    runner = installed_runner()
-    preflight = (
-        "set -euo pipefail\n"
-        f"uvx --python 3.15 --from {shlex.quote(TOOLING_REQUIREMENT)} research-repo-tools "
-        '--root "$RUNNER_TEMP" performance release-draft "$GH_REPO" "$RELEASE_TAG" '
-        '--commit "$GITHUB_SHA" --expected-title "$RELEASE_TAG" > "$GITHUB_OUTPUT"\n'
-    )
-    upload = (
-        "set -euo pipefail\n"
-        'printf "%s" "$RELEASE_TARGET" > "$RUNNER_TEMP/release-target.json"\n'
-        f"uvx --python 3.15 --from {shlex.quote(TOOLING_REQUIREMENT)} research-repo-tools "
-        '--root "$RUNNER_TEMP" performance release-upload "$GH_REPO" "$RELEASE_TAG" '
-        '"$RUNNER_TEMP/$RELEASE_ASSET" --target "$RUNNER_TEMP/release-target.json"\n'
-    )
-    result = run_shell(runner + preflight, fixture, env)
-    assert result.returncode == 0, result.stderr
-    target = output.read_text(encoding="utf-8").strip().removeprefix("target=")
-    assert json.loads(target)["release_id"] == 42
-    assert json.loads(target)["commit"] == "a" * 40
-    assert json.loads(target)["expected_title"] == BASELINE
-    stale = run_shell(runner + upload, fixture, {**env, "RELEASE_TARGET": target, "REMOTE_COMMIT": "b" * 40})
-    assert stale.returncode != 0
-    assert not (fixture / "uploaded").exists()
-    assert not (fixture / "published").exists()
-    stale_calls = [json.loads(line) for line in (fixture / "api-calls").read_text(encoding="utf-8").splitlines()]
-    assert not any(urlsplit(item).hostname == "uploads.github.com" for call in stale_calls for item in call)
-    result = run_shell(runner + upload, fixture, {**env, "RELEASE_TARGET": target})
-    assert result.returncode == 0, result.stderr
-    assert (fixture / "uploaded").exists()
-    assert not (fixture / "published").exists()
-    calls = [json.loads(line) for line in (fixture / "api-calls").read_text(encoding="utf-8").splitlines()]
-    assert not any("PATCH" in call for call in calls)
-    assert any("/releases/assets/7" in item for call in calls for item in call)
