@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import shutil
+import subprocess
 import sys
 import sysconfig
 import tomllib
@@ -14,12 +15,91 @@ from pathlib import Path
 import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
-from research_repo_tools import semgrep_tool
+from research_repo_tools import action_updates, semgrep_tool
 from research_repo_tools.cli import main
-from research_repo_tools.just_inspect import dry_run
+from research_repo_tools.just_inspect import dry_run, inspect_justfile
 from research_repo_tools.process import run_command
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture
+def actions_consumer(tmp_path: Path) -> Path:
+    """Keep the real coupled pins and separate allowlist in a disposable tree."""
+    shutil.copytree(REPO_ROOT / ".github", tmp_path / ".github")
+    return tmp_path
+
+
+def actions_arguments(recipe: str, *extra: str) -> list[str]:
+    """Exercise the installed Just parser before invoking the shared CLI."""
+    command = shlex.split(dry_run(REPO_ROOT, recipe, list(extra)).stderr)
+    if recipe == "update-actions":
+        assert "positional-arguments" in inspect_justfile(REPO_ROOT).recipes[recipe]["attributes"]
+        assert command.pop() == "$@"
+        command.extend(extra)
+    return command[command.index("actions") :]
+
+
+@pytest.mark.parametrize("changed", [None, "setup-uv", "codeql-init", "codeql-analyze", "codeql-upload"])
+def test_offline_actions_check_rejects_partial_coupled_bumps_without_writes(
+    actions_consumer: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], changed: str | None
+) -> None:
+    details = None
+    if changed is not None:
+        filename, identity = {
+            "setup-uv": ("actions/setup-tools/action.yml", "astral-sh/setup-uv"),
+            "codeql-init": ("workflows/codeql.yml", "github/codeql-action/init"),
+            "codeql-analyze": ("workflows/codeql.yml", "github/codeql-action/analyze"),
+            "codeql-upload": ("workflows/rust-clippy.yml", "github/codeql-action/upload-sarif"),
+        }[changed]
+        details = filename, identity
+        path = actions_consumer / ".github" / filename
+        source = path.read_text(encoding="utf-8")
+        source, count = re.subn(rf"({re.escape(identity)}@)[0-9a-f]{{40}} # v[0-9.]+", rf"\g<1>{'a' * 40} # v99.0.0", source, count=1)
+        assert count == 1
+        path.write_text(source, encoding="utf-8", newline="\n")
+    arguments = actions_arguments("actions-check")
+    command = shlex.split(dry_run(REPO_ROOT, "actions-check").stderr)
+    assert all(option in command for option in ("--no-sync", "--no-python-downloads", "--offline"))
+    before = snapshot(actions_consumer)
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: pytest.fail("offline pin checks must not launch gh or another process"))
+    assert main(["--root", str(actions_consumer), *arguments]) == (0 if changed is None else 1)
+    assert snapshot(actions_consumer) == before
+    if details is not None:
+        filename, identity = details
+        diagnostic = capsys.readouterr().err
+        assert identity in diagnostic
+        assert str(actions_consumer / ".github" / filename) in diagnostic
+
+
+@pytest.mark.parametrize("mode", ["--dry-run", "--check", "apply"])
+def test_actions_updater_uses_the_checked_scope_and_keeps_allowlist_separate(actions_consumer: Path, monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+    check = actions_arguments("actions-check")
+    update = actions_arguments("update-actions", *([] if mode == "apply" else [mode]))
+    assert check[2:] == update[2 : len(check)]
+    policy = tomllib.loads((actions_consumer / ".github/action-updates.toml").read_text(encoding="utf-8"))
+    codeql = {tag for name, tag in policy["actions"].items() if name.startswith("github/codeql-action/")}
+    assert len(codeql) == 1
+    assert "latest" not in codeql
+    observed: set[str] = set()
+
+    def resolve(action: str, target: str, root: Path) -> tuple[str, str]:
+        assert root == actions_consumer
+        observed.add(action)
+        return "a" * 40, "v99.0.0" if target == "latest" else target
+
+    monkeypatch.setattr(action_updates, "resolve", resolve)
+    before = snapshot(actions_consumer)
+    assert main(["--root", str(actions_consumer), *update]) == (1 if mode == "--check" else 0)
+    assert observed == set(policy["actions"])
+    after = snapshot(actions_consumer)
+    if mode != "apply":
+        assert after == before
+    else:
+        assert after[".github/actions-allowlist.json"] == before[".github/actions-allowlist.json"]
+        assert after[".github/actions/setup-tools/action.yml"] != before[".github/actions/setup-tools/action.yml"]
+        assert after[".github/workflows/codeql.yml"] != before[".github/workflows/codeql.yml"]
+        assert main(["--root", str(actions_consumer), *check]) == 0
 
 
 @pytest.fixture
@@ -176,7 +256,7 @@ def test_semgrep_runs_in_the_root_python_315_environment_with_compatible_depende
     lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
     versions = {package["name"]: Version(package["version"]) for package in lock["package"]}
     assert versions["pywin32"] == Version("312")
-    for name, vulnerable, patched in (("mcp", "1.29.0", "1.30.0"), ("opentelemetry-api", "1.45.0", "1.45.1"), ("pyjwt", "2.15.0", "2.15.1")):
+    for name, vulnerable, patched in (("mcp", "1.29.0", "1.30.0"), ("opentelemetry-api", "1.45.0", "1.45.2"), ("pyjwt", "2.15.0", "2.15.1")):
         assert Version(vulnerable) not in overrides[name]
         assert Version(patched) in overrides[name]
         assert versions[name] in overrides[name]

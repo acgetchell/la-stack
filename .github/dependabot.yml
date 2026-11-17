@@ -11,6 +11,10 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 10
+    # The shared updater owns coupled workflow/composite and CodeQL bumps.
+    ignore:
+      - dependency-name: "astral-sh/setup-uv"
+      - dependency-name: "github/codeql-action/*"
     labels:
       - "dependencies"
       - "github-actions"

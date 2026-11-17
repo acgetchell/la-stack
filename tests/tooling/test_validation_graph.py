@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 ROOT = Path(__file__).resolve().parents[2]
 POLICY = {
     "action-lint",
+    "actions-check",
     "workflow-allowlist-check",
     "zizmor",
     "markdown-check",
@@ -85,8 +86,8 @@ def graph(tmp_path: Path) -> tuple[Path, set[str]]:
     overrides = []
     for name in sorted(selected):
         recipe = recipes[name]
-        parameters = " *args" if name in {"bench-exact", "zizmor", "test-python"} else ""
-        assert not recipe["parameters"] or name in {"bench-exact", "zizmor", "test-python"}
+        parameters = " *args" if name in {"bench-exact", "zizmor", "test-python", "tools-check"} else ""
+        assert not recipe["parameters"] or parameters
         dependencies = " ".join(
             "(" + item["recipe"] + " " + " ".join(json.dumps(arg) for arg in item["arguments"]) + ")" if item["arguments"] else item["recipe"]
             for item in recipe["dependencies"]

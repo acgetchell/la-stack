@@ -22,31 +22,16 @@ from research_repo_tools.process import run_command
 from research_repo_tools.python_tools import TOOLS, versions as shared_tool_versions
 from research_repo_tools.toml_source import remove_value, set_value
 
+from tests.tooling import support_toolchain
+from tests.tooling.support_toolchain import TOOLING_REQUIREMENT, tooling_requirement
+
 if TYPE_CHECKING:
     import subprocess
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def tooling_requirement(root: Path) -> str:
-    """Select the declared supplier after RRT verifies any development source."""
-    document = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-    (raw,) = document["dependency-groups"]["tooling"]
-    requirement = Requirement(raw)
-    (pin,) = requirement.specifier
-    assert requirement.name == "research-repo-tools"
-    assert requirement.url is None
-    assert requirement.marker is None
-    assert pin.operator == "=="
-    assert "*" not in pin.version
-    development = check_development_dependency(root, document=document)
-    if development is not None:
-        return f"{requirement.name} @ git+{development.source}@{development.revision}"
-    return f"{requirement.name}{requirement.specifier}"
-
-
 TOOLING_VERSION = version("research-repo-tools")
-TOOLING_REQUIREMENT = tooling_requirement(REPO_ROOT)
 CHECKED = ["run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--"]
 UPDATER = ["run", "--locked", "--only-group", "tooling", "--inexact", "research-repo-tools"]
 UV_UPDATE = ["run", "--no-config", "--no-sync", "--no-python-downloads", "research-repo-tools", "deps", "update-uv"]
@@ -119,7 +104,7 @@ def test_tooling_requirement_preserves_source_selection_and_verification(tmp_pat
             raise ValueError(message)
         return DependencyIdentity("research-repo-tools", "0.2.8", "https://github.com/acgetchell/research-repo-tools", "a" * 40) if source == "git" else None
 
-    monkeypatch.setattr(sys.modules[__name__], "check_development_dependency", verify)
+    monkeypatch.setattr(support_toolchain, "check_development_dependency", verify)
     if source == "invalid":
         with pytest.raises(ValueError, match="installed Git provenance differs"):
             tooling_requirement(tmp_path)

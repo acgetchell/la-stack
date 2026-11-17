@@ -235,8 +235,10 @@ def test_release_prepares_before_measurement_and_readme_remains_separate() -> No
     assert "performance release" not in publication
 
 
-@pytest.mark.parametrize("mode", ["fresh", "resume"])
-@pytest.mark.parametrize("failed_phase", ["none", "prepare", "release"])
+@pytest.mark.parametrize(
+    ("mode", "failed_phase"),
+    [("fresh", "none"), ("fresh", "prepare"), ("fresh", "release"), ("resume", "none"), ("resume", "release")],
+)
 def test_release_recipe_stops_on_failure_without_publishing_readme(tmp_path: Path, failed_phase: str, mode: str) -> None:
     """Execute the real Bash recipe with a bounded CLI substitute, never fetching or timing."""
     root = tmp_path / "release with spaces"
@@ -278,7 +280,7 @@ def test_release_recipe_stops_on_failure_without_publishing_readme(tmp_path: Pat
         for command in commands
     ]
     expected = [["prepare", "tooling/performance-release.toml", "--fetch-tags", "--allow-git-mutations", "--release-intent"]] if mode == "fresh" else []
-    if failed_phase != "prepare" or mode == "resume":
+    if failed_phase != "prepare":
         expected.append(
             [
                 "acquire",
@@ -292,7 +294,7 @@ def test_release_recipe_stops_on_failure_without_publishing_readme(tmp_path: Pat
             + (["--resume"] if mode == "resume" else [])
         )
     assert phases == expected
-    status = 0 if failed_phase == "none" or (mode == "resume" and failed_phase == "prepare") else 7
+    status = 0 if failed_phase == "none" else 7
     assert result.returncode == status, result.stderr
     if status:
         assert f"fixture {failed_phase} failure" in result.stderr

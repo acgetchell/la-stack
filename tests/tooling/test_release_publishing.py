@@ -1,6 +1,5 @@
 """Exercise la-stack's published release contract without credentials or uploads."""
 
-import io
 import json
 import os
 import runpy
@@ -8,19 +7,19 @@ import shlex
 import subprocess
 import sys
 import tomllib
-from contextlib import redirect_stderr
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
-from research_repo_tools import changelog, config, dependency_provenance, process, release_publishing
+from research_repo_tools import changelog, config, dependency_provenance, release_publishing
 from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
 
-from tests.tooling.test_release_evidence import PIN_JSON, EvidenceProvider, install_clean_checkout
-from tests.tooling.test_toolchain_integration import TOOLING_REQUIREMENT
+from tests.tooling.support_evidence import PIN_JSON, install_clean_checkout
+from tests.tooling.support_toolchain import TOOLING_REQUIREMENT
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/publish-crates.yml"
@@ -37,6 +36,9 @@ def test_publishing_policy_requires_native_scientific_gates_and_the_criterion_as
     assert (POLICY.publishing.registry, POLICY.publishing.package, POLICY.publishing.repository) == ("crates-io", "la-stack", "acgetchell/la-stack")
     assert tuple((check.name, check.app_id) for check in POLICY.publishing.required_checks) == tuple((name, 15368) for name in CHECKS)
     assert POLICY.publishing.required_assets == ("la-stack-v{version}-criterion-baseline.tar.gz",)
+    assert POLICY.publishing.expected_title == "tag"
+    assert POLICY.publishing.generated_notes
+    assert POLICY.publishing.require_immutable
 
 
 @pytest.fixture
@@ -93,9 +95,11 @@ def release_event(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
         immutable=True,
         prerelease=False,
         assets=((f"la-stack-{TAG}-criterion-baseline.tar.gz", 7, 100, "digest"),),
+        title=TAG,
+        body=changelog.notes(POLICY, TAG)[0],
     )
     monkeypatch.setattr(release_publishing, "lookup_release", lambda *_args: release)
-    return {"checks": checks}
+    return {"checks": checks, "release": release}
 
 
 def test_installed_gate_accepts_actual_metadata_and_required_native_results(release_event: dict[str, Any]) -> None:
@@ -113,43 +117,27 @@ def test_each_configured_native_check_is_required(release_event: dict[str, Any],
 
 
 @pytest.mark.parametrize("immutable", [True, False, None])
-def test_recipe_requires_immutable_publication(tmp_path: Path, immutable: bool | None) -> None:
-    payload = tmp_path / "event.json"
-    payload.write_text(json.dumps({"release": {"id": 42}}), encoding="utf-8")
-    # The shared gate has its own installed-CLI tests above. Isolate this local
-    # immutable-release policy while running the actual Just recipe expansion.
-    script = dry_run(REPO_ROOT, "release-gate", [TAG]).stderr
-    provider = (
-        f'gh() {{ [[ "$1 $2" == "api repos/acgetchell/la-stack/releases/42" ]] || return 90; echo {shlex.quote(json.dumps({"immutable": immutable}))}; }}\n'
-    )
-    result = run_command(
-        "bash",
-        ["--noprofile", "--norc", "-euc", "set -o pipefail\nuv() { return 0; }\njust() { return 0; }\n" + provider + script],
-        env={
-            **{key: value for key, value in os.environ.items() if key not in {"BASH_ENV", "SHELLOPTS", "BASHOPTS"}},
-            "GITHUB_EVENT_PATH": payload.as_posix(),
-        },
-        check=False,
-    )
-    assert (result.returncode == 0) == (immutable is True)
+def test_installed_gate_requires_immutable_publication(
+    release_event: dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], immutable: bool | None
+) -> None:
+    release = replace(release_event["release"], immutable=immutable)
+    monkeypatch.setattr(release_publishing, "lookup_release", lambda *_args: release)
+    assert main(["--root", str(REPO_ROOT), "release", "gate", TAG]) == (0 if immutable is True else 1)
+    if immutable is not True:
+        assert ("must be immutable" if immutable is False else "lifecycle fields") in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("mismatch", ["none", "title", "notes"])
-def test_real_notes_recipe_checks_generated_body_and_title(tmp_path: Path, mismatch: str) -> None:
-    body = changelog.notes(POLICY, TAG)[0]
-    response = {"tagName": TAG, "name": "wrong" if mismatch == "title" else TAG, "body": "wrong" if mismatch == "notes" else body}
-    payload = tmp_path / "release.json"
-    payload.write_text(json.dumps(response), encoding="utf-8")
-    # Only acquisition/provider boundaries are substituted; execute the real CLI
-    # and recipe's jq comparison, preserving safe transport of Markdown bytes.
-    runner = (
-        'uv() { [[ "$1 $2 $3 $4" == "run --locked --no-sync research-repo-tools" ]] || return 90; shift 4; '
-        f'{shlex.quote(sys.executable)} -m research_repo_tools --root {shlex.quote(str(REPO_ROOT))} "$@"; }}\n'
-        f"gh() {{ cat {shlex.quote(payload.as_posix())}; }}\n"
-    )
-    script = dry_run(REPO_ROOT, "_release-notes-check", [TAG]).stderr
-    result = run_command("bash", ["--noprofile", "--norc", "-euc", runner + script], cwd=REPO_ROOT, check=False)
-    assert (result.returncode == 0) == (mismatch == "none"), result.stderr
+@pytest.mark.parametrize("mismatch", ["none", "title", "notes", "crlf"])
+def test_installed_gate_checks_generated_body_and_title(
+    release_event: dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], mismatch: str
+) -> None:
+    release = release_event["release"]
+    body = release.body.replace("\n", "\r\n") if mismatch == "crlf" else "wrong" if mismatch == "notes" else release.body
+    release = replace(release, title="wrong" if mismatch == "title" else TAG, body=body)
+    monkeypatch.setattr(release_publishing, "lookup_release", lambda *_args: release)
+    assert main(["--root", str(REPO_ROOT), "release", "gate", TAG]) == (0 if mismatch in {"none", "crlf"} else 1)
+    if mismatch in {"title", "notes"}:
+        assert ("release title differs" if mismatch == "title" else "release body differs") in capsys.readouterr().err
 
 
 def test_release_notes_stdout_excludes_setup_diagnostics() -> None:
@@ -185,7 +173,7 @@ def test_publish_recipe_passes_explicit_approval(monkeypatch: pytest.MonkeyPatch
     # Exercise the installed argument parser and dispatch, replacing only the
     # irreversible publication boundary with an in-memory request recorder.
     monkeypatch.setattr(release_publishing, "publish_reviewed_release", publish)
-    # The publication command follows the separately tested notes precheck.
+    # Shared publishing policy owns the separately tested title/notes assertions.
     command = shlex.split(dry_run(REPO_ROOT, "release-publish", [TAG, "/independent-owner"]).stderr.splitlines()[-1])
     assert command[:7] == ["uv", "run", "--locked", "--no-sync", "research-repo-tools", "release", "publish"]
     assert main(["--root", str(REPO_ROOT), *command[5:]]) == 0
@@ -212,7 +200,7 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
         assert gate["env"]["CANDIDATE_TRANSFER"] == "${{ inputs.candidate }}"
         assert gate["env"]["CANDIDATE_ACCEPTANCE"] == "${{ inputs.acceptance }}"
         assert 'just release-receive "$RUNNER_TEMP/accepted-candidate" --published' in gate["run"]
-        assert 'just _release-notes-check "$RELEASE_TAG"' in gate["run"]
+        assert job["steps"][1]["with"]["tool"] == "cargo"
     steps = jobs["publish"]["steps"]
     assert jobs["verify"]["steps"][3]["id"] == "approval"
     assert jobs["verify"]["steps"][3]["with"]["path"].endswith("/acceptance.json")
@@ -221,7 +209,7 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert '--expected "$RUNNER_TEMP/approved-acceptance/acceptance.json"' in steps[4]["run"]
     assert 'release registry "$RELEASE_TAG" --expect absent' in steps[4]["run"]
     assert steps[5]["id"] == "auth"
-    assert steps[6]["run"].endswith("cargo publish --locked --package la-stack --registry crates-io --no-verify")
+    assert steps[6]["run"].endswith("toolchain run --tool cargo -- cargo publish --locked --package la-stack --registry crates-io --no-verify")
     assert [index for index, step in enumerate(steps) if "CARGO_REGISTRY_TOKEN" in step.get("env", {})] == [6]
     assert steps[7]["if"] == "${{ !cancelled() && steps.auth.outcome == 'success' }}"
     assert steps[7]["run"] == 'just release-verify "$RELEASE_TAG"'
@@ -231,41 +219,10 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert "--features exact" in commands
     assert "--allow-dirty" not in commands
     assert "--no-verify" not in commands
-
-
-def run_evidence_fixture() -> int:
-    """Run the real verifier in a child process with simulated provider responses."""
-    root = Path(os.environ["FIXTURE_ROOT"])
-    provider = EvidenceProvider(root)
-    if os.environ.get("FIXTURE_FAILURE") == "failed-job":
-        provider.jobs[3]["steps"][0]["conclusion"] = "failure"
-    newline = os.environ.get("FIXTURE_DIAGNOSTIC_NEWLINE", os.linesep)
-    sys.stdout.buffer.write(("fixture stdout diagnostic" + newline).encode("utf-8"))
-    sys.stdout.flush()
-    print("fixture stderr diagnostic", file=sys.stderr)
-    diagnostic = io.StringIO()
-    script, *arguments = sys.argv[1:]
-    with pytest.MonkeyPatch.context() as patch:
-        provider.install(patch)
-        patch.setattr(process, "run_git_command", provider.git)
-        # The uv launcher needs the real test environment; provenance observes
-        # only the dependency-free release fixture after process startup.
-        patch.delenv("UV_PROJECT", raising=False)
-        patch.delenv("UV_PROJECT_ENVIRONMENT", raising=False)
-        with redirect_stderr(diagnostic):
-            try:
-                sys.argv[:] = [script, *arguments]
-                runpy.run_path(script, run_name="__main__")
-                status = 0
-            except SystemExit as error:
-                status = error.code
-    assert isinstance(status, int)
-    print(diagnostic.getvalue(), end="", file=sys.stderr)
-    # Just's quiet mode hides stderr. Record the actual verifier outcome so an
-    # import/shell failure cannot masquerade as the rejection under test.
-    result = {"status": status, "diagnostic": diagnostic.getvalue(), "import_root": sys.path[0], "arguments": arguments}
-    (root / "verifier-result.json").write_text(json.dumps(result), encoding="utf-8")
-    return status
+    preparation = dry_run(REPO_ROOT, "release-dependency-builds").stderr
+    managed = [shlex.split(line) for line in preparation.splitlines() if "toolchain run" in line]
+    assert len(managed) == 2
+    assert all(command[command.index("toolchain") :][:5] == ["toolchain", "run", "--tool", "cargo", "--"] for command in managed)
 
 
 @pytest.fixture
@@ -298,7 +255,7 @@ def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", sys.prefix)
     (tmp_path / "fixture-bootstrap.py").write_text(
         'import os, sys\nsys.path[:0] = [os.environ["FIXTURE_REPO_ROOT"], os.environ["FIXTURE_MODULE_ROOT"]]\n'
-        "from tests.tooling.test_release_publishing import run_evidence_fixture\nsys.exit(run_evidence_fixture())\n",
+        "from tests.tooling.support_evidence import run_evidence_fixture\nsys.exit(run_evidence_fixture())\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -594,15 +551,27 @@ def test_main_ci_seals_only_complete_native_and_cargo_validation() -> None:
     }
 
 
-@pytest.mark.parametrize("stage", ["prepare", "native"])
-@pytest.mark.parametrize("result", ["success", "failure", "skipped", "cancelled", ""])
-def test_main_ci_required_checks_reject_incomplete_native_stages(stage: str, result: str) -> None:
+@pytest.mark.parametrize(
+    ("prepare", "native"),
+    [
+        ("success", "success"),
+        ("failure", "success"),
+        ("skipped", "success"),
+        ("cancelled", "success"),
+        ("", "success"),
+        ("success", "failure"),
+        ("success", "skipped"),
+        ("success", "cancelled"),
+        ("success", ""),
+    ],
+)
+def test_main_ci_required_checks_reject_incomplete_native_stages(prepare: str, native: str) -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_bytes())
     step = workflow["jobs"]["build"]["steps"][0]
     assert step["env"] == {"PREPARE_RESULT": "${{ needs.prepare.result }}", "NATIVE_RESULT": "${{ needs.native.result }}"}
-    environment = {**os.environ, "PREPARE_RESULT": "success", "NATIVE_RESULT": "success", f"{stage.upper()}_RESULT": result}
+    environment = {**os.environ, "PREPARE_RESULT": prepare, "NATIVE_RESULT": native}
     completed = run_command("bash", ["--noprofile", "--norc", "-euc", step["run"]], env=environment, check=False)
-    assert completed.returncode == (0 if result == "success" else 1), completed.stderr
+    assert completed.returncode == (0 if prepare == native == "success" else 1), completed.stderr
 
 
 @pytest.mark.parametrize("source", ["development", "published", "rejected"])

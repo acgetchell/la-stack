@@ -6,29 +6,24 @@ import json
 import os
 import re
 import tempfile
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Literal
 
-from research_repo_tools.candidate_publication import plan_candidate_publication
+from research_repo_tools.candidate_handoff import capture_candidate_handoff
 from research_repo_tools.candidate_reuse import (
-    CandidatePolicy,
     acquisition_assertion_digest,
     parse_candidate_policy,
     plan_candidate_archive,
-    serialize_candidate_policy,
     verify_candidate_archive,
     verify_candidate_release,
 )
 from research_repo_tools.cli import main as shared_main
-from research_repo_tools.common_measurement import validate_run_policy
-from research_repo_tools.complete_runs import run_identity
 from research_repo_tools.config import load as load_config
 from research_repo_tools.dependency_provenance import check_release_dependencies
-from research_repo_tools.evidence import parse_evidence
 from research_repo_tools.files import replace_many
-from research_repo_tools.measurement import load_measurement, resolve_revision
+from research_repo_tools.measurement import resolve_revision
 from research_repo_tools.performance_progress import ProgressReporter
 from research_repo_tools.performance_release import load_performance_release, load_preparation, measure_release, serialize_preparation
 from research_repo_tools.process import run_command
@@ -37,7 +32,6 @@ from research_repo_tools.release_assets import (
     ReleaseTarget,
     download_release_asset,
     parse_release_target,
-    publish_release_asset,
     require_release_checkout,
     revalidate_release_target,
     serialize_release_target,
@@ -45,9 +39,8 @@ from research_repo_tools.release_assets import (
 from research_repo_tools.release_interfaces import load_evidence_policy
 from research_repo_tools.release_metadata import read_package_info
 from research_repo_tools.release_publishing import ReviewedRelease, check_reviewed_release
+from research_repo_tools.release_staging import stage_release_assets
 from research_repo_tools.release_validation import api, parse_release_json
-from research_repo_tools.scheduled_runs import ScheduledRun
-from research_repo_tools.suite_runs import parse_suite_run
 
 SETTINGS = "tooling/performance-release.toml"
 REPOSITORY = "acgetchell/la-stack"
@@ -175,32 +168,7 @@ def capture(root: Path, owner: Path, *, retained_scratch: bool = False) -> dict[
     payload, manifest = (owner / "run.json").read_bytes(), (owner / "evidence.json").read_bytes()
     # Restore only identical/missing scratch evidence for a failed capture retry.
     freeze(root, {settings.payload: payload, settings.manifest: manifest})
-    evidence = parse_evidence(payload, manifest)
-    run = validate_run_policy(evidence, load_measurement(root, settings.measurement), release=True)
-    if not isinstance(run, ScheduledRun):
-        message = "candidate acquisition requires the declared trial schedule"
-        raise TypeError(message)
-    policy = CandidatePolicy(
-        settings.repository,
-        preparation.pair.current,
-        None,
-        "local",
-        run_identity(evidence),
-        run.plan,
-        dict(evidence.sources)["current"],
-        tuple(
-            (index, suite, phase, source) for index, trial in enumerate(run.trials, 1) for suite, phase, _sample, source in parse_suite_run(trial).observations
-        ),
-        report=settings.report,
-    )
-    acquisition = acquisition_assertion_digest(policy)
-    freeze(owner, {"policy.json": serialize_candidate_policy(policy), "acquisition.sha256": (acquisition + "\n").encode("ascii")})
-    receipt_path = owner / "publication.json"
-    if not receipt_path.exists():
-        _plan, receipt = plan_candidate_publication(root, settings.payload, settings.manifest, policy, acquisition_sha256=acquisition)
-        freeze(owner, {"publication.json": receipt})
-    publication = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
-    freeze(owner, {"publication.sha256": (publication + "\n").encode("ascii")})
+    _plan, acquisition, publication = capture_candidate_handoff(root, settings, owner)
     return {"owner_directory": str(owner), "acquisition_sha256": acquisition, "publication_sha256": publication}
 
 
@@ -261,47 +229,48 @@ def final_directory(owner: Path, commit: str, selection: str) -> Path:
 
 def verify(root: Path, owner: Path, selection: str = "reviewed") -> Path:
     """Bind the separately trusted record to clean HEAD and signed native CI."""
-    check_release_dependencies(root)
     commit = resolve_revision(root, "HEAD")
-    policy = replace(parse_candidate_policy((owner / "policy.json").read_bytes()), commit=commit)
     final = final_directory(owner, commit, selection)
-    final.mkdir(parents=True, exist_ok=True)
-    freeze(final, {"policy.json": serialize_candidate_policy(policy)})
     accepted = final / "acceptance.json"
+    arguments = [
+        "--root",
+        str(root),
+        "release",
+        "evidence",
+        "candidate",
+        "tooling/release-evidence.toml",
+        "--checkout",
+        str(root),
+        "--policy",
+        str(owner / "policy.json"),
+        "--commit",
+        commit,
+        "--policy-output",
+        str(final / "policy.json"),
+        "--payload",
+        str(owner / "run.json"),
+        "--manifest",
+        str(owner / "evidence.json"),
+        "--publication-receipt",
+        str(owner / "publication.json"),
+        "--acquisition-sha256",
+        (owner / "acquisition.sha256").read_text(encoding="ascii").strip(),
+        "--publication-sha256",
+        (owner / "publication.sha256").read_text(encoding="ascii").strip(),
+        "--output",
+        str(accepted),
+        "--format",
+        "summary",
+    ]
     with tempfile.TemporaryDirectory(prefix="la-stack-candidate-verification-") as temporary:
-        output = Path(temporary).resolve() / "acceptance.json"
-        arguments = [
-            "--root",
-            str(root),
-            "release",
-            "evidence",
-            "candidate",
-            "tooling/release-evidence.toml",
-            "--checkout",
-            str(root),
-            "--policy",
-            str(final / "policy.json"),
-            "--payload",
-            str(owner / "run.json"),
-            "--manifest",
-            str(owner / "evidence.json"),
-            "--publication-receipt",
-            str(owner / "publication.json"),
-            "--acquisition-sha256",
-            (owner / "acquisition.sha256").read_text(encoding="ascii").strip(),
-            "--publication-sha256",
-            (owner / "publication.sha256").read_text(encoding="ascii").strip(),
-            "--output",
-            str(output),
-            "--format",
-            "summary",
-        ]
         if accepted.exists():
-            arguments.extend(("--acceptance", str(accepted)))
+            # RRT keeps input assertions distinct from its atomic destinations.
+            expected = Path(temporary).resolve() / "acceptance.json"
+            expected.write_bytes(accepted.read_bytes())
+            arguments.extend(("--acceptance", str(expected)))
         status = shared_main(arguments)
-        if status:
-            raise RuntimeError(f"candidate verification failed with exit {status}")
-        freeze(final, {"acceptance.json": output.read_bytes()})
+    if status:
+        raise RuntimeError(f"candidate verification failed with exit {status}")
     return accepted
 
 
@@ -541,33 +510,32 @@ def stage(root: Path, owner: Path, selection: str, prepared_target: Path | None 
     inputs = {"policy": final / "policy.json", "publication": owner / "publication.json", "acceptance": accepted, "archive": artifact}
     transport = final / "transport"
     transport.mkdir(exist_ok=True)
-    assertions: dict[str, dict[str, str | int]] = {}
+    names: dict[str, str] = {}
     for role, source in inputs.items():
         suffix = "tar.gz" if role == "archive" else "json"
         name = f"la-stack-{policy.tag}-{selection}-candidate-{role}.{suffix}"
         payload = source.read_bytes()
         freeze(transport, {name: payload})
-        publish_release_asset(root, REPOSITORY, policy.tag, transport / name, target=target, checkout=root)
-        release = revalidate_release_target(root, target, checkout=root)
-        entry = next((item for item in release.assets if item[0] == name), None)
-        if entry is None:
-            message = f"staged candidate asset is missing from the prepared release: {name}"
-            raise ValueError(message)
-        assertions[role] = {"name": name, "id": entry[1], "sha256": hashlib.sha256(payload).hexdigest()}
-    payload = (
-        json.dumps(
-            {
-                "schema": 1,
-                "target": json.loads(serialize_release_target(target)),
-                "acquisition": acquisition,
-                "publication": publication,
-                "assets": assertions,
-            },
-            sort_keys=True,
-        ).encode("utf-8")
-        + b"\n"
+        names[role] = name
+    batch = json.loads(
+        stage_release_assets(
+            root,
+            target,
+            tuple(transport / name for name in names.values()),
+            journal=final / "staging.json",
+            destination=final / "staged-assets.json",
+            approve=True,
+            checkout=root,
+        )
     )
-    require_draft_transfer(parse_transfer(payload))
+    assertions = {role: AssetAssertion(name, batch["assets"][name]["id"], batch["assets"][name]["sha256"]) for role, name in names.items()}
+    assets = OriginalAssets(
+        policy=assertions["policy"],
+        publication=assertions["publication"],
+        acceptance=assertions["acceptance"],
+        archive=assertions["archive"],
+    )
+    payload = serialize_transfer(DraftTransfer(target, acquisition, publication, assets))
     freeze(final, {"transfer.json": payload})
     return final / "transfer.json"
 

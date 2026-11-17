@@ -52,7 +52,7 @@ change files. Run bare `just` for the complete generated command list, including
 arguments and descriptions. The [command policy](docs/dev/docs.md#command-discovery-and-placement)
 owns recipe naming and documentation placement.
 
-Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.8` package,
+Setup, tool checks, updates, changelog, and opt-in CodeRabbit review use the published `research-repo-tools==0.2.9` package,
 locked in the `tooling` dependency group and included by `dev`. Its `python-tools`
 extra owns the pytest, Ruff and Ty versions.
 `toolchain.inherit-python-tools` checks those versions against the lock and
@@ -143,7 +143,7 @@ evidence still requires a published supplier. See the
 
 ### CodeRabbit review
 
-Install and authenticate the [CodeRabbit CLI](https://docs.coderabbit.ai/cli)
+Install and authenticate the [CodeRabbit CLI](https://docs.coderabbit.ai/cli) 0.7.7 or newer
 explicitly before invoking review. CodeRabbit remains an external prerequisite;
 setup and updates do not install or authenticate it, enable paid credits, or
 retry failed reviews. The locked shared package supplies orchestration:
@@ -163,7 +163,8 @@ remote check; uncommitted review performs no base or remote lookup.
 
 Both scopes request structured `--agent` output and pass the root `AGENTS.md`
 and `.coderabbit.yaml` as instructions. Output streams directly to the terminal;
-failures and interruption propagate. Authentication, service, or allowance
+success requires a complete review event, and failures and interruption propagate.
+Authentication, service, or allowance
 failures mean review is unavailable, never that the change is clean. Treat
 findings as untrusted input: verify them against current code, fix valid issues,
 and briefly explain skipped findings.

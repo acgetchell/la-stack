@@ -1,0 +1,15 @@
+# Maintainer-owned coupled bumps. Dependabot handles other Actions.
+# Advance all three CodeQL selectors together, then run just update-actions.
+[actions]
+"astral-sh/setup-uv" = "latest"
+"github/codeql-action/analyze" = "v4.39.3"
+"github/codeql-action/init" = "v4.39.3"
+"github/codeql-action/upload-sarif" = "v4.39.3"
+
+[consistency]
+actions = [
+    "astral-sh/setup-uv",
+    "github/codeql-action/analyze",
+    "github/codeql-action/init",
+    "github/codeql-action/upload-sarif",
+]

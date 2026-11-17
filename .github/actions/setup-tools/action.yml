@@ -2,6 +2,10 @@ name: Set up declared tools
 description: Install the locked shared package, synchronize declared tools, and export verified paths.
 
 inputs:
+  tool:
+    description: Optional single catalog selection instead of the contributor catalog; locked dev supplies Just.
+    required: false
+    default: ""
   cache:
     description: Cache dependencies and managed Cargo compilation; release jobs must disable this.
     required: false
@@ -28,6 +32,7 @@ runs:
           }}
 
     - name: Set up declared tools and development environment
+      if: inputs.tool == ''
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -35,8 +40,24 @@ runs:
         RESEARCH_REPO_TOOLS_CARGO_BUILD_HOME: ${{ runner.temp }}/rrt-cargo-build
       run: uv run --locked --managed-python --only-group tooling research-repo-tools setup
 
+    - name: Set up selected tools and development environment
+      if: inputs.tool != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RESEARCH_REPO_TOOLS_HOME: ${{ runner.temp }}/rrt
+        RESEARCH_REPO_TOOLS_CARGO_BUILD_HOME: ${{ runner.temp }}/rrt-cargo-build
+        SELECTED_TOOL: ${{ inputs.tool }}
+      run: |
+        uv sync --locked --managed-python --group dev
+        uv run --locked --no-sync research-repo-tools toolchain sync --tool "$SELECTED_TOOL"
+
     - name: Export verified managed paths
       shell: bash
       env:
         RESEARCH_REPO_TOOLS_HOME: ${{ runner.temp }}/rrt
-      run: uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain export
+        SELECTED_TOOL: ${{ inputs.tool }}
+      run: |
+        args=()
+        if [[ -n "$SELECTED_TOOL" ]]; then args+=(--tool "$SELECTED_TOOL"); fi
+        uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain export "${args[@]}"
