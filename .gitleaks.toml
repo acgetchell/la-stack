@@ -12,3 +12,15 @@ condition = "AND"
 paths = [ '''(?:^|[/\\])scripts[/\\]bench_compare\.py$''' ]
 regexTarget = "line"
 regexes = [ '''^\s*_V0_4_3_API_COMPATIBILITY\s*=\s*V0_4_3_API_COMPATIBILITY\s*$''' ]
+
+# This immutable run retains base64-encoded Criterion Tukey fences (four
+# floating-point statistics), both directly and in its complete-run payload.
+# Match only the Tukey field token, including after payload decoding, in this
+# exact historical artifact. Keep other fields and default detectors active.
+# Gitleaks can end a scan chunk within the token, before its closing quote.
+[[rules.allowlists]]
+description = "Frozen Criterion Tukey statistics"
+condition = "AND"
+paths = [ '''(?:^|[/\\])docs[/\\]performance-runs[/\\]runs[/\\]2e55909621d0aacbfa7670f678574ae750311ba29353e6e9ebb11461414876a2[/\\]run\.json$''' ]
+regexTarget = "match"
+regexes = [ '''^tukey\.json":\s*"[A-Za-z0-9+/]+={0,2}"?$''' ]

@@ -208,30 +208,23 @@ impl<const D: usize> Ldlt<D> {
                 pivot_col,
             );
         }
-        if pivot < 0.0 {
-            return Self::non_finite_factor_error(rows)
-                .unwrap_or_else(|| LaError::not_positive_semidefinite_negative(pivot_col, pivot));
-        }
-        if pivot == 0.0 {
-            return Self::zero_pivot_failure(rows, pivot_col, tolerance);
-        }
-        Self::non_finite_factor_error(rows).unwrap_or_else(|| {
-            LaError::singular_numerical(pivot_col, FactorizationKind::Ldlt, pivot, tolerance)
-        })
-    }
-
-    /// Classify a zero pivot after checking factor storage and every coupling.
-    fn zero_pivot_failure(rows: &[[f64; D]; D], pivot_col: usize, tolerance: f64) -> LaError {
         if let Some(error) = Self::non_finite_factor_error(rows) {
             return error;
         }
-        for (row, values) in rows.iter().enumerate().skip(pivot_col + 1) {
-            let coupling = values[pivot_col];
-            if coupling != 0.0 {
-                return LaError::not_positive_semidefinite_zero_coupling(pivot_col, row, coupling);
+        if pivot < 0.0 {
+            return LaError::not_positive_semidefinite_negative(pivot_col, pivot);
+        }
+        if pivot == 0.0 {
+            for (row, values) in rows.iter().enumerate().skip(pivot_col + 1) {
+                let coupling = values[pivot_col];
+                if coupling != 0.0 {
+                    return LaError::not_positive_semidefinite_zero_coupling(
+                        pivot_col, row, coupling,
+                    );
+                }
             }
         }
-        LaError::singular_numerical(pivot_col, FactorizationKind::Ldlt, 0.0, tolerance)
+        LaError::singular_numerical(pivot_col, FactorizationKind::Ldlt, pivot.abs(), tolerance)
     }
 
     /// Determinant of the original matrix.

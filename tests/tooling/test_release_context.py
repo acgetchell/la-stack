@@ -257,7 +257,8 @@ def test_registry_dispatch_sends_only_the_existing_reviewed_snapshot(tmp_path: P
     monkeypatch.setattr(candidate, "record_path", lambda *_args: publication)
     verified: list[Path] = []
 
-    def verify(*_args: object) -> Path:
+    def verify(_root: Path, _owner: Path, _selection: str, *, commit: str) -> Path:
+        assert commit == SHA
         verified.append(accepted)
         assert accepted.read_bytes() == reviewed
         if failure == "changed-review":
@@ -313,10 +314,30 @@ def test_downstream_checks_never_create_missing_review(tmp_path: Path, monkeypat
     root.mkdir()
     owner.mkdir()
     monkeypatch.setattr(candidate, "resolve_revision", lambda *_args: SHA)
-    monkeypatch.setattr(candidate, "verify", lambda *_args: pytest.fail("tagging or publication must not create a new review"))
+    monkeypatch.setattr(candidate, "shared_main", lambda *_args: pytest.fail("tagging or publication must not create a new review"))
     with pytest.raises(FileNotFoundError, match=r"acceptance\.json"):
         candidate.verify_existing(root, owner, "reviewed")
     assert list(owner.iterdir()) == []
+
+
+def test_capture_cli_reports_success_only_after_owner_registration(
+    owner_record: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root, owner = owner_record
+    candidate.remember_owner(root, owner)
+    other = owner.parent / "other owner"
+    other.mkdir()
+    for source in owner.iterdir():
+        (other / source.name).write_bytes(source.read_bytes())
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(sys, "argv", ["release_candidate.py", "capture", str(other)])
+    monkeypatch.setattr(candidate, "capture", lambda *_args, **_kwargs: {"owner_directory": str(other)})
+
+    with pytest.raises(ValueError, match="immutable output differs"):
+        candidate.main()
+
+    assert capsys.readouterr().out == ""
+    assert candidate.selected_owner(root) == owner.resolve()
 
 
 @pytest.mark.parametrize("owner_argument", [[], [""]])
@@ -369,7 +390,7 @@ def test_publish_recipe_requires_review_before_reaching_publication(tmp_path: Pa
         "from tooling import release_candidate as candidate\n"
         f"candidate.resolve_revision = lambda *_args: {SHA!r}\n"
         'def unexpected(*_args):\n    raise RuntimeError("attempted to create a new review")\n'
-        "candidate.verify = unexpected\ncandidate.main()\n",
+        "candidate.shared_main = unexpected\ncandidate.main()\n",
         encoding="utf-8",
         newline="\n",
     )

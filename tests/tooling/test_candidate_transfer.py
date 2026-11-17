@@ -212,7 +212,7 @@ def test_staging_retry_keeps_original_draft_before_any_upload(tmp_path: Path, mo
         (final / name).write_bytes(name.encode())
     for name in ("publication.json", "acquisition.sha256", "publication.sha256"):
         (owner / name).write_bytes(b"a" * 64)
-    monkeypatch.setattr(candidate, "verify", lambda *_args: final / "acceptance.json")
+    monkeypatch.setattr(candidate, "verify", lambda *_args, **_kwargs: final / "acceptance.json")
     monkeypatch.setattr(candidate, "resolve_revision", lambda *_args: SHA)
     monkeypatch.setattr(candidate, "archive", lambda *_args: final / "archive.tar.gz")
     monkeypatch.setattr(candidate, "parse_candidate_policy", lambda *_args: SimpleNamespace(tag=TAG))
@@ -255,7 +255,7 @@ def test_staging_rejects_malformed_owner_digest_before_provider_access(tmp_path:
     prepared = tmp_path / "target.json"
     prepared.write_bytes(serialize_release_target(ReleaseTarget(candidate.REPOSITORY, TAG, 42, SHA, TAG)))
     monkeypatch.setattr(candidate, "resolve_revision", lambda *_args: SHA)
-    monkeypatch.setattr(candidate, "verify", lambda *_args: pytest.fail("invalid assertions must stop before revalidation"))
+    monkeypatch.setattr(candidate, "verify", lambda *_args, **_kwargs: pytest.fail("invalid assertions must stop before revalidation"))
     monkeypatch.setattr(candidate, "revalidate_release_target", lambda *_args, **_kwargs: pytest.fail("invalid assertions must stop before provider access"))
     with pytest.raises(ValueError, match="full SHA-256 assertions"):
         candidate.stage(root, owner, "reviewed", prepared)
@@ -275,7 +275,7 @@ def test_shared_batch_retains_domain_transfer_and_original_asset_ids(tmp_path: P
     target = ReleaseTarget(candidate.REPOSITORY, TAG, 42, SHA, TAG)
     prepared = tmp_path / "target.json"
     prepared.write_bytes(serialize_release_target(target))
-    monkeypatch.setattr(candidate, "verify", lambda *_args: final / "acceptance.json")
+    monkeypatch.setattr(candidate, "verify", lambda *_args, **_kwargs: final / "acceptance.json")
     monkeypatch.setattr(candidate, "resolve_revision", lambda *_args: SHA)
     monkeypatch.setattr(candidate, "archive", lambda *_args: final / "archive.tar.gz")
     monkeypatch.setattr(candidate, "parse_candidate_policy", lambda *_args: SimpleNamespace(tag=TAG))
@@ -339,7 +339,7 @@ def test_initial_stage_requires_the_exact_prepared_target(tmp_path: Path, monkey
     owner.mkdir()
     final = candidate.final_directory(owner, SHA, "reviewed")
     final.mkdir(parents=True)
-    monkeypatch.setattr(candidate, "verify", lambda *_args: final / "acceptance.json")
+    monkeypatch.setattr(candidate, "verify", lambda *_args, **_kwargs: final / "acceptance.json")
     monkeypatch.setattr(candidate, "resolve_revision", lambda *_args: SHA)
     monkeypatch.setattr(candidate, "archive", lambda *_args: final / "archive.tar.gz")
     monkeypatch.setattr(candidate, "parse_candidate_policy", lambda *_args: SimpleNamespace(tag=TAG))
@@ -474,3 +474,32 @@ def test_explicit_review_selection_preserves_previous_acceptance(tmp_path: Path,
     assert first.read_bytes() == b"reviewed"
     assert second.read_bytes() == b"retry-2"
     assert ["--acceptance" in arguments for arguments in requests] == [False, True, False]
+
+
+def test_existing_review_pins_one_commit_and_its_acceptance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root, owner = tmp_path / "checkout", tmp_path / "owner"
+    root.mkdir()
+    other_commit = "c" * 40
+    accepted = candidate.final_directory(owner, SHA, "reviewed") / "acceptance.json"
+    accepted.parent.mkdir(parents=True)
+    previous = b"original reviewed acceptance\r\n"
+    accepted.write_bytes(previous)
+    for name in ("acquisition.sha256", "publication.sha256"):
+        (owner / name).write_bytes(b"a" * 64)
+
+    revisions = iter((SHA, other_commit))
+    monkeypatch.setattr(candidate, "resolve_revision", lambda *_args: next(revisions))
+
+    def shared(arguments: list[str]) -> int:
+        assert arguments[arguments.index("--commit") + 1] == SHA
+        assert Path(arguments[arguments.index("--output") + 1]) == accepted
+        expected = Path(arguments[arguments.index("--acceptance") + 1])
+        assert expected != accepted
+        assert expected.read_bytes() == previous
+        return 0
+
+    monkeypatch.setattr(candidate, "shared_main", shared)
+    assert candidate.verify_existing(root, owner, "reviewed") == accepted
+    assert accepted.read_bytes() == previous
+    assert next(revisions) == other_commit
+    assert not candidate.final_directory(owner, other_commit, "reviewed").exists()

@@ -107,7 +107,7 @@ class EvidenceProvider:
                 "head_sha": COMMIT,
                 "status": "completed",
                 "conclusion": "success",
-                "labels": NATIVE_RUNNERS.get(name, ["ubuntu-latest"]),
+                "labels": NATIVE_RUNNERS.get(name, ["ubuntu-latest"]).copy(),
                 "steps": [{"number": number, "name": step, "status": "completed", "conclusion": "success"} for number, step in enumerate(steps, 1)],
             }
             for name, steps, identifier in gates
