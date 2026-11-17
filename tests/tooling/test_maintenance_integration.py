@@ -69,7 +69,7 @@ def test_offline_actions_check_rejects_partial_coupled_bumps_without_writes(
         filename, identity = details
         diagnostic = capsys.readouterr().err
         assert identity in diagnostic
-        assert filename in diagnostic
+        assert str(actions_consumer / ".github" / filename) in diagnostic
 
 
 @pytest.mark.parametrize("mode", ["--dry-run", "--check", "apply"])
