@@ -119,7 +119,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-la-stack = "0.5.3"
+la-stack = "0.5.4"
 ```
 
 ### Solve a 5×5 system
@@ -298,7 +298,7 @@ Enable exact determinant signs, determinant values, and solves:
 
 ```toml
 [dependencies]
-la-stack = { version = "0.5.3", features = ["exact"] }
+la-stack = { version = "0.5.4", features = ["exact"] }
 ```
 
 `Matrix` / `Vector` exact methods preserve stored `f64` values;
@@ -504,53 +504,53 @@ cargo run --locked --example vector_angles
 
 ![LU solve (factor + solve): median time vs dimension][rrt-performance-link-3]
 
-Complete run: `2e55909621d0aacbfa7670f678574ae750311ba29353e6e9ebb11461414876a2`.
+Complete run: `c71813e122e5fde26d26511b6a57ca21e5a24ed1b03bce2905029cf518ffd29e`.
 
 Trial 1 of this complete run (separate trial; no pooled significance claim).
 
-Selected trial run (CSV/plot identity): `86e075e0edc375bfe6e42aaf5c97d8085a0407bdcadc75531fc7abf8a19de0c9`. Statistic: median. Unit: ns. Confidence level: 95%.
+Selected trial run (CSV/plot identity): `101e290cf103e37c0b9a40481c018b59d7547019cd44245b8dda4f04f6cae94d`. Statistic: median. Unit: ns. Confidence level: 95%.
 
-- la-stack v0.5.3: current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256
-  793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32.
-- nalgebra 0.35.0: current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256
-  793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32.
-- faer 0.24.4: current phase, v0.5.3 working-tree snapshot based on commit be9277bf04400dccbe1115da69c7fda2141c4a39; measured source SHA-256
-  793169b4c5085624d7c0e773f1d28504c017e9b78332f250150d19df87391a32.
+- la-stack v0.5.4: current phase, v0.5.4 working-tree snapshot based on commit 531f75eb58eb8ac810ad5d89bf1d3e66a301e84e; measured source SHA-256
+  50d72eb42299ad56e00e6838b34b10824c560a3eb5ae9c9a05e48859fd3cfe46.
+- nalgebra 0.35.0: current phase, v0.5.4 working-tree snapshot based on commit 531f75eb58eb8ac810ad5d89bf1d3e66a301e84e; measured source SHA-256
+  50d72eb42299ad56e00e6838b34b10824c560a3eb5ae9c9a05e48859fd3cfe46.
+- faer 0.24.4: current phase, v0.5.4 working-tree snapshot based on commit 531f75eb58eb8ac810ad5d89bf1d3e66a301e84e; measured source SHA-256
+  50d72eb42299ad56e00e6838b34b10824c560a3eb5ae9c9a05e48859fd3cfe46.
 
-| Dimension | la-stack v0.5.3 | nalgebra 0.35.0 | faer 0.24.4 | Speedup vs nalgebra | Speedup vs faer |
+| Dimension | la-stack v0.5.4 | nalgebra 0.35.0 | faer 0.24.4 | Speedup vs nalgebra | Speedup vs faer |
 | --- | --- | --- | --- | --- | --- |
-| 2 | 2.06884<br>[2.0664, 2.07466] | 4.5918<br>[4.58866, 4.59692] | 130.897<br>[130.436, 131.469] | 2.21951× | 63.2706× |
-| 3 | 10.1094<br>[10.0641, 10.135] | 35.0464<br>[35.0098, 35.1322] | 163.46<br>[162.918, 164.545] | 3.46673× | 16.1691× |
-| 4 | 24.0133<br>[24.0048, 24.0359] | 55.4432<br>[55.2079, 55.6073] | 189.329<br>[189.14, 189.77] | 2.30885× | 7.88434× |
-| 5 | 47.8723<br>[47.6686, 48.1696] | 78.1378<br>[77.9205, 78.4518] | 252.753<br>[252.337, 253.319] | 1.63221× | 5.27973× |
-| 8 | 133.256<br>[133.148, 133.486] | 168.299<br>[168.089, 168.876] | 338.191<br>[337.146, 338.919] | 1.26297× | 2.5379× |
-| 16 | 631.082<br>[627.847, 636.268] | 581.252<br>[580.272, 582.309] | 889.228<br>[885.972, 894.046] | 0.921041× | 1.40905× |
-| 32 | 2787.86<br>[2781.93, 2792.44] | 2729.77<br>[2726.39, 2731.83] | 2974.82<br>[2969.33, 2979.13] | 0.979166× | 1.06706× |
-| 64 | 18063.6<br>[18036.7, 18106.7] | 14343.6<br>[14332.8, 14361.8] | 13017.3<br>[12958.9, 13039] | 0.794058× | 0.720637× |
+| 2 | 2.03568<br>[2.03521, 2.03768] | 4.45772<br>[4.45145, 4.46162] | 127.938<br>[127.501, 128.618] | 2.18979× | 62.8477× |
+| 3 | 9.80694<br>[9.78888, 9.82592] | 31.3746<br>[31.2597, 32.2559] | 155.795<br>[155.273, 156.394] | 3.19923× | 15.8862× |
+| 4 | 23.0854<br>[23.0361, 23.1269] | 50.005<br>[49.8659, 50.167] | 180.604<br>[180.112, 181.261] | 2.16608× | 7.8233× |
+| 5 | 46.8005<br>[46.6284, 46.996] | 71.0579<br>[70.8848, 71.2155] | 248.634<br>[248.008, 249.091] | 1.51832× | 5.31264× |
+| 8 | 128.594<br>[128.299, 128.732] | 163.316<br>[163.059, 163.603] | 330.342<br>[329.317, 331.311] | 1.27001× | 2.56887× |
+| 16 | 648.762<br>[640.587, 650.581] | 565.132<br>[564.443, 565.645] | 868.305<br>[865.979, 870.438] | 0.871093× | 1.3384× |
+| 32 | 2707.39<br>[2698.58, 2714.77] | 2675.44<br>[2668.25, 2681.65] | 2910.33<br>[2906.48, 2915.35] | 0.988201× | 1.07496× |
+| 64 | 17915.3<br>[17788.1, 17947.7] | 14234.3<br>[14216, 14273.7] | 12540.4<br>[12526.9, 12563.7] | 0.794533× | 0.69998× |
 
 Intervals are recorded marginal timing intervals; ratios are point estimates, with no ratio intervals or significance claims.
 Ratio is numerator time / denominator time; greater than one means less denominator time.
 
-- Speedup vs nalgebra: ratio; numerator = nalgebra 0.35.0; denominator = la-stack v0.5.3.
-- Speedup vs faer: ratio; numerator = faer 0.24.4; denominator = la-stack v0.5.3.
+- Speedup vs nalgebra: ratio; numerator = nalgebra 0.35.0; denominator = la-stack v0.5.4.
+- Speedup vs faer: ratio; numerator = faer 0.24.4; denominator = la-stack v0.5.4.
 
 Selection coverage:
 
-- la-stack v0.5.3: 8 selected; 0 unavailable rows; 1411 phase cases omitted. Complete evidence is retained independently.
+- la-stack v0.5.4: 8 selected; 0 unavailable rows; 1411 phase cases omitted. Complete evidence is retained independently.
 - nalgebra 0.35.0: 8 selected; 0 unavailable rows; 1411 phase cases omitted. Complete evidence is retained independently.
 - faer 0.24.4: 8 selected; 0 unavailable rows; 1411 phase cases omitted. Complete evidence is retained independently.
 - [Complete run evidence][rrt-performance-link-1]
 - [Evidence envelope][rrt-performance-link-2]
-- [Selected timings CSV](https://github.com/acgetchell/la-stack/blob/v0.5.3/docs/assets/bench/vs_linalg_lu_solve_median_log.csv)
+- [Selected timings CSV](https://github.com/acgetchell/la-stack/blob/v0.5.4/docs/assets/bench/vs_linalg_lu_solve_median_log.csv)
 
 [rrt-performance-link-1]:
-  <https://github.com/acgetchell/la-stack/blob/v0.5.3/docs/performance-runs/runs/2e55909621d0aacbfa7670f678574ae750311ba29353e6e9ebb11461414876a2/run.json>
+  <https://github.com/acgetchell/la-stack/blob/v0.5.4/docs/performance-runs/runs/c71813e122e5fde26d26511b6a57ca21e5a24ed1b03bce2905029cf518ffd29e/run.json>
 
 [rrt-performance-link-2]:
-  <https://github.com/acgetchell/la-stack/blob/v0.5.3/docs/performance-runs/runs/2e55909621d0aacbfa7670f678574ae750311ba29353e6e9ebb11461414876a2/evidence.json>
+  <https://github.com/acgetchell/la-stack/blob/v0.5.4/docs/performance-runs/runs/c71813e122e5fde26d26511b6a57ca21e5a24ed1b03bce2905029cf518ffd29e/evidence.json>
 
 [rrt-performance-link-3]:
-  <https://raw.githubusercontent.com/acgetchell/la-stack/v0.5.3/docs/assets/bench/vs_linalg_lu_solve_median_log.svg>
+  <https://raw.githubusercontent.com/acgetchell/la-stack/v0.5.4/docs/assets/bench/vs_linalg_lu_solve_median_log.svg>
 
 <!-- BENCHMARKS:END -->
 

@@ -23,6 +23,12 @@
       "current": "v0.5.0",
       "id": "634bc9527c2caf0a431a9bdfac082c190e1094f0b29eb6e3f28c4b96961cdec5",
       "report_renderer": 2
+    },
+    {
+      "baseline": "v0.5.3",
+      "current": "v0.5.4",
+      "id": "c71813e122e5fde26d26511b6a57ca21e5a24ed1b03bce2905029cf518ffd29e",
+      "report_renderer": 3
     }
   ],
   "schema": "research-repo-tools/run-index/v2"

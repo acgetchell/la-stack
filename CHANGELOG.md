@@ -5,6 +5,85 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-11-17
+
+### Merged Pull Requests
+
+- Bump the github-actions group with 3 updates [#349](https://github.com/acgetchell/la-stack/pull/349)
+- Upgrade to Rust 1.100 and refresh benchmark policy [#348](https://github.com/acgetchell/la-stack/pull/348)
+
+### Changed
+
+- Use native paths in Actions diagnostics [`18667d5`](https://github.com/acgetchell/la-stack/commit/18667d5583b2105ffcbb4c96b4c4c91333afaa9f)
+
+  - Assert the complete platform-native filename so Windows diagnostics pass while preserving the offline rejection and unchanged-file checks.
+  - Validate with just check, all eight Actions integration cases, and Windows-targeted type checking.
+
+### Dependencies
+
+- Bump the github-actions group with 3 updates [#349](https://github.com/acgetchell/la-stack/pull/349)
+  [`f16cb0a`](https://github.com/acgetchell/la-stack/commit/f16cb0a6a3eac1af6603e865c6fe620863aa63a3)
+
+  Bumps the github-actions group with 3 updates: [github/codeql-action/upload-sarif](https://github.com/github/codeql-action),
+  [github/codeql-action/init](https://github.com/github/codeql-action) and [github/codeql-action/analyze](https://github.com/github/codeql-action).
+
+  Updates `github/codeql-action/upload-sarif` from 4.39.1 to 4.39.3
+
+  - [Release notes](https://github.com/github/codeql-action/releases)
+  - [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+  - [Commits](https://github.com/github/codeql-action/compare/9b3254085494b55a0f7c4c2b3d2d52cc712ce370...33d7b85da1a04171e211befe2c739303b9a4c066)
+
+  Updates `github/codeql-action/init` from 4.39.1 to 4.39.3
+  - [Release notes](https://github.com/github/codeql-action/releases)
+  - [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+  - [Commits](https://github.com/github/codeql-action/compare/9b3254085494b55a0f7c4c2b3d2d52cc712ce370...33d7b85da1a04171e211befe2c739303b9a4c066)
+
+  Updates `github/codeql-action/analyze` from 4.39.1 to 4.39.3
+  - [Release notes](https://github.com/github/codeql-action/releases)
+  - [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)
+  - [Commits](https://github.com/github/codeql-action/compare/9b3254085494b55a0f7c4c2b3d2d52cc712ce370...33d7b85da1a04171e211befe2c739303b9a4c066)
+
+### Fixed
+
+- Repair draft verification and refresh maintainer docs [`e7d3d5e`](https://github.com/acgetchell/la-stack/commit/e7d3d5e362b15aabf0c4364a8db751ccea99d26b)
+
+  - Verify release evidence with the installed CLI's repository-relative policy path.
+  - Exclude generated performance reports and run records from CodeRabbit review.
+  - Replace obsolete release and tooling guidance with current ownership and recovery steps.
+  - Archive historical benchmark reviews and clarify benchmark and API documentation.
+- Pin candidate review and refresh validation tooling [`5e63bba`](https://github.com/acgetchell/la-stack/commit/5e63bba00c9fc15158f94310cd6424161aad8215)
+
+  - Revalidate the same release commit and saved acceptance throughout staging
+    and dispatch. Report successful capture after registration succeeds.
+  - Consolidate LDLT pivot diagnostics and exact determinant overflow coverage.
+  - Scope the frozen Criterion Gitleaks exception and strengthen scanner and
+    native evidence fixtures.
+  - Refresh managed Cargo tools and locked Rust and Python dependencies.
+
+### Maintenance
+
+- Upgrade to Rust 1.100 and refresh benchmark policy [#348](https://github.com/acgetchell/la-stack/pull/348)
+  [`c620e66`](https://github.com/acgetchell/la-stack/commit/c620e66e8e3f9564c798480d9b00793d4e361f7e)
+
+  - Align the MSRV, contributor tooling, and measurement compiler on Rust
+    1.100.0, and refresh managed tool pins and dependency locks.
+  - Deny Cargo manifest lints across the workspace and adopt const-compatible
+    swaps, parity toggles, and fused error-coefficient expressions while
+    preserving numerical behavior.
+  - Require v0.5.2 or newer for new benchmark comparisons so both revisions
+    provide the complete case inventory; preserve historical reports.
+- Adopt RRT 0.2.9 and simplify release tooling [`b26e6d0`](https://github.com/acgetchell/la-stack/commit/b26e6d0e91f765f96bc58f1ab1ed427a98d85f00)
+
+  - Delegate candidate capture, retention, asset staging, and authenticated
+    draft preparation to the published shared tooling.
+  - Check coupled Actions pins offline and give each group one maintained
+    update path, separate from the selected-actions allowlist.
+  - Reuse shared release gates and provision only required Cargo tools for
+    crates.io publication while preserving approval and evidence checks.
+  - Resolve the OpenTelemetry audit finding with patched Semgrep dependencies.
+  - Consolidate transfer serialization and Python test support, removing the
+    retired upload fixture and redundant parameter combinations.
+
 ## [0.5.3] - 2026-11-11
 
 ### Merged Pull Requests
@@ -171,6 +250,22 @@ Updates `rust-lang/crates-io-auth-action` from 1.0.5 to 1.0.6
 - Expose the shared dependency-source transition command and document
   deliberate supplier adoption, pin-preserving updates, and release setup.
 - Refresh managed tool, GitHub Action, and Cargo dependency pins.
+- Prepare v0.5.3 with managed benchmark tooling [`2ff0bfe`](https://github.com/acgetchell/la-stack/commit/2ff0bfe300e3f20f998599398577bba5efbee289)
+
+  - Bump package, citation, and README metadata to v0.5.3.
+  - Generate the release changelog.
+  - Use the managed toolchain and Cargo cache for benchmark preparation.
+  - Retain v0.5.3 versus v0.5.2 benchmark evidence and refresh reports,
+    README timings, and plot assets.
+  - Refresh dependency locks and the rumdl pin.
+  - Clarify native Python dependency builds and publishing action pins.
+- Clarify benchmark snapshot and run provenance [`9ade49b`](https://github.com/acgetchell/la-stack/commit/9ade49b07388b36f74cbf6c93fb1dafb00ec1930)
+
+  - Identify the measured working-tree snapshot by its base commit and source digest.
+  - Distinguish the complete benchmark run from the selected trial used by the CSV and plot.
+  - Preserve retained measurements while correcting generated README and SVG attribution.
+
+  Refs acgetchell/research-repo-tools#229
 
 ## [0.5.2] - 2026-10-29
 
@@ -950,6 +1045,7 @@ Older releases are archived by minor series:
 - [0.2.x](docs/archives/changelog/0.2.md)
 - [0.1.x](docs/archives/changelog/0.1.md)
 
+[0.5.4]: https://github.com/acgetchell/la-stack/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/acgetchell/la-stack/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/acgetchell/la-stack/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/acgetchell/la-stack/compare/v0.5.0...v0.5.1
