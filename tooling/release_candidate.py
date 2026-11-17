@@ -67,8 +67,10 @@ def selection_directory(root: Path) -> Path:
 def owner_directory(root: Path, checkpoint: str, selected: Path | None = None) -> Path:
     """Keep the operator's immutable record outside candidate-controlled files."""
     root = root.resolve()
-    identity = hashlib.sha256(str((root / checkpoint).resolve()).encode("utf-8")).hexdigest()
-    directory = (selected if selected is not None else Path.home() / ".local/state/la-stack/acquisitions" / release_tag(root) / identity).expanduser().resolve()
+    if selected is None:
+        identity = hashlib.sha256(str((root / checkpoint).resolve()).encode("utf-8")).hexdigest()
+        selected = Path.home() / ".local/state/la-stack/acquisitions" / release_tag(root) / identity
+    directory = selected.expanduser().resolve()
     if directory.is_relative_to(root) or root.is_relative_to(directory):
         message = "acquisition owner directory must be separate from the checkout"
         raise ValueError(message)
@@ -227,11 +229,18 @@ def final_directory(owner: Path, commit: str, selection: str) -> Path:
     return owner / "final" / commit / selection
 
 
-def verify(root: Path, owner: Path, selection: str = "reviewed") -> Path:
+def verify(root: Path, owner: Path, selection: str = "reviewed", *, commit: str | None = None, require_existing: bool = False) -> Path:
     """Bind the separately trusted record to clean HEAD and signed native CI."""
-    commit = resolve_revision(root, "HEAD")
+    if commit is None:
+        commit = resolve_revision(root, "HEAD")
     final = final_directory(owner, commit, selection)
     accepted = final / "acceptance.json"
+    try:
+        previous = accepted.read_bytes()
+    except FileNotFoundError:
+        if require_existing:
+            raise
+        previous = None
     arguments = [
         "--root",
         str(root),
@@ -263,25 +272,23 @@ def verify(root: Path, owner: Path, selection: str = "reviewed") -> Path:
         "summary",
     ]
     with tempfile.TemporaryDirectory(prefix="la-stack-candidate-verification-") as temporary:
-        if accepted.exists():
+        if previous is not None:
             # RRT keeps input assertions distinct from its atomic destinations.
             expected = Path(temporary).resolve() / "acceptance.json"
-            expected.write_bytes(accepted.read_bytes())
+            expected.write_bytes(previous)
             arguments.extend(("--acceptance", str(expected)))
         status = shared_main(arguments)
     if status:
         raise RuntimeError(f"candidate verification failed with exit {status}")
-    return accepted
-
-
-def verify_existing(root: Path, owner: Path, selection: str) -> Path:
-    """Revalidate an already reviewed commit without silently creating a selection."""
-    accepted = final_directory(owner, resolve_revision(root, "HEAD"), selection) / "acceptance.json"
-    expected = accepted.read_bytes()
-    if verify(root, owner, selection).read_bytes() != expected:
+    if previous is not None and accepted.read_bytes() != previous:
         message = "reviewed acceptance changed; repeat explicit release-evidence review"
         raise ValueError(message)
     return accepted
+
+
+def verify_existing(root: Path, owner: Path, selection: str, *, commit: str | None = None) -> Path:
+    """Revalidate an already reviewed commit without silently creating a selection."""
+    return verify(root, owner, selection, commit=commit, require_existing=True)
 
 
 def archive(owner: Path, commit: str, selection: str = "reviewed") -> Path:
@@ -292,7 +299,7 @@ def archive(owner: Path, commit: str, selection: str = "reviewed") -> Path:
         message = "selected candidate policy differs from the independently selected commit"
         raise ValueError(message)
     prefix = final.relative_to(owner).as_posix()
-    output = f"{prefix}/la-stack-{policy.tag}-criterion-baseline.tar.gz"
+    output = f"{prefix}/{archive_name(policy.tag)}"
     publish_publication(plan_candidate_archive(owner, "run.json", "evidence.json", f"{prefix}/policy.json", f"{prefix}/acceptance.json", output))
     verify_candidate_archive(owner / output, policy, (final / "acceptance.json").read_bytes())
     return owner / output
@@ -464,9 +471,10 @@ def serialize_transfer(transfer: Transfer) -> bytes:
     return json.dumps(record, sort_keys=True).encode("utf-8") + b"\n"
 
 
-def preparation_target(root: Path, owner: Path, selection: str) -> Path:
+def preparation_target(root: Path, owner: Path, selection: str, *, commit: str | None = None) -> Path:
     """Retrieve the original authenticated target through the installed supplier."""
-    commit = resolve_revision(root, "HEAD")
+    if commit is None:
+        commit = resolve_revision(root, "HEAD")
     require_release_checkout(root, commit)
     output = final_directory(owner, commit, selection) / "preparation"
     status = shared_main(
@@ -494,12 +502,12 @@ def stage(root: Path, owner: Path, selection: str, prepared_target: Path | None 
     """Upload inert original records, retaining dispatch assertions independently."""
     acquisition = transfer_digest((owner / "acquisition.sha256").read_text(encoding="ascii").strip())
     publication = transfer_digest((owner / "publication.sha256").read_text(encoding="ascii").strip())
-    accepted = verify_existing(root, owner, selection)
     commit = resolve_revision(root, "HEAD")
+    accepted = verify_existing(root, owner, selection, commit=commit)
     final = final_directory(owner, commit, selection)
     policy = parse_candidate_policy((final / "policy.json").read_bytes())
     target_path = final / "target.json"
-    target = parse_release_target((prepared_target or preparation_target(root, owner, selection)).read_bytes())
+    target = parse_release_target((prepared_target or preparation_target(root, owner, selection, commit=commit)).read_bytes())
     if (target.repository, target.tag, target.commit, target.expected_title) != (REPOSITORY, policy.tag, commit, policy.tag):
         message = "staging target differs from the accepted candidate"
         raise ValueError(message)
@@ -585,7 +593,7 @@ def upload_dispatch(root: Path, owner: Path, selection: str, tag: str) -> None:
     transfer = require_publication_transfer(parse_transfer(transfer_bytes))
     accepted = publication.parent / "acceptance.json"
     expected = accepted.read_bytes()  # Missing review must never create a new selection.
-    if verify_existing(root, owner, selection).read_bytes() != expected:
+    if verify_existing(root, owner, selection, commit=transfer.original.target.commit).read_bytes() != expected:
         message = "reviewed acceptance changed before publication dispatch"
         raise ValueError(message)
     check_published_transfer(root, transfer)
@@ -839,8 +847,9 @@ def run_owner_operation(root: Path, options: argparse.Namespace) -> None:
     """Route operations after resolving their independent acquisition owner."""
     owner = selected_owner(root, options.owner_directory)
     if options.operation == "capture":
-        print(json.dumps(capture(root, owner, retained_scratch=options.retained_scratch)))
+        assertions = capture(root, owner, retained_scratch=options.retained_scratch)
         remember_owner(root, owner)
+        print(json.dumps(assertions))
     elif options.operation == "verify":
         accepted = verify(root, owner, options.selection)
         print(json.dumps({"acceptance": str(accepted), "sha256": hashlib.sha256(accepted.read_bytes()).hexdigest()}))

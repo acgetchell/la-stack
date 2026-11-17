@@ -2599,16 +2599,18 @@ mod tests {
     }
 
     #[test]
-    fn det_sign_exact_overflow_determinant_finite_entries() {
-        // Entries near f64::MAX are finite, but the f64 determinant overflows
-        // to infinity. The fast filter is inconclusive and the direct `BigInt`
-        // expansion computes the correct positive sign.
+    fn overflowing_determinant_has_exact_sign_but_no_finite_f64_conversion() {
+        // The exact determinant is big² > 0, beyond the binary64 range.
         let big = f64::MAX / 2.0;
-        assert!(big.is_finite());
         let m = Matrix::<3>::try_from_rows([[0.0, 0.0, 1.0], [big, 0.0, 1.0], [0.0, big, 1.0]])
             .unwrap();
-        // det = big^2 > 0
         assert_eq!(m.det_sign_exact(), DeterminantSign::Positive);
+        assert_unrepresentable(&m.det_exact_f64(), None, UnrepresentableReason::NotFinite);
+        assert_unrepresentable(
+            &m.det_exact_rounded_f64(),
+            None,
+            UnrepresentableReason::NotFinite,
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -2694,29 +2696,6 @@ mod tests {
         let m = Matrix::<2>::try_from_rows([[1.0, 2.0], [3.0, 4.0]]).unwrap();
         let det = m.det_exact_f64().unwrap();
         assert!((det - (-2.0)).abs() <= f64::EPSILON);
-    }
-
-    #[test]
-    fn det_exact_f64_overflow_returns_err() {
-        // Entries near f64::MAX produce a determinant too large for f64.
-        let big = f64::MAX / 2.0;
-        let m = Matrix::<3>::try_from_rows([[0.0, 0.0, 1.0], [big, 0.0, 1.0], [0.0, big, 1.0]])
-            .unwrap();
-        // det = big^2, which overflows f64.
-        assert_unrepresentable(&m.det_exact_f64(), None, UnrepresentableReason::NotFinite);
-    }
-
-    #[test]
-    fn det_exact_rounded_f64_overflow_returns_err() {
-        let big = f64::MAX / 2.0;
-        let m = Matrix::<3>::try_from_rows([[0.0, 0.0, 1.0], [big, 0.0, 1.0], [0.0, big, 1.0]])
-            .unwrap();
-
-        assert_unrepresentable(
-            &m.det_exact_rounded_f64(),
-            None,
-            UnrepresentableReason::NotFinite,
-        );
     }
 
     #[test]
