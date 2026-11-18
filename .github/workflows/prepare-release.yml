@@ -34,6 +34,7 @@ jobs:
         uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
         with:
           cache: "false"
+          tool: cargo
       - name: Prepare native dependency provenance
         run: just release-dependency-builds
       - name: Verify tagged source and freeze native evidence and notes

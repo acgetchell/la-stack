@@ -8,6 +8,7 @@ import runpy
 import shlex
 import subprocess
 import sys
+import tomllib
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -106,7 +107,7 @@ def test_draft_verification_handoff_uses_the_installed_cli_path_contract(tmp_pat
     assert selected["run"]["head_sha"] == COMMIT
 
 
-@pytest.mark.parametrize("outcome", ["success", "automatic", "dispatch-failure", "missing", "wrong-tag", "malformed"])
+@pytest.mark.parametrize("outcome", ["success", "automatic", "renewed", "dispatch-failure", "missing", "wrong-tag", "malformed"])
 def test_benchmark_recipe_forwards_one_tag_and_independent_transfer(tmp_path: Path, outcome: str) -> None:
     transfer = tmp_path / "owner's transfer $literal.json"
     data = {"schema": 1, "target": {"repository": REPOSITORY, "tag": TAG, "expected_title": TAG}}
@@ -123,21 +124,28 @@ def test_benchmark_recipe_forwards_one_tag_and_independent_transfer(tmp_path: Pa
         newline="\n",
     )
     script = tmp_path / "dispatch.sh"
+    owner, selection = ((tmp_path / "original owner's $literal").as_posix(), "renewed-ci") if outcome == "renewed" else ("", "reviewed")
     script.write_text(
         f'gh() {{ {shlex.quote(Path(sys.executable).as_posix())} {shlex.quote(provider.as_posix())} "$@"; }}\n'
-        'just() { [[ "$*" == "--quiet _release-candidate record transfer" ]] || return 90; '
+        'just() { [[ "$#" == 7 && "$1 $2 $3 $4" == "--quiet _release-candidate record transfer" '
+        '&& "$5" == "$FIXTURE_OWNER" && "$6" == --selection && "$7" == "$FIXTURE_SELECTION" ]] || return 90; '
         '[[ "$FIXTURE_AUTOMATIC" == true ]] || { echo "no original Step 1 owner selection" >&2; return 2; }; printf "%s\\n" "$FIXTURE_TRANSFER"; }\n'
-        + dry_run(ROOT, "release-benchmarks", [TAG]).stderr,
+        + dry_run(ROOT, "release-benchmarks", [TAG, *([owner, selection] if outcome == "renewed" else [])]).stderr,
         encoding="utf-8",
         newline="\n",
     )
     env = {key: value for key, value in os.environ.items() if key not in {"BASH_ENV", "SHELLOPTS", "BASHOPTS", "CANDIDATE_TRANSFER_FILE"}}
     env.update(FIXTURE_CALLS=calls.as_posix(), FIXTURE_STATUS="17" if outcome == "dispatch-failure" else "0")
-    env.update(FIXTURE_AUTOMATIC=str(outcome == "automatic").lower(), FIXTURE_TRANSFER=transfer.as_posix())
-    if outcome not in {"missing", "automatic"}:
+    env.update(
+        FIXTURE_AUTOMATIC=str(outcome in {"automatic", "renewed"}).lower(),
+        FIXTURE_TRANSFER=transfer.as_posix(),
+        FIXTURE_OWNER=owner,
+        FIXTURE_SELECTION=selection,
+    )
+    if outcome not in {"missing", "automatic", "renewed"}:
         env["CANDIDATE_TRANSFER_FILE"] = transfer.as_posix()
     result = run_command("bash", ["--noprofile", "--norc", "-eu", script.as_posix()], cwd=tmp_path, env=env, check=False)
-    if outcome in {"success", "automatic", "dispatch-failure"}:
+    if outcome in {"success", "automatic", "renewed", "dispatch-failure"}:
         assert result.returncode == (17 if outcome == "dispatch-failure" else 0), result.stderr
         assert json.loads(calls.read_text(encoding="utf-8")) == [
             "workflow",
@@ -162,7 +170,7 @@ def test_benchmark_recipe_forwards_one_tag_and_independent_transfer(tmp_path: Pa
 def test_benchmark_dispatch_requires_an_argument() -> None:
     result = run_command("just", ["release-benchmarks"], cwd=ROOT, check=False)
     assert result.returncode == 1
-    assert "got 0 positional arguments but takes 1" in result.stderr
+    assert "got 0 positional arguments but takes at least 1" in result.stderr
 
 
 @pytest.mark.parametrize("tag", ["", "main", "v01.2.3", "v1.2.3; touch injected"])
@@ -348,6 +356,27 @@ def test_actual_writer_creates_once_and_retains_exact_draft(draft_handoff: dict[
     assert {path.name for path in (tmp_path / "draft-state").iterdir()} == {"producer.json", "handoff.json", "draft-receipt.json", "target.json"}
     target = release_assets.parse_release_target((tmp_path / "draft-state/target.json").read_bytes())
     assert (target.tag, target.commit, target.release_id, target.expected_title) == (TAG, COMMIT, 42, TAG)
+
+
+def test_release_launcher_selects_the_manifest_uv_and_preserves_arguments(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    arguments = ["release-stage", "", (tmp_path / "a target's $literal.json").as_posix(), "renewed-ci"]
+    script = tmp_path / "launch.py"
+    script.write_text(dry_run(ROOT, "release-run", arguments).stderr, encoding="utf-8")
+    monkeypatch.chdir(ROOT)
+    monkeypatch.setattr(sys, "argv", [str(script), *arguments])
+    pin = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["uv"]["required-version"]
+
+    def launch(command: str, args: list[str], *, timeout: float | None, check: bool) -> subprocess.CompletedProcess[None]:
+        assert command == "uvx"
+        assert args == ["--no-config", "--isolated", "--from", f"uv{pin}", "just", *arguments]
+        assert timeout is None
+        assert not check
+        return subprocess.CompletedProcess(args, 17)
+
+    monkeypatch.setattr("research_repo_tools.process.run_command_live", launch)
+    with pytest.raises(SystemExit) as failure:
+        runpy.run_path(str(script), run_name="__main__")
+    assert failure.value.code == 17
 
 
 @pytest.mark.parametrize(

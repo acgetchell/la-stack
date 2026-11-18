@@ -7,14 +7,12 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
 import tomllib
 from pathlib import Path
 
 import pytest
 import yaml
 from research_repo_tools.criterion_inventory import CriterionInventory, load_discovery, serialize_inventory
-from research_repo_tools.host_metadata import HostMetadata, serialize_host
 from research_repo_tools.process import run_command
 
 from tests.tooling.support_toolchain import TOOLING_REQUIREMENT
@@ -35,7 +33,6 @@ IDS = {
 STORAGE = tomllib.loads((REPO_ROOT / "tooling/criterion-saved.toml").read_text(encoding="utf-8"))["storage-paths"]
 BASELINE = "v1.2.3"
 RAW_FILES = ("benchmark.json", "estimates.json", "sample.json", "tukey.json")
-SUITE_ENV = {"RELEASE_TAG": BASELINE, "GITHUB_SHA": "a" * 40, "GITHUB_REPOSITORY": "owner/repo", "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}
 
 
 def write_json(path: Path, data: object) -> None:
@@ -44,7 +41,7 @@ def write_json(path: Path, data: object) -> None:
 
 
 @pytest.fixture
-def dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+def dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.chdir(tmp_path)
     for name in ("pyproject.toml", "uv.lock", ".python-version", "rust-toolchain.toml"):
         shutil.copyfile(REPO_ROOT / name, tmp_path / name)
@@ -66,15 +63,14 @@ def dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
                 write_json(directory / "sample.json", {"iters": [1.0] * 100, "times": [2.0] * 100})
                 write_json(directory / "estimates.json", {"mean": estimate, "median": estimate})
                 write_json(directory / "tukey.json", [1.0, 2.0, 3.0, 4.0])
-    return criterion, manifest
+    return criterion
 
 
-def verify_saved(root: Path, *, suite: str | None = None, criterion_dir: str = "target/criterion") -> subprocess.CompletedProcess[str]:
-    """Exercise the installed verifier through the actual release-check recipe."""
-    recipe = ["bench-release-check", BASELINE, criterion_dir] if suite is None else ["bench-release-check-suite", BASELINE, suite, criterion_dir]
+def verify_saved(root: Path) -> subprocess.CompletedProcess[str]:
+    """Exercise the installed verifier through the local saved-baseline recipe."""
     return run_command(
         "just",
-        ["--no-deps", "--justfile", str(REPO_ROOT / "justfile"), "--working-directory", str(root), *recipe],
+        ["--no-deps", "--justfile", str(REPO_ROOT / "justfile"), "--working-directory", str(root), "bench-release-check", BASELINE, "target/criterion"],
         env={**os.environ, "UV_NO_SYNC": "1", "UV_PROJECT_ENVIRONMENT": sys.prefix},
         check=False,
     )
@@ -94,160 +90,10 @@ def run_shell(script: str, cwd: Path, extra_env: dict[str, str], *, timeout: int
     )
 
 
-def package_suites(root: Path, manifest: Path, criterion: Path) -> None:
-    """Execute the workflow's installed CLI with all independently required cases."""
-    destination = root / "target/release-suites"
-    destination.mkdir(parents=True)
-    for suite, ids in IDS.items():
-        shard = root / "shards" / suite
-        output = shard / "target/criterion"
-        output.mkdir(parents=True)
-        (shard / "tooling").mkdir()
-        shutil.copyfile(REPO_ROOT / "tooling/criterion-saved.toml", shard / "tooling/criterion-saved.toml")
-        shutil.copyfile(manifest, shard / "target/release-benchmark-inventory.json")
-        host = HostMetadata("fixture OS", "fixture architecture", f"CPU for {suite}", 2, 4, None)
-        (shard / "target/release-host.json").write_bytes(serialize_host(host))
-        for event, timestamp in (("started", "100"), ("finished", "200")):
-            (shard / f"target/{suite}-{event}").write_text(timestamp, encoding="utf-8", newline="\n")
-        for benchmark in ids:
-            storage = STORAGE[benchmark]
-            shutil.copytree(criterion / storage, output / storage)
-        # Retain compatibility with previously published suite archives using
-        # the public installed packer; new releases use candidate archives.
-        result = run_command(
-            "uv",
-            [
-                "run",
-                "--locked",
-                "--no-sync",
-                "research-repo-tools",
-                "--root",
-                str(shard),
-                "performance",
-                "pack-suite",
-                "tooling/criterion-saved.toml",
-                suite,
-                "--saved-sample",
-                BASELINE,
-                "--output",
-                f"target/release-suites/{suite}/criterion.tar.gz",
-                "--revision",
-                "a" * 40,
-                "--session",
-                "owner/repo:123:2",
-                "--host",
-                "target/release-host.json",
-                "--started-at",
-                "100",
-                "--finished-at",
-                "200",
-                "--context",
-                f"command=just bench-save-baseline {BASELINE} {suite}",
-                "--context",
-                "features=" + ("bench,exact" if suite == "public-exact" else "bench"),
-                "--context",
-                f"runner={suite}",
-                "--context",
-                "image=ubuntu24",
-                "--context",
-                "image_version=fixture-image",
-                "--context",
-                "rustc=rustc fixture;LLVM fixture",
-                "--context",
-                "cargo=cargo fixture",
-                "--context",
-                "cargo_lock_sha256=" + "f" * 64,
-            ],
-            cwd=REPO_ROOT,
-            check=False,
-        )
-        assert result.returncode == 0, result.stdout + result.stderr
-        shutil.move(shard / "target/release-suites" / suite, destination / suite)
-        if suite == "public-default":
-            shutil.copyfile(manifest, destination / suite / "inventory.json")
-
-
-def test_complete_dataset_round_trips_through_legacy_suite_archive(dataset: tuple[Path, Path], tmp_path: Path) -> None:
-    criterion, manifest = dataset
-    criterion = criterion.rename(tmp_path / "original-criterion")
-    package_suites(tmp_path, manifest, criterion)
-    for suite, ids in IDS.items():
-        verified = verify_saved(tmp_path, suite=suite, criterion_dir=f"shards/{suite}/target/criterion")
-        assert verified.returncode == 0, verified.stdout + verified.stderr
-        assert f"Verified {len(ids)} complete saved Criterion benchmarks" in verified.stdout
-    # Assembly must use the downloaded inventory, not an accidentally retained
-    # fixture copy or an inventory inferred from the supplied archives.
-    manifest.unlink()
-    output = tmp_path / "step outputs"
-    asset = f"la-stack-{BASELINE}-criterion-baseline.tar.gz"
-    script = (
-        "set -euo pipefail\n"
-        "cp target/release-suites/public-default/inventory.json target/release-benchmark-inventory.json\n"
-        "uv run --locked --no-sync research-repo-tools performance assemble-suites tooling/criterion-saved.toml "
-        "target/release-suites/public-default/criterion.tar.gz target/release-suites/public-exact/criterion.tar.gz "
-        '--saved-sample "$RELEASE_TAG" --output "la-stack-$RELEASE_TAG-criterion-baseline.tar.gz" '
-        '--revision "$GITHUB_SHA" --session "$GITHUB_REPOSITORY:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT"\n'
-    )
-    env = {**SUITE_ENV, "GITHUB_WORKSPACE": tmp_path.as_posix(), "GITHUB_OUTPUT": output.as_posix()}
-    for assertion in ({"GITHUB_SHA": "b" * 40}, {"GITHUB_RUN_ATTEMPT": "3"}):
-        rejected = run_shell(script, tmp_path, {**env, **assertion}, timeout=180)
-        assert rejected.returncode != 0
-        assert "source revision or collection session differs" in rejected.stderr
-        assert not (tmp_path / asset).exists()
-        assert not output.exists()
-    # Git Bash accepts forward-slash drive paths on Windows as well as POSIX paths.
-    result = run_shell(script, tmp_path, env, timeout=180)
+def test_complete_saved_baseline_passes_verification(dataset: Path) -> None:
+    result = verify_saved(dataset.parent.parent)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert not output.exists()
-    assert_archive_contents(tmp_path / asset, criterion)
-    # Release readers keep the standard tooling environment. Exercise its
-    # documented extraction and full-dataset verification against the new archive.
-    run_command(
-        "uv",
-        ["run", "--locked", "--no-sync", "research-repo-tools", "performance", "extract", str(tmp_path / asset), str(tmp_path / "restored-criterion")],
-        cwd=REPO_ROOT,
-    )
-    verified = verify_saved(tmp_path, criterion_dir="restored-criterion")
-    assert verified.returncode == 0, verified.stdout + verified.stderr
-    assert f"Verified {sum(map(len, IDS.values()))} complete saved Criterion benchmarks" in verified.stdout
-
-
-def assert_archive_contents(archive_path: Path, criterion: Path) -> None:
-    """Require every raw byte and original runner observation in the final asset."""
-    with tarfile.open(archive_path) as archive:
-        for ids in IDS.values():
-            for benchmark in ids:
-                for sample in ("new", BASELINE):
-                    for filename in RAW_FILES:
-                        member = archive.extractfile(f"{STORAGE.get(benchmark, benchmark)}/{sample}/{filename}")
-                        assert member is not None
-                        assert member.read() == (criterion / STORAGE.get(benchmark, benchmark) / sample / filename).read_bytes()
-        member = archive.extractfile("criterion-inventory.json")
-        assert member is not None
-        assert json.loads(member.read())["suites"] == IDS
-        for index, suite in enumerate(sorted(IDS)):
-            member = archive.extractfile(f"release-suites/{index}.json")
-            assert member is not None
-            retained = member.read()
-            record = json.loads(retained)
-            assert record["suite"] == suite
-            run = record["run"]
-            assert run["provenance"]["revision"] == SUITE_ENV["GITHUB_SHA"]
-            assert run["session"] == "owner/repo:123:2"
-            assert (run["started_at"], run["finished_at"]) == (100, 200)
-            assert run["host"]["cpu"] == f"CPU for {suite}"
-            context = run["provenance"]["context"]
-            assert context["command"] == f"just bench-save-baseline {BASELINE} {suite}"
-            assert context["features"] == ("bench,exact" if suite == "public-exact" else "bench")
-            assert context["runner"] == suite
-            assert context["rustc"] == "rustc fixture;LLVM fixture"
-            assert context["cargo"] == "cargo fixture"
-            assert context["cargo_lock_sha256"] == "f" * 64
-            assert (context["image"], context["image_version"]) == ("ubuntu24", "fixture-image")
-            with tarfile.open(archive_path.parent / "target/release-suites" / suite / "criterion.tar.gz") as original:
-                original_manifest = original.extractfile("suite.json")
-                assert original_manifest is not None
-                assert retained == original_manifest.read()
+    assert f"Verified {sum(map(len, IDS.values()))} complete saved Criterion benchmarks" in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -260,8 +106,8 @@ def assert_archive_contents(archive_path: Path, criterion: Path) -> None:
         "rational_dot/large/d22/slice",
     ],
 )
-def test_saved_baseline_must_match_fresh_samples(dataset: tuple[Path, Path], benchmark: str) -> None:
-    criterion, _manifest = dataset
+def test_saved_baseline_must_match_fresh_samples(dataset: Path, benchmark: str) -> None:
+    criterion = dataset
     write_json(criterion / STORAGE[benchmark] / BASELINE / "sample.json", {"iters": [1.0] * 100, "times": [3.0] * 100})
     result = verify_saved(criterion.parent.parent)
     assert result.returncode != 0
@@ -269,8 +115,8 @@ def test_saved_baseline_must_match_fresh_samples(dataset: tuple[Path, Path], ben
 
 
 @pytest.mark.parametrize("relocation", ["moved", "swapped"])
-def test_report_consumers_require_canonical_paths(dataset: tuple[Path, Path], relocation: str) -> None:
-    criterion, _manifest = dataset
+def test_report_consumers_require_canonical_paths(dataset: Path, relocation: str) -> None:
+    criterion = dataset
     original = criterion / "d2/la_stack_dot"
     moved = original.rename(criterion / "d2/misplaced")
     if relocation == "swapped":
@@ -354,7 +200,8 @@ def test_workflow_reuses_original_acquisition_and_isolates_write_credentials() -
         assert job["steps"][0]["with"]["cache-python"] is False
     verifier = jobs["verify"]["steps"]
     assert verifier[0]["with"] == {"ref": "${{ github.sha }}", "fetch-depth": 0, "persist-credentials": False}
-    assert verifier[1]["with"]["cache"] is False
+    assert verifier[1]["with"] == {"cache": False, "tool": "cargo"}
+    assert jobs["verify"]["timeout-minutes"] == 60
     assert verifier[3]["with"]["artifact-ids"] == "${{ needs.fetch.outputs.artifact-id }}"
     assert verifier[4]["env"]["CANDIDATE_TRANSFER"] == "${{ inputs.candidate }}"
     assert 'release-receive "$RUNNER_TEMP/accepted-candidate" --incoming "$RUNNER_TEMP/incoming-candidate"' in verifier[4]["run"]

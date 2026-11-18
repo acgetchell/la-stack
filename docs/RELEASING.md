@@ -77,7 +77,7 @@ Final acceptance lives under `<owner-directory>/final/<commit>/<selection>/`.
 The default selection is `reviewed`. Repeating verification revalidates the
 full acceptance, including the original native run, attempt and artifact.
 To explicitly review a newer complete CI attempt, use a new name such as
-`just release-evidence "$OWNER" retry-2` and pass that same selection to
+`just release-run release-evidence "$OWNER" retry-2` and pass that same selection to
 archive, staging and publication recipes before GitHub publication. The command
 prints the full acceptance file's SHA-256. After GitHub publication, renew only
 that acceptance and supply its reviewed digest to a fresh Cargo dispatch;
@@ -88,8 +88,7 @@ The candidate verification and archive recipes launch the pinned supplier throug
 `uvx` outside the observed checkout. They do not measure, discover, rebuild the
 Rust package or mutate Git. They write only requested receipts outside the
 checkout. Hosted Step 2 jobs prepare their own native Python dependency
-provenance before verification. `release-native-evidence`
-remains a focused native-CI diagnostic; it does not establish candidate reuse.
+provenance before verification.
 
 The independently retained `transfer.json` selects the exact draft release
 and four inert asset IDs/hashes. After attachment, `publication-transfer.json`
@@ -120,6 +119,7 @@ API. Release boundaries require published tooling and successful native evidence
 
 | Command | Common behavior and la-stack declaration |
 | --- | --- |
+| `release-run RECIPE [ARGS...]` | Run a local recipe with the exact uv from `pyproject.toml`, including after a system uv upgrade |
 | `update-version TAG [ARGS...]` | Prepare package/citation metadata; Cargo owns the Rust lock, the private Python environment retains its version |
 | `changelog-release TAG [DATE]` | Generate prospective notes using the prepared citation date |
 | `release-version-check` | Require synchronized final metadata, changelog and citation dates |
@@ -127,7 +127,7 @@ API. Release boundaries require published tooling and successful native evidence
 | `release-evidence [OWNER] [SELECTION]` | Inspect retained signed main CI and original benchmark acceptance without builds; defaults recover the original owner and `reviewed` selection |
 | `tag TAG` | Run the final version check and create the annotated tag from generated notes |
 | `release-notes TAG` | Print generated notes; tag-triggered preparation supplies these to the draft automatically |
-| `release-benchmarks TAG` | Dispatch retained archive attachment from the original owner record; explicit `CANDIDATE_TRANSFER_FILE` remains a recovery override |
+| `release-benchmarks TAG [OWNER] [SELECTION]` | Dispatch retained archive attachment from the original owner record and selected acceptance; explicit `CANDIDATE_TRANSFER_FILE` remains a recovery override |
 | `release-publish TAG [OWNER] [SELECTION]` | Revalidate acceptance, notes and canonical assets, then explicitly approve GitHub publication |
 | `release-upload TAG [OWNER] [SELECTION]` | Dispatch Cargo publication using the existing reviewed acceptance and original publication transfer |
 | `release-verify TAG` | Verify stable GitHub assets and the exact crates.io version |
@@ -355,14 +355,12 @@ source-selection shell variables or exports are needed.
 
 Review `docs/performance.md` and the complete
 new run and index changes under `docs/performance-runs/`. Its current/baseline
-tags and commits must match the selected assertions. Both labels must be v0.5.0
+tags and commits must match the selected assertions. Both labels must be v0.5.2
 or newer.
 
-Evidence retains every available phase, mean and median estimates, 100 raw
-samples per case and 95% intervals. Availability uses the original revision:
-APIs introduced in v0.5.2 are unavailable earlier and paired on v0.5.2-or-later
-baselines. No supported missing case is treated as unavailable. All 1,403
-library cases and 16 LU peer cases on each phase remain required.
+Evidence retains both phases, mean and median estimates, 100 raw samples per
+case and 95% intervals. Each phase requires all 1,403 library cases and 16 LU
+peer cases, including the library APIs introduced in v0.5.2.
 
 The full schema-6 plan declares one sequential trial. Baseline inputs include
 README because historical releases compile it. Current source includes README
@@ -480,6 +478,11 @@ hand-edit the generated changelog to add a known-issue note.
 
 ## Step 2: Publish after the PR is merged
 
+Use `just release-run` for local release recipes that require the pinned uv.
+It reads the exact pin from this checkout and uses `uvx` to start Just with
+that version on `PATH`. If your system uv changes after acquisition, keep the
+release checkout's pin and lockfile and continue with the wrapper.
+
 ### 1. Synchronize `main` and wait for CI
 
 ```bash
@@ -515,11 +518,15 @@ requirement and cannot replace merged main-push evidence.
 
 ### 2. Verify the final release commit
 
-The normal commands need no `OWNER` or `RELEASE_COMMIT` shell variables:
+Use `reviewed` for the original native CI attempt. If you have rerun all jobs
+in that CI run, choose a new selection such as `renewed-ci` and keep using the
+same selection through publication. The empty owner argument recovers the
+original Step 1 acquisition.
 
 ```bash
-just release-evidence
-just release-archive
+RELEASE_SELECTION=reviewed
+just release-run release-evidence "" "$RELEASE_SELECTION" &&
+  just release-run release-archive "" "$RELEASE_SELECTION"
 ```
 
 Require native Linux, macOS and Windows CI, default/exact Cargo packaging and
@@ -535,13 +542,16 @@ evidence. Pending, failed, cancelled or expired evidence blocks publication.
 ### 3. Create the annotated tag
 
 ```bash
-just tag "$TAG"
+just release-run tag "$TAG" "" "$RELEASE_SELECTION"
 ```
 
 `just tag` first runs `release-version-check` and revalidates the existing reviewed
 acceptance for clean HEAD. A different commit or missing receipt requires an
-explicit `release-evidence` review before tagging. It then builds the annotation from the matching active or archived changelog
-section. For a changelog larger than 125 kB, it links that section.
+explicit `release-evidence` review before tagging. It fetches locked dependencies
+with the same managed Cargo that generates the annotation, so the offline
+metadata lookup works with a cold Cargo cache. The annotation comes from the
+matching active or archived changelog section. For a changelog larger than
+125 kB, it links that section.
 
 ### 4. Push the tag
 
@@ -586,7 +596,7 @@ before the benchmark archive can be attached. GitHub recommends this
 Stage the four inert records:
 
 ```bash
-just release-stage
+just release-run release-stage "" "" "$RELEASE_SELECTION"
 ```
 
 Staging uses the installed `release assets retrieve` operation and
@@ -598,10 +608,10 @@ instead of searching again. A replacement draft is rejected before any upload.
 
 This revalidates acceptance, freezes the prepared draft ID before any upload, and prints
 the independent `transfer.json` path. A retry uses that same draft and identical
-bytes. Dispatch from the exact tag using the printed path:
+bytes. Dispatch from the exact tag with the same selection:
 
 ```bash
-just release-benchmarks "$TAG"
+just release-run release-benchmarks "$TAG" "" "$RELEASE_SELECTION"
 ```
 
 The recipe resolves the existing transfer from the original owner record and
@@ -633,7 +643,7 @@ pinned tooling and execute no checkout code.
 From the clean tagged checkout and your human GitHub CLI session:
 
 ```bash
-just release-publish "$TAG"
+just release-run release-publish "$TAG" "" "$RELEASE_SELECTION"
 ```
 
 This verifies acceptance and remote notes, freezes the canonical attached archive
@@ -644,7 +654,7 @@ must become immutable before Cargo publication.
 Dispatch Cargo publication from that independently retained selection:
 
 ```bash
-just release-upload "$TAG"
+just release-run release-upload "$TAG" "" "$RELEASE_SELECTION"
 gh run list --workflow publish-crates.yml --limit 5
 ```
 
@@ -678,10 +688,12 @@ After the publishing workflow completes:
 just release-verify "$TAG"
 ```
 
-This requires the published stable GitHub release, nonempty durable baseline
-asset and exact non-yanked crates.io version with a checksum. It retries only
-proven registry absence, never an upload. A short-lived Actions artifact or a
-published GitHub release alone is insufficient.
+This reads GitHub and crates.io directly and checks the immutable stable
+release, completed nonempty baseline asset, and exact non-yanked crates.io
+version with a checksum. It polls only when the exact registry version is
+proven absent. Dependency provenance and generated notes are checked by the
+publication gates. The visibility recipe works without a synced development
+environment.
 
 Check a clean consumer with a fresh Cargo home before dependent Delaunay releases:
 
@@ -717,15 +729,20 @@ selections and GitHub commands remain available for older acquisitions, a moved
 checkout or deliberate recovery. They do not replace or rewrite the normal
 external owner selection. Do not infer missing assertions from received assets.
 
+Set `RELEASE_SELECTION` below to the acceptance you already reviewed, such as
+`renewed-ci` after accepting a complete CI retry.
+
 ```bash
 RELEASE_COMMIT=$(git --no-pager rev-parse HEAD)
 OWNER="/path/to/original/independent/acquisition"
-just release-evidence "$OWNER"
-just release-archive "$OWNER"
+RELEASE_SELECTION=reviewed
+just release-run release-evidence "$OWNER" "$RELEASE_SELECTION" &&
+  just release-run release-archive "$OWNER" "$RELEASE_SELECTION"
 ```
 
 The same explicit owner and optional selection arguments are supported by
-`tag`, `tag-force`, `release-publish` and `release-upload` during recovery.
+`tag`, `tag-force`, `release-stage`, `release-benchmarks`, `release-publish`
+and `release-upload` during recovery.
 
 Use the recorded workflow/run or inspect the exact current commit:
 
@@ -739,14 +756,17 @@ For manually reviewed preparation retrieval, the shared CLI preserves the same
 source, original-attempt, job and artifact checks:
 
 ```bash
-just release-assets retrieve tooling/draft-receipt.toml --tag "$TAG" --commit "$RELEASE_COMMIT" \
-  --run-id ORIGINAL_PREPARATION_RUN_ID --output /path/to/independent/preparation
-just release-stage "$OWNER" /path/to/independent/preparation/target.json
-export CANDIDATE_TRANSFER_FILE="$OWNER/final/$RELEASE_COMMIT/reviewed/transfer.json"
-just release-benchmarks "$TAG"
-just release-publish "$TAG" "$OWNER"
-just release-upload "$TAG" "$OWNER"
+just release-run release-assets retrieve tooling/draft-receipt.toml --tag "$TAG" \
+  --commit "$RELEASE_COMMIT" --run-id ORIGINAL_PREPARATION_RUN_ID \
+  --output /path/to/independent/preparation
+just release-run release-stage "$OWNER" /path/to/independent/preparation/target.json "$RELEASE_SELECTION"
 ```
+
+Pass `"$OWNER"` in place of the empty owner argument and use the same selection in
+[benchmark attachment](#6-attach-accepted-benchmarks-and-review-the-draft) and
+[publication](#7-publish-the-reviewed-draft-and-approve-cargo-publication).
+Set `CANDIDATE_TRANSFER_FILE` on the attachment command only when explicitly
+recovering the reviewed transfer from a different path.
 
 For direct dispatch troubleshooting, `publish-crates.yml` still accepts
 `--ref "$TAG" -f tag="$TAG" -F candidate=@/original/publication-transfer.json`
@@ -813,7 +833,7 @@ attempts and manual CI dispatch remain ineligible. Accept a new complete native
 attempt through an explicit new review selection:
 
 ```bash
-just release-evidence "$OWNER" renewed-ci
+just release-run release-evidence "$OWNER" renewed-ci
 ```
 
 Before GitHub publication, use the new selection for archive, staging and

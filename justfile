@@ -7,6 +7,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 _run := "uv run --locked --no-sync --no-python-downloads research-repo-tools toolchain run --"
+_release_cargo := "uv run --locked --no-sync research-repo-tools toolchain run --tool cargo --"
 
 _pytest_parallel := "-n " + quote(env("LA_STACK_TEST_WORKERS", "4")) + " --dist worksteal --max-worker-restart 0"
 
@@ -83,6 +84,12 @@ _release-candidate *args:
     with isolated_release_runtime(load(root=root)):
         runpy.run_path(str(root / "tooling/release_candidate.py"), run_name="__main__")
 
+# Fetch locked sources for the same managed Cargo that generates the tag notes.
+[private]
+_tag-release version force:
+    {{ _release_cargo }} cargo fetch --locked
+    {{ _release_cargo }} research-repo-tools changelog tag {{ quote(version) }}{{ if force == "force" { " --force" } else { "" } }}
+
 # Ordinary checks accept unreleased history; final release validation is stricter.
 [private]
 _version-check: python-sync
@@ -137,15 +144,11 @@ bench-latest-vs-last baseline="last": bench-latest
 bench-linear-form:
     {{ _run }} cargo bench --locked --features bench --bench linear_form
 
-# Check every discovered benchmark before the release workflow packages it.
+# Verify all raw files in a local saved Criterion baseline.
 bench-release-check tag criterion_dir="target/criterion": _ensure-uv
     {{ _run }} uv run --locked research-repo-tools performance verify-saved tooling/criterion-saved.toml --saved-sample {{ quote(tag) }} --criterion-dir {{ quote(criterion_dir) }}
 
-# Verify one parallel release runner's exact feature selection before transport.
-bench-release-check-suite tag suite criterion_dir="target/criterion": _ensure-uv
-    {{ _run }} uv run --locked research-repo-tools performance verify-saved tooling/criterion-saved.toml --saved-sample {{ quote(tag) }} --suite {{ quote(suite) }} --criterion-dir {{ quote(criterion_dir) }}
-
-# Discover all release benchmarks and report their expected measurement budget.
+# Discover benchmarks with a fresh Criterion directory and write a local inventory.
 bench-release-inventory: _ensure-uv
     #!/usr/bin/env bash
     set -euo pipefail
@@ -153,7 +156,7 @@ bench-release-inventory: _ensure-uv
     {{ _run }} uv run --locked research-repo-tools performance discover tooling/criterion-inventory.toml --output target/release-benchmark-inventory.json
     jq -r '.suites | to_entries[] | "[release-baseline] \(.key): \(.value | length) benchmarks; nominal warmup + measurement \((.value | length) * 8 / 60) min; planning estimate at 12 s/benchmark \((.value | length) * 12 / 60) min (not an upper bound)"' target/release-benchmark-inventory.json
 
-# Save a Criterion baseline. Defaults to all release-signal benchmark suites.
+# Save a local Criterion baseline. Defaults to all public la-stack cases.
 bench-save-baseline tag suite="all":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -177,7 +180,7 @@ bench-save-baseline tag suite="all":
             ;;
     esac
 
-# Save a full Criterion baseline for the previous release signal.
+# Save the public la-stack cases under the local Criterion baseline name last.
 bench-save-last:
     just bench-save-baseline last
 
@@ -266,7 +269,7 @@ ci: python-sync tools-check _ci-policy _ci-execution
 ci-candidate: (test-python "-m" "release_candidate")
 
 # Prepare native release provenance in CI; verified development tooling keeps ordinary checks available.
-[script("uv", "run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--", "python", "-I")]
+[script("uv", "run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--tool", "cargo", "--", "python", "-I")]
 ci-dependencies: python-sync
     import sys
     from pathlib import Path
@@ -463,8 +466,8 @@ plot-vs-linalg current_tag current_revision baseline_tag baseline_revision view=
 
 # Verify clean Cargo source packaging with default and exact features, without upload.
 publish-check:
-    {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run
-    {{ _run }} cargo publish --locked --package la-stack --registry crates-io --dry-run --features exact
+    {{ _release_cargo }} cargo publish --locked --package la-stack --registry crates-io --dry-run
+    {{ _release_cargo }} cargo publish --locked --package la-stack --registry crates-io --dry-run --features exact
 
 # Check Python formatting, lint, fixtures, and types.
 python-check: python-sync
@@ -510,12 +513,12 @@ release-assets +args:
     sys.exit(main(["release", "--isolated-runtime", "assets", *sys.argv[1:]]))
 
 # Dispatch retained benchmark attachment using the original Step 1 owner selection.
-release-benchmarks tag: _ensure-gh _ensure-jq
+release-benchmarks tag owner="" selection="reviewed": _ensure-gh _ensure-jq
     #!/usr/bin/env bash
     set -euo pipefail
     tag={{ quote(tag) }}
     [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "A canonical stable tag is required." >&2; exit 2; }
-    transfer="${CANDIDATE_TRANSFER_FILE-$(just --quiet _release-candidate record transfer)}"
+    transfer="${CANDIDATE_TRANSFER_FILE-$(just --quiet _release-candidate record transfer {{ quote(owner) }} --selection {{ quote(selection) }})}"
     [[ -f "$transfer" && -r "$transfer" ]] || { echo "The selected transfer must be a readable file." >&2; exit 2; }
     jq -e --arg tag "$tag" '.schema == 1 and .target.repository == "acgetchell/la-stack" and .target.tag == $tag and .target.expected_title == $tag' -- "$transfer" >/dev/null
     gh workflow run release-benchmarks.yml --repo acgetchell/la-stack --ref "$tag" -f "tag=$tag" -F "candidate=@$transfer"
@@ -526,32 +529,11 @@ release-dependencies:
 
 # Rebuild declared registry sources and authenticate this machine's installed wheels.
 release-dependency-builds: python-sync
-    uv run --locked --no-sync research-repo-tools toolchain run --tool cargo -- cargo fetch --locked
-    uv run --locked --no-sync research-repo-tools toolchain run --tool cargo -- uv run --locked --no-sync research-repo-tools release dependency-builds
+    {{ _release_cargo }} cargo fetch --locked
+    {{ _release_cargo }} uv run --locked --no-sync research-repo-tools release dependency-builds
 
 # Bind the original local acquisition to clean HEAD and signed native CI.
 release-evidence owner="" selection="reviewed": (_release-candidate "verify" owner "--selection" selection)
-
-# Require the release event, reviewed commit, native checks, assets, and notes.
-release-gate tag:
-    uv run --locked --no-sync research-repo-tools release gate {{ quote(tag) }}
-
-# Verify signed native/Cargo evidence; accept --expected PATH and --github-output PATH.
-[positional-arguments]
-[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.9", "python", "-I")]
-release-native-evidence *args:
-    import sys
-    import tempfile
-    from pathlib import Path
-    from research_repo_tools.cli import main
-    from research_repo_tools.config import load
-    from research_repo_tools.process import run_git_command
-    from research_repo_tools.release_metadata import read_package_info
-    from research_repo_tools.release_runtime import isolated_release_runtime
-    root = Path.cwd().resolve()
-    with isolated_release_runtime(load(root=root)), tempfile.TemporaryDirectory(prefix="la-stack-release-evidence-") as temporary:
-        commit = run_git_command(["--no-pager", "rev-parse", "HEAD"], cwd=root, timeout=30).stdout.strip()
-        sys.exit(main(["release", "evidence", "verify", "tooling/release-evidence.toml", "--checkout", str(root), "--commit", commit, "--version", read_package_info(root).version, "--output", str(Path(temporary).resolve() / "selection.json"), *sys.argv[1:]]))
 
 # Print release notes from the root changelog or a completed minor archive.
 release-notes tag: python-sync
@@ -569,15 +551,62 @@ release-publish tag owner="" selection="reviewed": (_release-candidate "reviewed
 release-receive destination *args:
     just _release-candidate receive "$@"
 
+# Run a recipe with the exact uv declared in this checkout, independent of system updates.
+[positional-arguments]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.9", "python", "-I")]
+release-run +args:
+    import sys
+    from research_repo_tools.config import load
+    from research_repo_tools.process import run_command_live
+    from research_repo_tools.toolchain_config import load as load_toolchain
+
+    uv = load_toolchain(load()).uv
+    result = run_command_live(
+        "uvx", ["--no-config", "--isolated", "--from", f"uv=={uv}", "just", *sys.argv[1:]],
+        timeout=None, check=False,
+    )
+    sys.exit(result.returncode)
+
 # Stage accepted inert assets and print the independently retained dispatch record.
 release-stage owner="" target="" selection="reviewed": (_release-candidate "stage" owner "--selection" selection "--target" target)
 
 # Dispatch Cargo publication using the existing reviewed acceptance and immutable assets.
 release-upload tag owner="" selection="reviewed": (_release-candidate "upload" tag owner "--selection" selection)
 
-# Verify the published GitHub release, required assets, and exact crates.io version.
+# Check remote visibility of the immutable release, required assets, and exact crates.io version.
+[positional-arguments]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.9", "python", "-I")]
 release-verify tag:
-    uv run --locked --no-sync research-repo-tools release verify {{ quote(tag) }} --attempts 7 --interval 10
+    import sys
+    from pathlib import Path
+    from subprocess import SubprocessError
+    from research_repo_tools.config import load
+    from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics
+    from research_repo_tools.registry import identity, wait_for_version
+    from research_repo_tools.release_assets import lookup_release
+
+    root = Path.cwd()
+    policy = load(root=root).publishing
+    if policy is None:
+        sys.exit("Release visibility requires a publishing policy.")
+    tag = sys.argv[1]
+    version = tag.removeprefix("v")
+    try:
+        if tag == version:
+            raise ValueError("Release visibility requires a stable vX.Y.Z tag.")
+        identity(policy.registry, policy.package, version)
+        release = lookup_release(root, policy.repository, tag)
+        if release.draft or release.prerelease or not release.immutable or release.title != tag:
+            raise ValueError("Expected the matching immutable, published stable GitHub release.")
+        required = {pattern.replace("{version}", version) for pattern in policy.required_assets}
+        uploaded = {name for name, identifier, size, _ in release.assets if size > 0 and (identifier, "uploaded") in release.asset_states}
+        if missing := required - uploaded:
+            raise ValueError(f"Missing completed release assets: {', '.join(sorted(missing))}")
+        if not wait_for_version(policy.registry, policy.package, version, attempts=7).present:
+            raise ValueError(f"{policy.package} {version} is not visible on {policy.registry}. Inspect the upload run.")
+    except (ValueError, OSError, SubprocessError, ExecutableNotFoundError) as error:
+        sys.exit(format_exception_diagnostics(error))
+    print(f"Verified immutable GitHub release {tag} and {policy.registry} version {version}.")
 
 # Require final changelog, citation date and package metadata agreement.
 release-version-check: python-sync
@@ -633,12 +662,10 @@ spell-check: tools-check
     {{ _run }} research-repo-tools files run --exclude typos.toml -- typos --config typos.toml --force-exclude --
 
 # Create an annotated git tag from the CHANGELOG.md section for the given version
-tag version owner="" selection="reviewed": release-version-check (_release-candidate "reviewed" owner "--selection" selection)
-    uv run --locked --group dev research-repo-tools changelog tag {{ quote(version) }}
+tag version owner="" selection="reviewed": release-version-check (_release-candidate "reviewed" owner "--selection" selection) (_tag-release version "")
 
 # Replace an existing local tag only after validating the release notes.
-tag-force version owner="" selection="reviewed": release-version-check (_release-candidate "reviewed" owner "--selection" selection)
-    uv run --locked --group dev research-repo-tools changelog tag {{ quote(version) }} --force
+tag-force version owner="" selection="reviewed": release-version-check (_release-candidate "reviewed" owner "--selection" selection) (_tag-release version "force")
 
 # Run library unit tests and default-feature doctests.
 test: test-unit test-doc

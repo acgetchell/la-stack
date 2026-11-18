@@ -13,12 +13,12 @@ from typing import Any
 
 import pytest
 import yaml
-from research_repo_tools import changelog, config, dependency_provenance, release_publishing
+from research_repo_tools import changelog, config, dependency_provenance, registry, release_publishing
 from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
 
-from tests.tooling.support_evidence import PIN_JSON, install_clean_checkout
+from tests.tooling.support_evidence import install_clean_checkout
 from tests.tooling.support_toolchain import TOOLING_REQUIREMENT
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -225,210 +225,6 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert all(command[command.index("toolchain") :][:5] == ["toolchain", "run", "--tool", "cargo", "--"] for command in managed)
 
 
-@pytest.fixture
-def evidence_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep real workflow shell, Just, uv, Python, verifier and output writer."""
-    source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
-    runtime = f'[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "{TOOLING_REQUIREMENT}", "python", "-I")]'
-    assert source.count(runtime) == 3
-    # Run the exact recipe body/argument transport with the locked test runtime.
-    # The separate isolated-runtime smoke and pin test own uvx installation.
-    source = source.replace(runtime, '[script("uv", "run", "--locked", "--no-sync", "python", "-I", "fixture-bootstrap.py")]')
-    (tmp_path / "justfile").write_text(source, encoding="utf-8", newline="\n")
-    uv_pin = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["uv"]["required-version"]
-    (tmp_path / "pyproject.toml").write_text(
-        f'[project]\nname = "release-fixture"\nversion = "0.0.0"\nrequires-python = ">=3.15"\ndependencies = []\n[tool.uv]\nrequired-version = "{uv_pin}"\n',
-        encoding="utf-8",
-        newline="\n",
-    )
-    (tmp_path / ".python-version").write_bytes((REPO_ROOT / ".python-version").read_bytes())
-    (tmp_path / "Cargo.toml").write_text('[package]\nname = "la-stack"\nversion = "0.5.42"\n', encoding="utf-8")
-    (tmp_path / "tooling").mkdir()
-    (tmp_path / "tooling/release-evidence.toml").write_bytes((REPO_ROOT / "tooling/release-evidence.toml").read_bytes())
-    for name in ("BASH_ENV", "SHELLOPTS", "BASHOPTS", "JUST_QUIET", "JUST_DRY_RUN", "FIXTURE_FAILURE", "FIXTURE_DIAGNOSTIC_NEWLINE", "PYTHONPATH"):
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("FIXTURE_ROOT", str(tmp_path))
-    monkeypatch.setenv("FIXTURE_REPO_ROOT", str(REPO_ROOT))
-    monkeypatch.setenv("FIXTURE_MODULE_ROOT", str(REPO_ROOT))
-    monkeypatch.setenv("RUNNER_TEMP", tmp_path.as_posix())
-    monkeypatch.setenv("UV_PROJECT", str(REPO_ROOT))
-    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", sys.prefix)
-    (tmp_path / "fixture-bootstrap.py").write_text(
-        'import os, sys\nsys.path[:0] = [os.environ["FIXTURE_REPO_ROOT"], os.environ["FIXTURE_MODULE_ROOT"]]\n'
-        "from tests.tooling.support_evidence import run_evidence_fixture\nsys.exit(run_evidence_fixture())\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-
-def run_evidence_shell(script: str, root: Path) -> subprocess.CompletedProcess[str]:
-    """Execute workflow source from a file, as Actions does, with explicit env."""
-    source = root / "workflow.sh"
-    source.write_text(script, encoding="utf-8", newline="\n")
-    # Windows putenv removes empty values from the inherited native environment.
-    # Build the child environment from the mapping to keep empty distinct from unset.
-    return run_command("bash", ["--noprofile", "--norc", "-eu", source.as_posix()], cwd=root, env=dict(os.environ), check=False, timeout=60)
-
-
-@pytest.mark.usefixtures("evidence_runner")
-@pytest.mark.parametrize("quiet", [False, True], ids=["normal", "quiet"])
-@pytest.mark.parametrize("outcome", ["valid", "failed-job", "missing-file", "directory", "unset-output", "empty-output"])
-def test_evidence_export_uses_real_just_and_installed_writer_without_stdout_capture(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quiet: bool, outcome: str
-) -> None:
-    script = 'just release-native-evidence --github-output "$GITHUB_OUTPUT"\n'
-    output = tmp_path / "github output"
-    original = b"prior=value\r\n"
-    if outcome == "directory":
-        output.mkdir()
-    elif outcome != "missing-file":
-        output.write_bytes(original)
-    monkeypatch.setenv("GITHUB_OUTPUT", "" if outcome == "empty-output" else output.as_posix())
-    if outcome == "unset-output":
-        monkeypatch.delenv("GITHUB_OUTPUT")
-    monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
-    monkeypatch.setenv("FIXTURE_FAILURE", outcome)
-    marker = tmp_path / "verification-passed"
-    result = run_evidence_shell(script + f"\ntouch {shlex.quote(marker.as_posix())}", tmp_path)
-    assert result.returncode == (0 if outcome == "valid" else 1), result.stderr
-    assert marker.exists() == (outcome == "valid")
-    report = tmp_path / "verifier-result.json"
-    if outcome == "unset-output":
-        assert not report.exists()
-        assert "GITHUB_OUTPUT: unbound variable" in result.stderr
-    else:
-        assert report.exists(), result.stderr
-        observed = json.loads(report.read_text(encoding="utf-8"))
-        assert observed["arguments"][:1] == ["--github-output"]
-        assert len(observed["arguments"]) == 2
-        if outcome == "empty-output":
-            assert observed["arguments"][1] == ""
-        else:
-            assert Path(observed["arguments"][1]) == output
-        assert observed["status"] == (0 if outcome == "valid" else 1)
-        rejection = {
-            "failed-job": "did not validate required step Verify default and exact Cargo packages",
-            "missing-file": repr(str(output)),
-            "directory": "release handoff must be a regular file without links",
-            "empty-output": "A publication transaction cannot contain overlapping target paths",
-            "valid": "",
-        }[outcome]
-        assert observed["diagnostic"] == "" if outcome == "valid" else rejection in observed["diagnostic"]
-    if outcome == "valid":
-        assert output.read_bytes() == original + f"identity={PIN_JSON}\ncommit={SHA}\n".encode()
-        if not quiet:
-            # Diagnostics are text; the command-file bytes above must stay LF.
-            assert result.stdout.splitlines() == ["fixture stdout diagnostic", "Saved verified release evidence."]
-            assert "fixture stderr diagnostic" in result.stderr
-    elif outcome == "directory":
-        assert output.is_dir()
-        assert list(output.iterdir()) == []
-    elif outcome == "missing-file":
-        assert not output.exists()
-    else:
-        assert output.read_bytes() == original
-
-
-@pytest.mark.usefixtures("evidence_runner")
-@pytest.mark.parametrize(
-    ("import_root", "newline"), [(r"C:\agent\test dir\native", "\n"), (r"D:\build's root\new\repo", "\r\n")], ids=["backslashes-lf", "apostrophe-crlf"]
-)
-def test_evidence_bootstrap_keeps_windows_import_paths_as_environment_data(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, import_root: str, newline: str
-) -> None:
-    # Exercise literal Windows path data on every host. The explicit harness
-    # root follows this nonexistent path because isolated Python ignores PYTHONPATH.
-    monkeypatch.setenv("FIXTURE_REPO_ROOT", import_root)
-    monkeypatch.setenv("PYTHONPATH", str(REPO_ROOT))
-    monkeypatch.setenv("FIXTURE_DIAGNOSTIC_NEWLINE", newline)
-    output = tmp_path / "github output"
-    output.touch()
-    monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
-    script = 'just release-native-evidence --github-output "$GITHUB_OUTPUT"\n'
-    result = run_evidence_shell(script, tmp_path)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == "fixture stdout diagnostic" + newline + "Saved verified release evidence." + os.linesep
-    observed = json.loads((tmp_path / "verifier-result.json").read_text(encoding="utf-8"))
-    assert observed["status"] == 0
-    assert observed["diagnostic"] == ""
-    assert observed["import_root"] == import_root
-    assert observed["arguments"][:1] == ["--github-output"]
-    assert len(observed["arguments"]) == 2
-    assert Path(observed["arguments"][1]) == output
-    assert output.read_bytes() == f"identity={PIN_JSON}\ncommit={SHA}\n".encode()
-
-
-@pytest.mark.usefixtures("evidence_runner")
-@pytest.mark.parametrize("quiet", [False, True], ids=["normal", "quiet"])
-@pytest.mark.parametrize("pin", ["valid", "empty", "invalid", "changed"])
-def test_exported_identity_is_revalidated_by_real_just_before_registry_and_token(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quiet: bool, pin: str
-) -> None:
-    output = tmp_path / "github output"
-    output.touch()
-    monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
-    monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
-    exported = run_evidence_shell('just release-native-evidence --github-output "$GITHUB_OUTPUT"\n', tmp_path)
-    assert exported.returncode == 0, exported.stderr
-    report = tmp_path / "verifier-result.json"
-    assert json.loads(report.read_text(encoding="utf-8"))["status"] == 0
-    report.unlink()
-    record = output.read_text(encoding="utf-8")
-    assert record == f"identity={PIN_JSON}\ncommit={SHA}\n"
-    identity = record.splitlines()[0].removeprefix("identity=")
-    variants = {"valid": identity, "empty": "", "invalid": "{", "changed": identity.replace('"run_attempt":2', '"run_attempt":1')}
-    monkeypatch.setenv("CI_EVIDENCE", variants[pin])
-    monkeypatch.setenv("RELEASE_TAG", TAG)
-    registry = tmp_path / "registry-reached"
-    token = tmp_path / "token-reached"
-    # The other release and registry gates are independently covered below.
-    # Keep evidence verification real and stop before any credentials or upload.
-    runner = f'uv() {{\n  [[ "$4 $5 $6" == "research-repo-tools release registry" ]] || return 90\n  touch {shlex.quote(registry.as_posix())}\n}}\n'
-    runner += 'just() { if [[ "$1" == release-gate ]]; then return 0; fi; command just "$@"; }\n'
-    script = (
-        "set -euo pipefail\n"
-        'test -n "$CI_EVIDENCE"\n'
-        'printf "%s\\n" "$CI_EVIDENCE" > "$RUNNER_TEMP/approved-evidence.json"\n'
-        'just release-native-evidence --expected "$RUNNER_TEMP/approved-evidence.json"\n'
-        'uv run --locked --no-sync research-repo-tools release registry "$RELEASE_TAG" --expect absent\n'
-    )
-    result = run_evidence_shell(runner + script + f"\ntouch {shlex.quote(token.as_posix())}", tmp_path)
-    if pin != "empty":
-        assert report.exists(), result.stderr
-        observed = json.loads(report.read_text(encoding="utf-8"))
-        assert observed["arguments"][:1] == ["--expected"]
-        assert Path(observed["arguments"][1]) == tmp_path / "approved-evidence.json"
-        assert (tmp_path / "approved-evidence.json").read_text(encoding="utf-8") == variants[pin] + "\n"
-    assert result.returncode == (0 if pin == "valid" else 1), result.stderr
-    assert registry.exists() == (pin == "valid")
-    assert token.exists() == (pin == "valid")
-    if pin == "empty":
-        assert not report.exists()
-    else:
-        observed = json.loads(report.read_text(encoding="utf-8"))
-        assert observed["status"] == (0 if pin == "valid" else 1)
-        rejection = "Expecting property name" if pin == "invalid" else "selected run or attempt changed"
-        assert observed["diagnostic"] == "" if pin == "valid" else rejection in observed["diagnostic"]
-
-
-@pytest.mark.usefixtures("evidence_runner")
-@pytest.mark.parametrize("quiet", [False, True], ids=["normal", "quiet"])
-def test_explicit_empty_identity_cannot_select_fresh_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, quiet: bool) -> None:
-    monkeypatch.setenv("JUST_QUIET", str(quiet).lower())
-    output = tmp_path / "github output"
-    original = b"prior=value\n"
-    output.write_bytes(original)
-    monkeypatch.setenv("GITHUB_OUTPUT", output.as_posix())
-    expected = tmp_path / "empty.json"
-    expected.write_bytes(b"")
-    result = run_evidence_shell('just release-native-evidence --expected empty.json --github-output "$GITHUB_OUTPUT"\n', tmp_path)
-    observed = json.loads((tmp_path / "verifier-result.json").read_text(encoding="utf-8"))
-    assert observed["arguments"][:2] == ["--expected", "empty.json"]
-    assert result.returncode == observed["status"] == 1
-    assert "Expecting value" in observed["diagnostic"]
-    assert output.read_bytes() == original
-
-
 @pytest.mark.parametrize(
     ("failure", "expected_exit"), [("none", 0), ("dependency-builds", 1), ("evidence", 1), ("candidate", 1), ("present", 1), ("unavailable", 2)]
 )
@@ -604,6 +400,47 @@ def test_main_ci_creates_no_release_evidence_for_development_pins(tmp_path: Path
     data = output.read_bytes()
     assert data.startswith(original)
     assert (b"eligible" in data) == (source == "published")
+
+
+@pytest.mark.parametrize("outcome", ["visible", "draft", "missing-asset", "incomplete-asset", "absent-version"])
+def test_release_visibility_checks_remote_state_without_local_release_preparation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str) -> None:
+    script = tmp_path / "visibility.py"
+    script.write_text(dry_run(REPO_ROOT, "release-verify", [TAG]).stderr, encoding="utf-8")
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setattr(sys, "argv", [str(script), TAG])
+    calls: list[str] = []
+    release = release_publishing.GitHubRelease(
+        repository="acgetchell/la-stack",
+        tag=TAG,
+        identifier=42,
+        draft=outcome == "draft",
+        immutable=outcome != "draft",
+        prerelease=False,
+        assets=() if outcome == "missing-asset" else ((f"la-stack-{TAG}-criterion-baseline.tar.gz", 7, 100, None),),
+        title=TAG,
+        asset_states=((7, "starter" if outcome == "incomplete-asset" else "uploaded"),),
+    )
+
+    def github(root: Path, repository: str, tag: str) -> release_publishing.GitHubRelease:
+        assert (root, repository, tag) == (REPO_ROOT, "acgetchell/la-stack", TAG)
+        calls.append("github")
+        return release
+
+    def visible(destination: str, package: str, version: str, *, attempts: int) -> registry.RegistryVersion:
+        assert (destination, package, version, attempts) == ("crates-io", "la-stack", VERSION, 7)
+        calls.append("registry")
+        return registry.RegistryVersion("crates-io", package, version, outcome != "absent-version")
+
+    monkeypatch.setattr("research_repo_tools.release_assets.lookup_release", github)
+    monkeypatch.setattr(registry, "wait_for_version", visible)
+    monkeypatch.setattr(dependency_provenance, "check_release_dependencies", lambda *_args, **_kwargs: pytest.fail("visibility repeated local provenance"))
+    monkeypatch.setattr(changelog, "notes", lambda *_args: pytest.fail("visibility regenerated local notes"))
+    if outcome == "visible":
+        runpy.run_path(str(script), run_name="__main__")
+    else:
+        with pytest.raises(SystemExit, match=r"immutable|Missing completed release assets|not visible"):
+            runpy.run_path(str(script), run_name="__main__")
+    assert calls == (["github", "registry"] if outcome in {"visible", "absent-version"} else ["github"])
 
 
 def test_native_packaging_failure_stops_before_further_validation(tmp_path: Path) -> None:

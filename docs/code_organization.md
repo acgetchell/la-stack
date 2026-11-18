@@ -248,9 +248,9 @@ independent public API coverage. `tooling/criterion-saved.toml` declares
 complete saved-sample requirements. Shared discovery and saved-sample APIs own
 inventory parsing and exact raw-file verification. The shared package also owns
 suite-scoped verification, provenance, packaging and complete archive assembly.
-Legacy archive and saved-sample regressions live in
-`tests/tooling/test_release_baseline.py`; new release archives reuse accepted local evidence.
-There is no repository-specific suite verifier or archive merge implementation.
+RRT tests legacy archive compatibility. The consumer tests in
+`tests/tooling/test_release_baseline.py` cover la-stack's independent inventory,
+saved samples, and attachment workflow. Release archives reuse accepted local evidence.
 
 `tooling/performance.just` declares native Cargo discovery, correctness gates
 and measurements. `tooling/measurements/{full,non-exact}.toml` declares the
