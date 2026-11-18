@@ -897,9 +897,8 @@ final clean commit, wait for the tag-triggered draft, stage the independent reco
 against its authenticated captured target, and dispatch
 attachment and publication. Both dispatches use the exact tag and owner-generated
 selection JSON; downloaded files cannot authenticate their own assertions.
-`just release-benchmarks "$TAG"` dispatches attachment using the transfer from
-the retained owner record by default. `CANDIDATE_TRANSFER_FILE` is an optional
-recovery override. Dispatch returns without waiting or acquiring data.
+Follow the [attachment commands](RELEASING.md#6-attach-accepted-benchmarks-and-review-the-draft)
+to use the pinned uv and the same reviewed selection for staging and dispatch.
 
 ### Hosted Release Verification
 
@@ -938,10 +937,9 @@ original measured source from the final release commit. Original local host,
 session and timestamps remain authoritative.
 
 Previously published suite archives remain readable through shared extraction
-and saved-sample verification. Their original layouts, inventories, host records
-and bytes stay unchanged. The optional `bench-release-inventory`,
-`bench-release-check` and `bench-release-check-suite` recipes remain diagnostic
-tools; they do not create or authenticate candidate acceptance.
+and saved-sample verification. Run `bench-release-inventory` with a fresh
+Criterion directory to discover cases and write a local inventory. Use
+`bench-release-check` to verify the raw files in an existing saved baseline.
 
 ### Validate The Release Workflow
 

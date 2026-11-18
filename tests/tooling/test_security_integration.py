@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FROZEN_RUN = "docs/performance-runs/runs/2e55909621d0aacbfa7670f678574ae750311ba29353e6e9ebb11461414876a2/run.json"
+V054_RUN = "docs/performance-runs/runs/c71813e122e5fde26d26511b6a57ca21e5a24ed1b03bce2905029cf518ffd29e/run.json"
 LEAK_FOUND = 3
 
 
@@ -42,12 +43,18 @@ def test_historical_alias_exception_is_limited_to_its_assignment_and_path(tmp_pa
 @pytest.mark.parametrize("representation", ["direct", "chunk", "payload"])
 @pytest.mark.parametrize(
     ("relative", "credential", "status"),
-    [(FROZEN_RUN, False, 0), (FROZEN_RUN, True, LEAK_FOUND), ("docs/performance-runs/other.json", False, LEAK_FOUND)],
+    [
+        (FROZEN_RUN, False, 0),
+        (FROZEN_RUN, True, LEAK_FOUND),
+        (V054_RUN, False, 0),
+        (V054_RUN, True, LEAK_FOUND),
+        ("docs/performance-runs/other.json", False, LEAK_FOUND),
+    ],
 )
 def test_frozen_statistics_exception_preserves_other_secret_detection(
     tmp_path: Path, representation: str, relative: str, *, credential: bool, status: int
 ) -> None:
-    """Only the frozen run's encoded numerical fields are exempted."""
+    """Only the frozen runs' encoded numerical fields are exempted."""
     fences = b"[23.01652962024839,23.323939759650607,24.143700131389842,24.451110270792054]"
     encoded = base64.b64encode(fences).decode("ascii")
     record = {}
@@ -63,6 +70,22 @@ def test_frozen_statistics_exception_preserves_other_secret_detection(
     if representation == "chunk":
         contents = contents.removesuffix('"\n}\n')
     source.write_text(contents, encoding="utf-8", newline="\n")
+    result = scan_secrets(tmp_path)
+    assert result.returncode == status, result.stderr
+
+
+@pytest.mark.parametrize(
+    ("relative", "frozen", "status"),
+    [(V054_RUN, True, 0), (V054_RUN, False, LEAK_FOUND), ("docs/performance-runs/other.json", True, LEAK_FOUND)],
+)
+def test_truncated_tukey_field_exception_is_limited_to_the_frozen_value(tmp_path: Path, relative: str, *, frozen: bool, status: int) -> None:
+    """A clipped key is exempted only with its original value and report path."""
+    original = b"[11.061047972370767,11.456482165636142,12.51097334767714,12.906407540942514]"
+    other = b"[23.01652962024839,23.323939759650607,24.143700131389842,24.451110270792054]"
+    encoded = base64.b64encode(original if frozen else other).decode("ascii")
+    source = tmp_path / relative
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(f'key.json": "{encoded}"\n', encoding="utf-8", newline="\n")
     result = scan_secrets(tmp_path)
     assert result.returncode == status, result.stderr
 

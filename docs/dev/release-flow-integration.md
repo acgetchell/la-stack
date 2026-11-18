@@ -82,8 +82,10 @@ Publication is a separate maintainer-approved operation. Its workflow rechecks
 the candidate and canonical assets, retains an approval receipt, and performs
 nonbuilding Cargo upload using authenticated native validation. Published
 supplier tooling is required at release boundaries.
-The crates.io jobs select minimal Rust/Cargo through RRT's managed tool APIs;
-the locked Python environment still supplies Just and provenance dependencies.
+The attachment and crates.io verifiers select minimal Rust/Cargo through RRT's
+managed tool APIs. The locked Python environment still supplies Just and
+provenance dependencies. Attachment verification has 60 minutes for cold
+setup and evidence checks.
 Title, generated-notes and published immutability checks live in the shared
 publishing configuration, alongside the native checks and required assets.
 

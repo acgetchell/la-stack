@@ -1,23 +1,19 @@
 """Independent release evidence and provider fixtures shared by consumer tests."""
 
-import hashlib
-import io
 import json
-import os
-import runpy
 import shlex
 import subprocess
-import sys
-from contextlib import redirect_stderr
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import pytest
-from research_repo_tools import process, release_assets, release_evidence, release_interfaces, release_validation
+from research_repo_tools import release_assets, release_evidence, release_interfaces, release_validation
 from research_repo_tools.cli import main, parser
 from research_repo_tools.config import load
 from research_repo_tools.release_interfaces import load_evidence_policy
+
+if TYPE_CHECKING:
+    import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REPOSITORY = "acgetchell/la-stack"
@@ -175,13 +171,6 @@ class EvidenceProvider:
         assert endpoint in self.responses, f"unexpected authenticated request: {endpoint}"
         return deepcopy(self.responses[endpoint])
 
-    def git(self, args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        """Supply the exact clean checkout identity to the subprocess verifier."""
-        assert "rev-parse" in args or "status" in args
-        assert kwargs["cwd"] == self.root
-        assert kwargs["timeout"] == 30
-        return subprocess.CompletedProcess(args, 0, stdout=COMMIT + "\n" if "rev-parse" in args else "", stderr="")
-
     def gh(self, *args: str) -> str:
         """Return the selected attestation response without a provider process."""
         assert args[:2] == ("attestation", "verify")
@@ -264,54 +253,3 @@ class EvidenceProvider:
                 *args,
             ]
         )
-
-
-def expected_identity() -> str:
-    """Independent approval record for the fixture's literal signed bytes."""
-    provider = EvidenceProvider(Path())
-    selected = {
-        **provider.document,
-        "schema": "research-repo-tools/release-selection/v1",
-        "jobs": {**provider.document["jobs"], "release-evidence": 205},
-        "artifact": {key: provider.artifact[key] for key in ("id", "name", "digest", "size_in_bytes")},
-        "manifest_sha256": hashlib.sha256(json.dumps(provider.document).encode()).hexdigest(),
-    }
-    return json.dumps(selected, sort_keys=True, separators=(",", ":"))
-
-
-PIN_JSON = expected_identity()
-
-
-def run_evidence_fixture() -> int:
-    """Run the real verifier in a child process with simulated provider responses."""
-    root = Path(os.environ["FIXTURE_ROOT"])
-    provider = EvidenceProvider(root)
-    if os.environ.get("FIXTURE_FAILURE") == "failed-job":
-        provider.jobs[3]["steps"][0]["conclusion"] = "failure"
-    newline = os.environ.get("FIXTURE_DIAGNOSTIC_NEWLINE", os.linesep)
-    sys.stdout.buffer.write(("fixture stdout diagnostic" + newline).encode("utf-8"))
-    sys.stdout.flush()
-    print("fixture stderr diagnostic", file=sys.stderr)
-    diagnostic = io.StringIO()
-    script, *arguments = sys.argv[1:]
-    with pytest.MonkeyPatch.context() as patch:
-        provider.install(patch)
-        patch.setattr(process, "run_git_command", provider.git)
-        # The uv launcher needs the real test environment; provenance observes
-        # only the dependency-free release fixture after process startup.
-        patch.delenv("UV_PROJECT", raising=False)
-        patch.delenv("UV_PROJECT_ENVIRONMENT", raising=False)
-        with redirect_stderr(diagnostic):
-            try:
-                sys.argv[:] = [script, *arguments]
-                runpy.run_path(script, run_name="__main__")
-                status = 0
-            except SystemExit as error:
-                status = error.code
-    assert isinstance(status, int)
-    print(diagnostic.getvalue(), end="", file=sys.stderr)
-    # Just's quiet mode hides stderr. Record the actual verifier outcome so an
-    # import/shell failure cannot masquerade as the rejection under test.
-    result = {"status": status, "diagnostic": diagnostic.getvalue(), "import_root": sys.path[0], "arguments": arguments}
-    (root / "verifier-result.json").write_text(json.dumps(result), encoding="utf-8")
-    return status

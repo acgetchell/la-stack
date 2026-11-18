@@ -98,7 +98,7 @@ jobs:
   verify:
     needs: fetch
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
       checks: read
@@ -118,6 +118,7 @@ jobs:
         uses: ./.github/actions/setup-tools # zizmor: ignore[self-repository] actionlint 1.7.12 does not accept $/...
         with:
           cache: false
+          tool: cargo
 
       - name: Require this retrieval attempt
         env:

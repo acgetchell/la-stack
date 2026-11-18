@@ -44,7 +44,7 @@ exit alone also accepts a broken import or shell. When quiet mode hides
 diagnostics, retain the verifier's arguments, exit status and diagnostic in a
 fixture-owned result file.
 
-The candidate and native evidence recipes use Just's isolated uvx/Python script interpreter
+The candidate recipes use Just's isolated uvx/Python script interpreter
 and the shared `isolated_release_runtime` context manager. Asset operations use
 the shared `release --isolated-runtime` CLI. The supplier owns managed-tool
 selection, checkout-path exclusion, and environment restoration; local recipes
@@ -53,8 +53,8 @@ MSYS applies shell-like argument expansion when started by a native Windows
 program, which can corrupt JSON passed as Bash positional arguments; see
 [MSYS2 #522](https://github.com/msys2/MSYS2-packages/issues/522). The integration
 fixture keeps the real Just, uv and Python launch and substitutes only the
-entry point's provider responses. It checks the exact received identity and
-rejects an explicitly empty pin rather than selecting fresh evidence.
+entry point's external responses. Candidate tests check that the exact
+transfer arguments reach the isolated runtime.
 
 Semgrep scans and fixture checks share the root Python 3.15 environment and lockfile. Preserve its
 native-wheel requirement and compatibility overrides in `pyproject.toml`.
@@ -105,13 +105,13 @@ the next release check after such changes. These receipts establish observed
 source/build provenance, not reproducible builds or publisher-signed wheels.
 See the supplier's [source-build contract](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/README.md#source-built-python-dependencies).
 
-Native CI runs `just ci-dependencies` in the `dependencies` stage of the `native`
-job alongside the Rust, Python, and candidate-acceptance stages after shared policy checks. Signed release evidence
-requires every native stage. A verified exact development
-tooling pin skips this release-only preparation; invalid pins and failed builds
-or verification still fail. Release jobs with fresh project environments prepare
-their own receipts before acquisition/acceptance verification. Local `just ci`
-retains its ordinary validation scope.
+Native CI runs `just ci-dependencies` in each `native-dependencies (OS)`
+job after shared policy checks. Signed release evidence requires these jobs and
+the Rust, Python, and candidate-acceptance jobs on all supported OSes. A
+verified exact development tooling pin skips this release-only preparation.
+Invalid pins and failed builds or verification still fail. Hosted release
+verification jobs prepare their own receipts before checking acceptance.
+Local `just ci` retains its ordinary validation scope.
 
 Normal `just update` preserves the included tooling group's exact supplier pin, any
 immutable source commit and inherited tool versions while updating unrelated
@@ -321,14 +321,11 @@ report and plot rendering after scratch cleanup.
 Shared implementation matrices live upstream, including
 `tests/performance/public_complete_consumer.py` and
 `public_criterion_consumer.py`, exercised from wheel and sdist installations.
-The shared package also owns `public_suites_consumer.py`, which covers suite selection, raw-file
-digests, archive paths, original host retention and complete assembly failures.
-Legacy suite archive consumer fixtures retain public `pack-suite` and
-`assemble-suites` coverage; `bench-release-check-suite` remains diagnostic.
-New releases derive archives from the original candidate through shared APIs.
-There is no local suite verifier, comparison engine or archive merger.
-Consumer tests retain independent scientific selections, actual recipe wiring,
-saved archive round trips, publication boundaries and historical hashes.
+The shared package also tests legacy suite archive packaging, extraction,
+raw-file digests, and original host retention in `public_suites_consumer.py`.
+Releases derive archives from the original candidate through shared APIs.
+Consumer tests cover independent scientific selections, actual recipe wiring,
+saved-baseline verification, publication boundaries and historical hashes.
 
 ## Changelog and release tooling
 
@@ -345,9 +342,11 @@ explicit dates remain supported. Generation never advances citation metadata.
 
 The publishing declaration selects only `la-stack`, requires native platform
 and scientific checks on the exact commit, and requires the durable Criterion
-release asset. `release-gate`, `release-publish` and `release-verify`
-use the shared release contract; `publish-check` owns native default/exact
-Cargo dry-runs. Main CI signs those packaging and native validation identities;
+release asset. `release-publish` and the upload workflow enforce the shared
+release policy. `release-verify` checks remote visibility of the immutable
+release, required assets, and exact crates.io version. `publish-check` owns
+native default/exact Cargo dry-runs. Main CI signs those packaging and native
+validation identities.
 `just release-evidence [OWNER] [SELECTION]` binds the original acquisition, precise publisher
 receipt, final clean commit and signed native acceptance. Named review records
 are immutable; RRT retains the final policy and acceptance in one transaction.
@@ -365,8 +364,8 @@ RRT's `stage_release_assets` owns the per-asset journal and exact-byte retries.
 Retain `staging.json` and `staged-assets.json` alongside the original transfer;
 `release-publication` adds
 canonical archive ID/hash assertions. Two maintainer dispatches use those
-independent records. Write-scope hosted jobs execute no checkout code;
-read-only verification authenticates full acceptance with an owner-reviewed
+independent records. Hosted jobs that write GitHub release assets execute no
+checkout code. Read-only verification authenticates full acceptance with an owner-reviewed
 SHA-256 and freezes its bytes in an immutable Actions artifact across approval.
 Explicit native-evidence renewal changes that reviewed receipt while retaining
 the original immutable release archive and asset selections.
@@ -376,8 +375,8 @@ the original immutable release archive and asset selections.
 without registry credentials. The release guide owns retention, complete-rerun
 recovery and the distinction between reused checks and Cargo repackaging.
 `tests/tooling/test_release_flow.py` exercises the actual draft writer with the
-installed verifier and draft API, plus canonical `release-benchmarks TAG`
-forwarding with automatic original-owner lookup or explicit `CANDIDATE_TRANSFER_FILE`.
+installed verifier and draft API, plus `release-benchmarks` forwarding with
+automatic original-owner lookup, a named selection, or explicit `CANDIDATE_TRANSFER_FILE`.
 Step 1 retains the immutable external owner selection; routine Step 2 recipes
 need no `OWNER` or `RELEASE_COMMIT` shell variables. `release-upload` dispatches
 the existing reviewed publication selection without approving deployment.

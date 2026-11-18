@@ -141,6 +141,7 @@ def test_managed_cache_contains_compilation_only_and_release_jobs_disable_it() -
             for step in job["steps"]:
                 if step.get("uses") == "./.github/actions/setup-tools":
                     assert str(step["with"]["cache"]).lower() == "false"
+                    assert step["with"]["tool"] == "cargo"
                 assert not step.get("uses", "").startswith("actions/cache@")
 
 
