@@ -158,6 +158,9 @@ def test_source_build_policy_covers_native_dependencies_and_pinned_build_tools()
 @pytest.mark.parametrize("outcome", ["development", "published", "invalid-pin", "build-failure", "proof-failure"])
 def test_ci_dependency_recipe_preserves_development_pins_and_propagates_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str) -> None:
     recipe = inspect_justfile(REPO_ROOT).recipes["ci-dependencies"]
+    interpreter = next(attribute["script"] for attribute in recipe["attributes"] if "script" in attribute)
+    assert interpreter["command"] == "uv"
+    assert interpreter["arguments"][-7:] == ["toolchain", "run", "--tool", "cargo", "--", "python", "-I"]
     script = tmp_path / "native provenance.py"
     script.write_text("\n".join("".join(line) for line in recipe["body"]), encoding="utf-8", newline="\n")
     calls: list[list[str]] = []

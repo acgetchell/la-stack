@@ -269,7 +269,7 @@ ci: python-sync tools-check _ci-policy _ci-execution
 ci-candidate: (test-python "-m" "release_candidate")
 
 # Prepare native release provenance in CI; verified development tooling keeps ordinary checks available.
-[script("uv", "run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--", "python", "-I")]
+[script("uv", "run", "--locked", "--no-sync", "--no-python-downloads", "research-repo-tools", "toolchain", "run", "--tool", "cargo", "--", "python", "-I")]
 ci-dependencies: python-sync
     import sys
     from pathlib import Path
