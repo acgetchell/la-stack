@@ -203,8 +203,9 @@ def test_workflow_reuses_original_acquisition_and_isolates_write_credentials() -
     assert verifier[1]["with"] == {"cache": False, "tool": "cargo"}
     assert jobs["verify"]["timeout-minutes"] == 60
     assert verifier[3]["with"]["artifact-ids"] == "${{ needs.fetch.outputs.artifact-id }}"
-    assert verifier[4]["env"]["CANDIDATE_TRANSFER"] == "${{ inputs.candidate }}"
-    assert 'release-receive "$RUNNER_TEMP/accepted-candidate" --incoming "$RUNNER_TEMP/incoming-candidate"' in verifier[4]["run"]
+    assert verifier[4]["run"] == "just release-dependency-builds"
+    assert verifier[5]["env"]["CANDIDATE_TRANSFER"] == "${{ inputs.candidate }}"
+    assert verifier[5]["run"] == 'just release-receive "$RUNNER_TEMP/accepted-candidate" --incoming "$RUNNER_TEMP/incoming-candidate"'
     attach = jobs["attach"]["steps"]
     assert attach[2]["with"]["artifact-ids"] == "${{ needs.verify.outputs.artifact-id }}"
     assert attach[1]["env"]["ARTIFACT_DIGEST"] == "${{ needs.verify.outputs.artifact-digest }}"

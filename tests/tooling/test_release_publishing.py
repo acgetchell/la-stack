@@ -17,6 +17,7 @@ from research_repo_tools import changelog, config, dependency_provenance, regist
 from research_repo_tools.cli import main
 from research_repo_tools.just_inspect import dry_run
 from research_repo_tools.process import run_command
+from research_repo_tools.release_assets import ReleaseTarget, serialize_release_target
 
 from tests.tooling.support_evidence import install_clean_checkout
 from tests.tooling.support_toolchain import TOOLING_REQUIREMENT
@@ -162,24 +163,6 @@ def test_release_notes_stdout_excludes_setup_diagnostics() -> None:
     assert "fixture setup diagnostic" in result.stderr
 
 
-def test_publish_recipe_passes_explicit_approval(monkeypatch: pytest.MonkeyPatch) -> None:
-    requested: list[str] = []
-
-    def publish(settings: config.Config, tag: str, *, reuse_evidence: object = None) -> None:
-        assert settings.root == REPO_ROOT
-        assert reuse_evidence is None
-        requested.append(tag)
-
-    # Exercise the installed argument parser and dispatch, replacing only the
-    # irreversible publication boundary with an in-memory request recorder.
-    monkeypatch.setattr(release_publishing, "publish_reviewed_release", publish)
-    # Shared publishing policy owns the separately tested title/notes assertions.
-    command = shlex.split(dry_run(REPO_ROOT, "release-publish", [TAG, "/independent-owner"]).stderr.splitlines()[-1])
-    assert command[:7] == ["uv", "run", "--locked", "--no-sync", "research-repo-tools", "release", "publish"]
-    assert main(["--root", str(REPO_ROOT), *command[5:]]) == 0
-    assert requested == [TAG]
-
-
 def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_bytes())
     assert set(workflow[True]) == {"workflow_dispatch"}
@@ -212,7 +195,7 @@ def test_workflow_requires_approval_revalidation_and_absence_before_oidc() -> No
     assert steps[6]["run"].endswith("toolchain run --tool cargo -- cargo publish --locked --package la-stack --registry crates-io --no-verify")
     assert [index for index, step in enumerate(steps) if "CARGO_REGISTRY_TOKEN" in step.get("env", {})] == [6]
     assert steps[7]["if"] == "${{ !cancelled() && steps.auth.outcome == 'success' }}"
-    assert steps[7]["run"] == 'just release-verify "$RELEASE_TAG"'
+    assert steps[7]["run"] == 'just release-verify "$RELEASE_TAG" "$RUNNER_TEMP/accepted-candidate/target.json"'
     assert "continue-on-error" not in WORKFLOW.read_text(encoding="utf-8")
     commands = dry_run(REPO_ROOT, "publish-check").stderr
     assert commands.count("--package la-stack --registry crates-io --dry-run") == 2
@@ -402,17 +385,36 @@ def test_main_ci_creates_no_release_evidence_for_development_pins(tmp_path: Path
     assert (b"eligible" in data) == (source == "published")
 
 
-@pytest.mark.parametrize("outcome", ["visible", "draft", "missing-asset", "incomplete-asset", "absent-version"])
-def test_release_visibility_checks_remote_state_without_local_release_preparation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str) -> None:
-    script = tmp_path / "visibility.py"
-    script.write_text(dry_run(REPO_ROOT, "release-verify", [TAG]).stderr, encoding="utf-8")
-    monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setattr(sys, "argv", [str(script), TAG])
+@pytest.mark.parametrize("outcome", ["visible", "captured-target", "replacement-target", "draft", "missing-asset", "incomplete-asset", "absent-version"])
+def test_release_visibility_checks_remote_state_without_local_release_preparation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], outcome: str
+) -> None:
+    arguments = [TAG]
+    if outcome in {"captured-target", "replacement-target"}:
+        target = tmp_path / "captured target.json"
+        target.write_bytes(serialize_release_target(ReleaseTarget("acgetchell/la-stack", TAG, 42, SHA, TAG)))
+        arguments.append(str(target))
+    command = shlex.split(dry_run(REPO_ROOT, "release-verify", arguments).stderr)
+    assert command[:10] == [
+        "uvx",
+        "--no-config",
+        "--isolated",
+        "--managed-python",
+        "--python",
+        "3.15",
+        "--from",
+        TOOLING_REQUIREMENT,
+        "research-repo-tools",
+        "release",
+    ]
+    assert command[10] == "visibility"
+    assert command[-2:] == ["--", TAG]
+    monkeypatch.chdir(tmp_path)
     calls: list[str] = []
     release = release_publishing.GitHubRelease(
         repository="acgetchell/la-stack",
         tag=TAG,
-        identifier=42,
+        identifier=43 if outcome == "replacement-target" else 42,
         draft=outcome == "draft",
         immutable=outcome != "draft",
         prerelease=False,
@@ -422,25 +424,46 @@ def test_release_visibility_checks_remote_state_without_local_release_preparatio
     )
 
     def github(root: Path, repository: str, tag: str) -> release_publishing.GitHubRelease:
-        assert (root, repository, tag) == (REPO_ROOT, "acgetchell/la-stack", TAG)
+        assert (root, repository, tag) == (tmp_path.resolve(), "acgetchell/la-stack", TAG)
         calls.append("github")
         return release
 
-    def visible(destination: str, package: str, version: str, *, attempts: int) -> registry.RegistryVersion:
-        assert (destination, package, version, attempts) == ("crates-io", "la-stack", VERSION, 7)
+    def visible(destination: str, package: str, version: str, *, attempts: int, interval: int) -> registry.RegistryVersion:
+        assert (destination, package, version, attempts, interval) == ("crates-io", "la-stack", VERSION, 7, 10)
         calls.append("registry")
-        return registry.RegistryVersion("crates-io", package, version, outcome != "absent-version")
+        return registry.RegistryVersion("crates-io", package, version, outcome != "absent-version", "a" * 64 if outcome != "absent-version" else None)
 
-    monkeypatch.setattr("research_repo_tools.release_assets.lookup_release", github)
-    monkeypatch.setattr(registry, "wait_for_version", visible)
+    def commit(root: Path, repository: str, tag: str) -> str:
+        assert (root, repository, tag) == (tmp_path.resolve(), "acgetchell/la-stack", TAG)
+        calls.append("tag")
+        return SHA
+
+    monkeypatch.setattr(release_publishing, "lookup_release", github)
+    monkeypatch.setattr(release_publishing, "wait_for_version", visible)
+    monkeypatch.setattr(release_publishing, "_remote_commit", commit)
     monkeypatch.setattr(dependency_provenance, "check_release_dependencies", lambda *_args, **_kwargs: pytest.fail("visibility repeated local provenance"))
     monkeypatch.setattr(changelog, "notes", lambda *_args: pytest.fail("visibility regenerated local notes"))
-    if outcome == "visible":
-        runpy.run_path(str(script), run_name="__main__")
+    status = main(command[9:])
+    output = capsys.readouterr()
+    if outcome in {"visible", "captured-target"}:
+        assert status == 0
+        assert f"Registry archive SHA-256 {'a' * 64}" in output.out
+        expected = ["github", "tag"] if outcome == "captured-target" else ["github"]
+        assert calls == [*expected, "registry", *expected]
     else:
-        with pytest.raises(SystemExit, match=r"immutable|Missing completed release assets|not visible"):
-            runpy.run_path(str(script), run_name="__main__")
-    assert calls == (["github", "registry"] if outcome in {"visible", "absent-version"} else ["github"])
+        assert status == 1
+        if outcome == "absent-version":
+            assert "exact registry version is not yet visible" in output.err
+            assert calls == ["github", "registry"]
+        else:
+            diagnostic = {
+                "draft": "published, stable, immutable GitHub release",
+                "missing-asset": "is missing, empty or incomplete",
+                "incomplete-asset": "is missing, empty or incomplete",
+                "replacement-target": "release identity differs from captured target",
+            }[outcome]
+            assert diagnostic in output.err
+            assert calls == ["github"]
 
 
 def test_native_packaging_failure_stops_before_further_validation(tmp_path: Path) -> None:

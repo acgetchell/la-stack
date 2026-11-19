@@ -38,7 +38,7 @@ from research_repo_tools.release_assets import (
 )
 from research_repo_tools.release_interfaces import load_evidence_policy
 from research_repo_tools.release_metadata import read_package_info
-from research_repo_tools.release_publishing import ReviewedRelease, check_reviewed_release
+from research_repo_tools.release_publishing import ReviewedRelease, check_reviewed_release, publish_reviewed_release
 from research_repo_tools.release_staging import stage_release_assets
 from research_repo_tools.release_validation import api, parse_release_json
 
@@ -548,10 +548,17 @@ def stage(root: Path, owner: Path, selection: str, prepared_target: Path | None 
     return final / "transfer.json"
 
 
-def seal(root: Path, owner: Path, selection: str) -> Path:
+def seal(root: Path, acceptance: Path, commit: str) -> PublicationTransfer:
     """Independently select the canonical attached asset before publication."""
-    final = final_directory(owner, resolve_revision(root, "HEAD"), selection)
+    final = acceptance.parent
     transfer = require_draft_transfer(parse_transfer((final / "transfer.json").read_bytes()))
+    captured = parse_release_target((final / "target.json").read_bytes())
+    if transfer.target != captured or (captured.tag, captured.commit) != (release_tag(root), commit):
+        message = "staged transfer differs from the captured draft target"
+        raise ValueError(message)
+    if hashlib.sha256(acceptance.read_bytes()).hexdigest() != transfer.assets.acceptance.sha256:
+        message = "staged transfer differs from the reviewed acceptance"
+        raise ValueError(message)
     release = revalidate_release_target(root, transfer.target, checkout=root)
     name = archive_name(transfer.target.tag)
     entry = next((item for item in release.assets if item[0] == name), None)
@@ -566,7 +573,18 @@ def seal(root: Path, owner: Path, selection: str) -> Path:
         message = "attached archive identity changed during verification"
         raise ValueError(message)
     freeze(final, {"publication-transfer.json": serialize_transfer(publication)})
-    return final / "publication-transfer.json"
+    return publication
+
+
+def publish_draft(root: Path, owner: Path, selection: str, tag: str) -> None:
+    """Approve the captured draft for the already-reviewed acceptance."""
+    if tag != release_tag(root):
+        message = "publication tag differs from the package release"
+        raise ValueError(message)
+    commit = resolve_revision(root, "HEAD")
+    acceptance = verify_existing(root, owner, selection, commit=commit)
+    transfer = seal(root, acceptance, commit)
+    publish_reviewed_release(load_config(root=root), tag, target=transfer.original.target)
 
 
 def record_path(root: Path, owner: Path, selection: str, role: Literal["transfer", "publication"]) -> Path:
@@ -820,11 +838,11 @@ def argument_parser() -> argparse.ArgumentParser:
     measurement.add_argument("--owner-directory", type=Path)
     measurement.add_argument("--progress", choices=("human", "json", "none"), default="human")
     measurement.add_argument("--progress-cadence", type=float, default=300)
-    for name in ("capture", "verify", "reviewed", "archive", "stage", "seal", "record", "upload"):
+    for name in ("capture", "verify", "reviewed", "archive", "stage", "seal", "record", "publish", "upload"):
         command = commands.add_parser(name)
         if name == "record":
             command.add_argument("role", choices=("transfer", "publication"))
-        if name == "upload":
+        if name in {"publish", "upload"}:
             command.add_argument("tag")
         command.add_argument("owner_directory", nargs="?", default="")
         if name == "capture":
@@ -860,9 +878,14 @@ def run_owner_operation(root: Path, options: argparse.Namespace) -> None:
     elif options.operation == "stage":
         print(stage(root, owner, options.selection, Path(options.target) if options.target else None))
     elif options.operation == "seal":
-        print(seal(root, owner, options.selection))
+        commit = resolve_revision(root, "HEAD")
+        final = final_directory(owner, commit, options.selection)
+        seal(root, final / "acceptance.json", commit)
+        print(final / "publication-transfer.json")
     elif options.operation == "record":
         print(record_path(root, owner, options.selection, options.role))
+    elif options.operation == "publish":
+        publish_draft(root, owner, options.selection, options.tag)
     elif options.operation == "upload":
         upload_dispatch(root, owner, options.selection, options.tag)
     else:

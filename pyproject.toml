@@ -86,9 +86,14 @@ disable = [
 [tool.rumdl.MD013]
 line-length = 160
 
+[tool.rumdl.per-file-ignores]
+# Preserve the generated and archived changelogs' list spacing.
+"CHANGELOG.md" = [ "MD076" ]
+"docs/archives/changelog/*.md" = [ "MD076" ]
+
 [tool.uv]
 package = false
-required-version = "==0.13.8"
+required-version = "==0.13.9"
 # Semgrep stopped shipping Intel macOS wheels after 1.182.1.
 constraint-dependencies = [
     "semgrep==1.182.1; sys_platform == 'darwin' and platform_machine == 'x86_64'",
@@ -119,7 +124,7 @@ build = [
     "setuptools==84.2.1",
     "wheel==0.48.0",
 ]
-tooling = [ "research-repo-tools[python-tools,semgrep]==0.2.9" ]
+tooling = [ "research-repo-tools[python-tools,semgrep]==0.3.0" ]
 dev = [
     { include-group = "tooling" },
     "actionlint-py==1.7.12.25",
@@ -147,7 +152,7 @@ cargo-nextest = "0.9.152"
 clippy-sarif = "0.8.0"
 dprint = "0.65.0"
 git-cliff = "2.14.2"
-rumdl = "0.3.4"
+rumdl = "0.3.5"
 sarif-fmt = "0.8.0"
 taplo-cli = "0.10.0"
 typos-cli = "1.52.2"

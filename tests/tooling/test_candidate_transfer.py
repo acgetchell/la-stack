@@ -10,7 +10,8 @@ from typing import Any
 
 import pytest
 import yaml
-from research_repo_tools import release_staging
+from research_repo_tools import config, release_staging
+from research_repo_tools.just_inspect import inspect_justfile
 from research_repo_tools.release_assets import GitHubRelease, ReleaseTarget, serialize_release_target
 
 from tooling import release_candidate as candidate
@@ -76,6 +77,68 @@ def transfer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr("research_repo_tools.release_assets.download_release_asset", download)
     monkeypatch.setattr("research_repo_tools.release_assets.publish_release_asset", upload)
     return {"data": data, "payloads": payloads, "calls": calls, "target": target, "release": release, "download": download}
+
+
+@pytest.mark.parametrize(
+    ("failure", "diagnostic"),
+    [
+        ("none", ""),
+        ("acceptance", "staged transfer differs from the reviewed acceptance"),
+        ("target", "staged transfer differs from the captured draft target"),
+    ],
+)
+def test_publish_recipe_approves_the_named_selection_and_its_captured_target(
+    transfer: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str, diagnostic: str
+) -> None:
+    owner, selection = tmp_path / "original owner", "renewed-ci"
+    final = candidate.final_directory(owner, SHA, selection)
+    final.mkdir(parents=True)
+    acceptance = final / "acceptance.json"
+    acceptance.write_bytes(b"newly reviewed native acceptance" if failure == "acceptance" else transfer["payloads"]["acceptance"])
+    (final / "target.json").write_bytes(serialize_release_target(transfer["target"]))
+    data = transfer["data"]
+    if failure == "target":
+        data["target"]["release_id"] = 43
+    (final / "transfer.json").write_text(json.dumps(data), encoding="utf-8")
+    data["assets"]["attached"] = {"name": candidate.archive_name(TAG), "id": 9, "sha256": data["assets"]["archive"]["sha256"]}
+    transfer["payloads"]["attached"] = transfer["payloads"]["archive"]
+    monkeypatch.setattr(candidate, "resolve_revision", lambda *_args: SHA)
+    monkeypatch.setattr(candidate, "release_tag", lambda _root: TAG)
+    monkeypatch.setattr(candidate, "revalidate_release_target", transfer["release"])
+    monkeypatch.setattr(candidate, "download_release_asset", transfer["download"])
+    reviewed: list[Path] = []
+    published: list[ReleaseTarget] = []
+
+    def review(root: Path, selected_owner: Path, name: str, *, commit: str | None = None) -> Path:
+        assert (root, selected_owner, name) == (ROOT, owner.resolve(), selection)
+        assert commit == SHA
+        reviewed.append(acceptance)
+        return acceptance
+
+    def publish(settings: config.Config, tag: str, *, target: ReleaseTarget) -> None:
+        assert settings == config.load(root=ROOT)
+        assert tag == TAG
+        assert reviewed == [final / "acceptance.json"]
+        assert json.loads((final / "publication-transfer.json").read_bytes()) == data
+        published.append(target)
+
+    monkeypatch.setattr(candidate, "verify_existing", review)
+    monkeypatch.setattr(candidate, "publish_reviewed_release", publish)
+    dependencies = inspect_justfile(ROOT).recipes["release-publish"]["dependencies"]
+    assert [(item["recipe"], item["arguments"]) for item in dependencies] == [
+        ("_release-candidate", ["publish", ["variable", "tag"], ["variable", "owner"], "--selection", ["variable", "selection"]]),
+    ]
+    options = candidate.argument_parser().parse_args(["publish", TAG, str(owner), "--selection", selection])
+    if diagnostic:
+        with pytest.raises(ValueError, match=diagnostic):
+            candidate.run_owner_operation(ROOT, options)
+        assert reviewed == [acceptance]
+        assert transfer["calls"] == []
+        assert published == []
+        assert not (final / "publication-transfer.json").exists()
+        return
+    candidate.run_owner_operation(ROOT, options)
+    assert published == [transfer["target"]]
 
 
 def workflow_python(tmp_path: Path, job: str) -> Path:

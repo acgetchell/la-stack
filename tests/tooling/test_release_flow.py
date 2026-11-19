@@ -193,7 +193,10 @@ def draft_provider(state: dict[str, Any], args: list[str]) -> bytes:
         return json.dumps(state["release"]).encode()
     endpoint = args[-1]
     if endpoint.endswith("releases?per_page=100"):
-        return json.dumps([[state["release"]] if state["release"] else []]).encode()
+        release = state["release"]
+        if release and state.pop("delay_visibility", False):
+            release = None
+        return json.dumps([[release] if release else []]).encode()
     if endpoint.endswith("releases/42"):
         return json.dumps(state["release"]).encode()
     if endpoint.endswith("releases/42/assets?per_page=100"):
@@ -345,14 +348,26 @@ def draft_handoff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, 
 
 
 @pytest.mark.parametrize("suffix", ["", "@refs/tags/" + TAG, "@" + TAG])
-def test_actual_writer_creates_once_and_retains_exact_draft(draft_handoff: dict[str, Any], tmp_path: Path, suffix: str) -> None:
+def test_actual_writer_creates_once_and_retains_exact_draft(
+    draft_handoff: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
     draft_handoff["current"]["path"] += suffix
+    draft_handoff["state"]["delay_visibility"] = True
     script = draft_handoff["script"]
+    receipt = tmp_path / "draft-state/draft-receipt.json"
+    observed: list[bytes] = []
+
+    def observe_receipt(_delay: float) -> None:
+        observed.append(receipt.read_bytes())
+
+    monkeypatch.setattr(release_drafts.time, "sleep", observe_receipt)
     runpy.run_path(str(script), run_name="__main__")
-    original = (tmp_path / "draft-state/draft-receipt.json").read_bytes()
+    original = receipt.read_bytes()
+    assert observed == [original]
+    assert json.loads(original)["state"] == "captured"
     runpy.run_path(str(script), run_name="__main__")
     assert len(draft_handoff["posts"]) == 1
-    assert (tmp_path / "draft-state/draft-receipt.json").read_bytes() == original
+    assert receipt.read_bytes() == original
     assert {path.name for path in (tmp_path / "draft-state").iterdir()} == {"producer.json", "handoff.json", "draft-receipt.json", "target.json"}
     target = release_assets.parse_release_target((tmp_path / "draft-state/target.json").read_bytes())
     assert (target.tag, target.commit, target.release_id, target.expected_title) == (TAG, COMMIT, 42, TAG)

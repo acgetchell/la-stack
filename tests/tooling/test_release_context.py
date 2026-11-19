@@ -389,6 +389,7 @@ def test_publish_recipe_requires_review_before_reaching_publication(tmp_path: Pa
         f"sys.path.insert(0, {str(ROOT)!r})\n"
         "from tooling import release_candidate as candidate\n"
         f"candidate.resolve_revision = lambda *_args: {SHA!r}\n"
+        f"candidate.release_tag = lambda _root: {TAG!r}\n"
         'def unexpected(*_args):\n    raise RuntimeError("attempted to create a new review")\n'
         "candidate.shared_main = unexpected\ncandidate.main()\n",
         encoding="utf-8",

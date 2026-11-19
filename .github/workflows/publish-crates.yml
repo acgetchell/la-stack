@@ -151,4 +151,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
-        run: just release-verify "$RELEASE_TAG"
+        run: just release-verify "$RELEASE_TAG" "$RUNNER_TEMP/accepted-candidate/target.json"
