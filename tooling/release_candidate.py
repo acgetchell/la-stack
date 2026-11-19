@@ -29,6 +29,7 @@ from research_repo_tools.performance_release import load_performance_release, lo
 from research_repo_tools.process import run_command
 from research_repo_tools.publication import publish_publication
 from research_repo_tools.release_assets import (
+    GitHubRelease,
     ReleaseTarget,
     download_release_asset,
     parse_release_target,
@@ -569,9 +570,11 @@ def seal(root: Path, acceptance: Path, commit: str) -> PublicationTransfer:
     publication = PublicationTransfer(transfer, AssetAssertion(name, entry[1], digest))
     with tempfile.TemporaryDirectory(prefix="la-stack-seal-") as temporary:
         download_release_asset(root, REPOSITORY, transfer.target.tag, name, Path(temporary) / "archive.tar.gz", expected_sha256=digest, allow_draft=True)
-    if entry not in revalidate_release_target(root, transfer.target, checkout=root).assets:
+    current = revalidate_release_target(root, transfer.target, checkout=root)
+    if entry not in current.assets:
         message = "attached archive identity changed during verification"
         raise ValueError(message)
+    require_candidate_asset_identities(current, publication)
     freeze(final, {"publication-transfer.json": serialize_transfer(publication)})
     return publication
 
@@ -692,6 +695,15 @@ def download_published_assets(root: Path, transfer: PublicationTransfer, directo
         download_release_asset(root, REPOSITORY, transfer.original.target.tag, asset.name, directory / transport_name(role), expected_sha256=asset.sha256)
 
 
+def require_candidate_asset_identities(release: GitHubRelease, transfer: PublicationTransfer) -> None:
+    """Compare every retained asset assertion with the current release inventory."""
+    for _role, asset in transfer.role_assertions():
+        entry = next((item for item in release.assets if item[0] == asset.name), None)
+        if entry is None or entry[1] != asset.identifier or (entry[3] is not None and entry[3] != asset.sha256):
+            message = f"candidate asset identity changed for {asset.name}"
+            raise ValueError(message)
+
+
 def check_published_transfer(root: Path, transfer: PublicationTransfer) -> None:
     """Require the immutable release and exact original and canonical assets."""
     target = transfer.original.target
@@ -711,11 +723,7 @@ def check_published_transfer(root: Path, transfer: PublicationTransfer) -> None:
     ):
         message = "candidate release identity changed"
         raise ValueError(message)
-    for _role, asset in transfer.role_assertions():
-        entry = next((item for item in release.assets if item[0] == asset.name), None)
-        if entry is None or entry[1] != asset.identifier or (entry[3] is not None and entry[3] != asset.sha256):
-            message = "candidate asset identity changed"
-            raise ValueError(message)
+    require_candidate_asset_identities(release, transfer)
 
 
 @dataclass(frozen=True, slots=True)

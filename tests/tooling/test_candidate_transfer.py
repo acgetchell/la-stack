@@ -85,6 +85,8 @@ def transfer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         ("none", ""),
         ("acceptance", "staged transfer differs from the reviewed acceptance"),
         ("target", "staged transfer differs from the captured draft target"),
+        ("asset-id", "candidate asset identity changed"),
+        ("missing-asset", "candidate asset identity changed"),
     ],
 )
 def test_publish_recipe_approves_the_named_selection_and_its_captured_target(
@@ -102,6 +104,10 @@ def test_publish_recipe_approves_the_named_selection_and_its_captured_target(
     (final / "transfer.json").write_text(json.dumps(data), encoding="utf-8")
     data["assets"]["attached"] = {"name": candidate.archive_name(TAG), "id": 9, "sha256": data["assets"]["archive"]["sha256"]}
     transfer["payloads"]["attached"] = transfer["payloads"]["archive"]
+    if failure == "asset-id":
+        data["assets"]["acceptance"]["id"] = 17
+    elif failure == "missing-asset":
+        del data["assets"]["acceptance"]
     monkeypatch.setattr(candidate, "resolve_revision", lambda *_args: SHA)
     monkeypatch.setattr(candidate, "release_tag", lambda _root: TAG)
     monkeypatch.setattr(candidate, "revalidate_release_target", transfer["release"])
@@ -119,7 +125,6 @@ def test_publish_recipe_approves_the_named_selection_and_its_captured_target(
         assert settings == config.load(root=ROOT)
         assert tag == TAG
         assert reviewed == [final / "acceptance.json"]
-        assert json.loads((final / "publication-transfer.json").read_bytes()) == data
         published.append(target)
 
     monkeypatch.setattr(candidate, "verify_existing", review)
@@ -133,12 +138,13 @@ def test_publish_recipe_approves_the_named_selection_and_its_captured_target(
         with pytest.raises(ValueError, match=diagnostic):
             candidate.run_owner_operation(ROOT, options)
         assert reviewed == [acceptance]
-        assert transfer["calls"] == []
+        assert ("identity" in transfer["calls"]) == (failure in {"asset-id", "missing-asset"})
         assert published == []
         assert not (final / "publication-transfer.json").exists()
         return
     candidate.run_owner_operation(ROOT, options)
     assert published == [transfer["target"]]
+    assert json.loads((final / "publication-transfer.json").read_bytes()) == data
 
 
 def workflow_python(tmp_path: Path, job: str) -> Path:
