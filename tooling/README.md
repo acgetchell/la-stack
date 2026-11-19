@@ -71,7 +71,7 @@ Other platforms resolve Semgrep 1.184.0 or newer within the shared range.
 ## Shared capability adoption
 
 The tooling group and isolated `uvx --python 3.15` runtimes use the published
-`research-repo-tools==0.2.9` package. Integration checks verify the manifest,
+`research-repo-tools==0.3.0` package. Integration checks verify the manifest,
 registry lock artifacts and installed version, including the isolated runtimes.
 For development rehearsal, an exact full-commit uv Git source override remains
 supported; keep the isolated runtime pins aligned and do not float on `main`.
@@ -103,7 +103,7 @@ never copy their signing keys into CI artifacts or caches. Changed manifests,
 locks, source policy, interpreter, or builder invalidate them. Rebuild before
 the next release check after such changes. These receipts establish observed
 source/build provenance, not reproducible builds or publisher-signed wheels.
-See the supplier's [source-build contract](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/README.md#source-built-python-dependencies).
+See the supplier's [source-build contract](https://github.com/acgetchell/research-repo-tools/blob/v0.3.0/README.md#source-built-python-dependencies).
 
 Native CI runs `just ci-dependencies` in each `native-dependencies (OS)`
 job after shared policy checks. Signed release evidence requires these jobs and
@@ -116,20 +116,20 @@ Local `just ci` retains its ordinary validation scope.
 Normal `just update` preserves the included tooling group's exact supplier pin, any
 immutable source commit and inherited tool versions while updating unrelated
 dependencies. Upgrading a published supplier uses the target release's adopter
-outside the old project environment. For the current release:
+outside the old project environment. Use the exact uv declared in the checkout
+when running the adopter. For the current release:
 
 ```bash
-uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.2.9 research-repo-tools toolchain adopt --dry-run
-uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.2.9 research-repo-tools toolchain adopt --apply
+uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.3.0 research-repo-tools toolchain adopt --dry-run
+uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.3.0 research-repo-tools toolchain adopt --apply
 ```
 
 The adopter reconciles requirements, lock and environment. Align the declared
 source in `dependency-sources.toml`, isolated recipe/workflow pins and consumer
-identity tests with that target, then run the normal checks. `just update` does
-not perform this supplier migration, including when run by v0.2.9.
-For an exact Git development pin, v0.2.9 also supports explicit attested
-[promotion](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/docs/UPDATING_DEPENDENCIES.md#promoting-an-exact-development-pin);
-ordinary updates continue to preserve the pin.
+identity tests with that target, then run the normal checks. For an exact Git
+development pin, use the supplier's explicit attested
+[promotion](https://github.com/acgetchell/research-repo-tools/blob/v0.3.0/docs/UPDATING_DEPENDENCIES.md#promoting-an-exact-development-pin)
+to verify that the published source includes the selected commit.
 
 For a deliberate source transition, edit `[sources.tooling]` in
 `dependency-sources.toml`, then run `just dependency-source tooling` to preview
@@ -148,7 +148,7 @@ come from their registries for release. The file is retained in source exports
 and both benchmark harness declarations, so policy changes invalidate evidence.
 
 The capability inventory below uses the pinned CLI and
-its [v0.2.9 contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/README.md#common-workflows).
+its [v0.3.0 contracts](https://github.com/acgetchell/research-repo-tools/blob/v0.3.0/README.md#common-workflows).
 The shared updater installs and verifies candidate Cargo tools before publishing
 new pins; no local updater implementation is needed.
 Native Rust algorithms, assertions, benchmark selection and release decisions
@@ -209,7 +209,7 @@ Neither command changes the selected-actions allowlist or approval requirements.
 
 `tools-sync`, `tools-check`, `tools-export` and `tools-run` accept RRT's repeatable
 `--tool` selection. The crates.io workflow follows the supplying
-[publication template](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/src/research_repo_tools/templates/publish-crates.yml)
+[publication template](https://github.com/acgetchell/research-repo-tools/blob/v0.3.0/src/research_repo_tools/templates/publish-crates.yml)
 by selecting only minimal Rust/Cargo. Locked `dev` still supplies Just and the
 native Python dependency provenance requirements. Cargo owns upload; the shared
 release gates enforce the configured evidence and registry policy.
@@ -343,8 +343,9 @@ explicit dates remain supported. Generation never advances citation metadata.
 The publishing declaration selects only `la-stack`, requires native platform
 and scientific checks on the exact commit, and requires the durable Criterion
 release asset. `release-publish` and the upload workflow enforce the shared
-release policy. `release-verify` checks remote visibility of the immutable
-release, required assets, and exact crates.io version. `publish-check` owns
+release policy. `release-verify` delegates to RRT's `release visibility` command
+to check the immutable release, required assets, and exact crates.io version.
+`publish-check` owns
 native default/exact Cargo dry-runs. Main CI signs those packaging and native
 validation identities.
 `just release-evidence [OWNER] [SELECTION]` binds the original acquisition, precise publisher

@@ -74,7 +74,7 @@ _ensure-yamllint: _ensure-uv
 # Isolate the supplier runtime from the observed candidate checkout.
 [positional-arguments]
 [private]
-[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.9", "python", "-I")]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.3.0", "python", "-I")]
 _release-candidate *args:
     import runpy
     from pathlib import Path
@@ -506,7 +506,7 @@ release-archive owner="" selection="reviewed": (_release-candidate "archive" own
 
 # Use explicit shared asset/recovery operations with an isolated trusted runtime.
 [positional-arguments]
-[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.9", "python", "-I")]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.3.0", "python", "-I")]
 release-assets +args:
     import sys
     from research_repo_tools.cli import main
@@ -543,8 +543,7 @@ release-notes tag: python-sync
 release-publication owner="" selection="reviewed": (_release-candidate "seal" owner "--selection" selection)
 
 # Approve the benchmark-equipped draft as the authenticated maintainer.
-release-publish tag owner="" selection="reviewed": (_release-candidate "reviewed" owner "--selection" selection) (release-publication owner selection)
-    uv run --locked --no-sync research-repo-tools release publish {{ quote(tag) }} --approve
+release-publish tag owner="" selection="reviewed": (_release-candidate "publish" tag owner "--selection" selection)
 
 # Verify the maintainer's dispatch input; never acquire timings or build packages.
 [positional-arguments]
@@ -553,7 +552,7 @@ release-receive destination *args:
 
 # Run a recipe with the exact uv declared in this checkout, independent of system updates.
 [positional-arguments]
-[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.9", "python", "-I")]
+[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.3.0", "python", "-I")]
 release-run +args:
     import sys
     from research_repo_tools.config import load
@@ -574,39 +573,8 @@ release-stage owner="" target="" selection="reviewed": (_release-candidate "stag
 release-upload tag owner="" selection="reviewed": (_release-candidate "upload" tag owner "--selection" selection)
 
 # Check remote visibility of the immutable release, required assets, and exact crates.io version.
-[positional-arguments]
-[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "research-repo-tools==0.2.9", "python", "-I")]
-release-verify tag:
-    import sys
-    from pathlib import Path
-    from subprocess import SubprocessError
-    from research_repo_tools.config import load
-    from research_repo_tools.process import ExecutableNotFoundError, format_exception_diagnostics
-    from research_repo_tools.registry import identity, wait_for_version
-    from research_repo_tools.release_assets import lookup_release
-
-    root = Path.cwd()
-    policy = load(root=root).publishing
-    if policy is None:
-        sys.exit("Release visibility requires a publishing policy.")
-    tag = sys.argv[1]
-    version = tag.removeprefix("v")
-    try:
-        if tag == version:
-            raise ValueError("Release visibility requires a stable vX.Y.Z tag.")
-        identity(policy.registry, policy.package, version)
-        release = lookup_release(root, policy.repository, tag)
-        if release.draft or release.prerelease or not release.immutable or release.title != tag:
-            raise ValueError("Expected the matching immutable, published stable GitHub release.")
-        required = {pattern.replace("{version}", version) for pattern in policy.required_assets}
-        uploaded = {name for name, identifier, size, _ in release.assets if size > 0 and (identifier, "uploaded") in release.asset_states}
-        if missing := required - uploaded:
-            raise ValueError(f"Missing completed release assets: {', '.join(sorted(missing))}")
-        if not wait_for_version(policy.registry, policy.package, version, attempts=7).present:
-            raise ValueError(f"{policy.package} {version} is not visible on {policy.registry}. Inspect the upload run.")
-    except (ValueError, OSError, SubprocessError, ExecutableNotFoundError) as error:
-        sys.exit(format_exception_diagnostics(error))
-    print(f"Verified immutable GitHub release {tag} and {policy.registry} version {version}.")
+release-verify tag target="":
+    uvx --no-config --isolated --managed-python --python 3.15 --from research-repo-tools==0.3.0 research-repo-tools release visibility --registry crates-io --package la-stack --repository acgetchell/la-stack --required-asset {{ quote("la-stack-" + tag + "-criterion-baseline.tar.gz") }} --attempts 7{{ if target == "" { "" } else { " --target " + quote(target) } }} -- {{ quote(tag) }}
 
 # Require final changelog, citation date and package metadata agreement.
 release-version-check: python-sync

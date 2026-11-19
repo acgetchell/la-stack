@@ -113,7 +113,7 @@ constraints used by the installed verifier. See GitHub's
 ## Release command alignment
 
 The common Step 1/Step 2 flow follows the
-[research-repo-tools v0.2.9 guide](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/docs/RELEASING.md).
+[research-repo-tools v0.3.0 guide](https://github.com/acgetchell/research-repo-tools/blob/v0.3.0/docs/RELEASING.md).
 Draft preparation and authenticated receipt retrieval use the installed shared
 API. Release boundaries require published tooling and successful native evidence.
 
@@ -130,7 +130,7 @@ API. Release boundaries require published tooling and successful native evidence
 | `release-benchmarks TAG [OWNER] [SELECTION]` | Dispatch retained archive attachment from the original owner record and selected acceptance; explicit `CANDIDATE_TRANSFER_FILE` remains a recovery override |
 | `release-publish TAG [OWNER] [SELECTION]` | Revalidate acceptance, notes and canonical assets, then explicitly approve GitHub publication |
 | `release-upload TAG [OWNER] [SELECTION]` | Dispatch Cargo publication using the existing reviewed acceptance and original publication transfer |
-| `release-verify TAG` | Verify stable GitHub assets and the exact crates.io version |
+| `release-verify TAG [TARGET]` | Verify stable GitHub assets and the exact crates.io version, with an optional captured `target.json` |
 
 This repository verifies evidence **before** creating or pushing the tag. The
 reference's Python distribution inspection requires a pushed tag; that ordering
@@ -626,8 +626,9 @@ acquisition, final binding and full frozen native acceptance. The no-checkout
 attachment job receives an immutable artifact by exact ID, digest and current
 attempt, rechecks the draft and original assertions, then attaches
 `la-stack-$TAG-criterion-baseline.tar.gz`. The verification job prepares native
-Python dependency provenance; no job measures benchmarks or rebuilds the Rust
-package.
+Python dependency provenance. Use the verification job's step timings to record
+scoped Cargo/Python setup, native dependency preparation, acceptance verification
+and the time remaining against the 60-minute job limit.
 
 The archive retains original evidence, current Criterion files and a separate
 final-release binding. Local ownership, measured revisions, hosts, sessions and
@@ -646,10 +647,10 @@ From the clean tagged checkout and your human GitHub CLI session:
 just release-run release-publish "$TAG" "" "$RELEASE_SELECTION"
 ```
 
-This verifies acceptance and remote notes, freezes the canonical attached archive
-ID/hash in `publication-transfer.json`, then publishes the reviewed draft
-through the shared gate. It authorizes GitHub Release publication. The release
-must become immutable before Cargo publication.
+This verifies the selected acceptance, freezes the canonical attached archive
+ID/hash in `publication-transfer.json`, then passes the captured draft target to
+the shared publication gate. It authorizes GitHub Release publication. The
+release must become immutable before Cargo publication.
 
 Dispatch Cargo publication from that independently retained selection:
 
@@ -688,12 +689,13 @@ After the publishing workflow completes:
 just release-verify "$TAG"
 ```
 
-This reads GitHub and crates.io directly and checks the immutable stable
+RRT's `release visibility` reads GitHub and crates.io and checks the immutable stable
 release, completed nonempty baseline asset, and exact non-yanked crates.io
 version with a checksum. It polls only when the exact registry version is
 proven absent. Dependency provenance and generated notes are checked by the
-publication gates. The visibility recipe works without a synced development
-environment.
+publication gates. The hosted publishing job passes the captured `target.json`
+to also verify the release ID, title, and exact tag commit. The visibility
+recipe works without a synced development environment.
 
 Check a clean consumer with a fresh Cargo home before dependent Delaunay releases:
 
@@ -780,16 +782,11 @@ benchmark measurements. Preserve the external owner record, preparation,
 checkpoint, archive, transfer files, and workflow receipts. Do not run
 `just clean` or restart acquisition to troubleshoot those later phases.
 
-The pinned tooling can still spend substantial time installing tools and
-rechecking dependency and candidate evidence. Targeted follow-ups are tracked in
-research-repo-tools [#225](https://github.com/acgetchell/research-repo-tools/issues/225),
-[#232](https://github.com/acgetchell/research-repo-tools/issues/232),
-[#233](https://github.com/acgetchell/research-repo-tools/issues/233),
-[#234](https://github.com/acgetchell/research-repo-tools/issues/234), and
-[#235](https://github.com/acgetchell/research-repo-tools/issues/235).
-These are not capabilities supplied by the current pin. Inspect the failed stage
-and its retained records before choosing the specific recovery below. An
-unconfirmed write outcome requires provider inspection before retrying.
+The release jobs install scoped Cargo and locked Python dependencies. The
+benchmark attachment workflow reports separate timings for native provenance
+preparation and acceptance verification. Inspect the failed stage and its
+retained records before choosing the specific recovery below. An unconfirmed
+write outcome requires provider inspection before retrying.
 
 If HEAD changes, return to Step 2's synchronization and exact-commit verification.
 If a native run/attempt changes, explicitly review a new named selection as
@@ -808,7 +805,7 @@ permission to create a replacement.
 Recover the exact original artifacts by independently recorded immutable IDs,
 verify their ZIP digests and producer run/attempts, and retain the original policy,
 selection, notes and receipt. Follow the supplying package's
-[recovery](https://github.com/acgetchell/research-repo-tools/blob/v0.2.9/docs/PREPARING_DRAFTS.md#retry-and-recovery).
+[recovery](https://github.com/acgetchell/research-repo-tools/blob/v0.3.0/docs/PREPARING_DRAFTS.md#retry-and-recovery).
 After independent provider/audit review, its `release assets prepare` CLI accepts
 `--recover-release-id REVIEWED_ID` with the original pending receipt and frozen
 inputs; recovery performs no POST. A captured ID cannot be replaced. This is an

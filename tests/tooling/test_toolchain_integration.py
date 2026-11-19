@@ -233,7 +233,7 @@ def test_isolated_release_runtime_uses_the_same_selection_outside_checkout(tmp_p
     source = (REPO_ROOT / "justfile").read_text(encoding="utf-8")
     assert (
         source.count(f'[script("uvx", "--no-config", "--isolated", "--managed-python", "--python", "3.15", "--from", "{TOOLING_REQUIREMENT}", "python", "-I")]')
-        == 4
+        == 3
     )
     (tmp_path / "research_repo_tools.py").write_text('raise RuntimeError("untrusted checkout import")\n', encoding="utf-8")
     (tmp_path / "tooling").mkdir()
